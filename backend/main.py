@@ -29,6 +29,7 @@ from app.routers import (
     surgical_report,
     microscopic_images,
     diagnostic_templates,
+    stain_panel,
     slide_dispatch,
     approval,
     specimen_template,
@@ -222,6 +223,7 @@ app.include_router(surgical_block_stain.router)
 app.include_router(stain_run.router)
 app.include_router(microscopic_images.router)
 app.include_router(diagnostic_templates.router)
+app.include_router(stain_panel.router)
 app.include_router(slide_dispatch.router)
 app.include_router(approval.router)
 app.include_router(specimen_template.router)

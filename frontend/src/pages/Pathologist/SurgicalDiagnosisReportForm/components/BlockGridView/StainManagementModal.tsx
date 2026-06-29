@@ -15,6 +15,8 @@ import {
   Col,
   Timeline,
   Spin,
+  Select,
+  Form,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -29,7 +31,11 @@ import {
   ImportOutlined,
   FileTextOutlined,
   ClockCircleOutlined,
+  AppstoreOutlined,
+  SettingOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
+import StainPanelService, { StainPanel } from "../../../../../services/stainPanelService";
 import dayjs from "dayjs";
 import SurgicalBlockStainService from "../../../../../services/surgicalBlockStainService";
 import AnatomicalPathologyTestService, { AnatomicalPathologyTest } from "../../../../../services/anatomicalTestService";
@@ -116,6 +122,14 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
   const [timeline, setTimeline] = useState<BlockTimelineEntry[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
+  // Panels
+  const [panels, setPanels] = useState<StainPanel[]>([]);
+  const [panelSearch, setPanelSearch] = useState("");
+  const [isManagePanelOpen, setIsManagePanelOpen] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<Partial<StainPanel> | null>(null);
+  const [editingTestIds, setEditingTestIds] = useState<number[]>([]);
+  const [panelSaving, setPanelSaving] = useState(false);
+
   const fetchTimeline = async (blockId: number) => {
     setTimelineLoading(true);
     try {
@@ -184,8 +198,10 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
       setSpecialSearch("");
       setIshSearch("");
       setMolecularSearch("");
+      setPanelSearch("");
       setTimeline([]);
       if (selectedBlock?.id) fetchTimeline(selectedBlock.id);
+      StainPanelService.getPanels().then(setPanels).catch(() => {});
     }
   }, [open, selectedBlock]);
 
@@ -210,7 +226,12 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
     [masterTests],
   );
 
-  const filteredAll      = masterTests.filter((t) => t.name.toLowerCase().includes(allSearch.toLowerCase()));
+  const stainOrderTests = useMemo(
+    () => masterTests.filter((t) => t.category !== "Surgical Pathology"),
+    [masterTests],
+  );
+
+  const filteredAll      = stainOrderTests.filter((t) => t.name.toLowerCase().includes(allSearch.toLowerCase()));
   const filteredIhc      = ihcTests.filter((t) => t.name.toLowerCase().includes(ihcSearch.toLowerCase()));
   const filteredSpecial  = specialTests.filter((t) => t.name.toLowerCase().includes(specialSearch.toLowerCase()));
   const filteredIsh      = ishTests.filter((t) => t.name.toLowerCase().includes(ishSearch.toLowerCase()));
@@ -236,6 +257,83 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
     else if (test.category === "Histochem" || test.category === "Special Stain") setSpecialSearch("");
     else if (test.category === "ISH") setIshSearch("");
     else if (test.category === "Molecular") setMolecularSearch("");
+  };
+
+  const applyPanel = (panel: StainPanel) => {
+    const toAdd = panel.items
+      .map((item) => item.test)
+      .filter((t) => t && !stagedIds.has(t.id));
+    if (toAdd.length === 0) {
+      message.info("All tests in this panel are already staged.");
+      return;
+    }
+    setStaged((prev) => [
+      ...prev,
+      ...toAdd.map((t) => ({
+        testId: t.id,
+        name: t.name,
+        category: t.category,
+        isExternal: t.is_external ?? false,
+        price: t.price_tier_1 ?? 0,
+      })),
+    ]);
+    message.success(`Added ${toAdd.length} test(s) from "${panel.name}"`);
+  };
+
+  const openNewPanel = () => {
+    setEditingPanel({ name: "", category: "General", description: "" });
+    setEditingTestIds([]);
+    setIsManagePanelOpen(true);
+  };
+
+  const openEditPanel = (panel: StainPanel) => {
+    setEditingPanel(panel);
+    setEditingTestIds(panel.items.map((i) => i.test_id));
+    setIsManagePanelOpen(true);
+  };
+
+  const handleSavePanel = async () => {
+    if (!editingPanel?.name?.trim()) {
+      message.warning("Panel name is required.");
+      return;
+    }
+    setPanelSaving(true);
+    try {
+      if (editingPanel.id) {
+        const updated = await StainPanelService.updatePanel(editingPanel.id, {
+          name: editingPanel.name,
+          category: editingPanel.category,
+          description: editingPanel.description,
+          test_ids: editingTestIds,
+        });
+        setPanels((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      } else {
+        const created = await StainPanelService.createPanel({
+          name: editingPanel.name!,
+          category: editingPanel.category ?? "General",
+          description: editingPanel.description,
+          test_ids: editingTestIds,
+        });
+        setPanels((prev) => [...prev, created]);
+      }
+      setEditingPanel(null);
+      setEditingTestIds([]);
+      message.success("Panel saved.");
+    } catch {
+      message.error("Failed to save panel.");
+    } finally {
+      setPanelSaving(false);
+    }
+  };
+
+  const handleDeletePanel = async (panelId: number) => {
+    try {
+      await StainPanelService.deletePanel(panelId);
+      setPanels((prev) => prev.filter((p) => p.id !== panelId));
+      message.success("Panel deleted.");
+    } catch {
+      message.error("Failed to delete panel.");
+    }
   };
 
   const handleDelete = async (stainId: number) => {
@@ -492,7 +590,7 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
             items={[
               {
                 key: "all",
-                label: <Text style={{ fontSize: 13 }}>All ({masterTests.length})</Text>,
+                label: <Text style={{ fontSize: 13 }}>All ({stainOrderTests.length})</Text>,
                 children: (
                   <>
                     <Search
@@ -616,6 +714,80 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
                   </>
                 ),
               },
+              {
+                key: "panels",
+                label: (
+                  <Space size={4}>
+                    <AppstoreOutlined />
+                    <Text style={{ fontSize: 13 }}>Panels</Text>
+                    {panels.length > 0 && <Text style={{ fontSize: 13 }}>{panels.length}</Text>}
+                  </Space>
+                ),
+                children: (
+                  <>
+                    <Search
+                      placeholder="Search panels..."
+                      value={panelSearch}
+                      onChange={(e) => setPanelSearch(e.target.value)}
+                      size="small"
+                      allowClear
+                      style={{ marginBottom: 6 }}
+                    />
+                    <div style={{ height: 310, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+                      {panels.filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase())).length === 0 ? (
+                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>
+                          No panels yet. Click "Manage" to create one.
+                        </Text>
+                      ) : (
+                        panels
+                          .filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase()))
+                          .map((panel) => (
+                            <div
+                              key={panel.id}
+                              onClick={() => applyPanel(panel)}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "8px 10px",
+                                marginBottom: 4,
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                border: "1px solid #f0f0f0",
+                                background: "#fafafa",
+                                transition: "background 0.15s",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "#f0e6ff")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "#fafafa")}
+                            >
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <Space size={6}>
+                                  <AppstoreOutlined style={{ color: "#722ed1", fontSize: 12 }} />
+                                  <Text style={{ fontSize: 13, fontWeight: 500 }}>{panel.name}</Text>
+                                </Space>
+                                <Space size={4}>
+                                  {panel.category && panel.category !== "General" && (
+                                    <Tag color="purple" style={{ fontSize: 10, margin: 0, padding: "0 4px" }}>{panel.category}</Tag>
+                                  )}
+                                  <Text type="secondary" style={{ fontSize: 11 }}>{panel.items.length} test{panel.items.length !== 1 ? "s" : ""}</Text>
+                                </Space>
+                              </div>
+                              <PlusOutlined style={{ color: "#bfbfbf", fontSize: 12 }} />
+                            </div>
+                          ))
+                      )}
+                    </div>
+                    <Button
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => { setEditingPanel(null); setEditingTestIds([]); setIsManagePanelOpen(true); }}
+                      style={{ marginTop: 6, width: "100%" }}
+                    >
+                      Manage Panels
+                    </Button>
+                  </>
+                ),
+              },
             ]}
           />
 
@@ -711,6 +883,147 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
         </Col>
 
       </Row>
+
+      {/* ── Manage Panels Modal ── */}
+      <Modal
+        title={
+          <Space>
+            <SettingOutlined style={{ color: "#722ed1" }} />
+            <span>Manage Stain Panels</span>
+          </Space>
+        }
+        open={isManagePanelOpen}
+        onCancel={() => { setIsManagePanelOpen(false); setEditingPanel(null); setEditingTestIds([]); }}
+        footer={null}
+        width={900}
+        destroyOnHidden
+      >
+        <Row gutter={16} style={{ minHeight: 420 }}>
+          {/* Left: panel list */}
+          <Col span={10} style={{ borderRight: "1px solid #f0f0f0", paddingRight: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Panels</Text>
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openNewPanel} ghost>New Panel</Button>
+            </div>
+            <div style={{ maxHeight: 380, overflowY: "auto" }}>
+              {panels.length === 0 ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>No panels yet.</Text>
+              ) : (
+                panels.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 10px",
+                      marginBottom: 4,
+                      borderRadius: 6,
+                      border: editingPanel?.id === p.id ? "1px solid #d3adf7" : "1px solid #f0f0f0",
+                      background: editingPanel?.id === p.id ? "#f9f0ff" : "#fafafa",
+                    }}
+                  >
+                    <div>
+                      <Text style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</Text>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{p.items.length} tests</Text>
+                        {p.category && p.category !== "General" && (
+                          <Tag color="purple" style={{ fontSize: 10, marginLeft: 4, padding: "0 4px" }}>{p.category}</Tag>
+                        )}
+                      </div>
+                    </div>
+                    <Space size={4}>
+                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditPanel(p)} />
+                      <Popconfirm
+                        title={`Delete "${p.name}"?`}
+                        okText="Delete"
+                        okButtonProps={{ danger: true }}
+                        cancelText="Cancel"
+                        onConfirm={() => handleDeletePanel(p.id)}
+                      >
+                        <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
+                  </div>
+                ))
+              )}
+            </div>
+          </Col>
+
+          {/* Right: edit form */}
+          <Col span={14} style={{ paddingLeft: 16 }}>
+            {editingPanel === null ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#8c8c8c" }}>
+                <Text type="secondary">Select a panel to edit, or create a new one.</Text>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <Text strong style={{ fontSize: 13 }}>
+                  {editingPanel.id ? "Edit Panel" : "New Panel"}
+                </Text>
+
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Name *</Text>
+                  <Input
+                    value={editingPanel.name ?? ""}
+                    onChange={(e) => setEditingPanel((prev) => ({ ...prev!, name: e.target.value }))}
+                    placeholder="e.g. Lymphoma Panel"
+                    size="small"
+                  />
+                </div>
+
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Category</Text>
+                  <Select
+                    value={editingPanel.category ?? "General"}
+                    onChange={(v) => setEditingPanel((prev) => ({ ...prev!, category: v }))}
+                    size="small"
+                    style={{ width: "100%" }}
+                    options={[
+                      { value: "General", label: "General" },
+                      { value: "IHC", label: "IHC" },
+                      { value: "Special Stain", label: "Special Stain" },
+                      { value: "Mixed", label: "Mixed" },
+                    ]}
+                  />
+                </div>
+
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Tests in panel</Text>
+                  <Select
+                    mode="multiple"
+                    showSearch
+                    value={editingTestIds}
+                    onChange={setEditingTestIds}
+                    size="small"
+                    style={{ width: "100%" }}
+                    placeholder="Select tests..."
+                    options={stainOrderTests.map((t) => ({
+                      value: t.id,
+                      label: `${t.name}${t.category ? ` [${t.category === "Histochem" ? "SS" : t.category}]` : ""}`,
+                    }))}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={panelSaving}
+                    onClick={handleSavePanel}
+                    style={{ background: "#722ed1", border: "none" }}
+                  >
+                    Save Panel
+                  </Button>
+                  <Button size="small" onClick={() => { setEditingPanel(null); setEditingTestIds([]); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Col>
+        </Row>
+      </Modal>
     </Modal>
   );
 };
