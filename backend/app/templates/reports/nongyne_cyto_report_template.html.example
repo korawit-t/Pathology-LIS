@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-SemiBold.ttf");
+        font-weight: 600;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-ExtraBold.ttf");
+        font-weight: 800;
+      }
+      @page {
+        size: A4;
+        margin: 0.8cm 1cm 1.5cm 1cm;
+
+        @bottom-left {
+          content: "{{ report_footer_snapshot | safe }} | Printed: {{ preview_date | safe }}";
+          font-size: 9px;
+          color: #475569;
+          padding-bottom: 20px;
+        }
+
+        @bottom-right {
+          content: "Page " counter(page) " of " counter(pages);
+          font-size: 9px;
+          color: #475569;
+          padding-bottom: 20px;
+        }
+      }
+
+      .report-container {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      thead { display: table-header-group; }
+      .section-header { page-break-inside: avoid; }
+      tbody td { page-break-inside: auto; }
+
+      body {
+        font-family: "Sarabun", sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #1a202c;
+        font-size: 11.5px;
+        line-height: 1.4;
+        counter-reset: page;
+      }
+
+      .watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-45deg);
+        font-size: 150px;
+        font-weight: 900;
+        color: rgba(0, 0, 0, 0.03);
+        z-index: 9999;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .header-table {
+        width: 100%;
+        border-bottom: 2px solid #0056b3;
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+
+      .info-bar {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-collapse: collapse;
+      }
+      .info-bar td {
+        padding: 8px 10px;
+        border-right: 1px solid #e2e8f0;
+        vertical-align: top;
+      }
+
+      .label {
+        font-size: 9px;
+        color: #64748b;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .value {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .patient-name {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        color: #002766;
+        line-height: 1.4;
+      }
+
+      .badge-container {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        white-space: nowrap;
+      }
+      .badge-final {
+        background: #def7ec;
+        color: #03543f;
+        border: 1px solid #84e1bc;
+      }
+      .badge-pending {
+        background: #e1effe;
+        color: #1e429f;
+        border: 1px solid #a4cafe;
+      }
+      .badge-draft {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .section-header {
+        font-weight: 800;
+        font-size: 10.5px;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 4px 12px;
+        border-left: 4px solid #0056b3;
+        margin-top: 12px;
+      }
+
+      .section-content {
+        padding: 8px 15px;
+        line-height: 1.6;
+        color: #1a202c;
+        font-size: 12px;
+        word-wrap: break-word;
+      }
+      .section-content p:first-child { margin-top: 0; }
+      .section-content p:last-child { margin-bottom: 0; }
+
+      .diagnosis-box {
+        position: relative;
+        border: 1.5px solid #0056b3;
+        border-radius: 4px;
+        background: #fff;
+        margin: 5px 15px;
+        padding: 8px 15px 12px;
+        min-height: 60px;
+        page-break-inside: auto;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+      .diagnosis-box p:first-child { margin-top: 0; }
+      .diagnosis-box p:last-child { margin-bottom: 0; }
+
+      .footer-sign {
+        margin-top: 40px;
+        text-align: right;
+        padding-right: 50px;
+      }
+
+      .image-grid {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 10px;
+        table-layout: fixed;
+      }
+      .image-cell {
+        width: 50%;
+        border: 1px solid #eee;
+        padding: 5px;
+        vertical-align: top;
+        background: #fff;
+        text-align: center;
+      }
+      .image-cell img {
+        width: 100%;
+        max-height: 220px;
+        object-fit: cover;
+        display: block;
+      }
+      .image-caption {
+        font-size: 10px;
+        color: #666;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="report-container">
+      <thead>
+        <tr>
+          <td>
+            <table class="header-table">
+              <tr>
+                <td style="width: 50px; vertical-align: middle">
+                  {% if report_logo_url_snapshot %}
+                  <img src="{{ report_logo_url_snapshot | safe }}" style="max-height: 48px; max-width: 120px; display: block" />
+                  {% else %}
+                  <div style="width: 42px; height: 42px; background: #0056b3; color: white; border-radius: 4px; line-height: 42px; text-align: center; font-weight: bold;">LAB</div>
+                  {% endif %}
+                </td>
+                <td style="padding-left: 15px; vertical-align: middle">
+                  <div style="font-size: 20px; font-weight: 800; color: #0056b3; line-height: 1;">{{ (lab_name_en_snapshot or lab_name_snapshot) | safe }}</div>
+                </td>
+                <td style="text-align: right; vertical-align: middle; font-size: 9px; color: #1a202c; line-height: 1.2;">
+                  {{ lab_address_snapshot | safe }}
+                </td>
+              </tr>
+            </table>
+
+            <table class="info-bar">
+              <tr>
+                <td style="width: 35%">
+                  <div class="label">Patient Name</div>
+                  <div class="patient-name">{{ patient_title }}{{ patient_name }}{% if patient_ln %} {{ patient_ln }}{% endif %}</div>
+                  <div style="font-size: 11px; margin-top: 2px">
+                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age: {{ patient_age_display }}
+                  </div>
+                </td>
+                <td style="width: 40%">
+                  <div><span class="label" style="width: 55px; display: inline-block">Accession:</span><span class="value" style="color: #0056b3">{{ accession_no }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Physician:</span><span class="value" style="font-size: 10px">{{ clinician_name or '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Hospital:</span><span class="value" style="font-size: 10px">{{ hospital_name or '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Dept:</span><span class="value" style="font-size: 10px">{{ department_name or '-' }}</span></div>
+                </td>
+                <td style="width: 25%">
+                  <div><span class="label" style="width: 55px; display: inline-block">Collected:</span><span class="value">{{ collect_at.strftime('%d/%m/%Y') if collect_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Received:</span><span class="value">{{ registered_at.strftime('%d/%m/%Y') if registered_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Reported:</span><span class="value">{{ reported_at.strftime('%d/%m/%Y %H:%M') if reported_at else '-' }}</span></div>
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+          </td>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>
+            <div style="text-align: center; margin-bottom: 8px; font-weight: 800; font-size: 13px; color: #1a202c; letter-spacing: 1px;">
+              NON-GYNECOLOGICAL CYTOLOGY REPORT
+            </div>
+
+            <!-- CLINICAL INFORMATION -->
+            <div class="section-header">CLINICAL INFORMATION</div>
+            <div class="section-content">{{ (clinical_history_snapshot or '-') | safe }}</div>
+
+            <!-- DIAGNOSIS -->
+            <div class="section-header">
+              DIAGNOSIS
+              {% if reported_at %}
+              <span style="font-weight: 400; font-size: 9.5px; color: #64748b; margin-left: 10px;">
+                Dated: {{ reported_at.strftime('%d/%m/%Y %H:%M') }}
+              </span>
+              {% endif %}
+            </div>
+            <div class="diagnosis-box">
+              <div class="badge-container">
+                {% if is_draft %}
+                <span class="badge badge-draft">DRAFT</span>
+                {% elif is_pending %}
+                <span class="badge badge-pending">PENDING</span>
+                {% else %}
+                <span class="badge badge-final">✓ FINAL REPORT</span>
+                {% endif %}
+              </div>
+              <div style="font-size: 15px; color: #0f172a; line-height: 1.5; padding-right: 120px; word-wrap: break-word;">{{ (diagnosis_summary or '-') | safe }}</div>
+            </div>
+
+            <!-- GROSS DESCRIPTION -->
+            {% if gross_description_summary %}
+            <div class="section-header">GROSS DESCRIPTION</div>
+            <div class="section-content">{{ gross_description_summary | safe }}</div>
+            {% endif %}
+
+            <!-- MICROSCOPIC DESCRIPTION -->
+            {% if microscopic_summary %}
+            <div class="section-header">MICROSCOPIC DESCRIPTION</div>
+            <div class="section-content">{{ microscopic_summary | safe }}</div>
+            {% endif %}
+
+            <!-- IMAGES -->
+            {% if all_nongyne_images %}
+            <div class="section-header">CYTOLOGY IMAGES</div>
+            <div style="padding: 8px 15px;">
+              <table class="image-grid">
+                <tr>
+                  {% for img in all_nongyne_images %}
+                  <td class="image-cell">
+                    <img src="{{ img.base64 | safe }}" />
+                    <div class="image-caption">Figure {{ loop.index }}{% if img.description %} — {{ img.description }}{% endif %}</div>
+                  </td>
+                  {% if loop.index is divisibleby 2 and not loop.last %}
+                </tr>
+                <tr>
+                  {% endif %}
+                  {% endfor %}
+                  {% if all_nongyne_images | length is odd %}
+                  <td></td>
+                  {% endif %}
+                </tr>
+              </table>
+            </div>
+            {% endif %}
+
+            <!-- REMARKS -->
+            {% if comment_summary %}
+            <div class="section-header">REMARKS / COMMENTS</div>
+            <div class="section-content" style="font-style: italic; color: #475569;">
+              {{ comment_summary | safe }}
+            </div>
+            {% endif %}
+
+            <div class="footer-sign">
+              <div style="margin-bottom: 10px; font-weight: bold; color: #475569;">Reported By:</div>
+              {% if signers %}
+                {% for signer in signers %}
+                <div style="margin-top: 12px;">
+                  <div style="font-size: 15px; font-weight: bold; color: #002766;">
+                    {{ signer.report_name or signer.full_name }}
+                  </div>
+                  <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">
+                    {% if signer.role == 'primary' %}Pathologist
+                    {% elif signer.role == 'cytotechnologist' %}Cytotechnologist
+                    {% elif signer.role == 'co-signer' %}Co-Signer
+                    {% else %}{{ signer.role }}{% endif %}
+                  </div>
+                </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+
+            <div style="margin-top: 40px; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+              <span style="font-size: 9px; color: #94a3b8; letter-spacing: 1px">*** END OF REPORT - ELECTRONICALLY VERIFIED ***</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if is_preview %}
+    <div class="watermark">PREVIEW</div>
+    {% endif %}
+  </body>
+</html>

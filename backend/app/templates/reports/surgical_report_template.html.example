@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root {
+        --primary: {{ (primary_color or '#0056b3') | safe }};
+        --primary-dark: {{ (primary_color_dark or '#003a8c') | safe }};
+      }
+      /* 🚩 1. ประกาศ Font (ต้องอยู่บรรทัดบนสุดของ Style) */
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-SemiBold.ttf");
+        font-weight: 600;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-ExtraBold.ttf");
+        font-weight: 800;
+      }
+      @page {
+        size: A4;
+        /* ปรับ margin-top ให้พอดีกับ Header เพื่อไม่ให้เนื้อหาในหน้า 2 เบียดเกินไป */
+        margin: 0.8cm 1cm 1.5cm 1cm;
+
+        @bottom-left {
+          content: "{{ report_footer_snapshot | safe }} | Printed: {{ preview_date | safe }}";
+          font-size: 9px;
+          color: #475569;
+          padding-bottom: 20px;
+        }
+
+        @bottom-right {
+          content: "Page " counter(page) " of " counter(pages);
+          font-size: 9px;
+          color: #475569;
+          padding-bottom: 20px;
+        }
+      }
+
+      /* สำหรับ Header ซ้ำ ต้องใช้ตารางที่หุ้มทั้งหมด */
+      .report-container {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed; /* บังคับขนาดตารางให้คงที่ */
+      }
+
+      /* บังคับให้ Header ตารางแสดงทุกหน้า */
+      thead {
+        display: table-header-group;
+      }
+
+      .section-header,
+      .micro-image-item {
+        page-break-inside: avoid;
+      }
+
+      tbody td {
+        page-break-inside: auto;
+      }
+
+      body {
+        font-family: "Sarabun", sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #1a202c;
+        font-size: 11.5px;
+        line-height: 1.4;
+        counter-reset: page;
+      }
+
+      /* --- ปรับแก้ Watermark --- */
+      .watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-45deg);
+        font-size: 150px;
+        font-weight: 900;
+        /* 🚩 เปลี่ยนสีให้จางลงอีกนิด เพราะพอมาอยู่ข้างหน้ามันจะชัดขึ้น */
+        color: rgba(0, 0, 0, 0.03);
+        /* 🚩 เปลี่ยน z-index เป็นค่าสูงๆ เช่น 9999 */
+        z-index: 9999;
+        /* 🚩 สำคัญมาก: เพื่อให้ยังก๊อปปี้ข้อความข้างหลังได้ */
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .main-wrapper {
+        width: 190mm;
+        margin: 0 auto;
+        position: relative;
+      }
+
+      .footer-barcode {
+        position: fixed;
+        bottom: -1.2cm; /* place it inside the bottom margin zone */
+        left: 0;
+        right: 0;
+        text-align: center;
+        z-index: 1000;
+      }
+
+      .header-table {
+        width: 100%;
+        border-bottom: 2px solid var(--primary);
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+
+      .info-bar {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 0px;
+        border-collapse: collapse;
+      }
+      .info-bar td {
+        padding: 8px 10px;
+        border-right: 1px solid #e2e8f0;
+        vertical-align: top;
+      }
+
+      .label {
+        font-size: 9px;
+        color: #64748b;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .value {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .patient-name {
+        font-size: 17px;
+        /* 🚩 ปรับลดจาก 800 เป็น 600 หรือ 500 */
+        font-weight: 600;
+
+        /* 🚩 เพิ่มที่ว่างระหว่างตัวอักษรเล็กน้อย ช่วยให้ภาษาไทยไม่อึดอัด */
+        letter-spacing: 0.2px;
+
+        /* 🚩 ใช้สีที่ซอฟต์ลงเล็กน้อยเพื่อไม่ให้ความเข้มกัดสายตาเกินไป */
+        color: #002766;
+
+        /* 🚩 เพิ่ม line-height อีกนิด เพื่อไม่ให้สระบน-ล่างดูเบียด */
+        line-height: 1.4;
+      }
+
+      .badge-container {
+        float: right;
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-left: 10px;
+        margin-bottom: 4px;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border: 1.5px solid transparent;
+      }
+      .badge-final {
+        background: #def7ec;
+        color: #03543f;
+        border: 1px solid #84e1bc;
+      }
+      .badge-pending {
+        background: #e1effe;
+        color: #1e429f;
+        border: 1px solid #a4cafe;
+      }
+      .badge-malignancy {
+        background: #fde8e8;
+        color: #9b1c1c;
+        border: 1px solid #f8b4b4;
+      }
+      .badge-critical {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .section-header {
+        font-weight: 800;
+        font-size: 10.5px;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 4px 12px;
+        border-left: 4px solid var(--primary);
+        margin-top: 12px;
+      }
+
+      .content-inner-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .content-inner-table td {
+        padding: 8px 15px !important;
+      }
+      .content-inner-table td p,
+      .content-inner-table td h1,
+      .content-inner-table td h2,
+      .content-inner-table td h3 {
+        margin: 0;
+        padding: 0;
+        line-height: 1.5;
+      }
+      .content-inner-table td p:empty {
+        display: none;
+      }
+
+      /* สไตล์เฉพาะสำหรับส่วน Clinical Information เท่านั้น */
+      .clinical-info-area {
+        width: 100%;
+        border-collapse: collapse;
+        /* เพิ่ม margin-top เล็กน้อยเพื่อให้ตารางไม่ดูดูดติด header เกินไป */
+        margin-top: 6px;
+      }
+
+      .clinical-info-area td {
+        /* 🚩 ปรับ padding-top เป็น 2px หรือ 3px เพื่อให้มีที่ว่างนิดหน่อย */
+        padding: 3px 15px 4px 15px !important;
+        line-height: 1.4;
+        color: #1a202c;
+        vertical-align: top;
+      }
+
+      /* 🚩 ล้างช่องว่างที่แฝงมากับ <p> ตัวแรก */
+      .clinical-info-area td p:first-child {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+      }
+
+      /* 🚩 ซ่อน <br> ตัวแรกที่ทำให้เกิดบรรทัดว่างหลอกๆ */
+      .clinical-info-area td > br:first-child,
+      .clinical-info-area td > p:first-child > br:first-child {
+        display: none;
+      }
+
+      .diagnosis-box {
+        overflow: hidden;
+        border: 1.5px solid var(--primary);
+        border-radius: 4px;
+        background: #fff;
+        margin: 5px 15px;
+        padding: 15px;
+        min-height: 60px;
+        page-break-inside: auto;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+
+      /* --- Image Styles --- */
+      .image-container {
+        margin-top: 10px;
+        padding: 0 15px;
+      }
+      .gross-image-item {
+        display: inline-block;
+        margin-right: 12px;
+        margin-bottom: 10px;
+        vertical-align: top;
+        text-align: center;
+      }
+      .gross-image-item img {
+        max-height: 100px;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+      }
+      .micro-image-grid {
+        width: 100%;
+        margin-top: 4px;
+        border-spacing: 0;
+        border-collapse: collapse;
+      }
+      .micro-image-item {
+        display: inline-block;
+        width: 47%;
+        margin-right: 2%;
+        margin-bottom: 2px;
+        vertical-align: top;
+      }
+      .micro-image-item img {
+        width: 100%;
+        border: 1.5px solid var(--primary);
+        border-radius: 5px;
+        display: block;
+      }
+      .img-caption {
+        font-size: 8px;
+        color: #64748b;
+        margin-top: 1px;
+      }
+      .micro-info-box {
+        background: #f8fafc;
+        border-left: 3px solid var(--primary);
+        padding: 2px 8px;
+        margin-top: 2px;
+        font-size: 9px;
+      }
+      .micro-image-item,
+      .gross-image-item,
+      .section-header {
+        page-break-inside: avoid;
+      }
+    </style>
+  </head>
+  <body>
+    {% if barcode_svg %}
+    <div class="footer-barcode">
+      <img src="{{ barcode_svg | safe }}" style="height: 25px; display: block; margin: 0 auto;">
+      <div style="font-size: 7px; color: #475569; font-weight: bold; margin-top: 1px; letter-spacing: 0.5px;">{{ patient_hn if barcode_value == patient_hn else accession_no }}</div>
+    </div>
+    {% endif %}
+
+    <table class="report-container">
+      <thead>
+        <tr>
+          <td>
+            <table class="header-table">
+              <tr>
+                <td style="width: 50px; vertical-align: middle">
+                  {% if report_logo_url_snapshot %}
+                  <img
+                    src="{{ report_logo_url_snapshot | safe }}"
+                    style="max-height: 48px; max-width: 120px; display: block"
+                  />
+                  {% else %}
+                  <div
+                    style="
+                      width: 42px;
+                      height: 42px;
+                      background: var(--primary);
+                      color: white;
+                      border-radius: 4px;
+                      line-height: 42px;
+                      text-align: center;
+                      font-weight: bold;
+                    "
+                  >
+                    LAB
+                  </div>
+                  {% endif %}
+                </td>
+                <td style="padding-left: 15px; vertical-align: middle">
+                  <div
+                    style="
+                      font-size: 20px;
+                      font-weight: 800;
+                      color: var(--primary);
+                      line-height: 1;
+                    "
+                  >
+                    {{ lab_name_en_snapshot | safe }}
+                  </div>
+                </td>
+                <td
+                  style="
+                    text-align: right;
+                    vertical-align: middle;
+                    font-size: 9px;
+                    color: #1a202c;
+                    line-height: 1.2;
+                  "
+                >
+                  {{ lab_address_snapshot | safe }}
+                </td>
+              </tr>
+            </table>
+
+            <table class="info-bar">
+              <tr>
+                <td style="width: 35%">
+                  <div class="label">Patient Name</div>
+                  <div class="patient-name">
+                    {{ patient_title or '' }}{{ patient_name or '' }}{% if patient_ln %} {{ patient_ln }}{% endif %}
+                  </div>
+                  <div style="font-size: 11px; margin-top: 2px">
+                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age: {{
+                    patient_age_display }}
+                  </div>
+                </td>
+                <td style="width: 40%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Accession:</span
+                    ><span class="value" style="color: var(--primary)"
+                      >{{ accession_no }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Physician:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ clinician_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Hospital:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ hospital_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Dept:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ department_name or '-' }}</span
+                    >
+                  </div>
+                </td>
+                <td style="width: 25%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Collected:</span
+                    ><span class="value"
+                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if
+                      collect_at else '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Received:</span
+                    ><span class="value"
+                      >{{ registered_at.strftime('%d/%m/%Y %H:%M') if
+                      registered_at else '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Reported:</span
+                    ><span class="value"
+                      >{{ reported_at.strftime('%d/%m/%Y %H:%M') if reported_at
+                      else '-' }}</span
+                    >
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+          </td>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>
+            <div
+              style="
+                text-align: center;
+                margin-bottom: 8px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #1a202c;
+                letter-spacing: 1px;
+              "
+            >
+              SURGICAL PATHOLOGY REPORT
+            </div>
+
+            <div class="section-header" style="margin-bottom: 0px">
+              CLINICAL INFORMATION
+            </div>
+
+            <table class="clinical-info-area">
+              <tr>
+                <td>
+                  <div class="clinical-content">
+                    {{ clinical_history_snapshot | safe if
+                    clinical_history_snapshot else '-' }}
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <div class="section-header">PATHOLOGICAL DIAGNOSIS</div>
+
+            <div class="diagnosis-box">
+              <div class="badge-container">
+                {% if is_pending %}
+                <span class="badge badge-pending">PENDING</span>
+                {% else %}
+                <span class="badge badge-final">✓ FINAL REPORT</span>
+                {% endif %} {% if has_malignancy %}
+                <span class="badge badge-malignancy">! MALIGNANCY</span>
+                {% endif %} {% if has_critical %}
+                <span class="badge badge-critical">⚠ CRITICAL</span>
+                {% endif %}
+              </div>
+
+              <div
+                style="
+                  font-size: 15px;
+                  color: #0f172a;
+                  line-height: 1.5;
+                "
+              >
+                {{ diagnosis_summary | safe }}
+              </div>
+            </div>
+
+            {% if show_icd_o_in_report and icd_o_data %}
+            <div class="section-header">ICD-O CODING</div>
+            <table class="content-inner-table" style="width:100%; font-size:13px; margin-bottom:8px;">
+              {% if icd_o_data.topography_code %}
+              <tr>
+                <td style="width:130px; color:#595959; padding:3px 8px 3px 0;">Topography</td>
+                <td><strong>{{ icd_o_data.topography_code }}</strong>{% if icd_o_data.topography_desc %} — {{ icd_o_data.topography_desc }}{% endif %}</td>
+              </tr>
+              {% endif %}
+              {% if icd_o_data.morphology_code %}
+              <tr>
+                <td style="color:#595959; padding:3px 8px 3px 0;">Morphology</td>
+                <td><strong>{{ icd_o_data.morphology_code }}</strong>{% if icd_o_data.morphology_desc %} — {{ icd_o_data.morphology_desc }}{% endif %}</td>
+              </tr>
+              {% endif %}
+              {% if icd_o_data.grade %}
+              <tr>
+                <td style="color:#595959; padding:3px 8px 3px 0;">Grade</td>
+                <td>{{ icd_o_data.grade }}</td>
+              </tr>
+              {% endif %}
+              {% if icd_o_data.pt or icd_o_data.pn or icd_o_data.pm %}
+              <tr>
+                <td style="color:#595959; padding:3px 8px 3px 0;">Staging</td>
+                <td>
+                  {% if icd_o_data.pt %}pT: {{ icd_o_data.pt }}{% endif %}
+                  {% if icd_o_data.pn %}  pN: {{ icd_o_data.pn }}{% endif %}
+                  {% if icd_o_data.pm %}  pM: {{ icd_o_data.pm }}{% endif %}
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+            {% endif %}
+
+            <div class="section-header">GROSS EXAMINATION</div>
+            <table class="content-inner-table">
+              <tr>
+                <td style="color: #4a5568">
+                  {{ gross_description_summary | safe }} {% if gross_images %}
+                  <div class="micro-image-grid" style="margin-top: 10px">
+                    {% for img in gross_images %}
+                    <div class="micro-image-item">
+                      <img src="{{ img.base64 | safe }}" style="display: block" />
+                      <div
+                        class="img-caption"
+                        style="
+                          margin-top: 5px;
+                          font-weight: bold;
+                          color: var(--primary-dark);
+                        "
+                      >
+                        Specimen {{ img.label }}
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <div style="clear: both"></div>
+                  {% endif %}
+
+                </td>
+              </tr>
+            </table>
+
+            {% if microscopic_summary or micro_images %}
+            <div class="section-header">MICROSCOPIC EXAMINATION</div>
+            <table class="content-inner-table">
+              <tr>
+                <td style="color: #4a5568">
+                  {{ microscopic_summary | safe }} {% if micro_images %}
+                  <div class="micro-image-grid">
+                    {% for img in micro_images %}
+                    <div class="micro-image-item">
+                      <img src="{{ img.base64 | safe }}" />
+                      <div class="micro-info-box">
+                        <b style="color: var(--primary-dark)">Specimen {{ img.label }}</b
+                        ><br />
+                        Stain: {{ img.stain }} | Mag: {{ img.mag }} {% if
+                        img.desc %}
+                        <div
+                          style="
+                            font-style: italic;
+                            color: #64748b;
+                            margin-top: 2px;
+                          "
+                        >
+                          {{ img.desc }}
+                        </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+            {% endif %} {% if comment_summary %}
+            <div class="section-header">REMARKS / COMMENTS</div>
+            <table class="content-inner-table">
+              <tr>
+                <td style="font-style: italic; color: #475569">
+                  {{ comment_summary | safe }}
+                </td>
+              </tr>
+            </table>
+            {% endif %}
+
+            <div
+              style="
+                margin-top: 40px;
+                text-align: center;
+                border-top: 1px dashed #cbd5e1;
+                padding-top: 10px;
+              "
+            >
+              <span style="font-size: 9px; color: #94a3b8; letter-spacing: 1px"
+                >*** END OF REPORT - ELECTRONICALLY VERIFIED ***</span
+              >
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if is_preview %}
+    <div class="watermark">PREVIEW</div>
+    {% endif %}
+  </body>
+</html>

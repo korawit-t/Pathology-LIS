@@ -1,0 +1,41 @@
+-- =============================================================================
+-- HIS Custom SQL Template: Gynecologic Cytology Cases
+-- Copy this file to: his_gyne.sql  (remove the .example extension)
+-- This file is gitignored — hospital-specific, never committed to the repo.
+-- =============================================================================
+-- See his_surgical.sql.example for full column documentation.
+-- Only difference from surgical: filter by form_name for gyne cytology forms.
+-- =============================================================================
+
+SELECT
+    lh.an                                                     AS an,
+    lh.vn                                                     AS vn,
+    p.hn                                                      AS hn,
+    COALESCE(sx.name, '')                                     AS gender,
+    CAST(p.sex AS UNSIGNED)                                   AS gender_code,
+    COALESCE(nat.nationality, '')                             AS nationality,
+    COALESCE(p.pname, '')                                     AS pname,
+    COALESCE(p.fname, '')                                     AS fname,
+    COALESCE(p.lname, '')                                     AS lname,
+    COALESCE(p.birthday, '')                                  AS birthday,
+    COALESCE(p.cid, '')                                       AS cid,
+    COALESCE(lh.lab_order_number, '')                         AS lab_order_number,
+    COALESCE(d.name, '')                                      AS doctor,
+    lh.order_date                                             AS order_date,
+    COALESCE(dept.department, '')                             AS department,
+    COALESCE(lh.form_name, '')                                AS form_name,
+    COALESCE(lh.ward, '')                                     AS ward,
+    COALESCE(pt.name, '')                                     AS pttype,
+    TIMESTAMPDIFF(YEAR, p.birthday, CURDATE())                AS age
+FROM lab_head lh
+    LEFT JOIN patient p          ON lh.hn = p.hn
+    LEFT JOIN sex sx             ON p.sex = sx.code
+    LEFT JOIN doctor d           ON lh.doctor_code = d.code
+    LEFT JOIN kskdepartment dept ON lh.department_code = dept.depcode
+    LEFT JOIN pttype pt          ON lh.pttype = pt.pttype
+    LEFT JOIN nationality nat    ON p.nationality = nat.nationality
+WHERE
+    lh.order_date BETWEEN :date_start AND :date_end
+    AND (:hn = '' OR p.hn = :hn)
+    AND lh.form_name IN ('Gyne Cytology', 'Pap Smear', 'Cervical Cytology')
+ORDER BY lh.order_date DESC, p.hn

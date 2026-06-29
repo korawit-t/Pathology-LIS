@@ -1,0 +1,273 @@
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+from typing import Optional
+from pydantic import BaseModel
+from jose import jwt, JWTError
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+from datetime import datetime, timezone, timedelta
+from app.db.database import get_db
+from app.models.user import User
+from app.models.audit_log import AuditLog
+from app.models.revoked_token import RevokedToken
+from app.context import current_user_id, current_ip
+from app.core.config import IS_PRODUCTION
+from app.core.security import (
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    SECRET_KEY,
+    ALGORITHM,
+)
+
+MAX_FAILED_LOGINS = 5
+LOCKOUT_MINUTES = 15
+
+limiter = Limiter(key_func=get_remote_address)
+
+router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="none" if IS_PRODUCTION else "lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="none" if IS_PRODUCTION else "strict",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response):
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+# --- Login ---
+@router.post("/login")
+@limiter.limit("10/minute")
+def login_for_access_token(
+    request: Request,
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy.orm import joinedload
+    user = (
+        db.query(User)
+        .options(joinedload(User.position), joinedload(User.hospital))
+        .filter(User.username == form_data.username)
+        .first()
+    )
+
+    ip = request.client.host if request.client else None
+
+    # Check if account is locked before verifying password (avoids timing oracle).
+    now = datetime.now(timezone.utc)
+    if user and user.locked_until and user.locked_until > now:
+        remaining = int((user.locked_until - now).total_seconds() / 60) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Account locked. Try again in {remaining} minute(s).",
+        )
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        if user:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= MAX_FAILED_LOGINS:
+                user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+                user.failed_login_attempts = 0
+        db.add(AuditLog(
+            user_id=None,
+            action="LOGIN_FAILED",
+            resource_type="User",
+            new_values={"username": form_data.username},
+            ip_address=ip,
+        ))
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.status:
+        raise HTTPException(status_code=400, detail="Inactive user")
+
+    # Reset failed counter on successful login.
+    user.failed_login_attempts = 0
+    user.locked_until = None
+
+    access_token, _jti, _exp = create_access_token(subject=user.username, uid=user.id)
+    refresh_token = create_refresh_token(subject=user.username)
+
+    db.add(AuditLog(
+        user_id=user.id,
+        action="LOGIN",
+        resource_type="User",
+        resource_id=user.id,
+        ip_address=ip,
+    ))
+    db.commit()
+
+    _set_auth_cookies(response, access_token, refresh_token)
+
+    position_name = user.position.name if user.position else None
+
+    from app.models.system_setting import SystemSetting
+    from app.utils.time import local_now
+    settings = db.query(SystemSetting).first()
+    expiry_days = (settings.password_expiry_days or 0) if settings else 0
+    is_password_expired = False
+    if expiry_days > 0 and user.last_update_password:
+        is_password_expired = (local_now() - user.last_update_password).days >= expiry_days
+
+    return {
+        "token_type": "bearer",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "roles": user.roles,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "report_name": user.report_name,
+            "is_temporary_password": user.is_temporary_password,
+            "is_password_expired": is_password_expired,
+            "preferences": user.preferences,
+            "hospital_id": user.hospital_id,
+            "hospital_name": user.hospital.name if user.hospital else None,
+            "position_id": user.position_id,
+            "position_name": position_name,
+        },
+    }
+
+
+# --- Refresh (with rotation) ---
+@router.post("/refresh")
+@limiter.limit("20/minute")
+def refresh_access_token(
+    request: Request,
+    response: Response,
+    refresh_token_cookie: Optional[str] = Cookie(default=None, alias="refresh_token"),
+    payload: Optional[RefreshRequest] = None,
+    db: Session = Depends(get_db),
+):
+    # Accept refresh token from cookie (preferred) or request body (fallback)
+    rt = refresh_token_cookie or (payload.refresh_token if payload else None)
+    if not rt:
+        raise HTTPException(status_code=401, detail="Refresh token required")
+
+    try:
+        decoded = jwt.decode(rt, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = decoded.get("sub")
+        token_type: str = decoded.get("type")
+        if username is None or token_type != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except JWTError:
+        _clear_auth_cookies(response)
+        raise HTTPException(status_code=401, detail="Refresh token expired or invalid")
+
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not user.status:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    # Rotate: issue both new access and new refresh tokens
+    new_access_token, _jti, _exp = create_access_token(subject=user.username, uid=user.id)
+    new_refresh_token = create_refresh_token(subject=user.username)
+
+    _set_auth_cookies(response, new_access_token, new_refresh_token)
+
+    return {"token_type": "bearer", "access_token": new_access_token, "refresh_token": new_refresh_token}
+
+
+# --- Logout ---
+@router.post("/logout")
+def logout(
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None),
+    db: Session = Depends(get_db),
+):
+    uid = current_user_id.get()
+    ip = current_ip.get()
+
+    # Revoke the current access token so it cannot be reused after logout.
+    if access_token:
+        try:
+            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+            jti = payload.get("jti")
+            exp_ts = payload.get("exp")
+            if jti and exp_ts:
+                expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
+                db.merge(RevokedToken(jti=jti, expires_at=expires_at))
+        except Exception:
+            pass  # Expired or invalid token — no need to revoke
+
+    if uid:
+        db.add(AuditLog(
+            user_id=uid,
+            action="LOGOUT",
+            resource_type="User",
+            resource_id=uid,
+            ip_address=ip,
+        ))
+    db.commit()
+    _clear_auth_cookies(response)
+    return {"message": "Logged out"}
+
+
+# --- get_current_user (used only from auth.py for Swagger UI compat) ---
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+
+
+def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+def verify_token(token: str, expected_type: str = "access"):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        token_type: str = payload.get("type")
+        if token_type != expected_type:
+            return None
+        return payload
+    except JWTError:
+        return None

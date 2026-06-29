@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-SemiBold.ttf");
+        font-weight: 600;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @page {
+        size: A4;
+        margin: 0.8cm 1cm 1.5cm 1cm;
+
+        @bottom-left {
+          content: "{{ report_footer_snapshot | safe }} | Printed: {{ preview_date | safe }}";
+          font-size: 8px;
+          color: #64748b;
+          padding-bottom: 20px;
+        }
+
+        @bottom-right {
+          content: "Page " counter(page) " of " counter(pages);
+          font-size: 8px;
+          color: #64748b;
+          padding-bottom: 20px;
+        }
+      }
+
+      body {
+        font-family: "Sarabun", sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #1e293b;
+        font-size: 11.5px;
+        line-height: 1.5;
+      }
+
+      .report-container {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .header-table {
+        width: 100%;
+        border-bottom: 2px solid #0056b3;
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+
+      .info-bar {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 15px;
+        border-collapse: collapse;
+      }
+      .info-bar td {
+        padding: 8px 10px;
+        border-right: 1px solid #e2e8f0;
+        vertical-align: top;
+      }
+
+      .label {
+        font-size: 9px;
+        color: #64748b;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .value {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .patient-name {
+        font-size: 17px;
+        font-weight: 600;
+        color: #002766;
+      }
+
+      .section-header {
+        font-weight: 800;
+        font-size: 10.5px;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 4px 12px;
+        border-left: 4px solid #0056b3;
+        margin-top: 15px;
+        margin-bottom: 5px;
+      }
+
+      .content-area {
+        padding: 5px 15px;
+      }
+
+      .bethesda-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 15px;
+      }
+      .bethesda-table td {
+        padding: 4px 15px;
+        vertical-align: top;
+      }
+      .bethesda-label {
+        font-weight: bold;
+        color: #475569;
+        width: 180px;
+      }
+
+      .interpretation-box {
+        border: 1.5px solid #0056b3;
+        border-radius: 4px;
+        background: #fff;
+        margin: 10px 15px;
+        padding: 15px;
+        min-height: 80px;
+      }
+
+      .footer-sign {
+        margin-top: 40px;
+        text-align: right;
+        padding-right: 50px;
+      }
+
+      .watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-45deg);
+        font-size: 150px;
+        font-weight: 900;
+        color: rgba(0, 0, 0, 0.03);
+        z-index: 9999;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .badge {
+          padding: 2px 10px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          border: 1px solid #a4cafe;
+          background: #e1effe;
+          color: #1e429f;
+          float: right;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="report-container">
+      <thead>
+        <tr>
+          <td>
+            <table class="header-table">
+              <tr>
+                <td style="width: 50px; vertical-align: middle">
+                  {% if report_logo_url_snapshot %}
+                  <img src="{{ report_logo_url_snapshot | safe }}" style="max-height: 48px; max-width: 120px; display: block" />
+                  {% else %}
+                  <div style="width: 42px; height: 42px; background: #0056b3; color: white; border-radius: 4px; line-height: 42px; text-align: center; font-weight: bold;">LAB</div>
+                  {% endif %}
+                </td>
+                <td style="padding-left: 15px; vertical-align: middle">
+                  <div style="font-size: 20px; font-weight: 800; color: #0056b3; line-height: 1;">{{ lab_name_en_snapshot | safe }}</div>
+                </td>
+                <td style="text-align: right; vertical-align: middle; font-size: 9px; color: #1a202c; line-height: 1.2;">
+                  {{ lab_address_snapshot | safe }}
+                </td>
+              </tr>
+            </table>
+
+            <table class="info-bar">
+              <tr>
+                <td style="width: 35%">
+                  <div class="label">Patient Name</div>
+                  <div class="patient-name">{{ patient_title or '' }}{{ patient_name or '' }}{% if patient_ln %} {{ patient_ln }}{% endif %}</div>
+                  <div style="font-size: 11px; margin-top: 2px">
+                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age: {{ patient_age_display }}
+                  </div>
+                </td>
+                <td style="width: 40%">
+                  <div><span class="label" style="width: 55px; display: inline-block">Accession:</span><span class="value" style="color: #0056b3">{{ accession_no }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Clinician:</span><span class="value">{{ clinician_name or '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Hospital:</span><span class="value">{{ hospital_name or '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Dept:</span><span class="value" style="font-size: 10px">{{ department_name or '-' }}</span></div>
+                </td>
+                <td style="width: 25%">
+                  <div><span class="label" style="width: 55px; display: inline-block">Collected:</span><span class="value">{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Received:</span><span class="value">{{ registered_at.strftime('%d/%m/%Y %H:%M') if registered_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Reported:</span><span class="value">{{ (published_at or reported_at).strftime('%d/%m/%Y %H:%M') if (published_at or reported_at) else '-' }}</span></div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>
+            <div style="text-align: center; margin-bottom: 15px; font-weight: 800; font-size: 14px; color: #1a202c; letter-spacing: 1px;">
+              GYNECOLOGICAL CYTOLOGY REPORT
+            </div>
+
+            <div class="section-header">SPECIMEN EVALUATION</div>
+            <table class="bethesda-table">
+              <tr>
+                <td class="bethesda-label">Specimen Adequacy:</td>
+                <td>{{ adequacy_text or '-' }}</td>
+              </tr>
+              {% if endocervical_status_text %}
+              <tr>
+                <td class="bethesda-label">Transformation Zone:</td>
+                <td>{{ endocervical_status_text }}</td>
+              </tr>
+              {% endif %}
+              {% if quality_text %}
+              <tr>
+                <td class="bethesda-label">Quality Indicators:</td>
+                <td>{{ quality_text }}</td>
+              </tr>
+              {% endif %}
+            </table>
+
+            <div class="section-header">CATEGORIZATION</div>
+            <table class="bethesda-table">
+              <tr>
+                <td class="bethesda-label">GENERAL CATEGORY:</td>
+                <td style="font-weight: bold; color: #002766;">{{ category_1_text or '-' }}</td>
+              </tr>
+              {% if category_2_text %}
+              <tr>
+                <td class="bethesda-label">Sub-category:</td>
+                <td style="font-weight: bold;">{{ category_2_text }}</td>
+              </tr>
+              {% endif %}
+            </table>
+
+            {% if interpretation %}
+            <div class="section-header">INTERPRETATION / RESULT</div>
+            <div class="interpretation-box">
+                {% if status == 'pending' or status == 'draft' %}
+                <span class="badge">PRELIMINARY</span>
+                {% else %}
+                <span class="badge">FINAL REPORT</span>
+                {% endif %}
+                
+                <div style="font-size: 14px; color: #0f172a; line-height: 1.6; white-space: pre-wrap;">{{ interpretation }}</div>
+            </div>
+            {% endif %}
+
+            {% if note %}
+            <div class="section-header">NOTE / COMMENT</div>
+            <div class="content-area" style="font-style: italic; color: #475569; white-space: pre-wrap;">{{ note }}</div>
+            {% endif %}
+
+            {% if cytology_images %}
+            <div class="section-header">CYTOLOGY IMAGES</div>
+            <div style="padding: 8px 15px 15px 15px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  {% for img in cytology_images %}
+                  <td style="width: 50%; padding: 6px; text-align: center; vertical-align: top;">
+                    <img src="{{ img.data_uri | safe }}" style="max-width: 220px; max-height: 170px; border: 1px solid #e2e8f0; border-radius: 4px; display: block; margin: 0 auto;" />
+                    <div style="font-size: 9px; color: #64748b; margin-top: 4px; font-style: italic;">Figure {{ loop.index }}{% if img.description %} — {{ img.description }}{% endif %}</div>
+                  </td>
+                  {% if loop.index is divisibleby 2 and not loop.last %}
+                </tr>
+                <tr>
+                  {% endif %}
+                  {% endfor %}
+                  {% if cytology_images | length is odd %}
+                  <td></td>
+                  {% endif %}
+                </tr>
+              </table>
+            </div>
+            {% endif %}
+
+            <div class="footer-sign">
+              <div style="margin-bottom: 10px; font-weight: bold; color: #475569;">Reported By:</div>
+              
+              {% if signers %}
+                {% for signer in signers %}
+                <div style="margin-top: 12px;">
+                  <div style="font-size: 15px; font-weight: bold; color: #002766;">
+                    {{ signer.report_name or signer.full_name }}
+                  </div>
+                  <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">
+                    {% if signer.role == 'primary' %}
+                      Pathologist
+                    {% elif signer.role == 'cytotechnologist' %}
+                      Cytotechnologist
+                    {% elif signer.role == 'co-signer' %}
+                      Co-Signer
+                    {% else %}
+                      {{ signer.role }}
+                    {% endif %}
+                  </div>
+                  {% if signer.signed_at %}
+                  <div style="font-size: 10px; color: #94a3b8; margin-top: 1px;">
+                    Signed: {{ signer.signed_at }}
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <!-- Fallback for legacy reports -->
+                <div style="margin-top: 12px;">
+                  <div style="font-size: 15px; font-weight: bold; color: #002766;">{{ pathologist_name or '-' }}</div>
+                  <div style="font-size: 10px; color: #64748b;">Pathologist</div>
+                </div>
+              {% endif %}
+            </div>
+
+            <div style="margin-top: 50px; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+              <span style="font-size: 9px; color: #94a3b8; letter-spacing: 1px">*** END OF REPORT ***</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if is_preview %}
+    <div class="watermark">PREVIEW</div>
+    {% endif %}
+  </body>
+</html>

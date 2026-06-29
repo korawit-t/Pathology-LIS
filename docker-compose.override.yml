@@ -1,0 +1,58 @@
+# =============================================================================
+# Development override.
+#
+# Auto-merged with docker-compose.yml when you run `docker compose up`
+# (Docker Compose loads docker-compose.override.yml automatically). Provides
+# safe-to-commit dev defaults so a fresh clone "just works":
+#
+#   git clone ... && cd Pathology_LIS && docker compose up -d --build
+#
+# Production deploys MUST skip this file:
+#   docker compose -f docker-compose.yml up -d --build
+#
+# What this override does (vs the production baseline):
+#   - hardcodes a dev DB password / user / db name so no shell env is needed
+#   - publishes 5432:5432 so you can connect a DB client from the host
+#   - re-runs seed_data.py on every backend start so the dev admin user,
+#     templates, and reference data exist (idempotent — see seed_data.py)
+#   - drops `restart: unless-stopped` so dev failures are visible
+#
+# 🔒 NEVER copy these defaults into a production environment. The seeded
+# admin uses `admin/admin1234` (marked as a temporary password — first
+# login forces a change), but you still don't want this exposed.
+# =============================================================================
+
+services:
+  backend:
+    restart: "no"
+    environment:
+      # Dev DB connection — matches the `db` service below.
+      - DATABASE_URL=postgresql+psycopg2://pathology_dev:dev_password_change_me@db:5432/pathology_lis
+      - ENVIRONMENT=development
+    # Override the production CMD to also run the seed on first start.
+    # `seed_data.py` is idempotent: it skips records that already exist.
+    command: >
+      sh -c "python create_tables.py
+      && python seed_data.py
+      && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      # Live-reload backend code in dev (uvicorn --reload picks up changes).
+      - ./backend:/app
+      - ./backend/data/storage:/app/data/storage
+
+  frontend:
+    restart: "no"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+
+  db:
+    restart: "no"
+    # Publish DB port to the host for local debugging (psql, DBeaver, etc.).
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=pathology_dev
+      - POSTGRES_PASSWORD=dev_password_change_me
+      - POSTGRES_DB=pathology_lis
+      # Dev placeholder — init-db.sh skips role creation if this is empty.
+      - LIS_APP_PASSWORD=dev_lis_app_rw_change_me

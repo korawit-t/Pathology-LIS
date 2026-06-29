@@ -1,0 +1,790 @@
+import React, { useEffect, useRef, useState, useMemo } from "react";
+import {
+  Button,
+  Table,
+  Tag,
+  Typography,
+  message,
+  Segmented,
+  Input,
+  Badge,
+  Tooltip,
+  Modal,
+  Space,
+  Progress,
+} from "antd";
+import {
+  ReloadOutlined,
+  SearchOutlined,
+  ExclamationCircleFilled,
+  CheckCircleFilled,
+  ClockCircleOutlined,
+  SyncOutlined,
+  FileDoneOutlined,
+  QuestionCircleOutlined,
+  FormOutlined,
+  ExperimentOutlined,
+  AuditOutlined,
+  SafetyCertificateOutlined,
+  InboxOutlined,
+  LinkOutlined,
+  FireFilled,
+  HistoryOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+
+import PageContainer from "../../components/Layout/PageContainer";
+import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
+import UserService from "../../services/userService";
+import SystemSettingService from "../../services/systemSettingService";
+import HolidayService from "../../services/holidayService";
+import { GyneCytologyCase } from "../../types/gyne-cytology";
+import type { SystemSetting } from "../../types/system";
+import AccessionTag from "../../components/AccessionTag";
+import logger from "../../utils/logger";
+import { calculateTATProgress } from "../../utils/tatUtils";
+
+const { Text } = Typography;
+
+interface GyneCytoWorklistProps {
+  onSelectCase: (id: number) => void;
+  standAlone?: boolean;
+  refreshTrigger?: number;
+}
+
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; label: string; icon?: React.ReactNode }
+> = {
+  registered: {
+    color: "default",
+    label: "Registered",
+    icon: <ClockCircleOutlined />,
+  },
+  stained: { color: "cyan", label: "Stained", icon: <SyncOutlined /> },
+  screened: {
+    color: "geekblue",
+    label: "Screened",
+    icon: <SyncOutlined spin />,
+  },
+  pending_review: {
+    color: "purple",
+    label: "Pending Review",
+    icon: <ExclamationCircleFilled />,
+  },
+  pending_approval: {
+    color: "gold",
+    label: "Pending Approval",
+    icon: <ClockCircleOutlined />,
+  },
+  reported: { color: "green", label: "Reported", icon: <CheckCircleFilled /> },
+  revised: {
+    color: "volcano",
+    label: "Revised",
+    icon: <ExclamationCircleFilled />,
+  },
+  published: { color: "green", label: "Published", icon: <FileDoneOutlined /> },
+  cancelled: { color: "red", label: "Cancelled" },
+};
+
+const CYTO_TABS = [
+  { label: "Pending Report", value: "stained" },
+  { label: "Sign Required", value: "co_sign" },
+  { label: "Awaiting Co-sign", value: "awaiting_cosign" },
+  { label: "QC Slide Queue", value: "qc_slide_queue" },
+  { label: "All", value: "all" },
+];
+
+const PATHO_TABS = [
+  { label: "Pending Report", value: "stained" },
+  { label: "Sign Required", value: "co_sign" },
+  { label: "Awaiting Co-sign", value: "awaiting_cosign" },
+  { label: "All", value: "all" },
+];
+
+const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
+  onSelectCase,
+  standAlone = true,
+  refreshTrigger,
+}) => {
+  const [cases, setCases] = useState<GyneCytologyCase[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [settings, setSettings] = useState<SystemSetting | null>(null);
+  const [qcSlideCount, setQcSlideCount] = useState(0);
+  const [holidays, setHolidays] = useState<string[]>([]);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isPathologist = useMemo(
+    () =>
+      currentUser?.roles?.some(
+        (r: string) => r === "pathologist" || r === "senior_pathologist",
+      ),
+    [currentUser],
+  );
+
+  const qcEnabled = settings?.enable_gyne_qc_system ?? false;
+  const nilmN = settings?.nilm_review_every_n ?? 10;
+
+  const tabOptions = useMemo(
+    () => (isPathologist ? PATHO_TABS : CYTO_TABS),
+    [isPathologist],
+  );
+
+  const workflowSteps = useMemo(
+    () => [
+      {
+        title: "ลงทะเบียนรับสิ่งส่งตรวจ",
+        icon: <FormOutlined />,
+        description:
+          "เจ้าหน้าที่ลงทะเบียนรับสิ่งส่งตรวจ ระบบออก Accession Number อัตโนมัติ และมอบหมายนักเทคนิค (CT) กับแพทย์พยาธิวิทยา — สถานะ: Registered",
+      },
+      {
+        title: "ย้อมสีและเตรียมสไลด์",
+        icon: <ExperimentOutlined />,
+        description:
+          "นักเทคนิค (CT) ดำเนินการย้อมสี Batch สไลด์ตามรายการ — สถานะเปลี่ยนเป็น: Stained",
+      },
+      {
+        title: "อ่านสไลด์และบันทึกผล (Screening)",
+        icon: <AuditOutlined />,
+        description: (
+          <div>
+            <div>
+              CT เปิดเคสใน <b>My Queue</b> → อ่านสไลด์ →
+              บันทึกผลวินิจฉัยและส่งผล
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                paddingLeft: 12,
+                borderLeft: "3px solid #d9d9d9",
+              }}
+            >
+              <div>
+                <Tag color="blue">ผลปกติ (NILM)</Tag>
+                <div style={{ marginLeft: 8, marginTop: 2 }}>
+                  {qcEnabled ? (
+                    <>
+                      — ระบบนับเคส ทุก <b>{nilmN}</b> เคสจะสุ่มตรวจ QC →{" "}
+                      <Tag color="purple">Pending Review</Tag>
+                      <br />— เคสอื่นๆ →{" "}
+                      <Tag color="green">Published</Tag> ทันที
+                    </>
+                  ) : (
+                    <>
+                      — <Tag color="green">Published</Tag> ทันที (ระบบ QC ปิดอยู่)
+                    </>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <Tag color="orange">ผิดปกติ (Abnormal)</Tag>{" "}
+                ทุกเคสต้องผ่านแพทย์ตรวจสอบเสมอ →{" "}
+                <Tag color="purple">Pending Review</Tag>
+              </div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "QC Review โดยแพทย์พยาธิวิทยา",
+        icon: <SafetyCertificateOutlined />,
+        description: (
+          <div>
+            <div>
+              แพทย์เปิดเคสจากหน้า <b>QC Review</b> → ตรวจสอบผลของ CT
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                paddingLeft: 12,
+                borderLeft: "3px solid #d9d9d9",
+              }}
+            >
+              <div>
+                <Tag color="success">Agree</Tag> เห็นด้วยกับผล CT →{" "}
+                <Tag color="green">Published</Tag> ทันที
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <Tag color="error">Disagree</Tag> ไม่เห็นด้วย →
+                บันทึกความคลาดเคลื่อน → CT แก้ไขและส่งผลใหม่
+              </div>
+            </div>
+          </div>
+        ),
+      },
+    ],
+    [qcEnabled, nilmN],
+  );
+
+  // Set default tab once user role is known
+  useEffect(() => {
+    if (!currentUser || activeTab !== null) return;
+    setActiveTab("stained");
+  }, [currentUser, activeTab]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await UserService.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        logger.error("Failed to load user", error);
+      }
+    };
+    const fetchSettings = async () => {
+      try {
+        const s = await SystemSettingService.getSettings();
+        setSettings(s);
+      } catch {
+        // use default (approval enabled)
+      }
+    };
+    fetchUser();
+    fetchSettings();
+    HolidayService.getHolidayDateList().then(setHolidays).catch(() => {});
+  }, []);
+
+  const loadQcSlideCount = async (userId: number) => {
+    try {
+      const data = await GyneCytologyCaseService.getAll({
+        status: "pending_review",
+        assigned_user_id: userId,
+        limit: 1,
+      });
+      setQcSlideCount(data.total);
+    } catch {
+      // non-critical
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeTab !== null) {
+      loadCases();
+      if (!isPathologist) loadQcSlideCount(currentUser.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, activeTab, searchText]);
+
+  useEffect(() => {
+    if (refreshTrigger && currentUser && activeTab !== null) loadCases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger]);
+
+  const loadCases = async () => {
+    if (!currentUser || activeTab === null) return;
+    try {
+      setLoading(true);
+      const params: Record<string, unknown> = { limit: 50 };
+      if (searchText.trim()) params.search = searchText.trim();
+
+      if (activeTab === "stained") {
+        params.status = "stained";
+        params.assigned_user_id = currentUser.id;
+        params.exclude_signed_by = currentUser.id;
+      } else if (activeTab === "awaiting_cosign") {
+        params.signed_by = currentUser.id;
+        params.assigned_user_id = currentUser.id;
+      } else if (activeTab === "submitted") {
+        params.status = "screened";
+        params.assigned_user_id = currentUser.id;
+      } else if (activeTab === "qc_slide_queue") {
+        params.status = "pending_review";
+        params.assigned_user_id = currentUser.id;
+      } else if (activeTab === "co_sign") {
+        params.signer_id = currentUser.id;
+      }
+      // "all" → cases assigned to current user only
+      else if (activeTab === "all") {
+        params.assigned_user_id = currentUser.id;
+      }
+
+      const data = await GyneCytologyCaseService.getAll(params);
+      setCases(data.items);
+      setTotal(data.total);
+    } catch {
+      message.error("ไม่สามารถโหลดข้อมูลเคสได้");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const commonColumns = [
+    {
+      title: "Accession No.",
+      dataIndex: "accession_no",
+      key: "accession_no",
+      width: 160,
+      sorter: (a: GyneCytologyCase, b: GyneCytologyCase) =>
+        (a.accession_no || "").localeCompare(b.accession_no || ""),
+      defaultSortOrder: "ascend" as const,
+      render: (text: string, record: GyneCytologyCase) => (
+        <Space size={4}>
+          <AccessionTag value={text} />
+          {record.is_express && (
+            <Tooltip title="Express / Urgent">
+              <FireFilled style={{ color: "#ff4d4f", fontSize: 12 }} />
+            </Tooltip>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: "Patient",
+      key: "patient",
+      render: (_: unknown, record: GyneCytologyCase) => (
+        <div>
+          <div style={{ fontWeight: 500, lineHeight: "20px" }}>
+            {[
+              record.patient?.title?.title,
+              record.patient?.name,
+              record.patient?.ln,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          </div>
+          <div style={{ fontSize: 12, color: "#8c8c8c" }}>
+            {record.hospital?.name || "—"}
+          </div>
+          <div style={{ fontSize: 11, color: "#bfbfbf" }}>HN: {record.hn}</div>
+        </div>
+      ),
+    },
+    {
+      title: "Specimen",
+      dataIndex: "specimen_type",
+      key: "specimen_type",
+      width: 120,
+      render: (type: string) =>
+        type ? (
+          <Tag color="blue" style={{ borderRadius: 4 }}>
+            {type}
+          </Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+  ];
+
+  const ctColumn = {
+    title: "Pathologist",
+    key: "pathologist",
+    width: 170,
+    render: (_: unknown, record: GyneCytologyCase) =>
+      record.pathologist?.full_name ? (
+        <Text style={{ fontSize: 13 }}>{record.pathologist.full_name}</Text>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Unassigned
+        </Text>
+      ),
+  };
+
+  const pathoColumn = {
+    title: "Cytotechnologist",
+    key: "cytotechnologist",
+    width: 170,
+    render: (_: unknown, record: GyneCytologyCase) =>
+      record.cytotechnologist?.full_name ? (
+        <Text style={{ fontSize: 13 }}>
+          {record.cytotechnologist.full_name}
+        </Text>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          —
+        </Text>
+      ),
+  };
+
+  const dateColumn = {
+    title: (
+      <Space size={4}>
+        TAT / PROGRESS
+        <Tooltip title={`SLA: Gyne ${settings?.gyne_tat_days ?? "—"} days`}>
+          <HistoryOutlined style={{ color: "#8c8c8c", cursor: "help" }} />
+        </Tooltip>
+      </Space>
+    ),
+    dataIndex: "registered_at",
+    key: "registered_at",
+    width: 200,
+    render: (value: string, record: GyneCytologyCase) => {
+      const s = record.status?.toLowerCase();
+      const isTerminal = s === "reported" || s === "published" || s === "cancelled";
+      if (isTerminal) {
+        return <CheckCircleFilled style={{ color: "#52c41a", fontSize: 20 }} />;
+      }
+
+      const tat = calculateTATProgress(
+        value,
+        "gyne",
+        settings,
+        record.is_express,
+        holidays,
+      );
+      if (!tat) {
+        return (
+          <Tooltip title={value ? dayjs(value).format("DD/MM/YYYY HH:mm") : "-"}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {value ? dayjs(value).format("DD/MM/YY") : "-"}
+            </Text>
+          </Tooltip>
+        );
+      }
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 160 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 12, fontWeight: 500, color: tat.isOverdue ? "#f5222d" : "inherit" }}>
+              {tat.displayTime}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 10 }}>{tat.percent}%</Text>
+          </div>
+          <Progress
+            percent={tat.percent}
+            showInfo={false}
+            strokeColor={tat.statusColor}
+            size={[160, 6]}
+
+            status={tat.isOverdue ? "exception" : "active"}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Due:{" "}
+              <Text strong={tat.isOverdue} style={{ fontSize: 11, color: tat.isOverdue ? "#f5222d" : "#595959" }}>
+                {tat.dueDate ? dayjs(tat.dueDate).format("DD/MM/YYYY") : "-"}
+              </Text>
+            </Text>
+            {tat.isOverdue && (
+              <Text style={{ fontSize: 10, color: "#f5222d", fontWeight: "bold" }}>OVERDUE</Text>
+            )}
+          </div>
+        </div>
+      );
+    },
+  };
+
+  const statusColumn = {
+    title: "Status",
+    dataIndex: "status",
+    key: "status",
+    width: 160,
+    render: (status: string, record: GyneCytologyCase) => {
+      const cfg = STATUS_CONFIG[status] ?? {
+        color: "default",
+        label: status?.toUpperCase() ?? "—",
+      };
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Tag
+            color={cfg.color}
+            icon={cfg.icon}
+            style={{ borderRadius: 20, padding: "2px 10px", margin: 0 }}
+          >
+            {cfg.label}
+          </Tag>
+          {record.needs_review && (
+            <Tooltip title={`QC Review: ${record.review_reason ?? ""}`}>
+              <ExclamationCircleFilled
+                style={{ color: "#722ed1", fontSize: 14 }}
+              />
+            </Tooltip>
+          )}
+          {record.has_correlation && (
+            <Tag
+              color="blue"
+              icon={<LinkOutlined />}
+              style={{ fontSize: 11, marginTop: 2 }}
+            >
+              Correlated
+            </Tag>
+          )}
+        </div>
+      );
+    },
+  };
+
+  const qcSlideQueueColumns = [
+    ...commonColumns,
+    dateColumn,
+    {
+      title: "Review Reason",
+      key: "review_reason",
+      width: 150,
+      render: (_: unknown, record: GyneCytologyCase) => {
+        const reasonLabel: Record<string, string> = {
+          random_10pct: "Random 10%",
+          abnormal: "Abnormal",
+          manual: "Manual",
+        };
+        return record.review_reason ? (
+          <Tag
+            color="purple"
+            icon={<ExclamationCircleFilled />}
+            style={{ borderRadius: 20 }}
+          >
+            {reasonLabel[record.review_reason] ?? record.review_reason}
+          </Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        );
+      },
+    },
+    {
+      title: "Action Required",
+      key: "action_required",
+      width: 200,
+      render: () => (
+        <Tag
+          color="volcano"
+          icon={<InboxOutlined />}
+          style={{ borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}
+        >
+          เก็บ Slide ส่ง Pathologist
+        </Tag>
+      ),
+    },
+  ];
+
+  const columns =
+    activeTab === "qc_slide_queue"
+      ? qcSlideQueueColumns
+      : [
+          ...commonColumns,
+          isPathologist ? pathoColumn : ctColumn,
+          dateColumn,
+          statusColumn,
+        ];
+
+  const segmentedOptions = tabOptions.map((t) => {
+    // QC Slide Queue always shows its badge so CT notices it even when on another tab
+    if (t.value === "qc_slide_queue" && qcSlideCount > 0) {
+      return {
+        label: (
+          <span>
+            <InboxOutlined style={{ marginRight: 4, color: "#722ed1" }} />
+            {t.label}{" "}
+            <Badge
+              count={qcSlideCount}
+              size="small"
+              color="#722ed1"
+              style={{ marginLeft: 4 }}
+            />
+          </span>
+        ),
+        value: t.value,
+      };
+    }
+    return {
+      label:
+        activeTab === t.value && total > 0 ? (
+          <span>
+            {t.label}{" "}
+            <Badge
+              count={total}
+              size="small"
+              color="gold"
+              style={{ marginLeft: 4 }}
+            />
+          </span>
+        ) : (
+          t.label
+        ),
+      value: t.value,
+    };
+  });
+
+  const TAB_DESCRIPTIONS: Record<string, string> = {
+    stained: "เคส Stained ที่ assign ให้คุณ และยังไม่ได้ submit ผล",
+    co_sign: "เคสที่คนอื่น sign ไปแล้ว รอคุณมาลงนามเพื่อให้ครบ",
+    awaiting_cosign: "เคสที่คุณ sign ไปแล้ว แต่รออีกคนมาลงนามเพื่อให้ครบ",
+    qc_slide_queue: "สไลด์ที่ถูกสุ่ม QC หรือผลผิดปกติ รอเก็บส่ง Pathologist",
+    all: "เคสทั้งหมดที่ assign ให้คุณ",
+  };
+
+  const content = (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 8,
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        {activeTab !== null && (
+          <Segmented
+            options={segmentedOptions}
+            value={activeTab}
+            onChange={(value) => {
+              setActiveTab(value as string);
+              setSearchText("");
+            }}
+          />
+        )}
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+          <Input
+            placeholder="Search Accession / Patient"
+            prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+            style={{ width: 260 }}
+            allowClear
+            value={searchText}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (searchTimer.current) clearTimeout(searchTimer.current);
+              searchTimer.current = setTimeout(() => setSearchText(val), 400);
+            }}
+          />
+          {!standAlone && (
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={loadCases}
+              loading={loading}
+              size="small"
+            >
+              Refresh
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {activeTab && TAB_DESCRIPTIONS[activeTab] && (
+        <div style={{ marginBottom: 12, paddingLeft: 2 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {TAB_DESCRIPTIONS[activeTab]}
+          </Text>
+        </div>
+      )}
+
+      <Table
+        columns={columns}
+        dataSource={cases}
+        rowKey="id"
+        loading={loading}
+        onRow={(record) => ({
+          onClick: () => onSelectCase(record.id),
+          style: { cursor: "pointer" },
+        })}
+        pagination={{
+          total,
+          pageSize: 50,
+          showSizeChanger: false,
+          hideOnSinglePage: true,
+        }}
+        size="middle"
+        bordered
+        rowClassName={() => "gyne-worklist-row"}
+      />
+    </div>
+  );
+
+  const workflowGuideModal = (
+    <Modal
+      title={
+        <span>
+          <QuestionCircleOutlined
+            style={{ marginRight: 8, color: "#1677ff" }}
+          />
+          ขั้นตอนการทำงาน — Gyne Cytology
+        </span>
+      }
+      open={guideOpen}
+      onCancel={() => setGuideOpen(false)}
+      footer={null}
+      width={640}
+    >
+      <div style={{ marginTop: 8 }}>
+        {workflowSteps.map((s, i) => (
+          <div key={i} style={{ display: "flex", gap: 16, marginBottom: 20 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  background: "#e6f4ff",
+                  border: "2px solid #1677ff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#1677ff",
+                  fontSize: 16,
+                  flexShrink: 0,
+                }}
+              >
+                {s.icon}
+              </div>
+              {i < workflowSteps.length - 1 && (
+                <div
+                  style={{
+                    width: 2,
+                    flex: 1,
+                    background: "#d9d9d9",
+                    marginTop: 4,
+                  }}
+                />
+              )}
+            </div>
+            <div style={{ paddingTop: 6, paddingBottom: 8 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
+              <div style={{ color: "#595959", fontSize: 13 }}>
+                {s.description}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+
+  if (!standAlone)
+    return (
+      <>
+        {content}
+        {workflowGuideModal}
+      </>
+    );
+
+  return (
+    <PageContainer
+      title="Gyne Cytology Worklist"
+      subTitle={`${total} case${total !== 1 ? "s" : ""}`}
+      extra={
+        <Space>
+          <Button
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setGuideOpen(true)}
+          >
+            คู่มือ Workflow
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadCases}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </Space>
+      }
+      withCard
+    >
+      {content}
+      {workflowGuideModal}
+    </PageContainer>
+  );
+};
+
+export default GyneCytoWorklist;

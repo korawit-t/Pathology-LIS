@@ -1,0 +1,66 @@
+-- =============================================================================
+-- HIS Custom SQL Template: Surgical Cases
+-- Copy this file to: his_surgical.sql  (remove the .example extension)
+-- This file is gitignored — hospital-specific, never committed to the repo.
+-- =============================================================================
+--
+-- Bind parameters (required):
+--   :hn          — Hospital Number filter (empty string = no filter)
+--   :date_start  — Order date start, format: "YYYY-MM-DD 00:00:00"
+--   :date_end    — Order date end,   format: "YYYY-MM-DD 23:59:59"
+--
+-- Required return columns:
+--   an               — Admission number (for IPD)
+--   vn               — Visit number (for OPD)
+--   hn               — Hospital number
+--   gender           — Gender name (e.g. "ชาย" / "หญิง")
+--   gender_code      — Integer gender code (1=male, 2=female)
+--   nationality      — Nationality
+--   pname            — Name prefix/title
+--   fname            — First name
+--   lname            — Last name
+--   birthday         — Date of birth (any string format)
+--   cid              — Citizen/national ID
+--   lab_order_number — Lab order / requisition number
+--   doctor           — Requesting doctor name
+--   order_date       — Order date (any string format)
+--   department       — Ordering department name
+--   form_name        — Lab form / test name (used to identify path cases)
+--   ward             — Ward name
+--   pttype           — Patient type / coverage scheme
+--   age              — Age in years (integer)
+-- =============================================================================
+
+-- Example for HOSxP-compatible schema — adjust table/column names as needed:
+SELECT
+    lh.an                                                     AS an,
+    lh.vn                                                     AS vn,
+    p.hn                                                      AS hn,
+    COALESCE(sx.name, '')                                     AS gender,
+    CAST(p.sex AS UNSIGNED)                                   AS gender_code,
+    COALESCE(nat.nationality, '')                             AS nationality,
+    COALESCE(p.pname, '')                                     AS pname,
+    COALESCE(p.fname, '')                                     AS fname,
+    COALESCE(p.lname, '')                                     AS lname,
+    COALESCE(p.birthday, '')                                  AS birthday,
+    COALESCE(p.cid, '')                                       AS cid,
+    COALESCE(lh.lab_order_number, '')                         AS lab_order_number,
+    COALESCE(d.name, '')                                      AS doctor,
+    lh.order_date                                             AS order_date,
+    COALESCE(dept.department, '')                             AS department,
+    COALESCE(lh.form_name, '')                                AS form_name,
+    COALESCE(lh.ward, '')                                     AS ward,
+    COALESCE(pt.name, '')                                     AS pttype,
+    TIMESTAMPDIFF(YEAR, p.birthday, CURDATE())                AS age
+FROM lab_head lh
+    LEFT JOIN patient p        ON lh.hn = p.hn
+    LEFT JOIN sex sx           ON p.sex = sx.code
+    LEFT JOIN doctor d         ON lh.doctor_code = d.code
+    LEFT JOIN kskdepartment dept ON lh.department_code = dept.depcode
+    LEFT JOIN pttype pt        ON lh.pttype = pt.pttype
+    LEFT JOIN nationality nat  ON p.nationality = nat.nationality
+WHERE
+    lh.order_date BETWEEN :date_start AND :date_end
+    AND (:hn = '' OR p.hn = :hn)
+    AND lh.form_name IN ('Surgical Pathology', 'Pathology')
+ORDER BY lh.order_date DESC, p.hn

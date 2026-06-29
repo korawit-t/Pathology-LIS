@@ -1,0 +1,16 @@
+# CODEOWNERS — security-sensitive paths require maintainer review before merge.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Authentication and authorization
+/backend/app/routers/auth.py          @korawit-t
+/backend/app/dependencies/            @korawit-t
+
+# Database migrations (must be reviewed before deploy)
+/backend/alembic/                     @korawit-t
+
+# CI/CD and security workflows
+/.github/                             @korawit-t
+
+# Security-critical middleware and config
+/backend/main.py                      @korawit-t
+/backend/app/middleware/              @korawit-t

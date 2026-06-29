@@ -1,0 +1,55 @@
+@media print {
+  @page {
+    size: 25mm 25mm;
+    margin: 0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .sticker-layout {
+    width: 25mm;
+    height: 25mm;
+    page-break-after: always;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+  }
+
+  .sticker-content {
+    width: 22mm;
+    height: 22mm;
+    display: flex;
+    flex-direction: column;
+    /* กระจายข้อมูลให้เต็มดวง บน-กลาง-ล่าง */
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* เลียนแบบ Pathtology TCPH สไตล์ */
+  .text-unit {
+    font-size: 8pt;
+    font-weight: bold;
+    margin-bottom: 1mm;
+  }
+  .text-case {
+    font-size: 11pt;
+    font-weight: bold;
+    line-height: 1.2;
+  }
+  .text-stain {
+    font-size: 10pt;
+    font-weight: bold;
+    border-top: 0.3mm solid #000;
+    width: 100%;
+    padding-top: 1mm;
+    margin-top: 1mm;
+  }
+  .text-date {
+    font-size: 7pt;
+    margin-top: 0.5mm;
+  }
+}

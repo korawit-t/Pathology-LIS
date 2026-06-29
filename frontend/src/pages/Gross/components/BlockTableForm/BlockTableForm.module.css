@@ -1,0 +1,98 @@
+/* frontend/src/pages/Gross/components/BlockTableForm/BlockTableForm.module.css */
+.tableContainer {
+  width: 100%;
+}
+
+/* 🌟 ปรับลด Padding ของ Ant Design Table Cells ให้แคบที่สุด */
+.tableContainer :global(.ant-table-small .ant-table-thead > tr > th),
+.tableContainer :global(.ant-table-small .ant-table-tbody > tr > td) {
+  padding: 4px 2px !important;
+  text-align: center;
+}
+
+/* 🌟 คอลัมน์ Label ให้มีสีพื้นหลังต่างออกไปเพื่อให้ดูง่าย */
+.labelColumn {
+  background-color: #fafafa !important;
+  border-right: 2px solid #f0f0f0 !important;
+  min-width: 45px;
+}
+
+/* Animation สำหรับตอนโผล่ขึ้นมา */
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.blockItem {
+  position: relative;
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  padding: 4px 0;
+  text-align: center;
+  color: #0050b3;
+  font-weight: bold;
+  font-size: 13px;
+  transition: all 0.2s;
+  cursor: pointer;
+  min-width: 60px; /* ปรับให้พอดีกับ Inline style 60px */
+  height: 40px;
+  display: flex; /* ใช้ flex ภายในเพื่อจัดตัวอักษรให้อยู่กลางตลับ */
+  align-items: center;
+  justify-content: center;
+  /* margin: 0 auto;  🚩 ลบตัวนี้ออกเด็ดขาด! เพราะมันจะทำให้ชิดกลาง */
+  margin: 0; /* เปลี่ยนเป็น 0 แทน */
+  animation: popIn 0.3s ease-out; /* ใส่เพิ่มเข้าไป */
+  animation-fill-mode: backwards;
+}
+
+/* เพิ่มส่วนนี้เพื่อให้ Container แม่บังคับลูกชิดซ้าย */
+.tableWrapper {
+  text-align: left !important;
+  width: 100%;
+}
+
+.isDecal {
+  background-color: #fff7e6;
+  border-color: #ffd591;
+  color: #d46b08;
+}
+
+.decalFinished {
+  background-color: #f6ffed;
+  border-color: #b7eb8f;
+  color: #389e0d;
+}
+
+.decalIcon {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 10px;
+  color: #fa8c16;
+}
+
+.deleteBtn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ff4d4f;
+  color: white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 10;
+}

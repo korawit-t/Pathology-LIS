@@ -1,0 +1,78 @@
+# =============================================================================
+# Production baseline.
+#
+# This file ships ZERO secrets and ZERO weak defaults. It must be combined
+# with environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+# DATABASE_URL) supplied either via shell env or a root-level .env file.
+#
+# Local development uses docker-compose.override.yml (auto-loaded by
+# `docker compose up`) which provides safe-to-commit DEV defaults and
+# re-enables the seed script. Production deploys MUST bypass the override:
+#
+#   # Production:
+#   docker compose -f docker-compose.yml up -d --build
+#
+#   # First-time prod seed (one-shot, after the stack is up):
+#   docker compose -f docker-compose.yml run --rm backend python seed_data.py
+#
+#   # Local development (auto-merges override.yml):
+#   docker compose up -d --build
+# =============================================================================
+
+services:
+  # --- Backend (FastAPI) ---
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env # SECRET_KEY, ALLOWED_ORIGINS, etc.
+    container_name: pathology-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data/storage:/app/data/storage
+    environment:
+      # DATABASE_URL is supplied via env_file (./backend/.env) — no duplication here.
+      # ENVIRONMENT defaults to "production" (fail-closed); override sets "development".
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+    depends_on:
+      - db
+
+  # --- Frontend (React/Vite) ---
+  frontend:
+    build: ./frontend
+    env_file:
+      - ./frontend/.env
+    container_name: pathology-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    # VITE_API_BASE_URL is supplied via env_file (./frontend/.env).
+    depends_on:
+      - backend
+
+  # --- ฐานข้อมูล PostgreSQL ---
+  db:
+    image: postgres:15-alpine
+    container_name: pathology-db
+    restart: unless-stopped
+    # 🔒 SECURITY: DB port is NOT published to the host in production.
+    # The backend reaches it over the internal Docker network. The dev
+    # override re-publishes 5432:5432 for local debugging.
+    # 🔒 PRODUCTION: set these via shell env or a root .env file before running
+    #   docker compose -f docker-compose.yml up -d --build
+    # The dev override (docker-compose.override.yml) supplies safe dev defaults.
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      # Password for the least-privilege app role provisioned by init-db.sh.
+      # Leave empty in dev (init-db.sh skips role creation gracefully).
+      - LIS_APP_PASSWORD=${LIS_APP_PASSWORD:-}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Runs once on first volume creation to provision the lis_app_rw role.
+      - ./backend/db/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+
+volumes:
+  postgres_data:

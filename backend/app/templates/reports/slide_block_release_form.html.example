@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @page {
+        size: A4;
+        margin: 18mm 20mm 22mm 20mm;
+      }
+      body {
+        font-family: "Sarabun", sans-serif;
+        font-size: 14px;
+        color: #000;
+        margin: 0;
+        padding: 0;
+        line-height: 1.8;
+      }
+
+      /* ─── Header ─── */
+      .header {
+        text-align: center;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #000;
+        padding-bottom: 8px;
+      }
+      .header .lab-name {
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .header .form-title {
+        font-size: 17px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+      .header .release-no {
+        font-size: 11px;
+        color: #555;
+        margin-top: 2px;
+      }
+
+      /* ─── Date row ─── */
+      .date-row {
+        text-align: right;
+        margin-bottom: 14px;
+        font-size: 13.5px;
+      }
+
+      /* ─── Body text ─── */
+      p {
+        margin: 6px 0;
+        font-size: 14px;
+      }
+
+      /* filled value: underlined */
+      .val {
+        border-bottom: 1px solid #000;
+        display: inline-block;
+        min-width: 120px;
+        padding: 0 4px;
+        font-weight: 700;
+      }
+
+      /* blank line for manual fill */
+      .blank {
+        border-bottom: 1px solid #000;
+        display: inline-block;
+        min-width: 140px;
+        padding: 0 4px;
+      }
+      .blank-long {
+        border-bottom: 1px solid #000;
+        display: inline-block;
+        min-width: 320px;
+        padding: 0 4px;
+      }
+      .blank-full {
+        border-bottom: 1px solid #000;
+        display: block;
+        width: 100%;
+        height: 18px;
+        margin-top: 4px;
+      }
+
+      /* ─── Item list section ─── */
+      .section-title {
+        font-weight: 700;
+        margin: 14px 0 8px;
+        text-decoration: underline;
+      }
+      .item-row {
+        display: flex;
+        align-items: baseline;
+        margin: 6px 0;
+        gap: 6px;
+      }
+      .item-label {
+        white-space: nowrap;
+        min-width: 280px;
+      }
+      .item-value {
+        border-bottom: 1px solid #000;
+        flex: 1;
+        min-width: 140px;
+        font-weight: 700;
+        padding: 0 4px;
+      }
+      .item-count-label {
+        white-space: nowrap;
+        margin-left: 8px;
+      }
+      .item-count {
+        border-bottom: 1px solid #000;
+        min-width: 60px;
+        text-align: center;
+        font-weight: 700;
+        padding: 0 4px;
+      }
+      .item-unit {
+        white-space: nowrap;
+        margin-left: 4px;
+      }
+
+      /* ─── Delivery channel ─── */
+      .delivery-section {
+        margin-top: 12px;
+      }
+      .delivery-section p {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        white-space: nowrap;
+        margin: 0 0 4px;
+      }
+      .delivery-section .blank-long {
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* ─── Remark ─── */
+      .remark-section {
+        margin-top: 10px;
+        font-size: 13.5px;
+        color: #333;
+      }
+
+      /* ─── Signature ─── */
+      .sig-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 48px;
+        gap: 16px;
+      }
+      .sig-box {
+        flex: 1;
+        text-align: center;
+      }
+      .sig-line {
+        border-bottom: 1px solid #000;
+        margin: 0 16px;
+        height: 40px;
+      }
+      .sig-name {
+        margin-top: 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .sig-name span {
+        display: block;
+        font-weight: 400;
+        font-size: 12.5px;
+      }
+
+      /* ─── Notice ─── */
+      .notice {
+        margin-top: 20px;
+        font-size: 12.5px;
+        color: #444;
+        border-top: 1px dashed #999;
+        padding-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══ Header ═══ -->
+    <div class="header">
+      <div class="lab-name">{{ lab_name_th | safe }}</div>
+      {% if lab_address %}
+      <div style="font-size: 12px; color: #555;">{{ lab_address | safe }}</div>
+      {% endif %}
+      <div class="form-title">แบบฟอร์มขอพาราฟินบล็อกและ/หรือสไลด์ (External)</div>
+      <div class="release-no">เลขที่: {{ release_no }}</div>
+    </div>
+
+    <!-- ═══ Date / Time ═══ -->
+    <div class="date-row">
+      วันที่ยืม <span class="val">{{ released_date }}</span>
+      &nbsp;&nbsp;เวลา <span class="val">{{ released_time }}</span> น.
+    </div>
+
+    <!-- ═══ Salutation ═══ -->
+    <p>เรียน แพทย์/ผู้ที่เกี่ยวข้อง</p>
+
+    <!-- ═══ Patient ═══ -->
+    <p>
+      เนื่องจาก&nbsp;
+      <span class="val">{{ patient_name }}</span>
+      &nbsp;เลขบัตรประชาชน&nbsp;
+      <span class="val">{{ patient_cid or '–' }}</span>
+    </p>
+    <p>
+      ได้ขอพาราฟินบล็อกและหรือสไลด์ จาก<span class="val">{{ lab_name_th | safe }}</span>
+    </p>
+    <p style="display:flex; align-items:flex-end; gap:4px; white-space:nowrap; margin:0 0 4px;">
+      โดยมีวัตถุประสงค์ เพื่อ
+      <span class="val" style="flex:1; min-width:0;">{{ remark or '' }}</span>
+    </p>
+    <div class="blank-full"></div>
+    <div class="blank-full"></div>
+
+    <!-- ═══ Item List ═══ -->
+    <p class="section-title">ดังรายการต่อไปนี้</p>
+
+    <!-- Blocks -->
+    <div class="item-row">
+      <span class="item-label">ขอบล็อกหมายเลข</span>
+      <span class="item-value">{{ block_nos or '' }}</span>
+      <span class="item-count-label">จำนวน</span>
+      <span class="item-count">{{ block_count if block_count else '' }}</span>
+      <span class="item-unit">บล็อก</span>
+    </div>
+
+    <!-- H&E Slides -->
+    <div class="item-row">
+      <span class="item-label">ขอสไลด์ H&amp;E</span>
+      <span class="item-value">{{ he_slide_nos or '' }}</span>
+      <span class="item-count-label">จำนวน</span>
+      <span class="item-count">{{ he_count if he_count else '' }}</span>
+      <span class="item-unit">สไลด์</span>
+    </div>
+
+    <!-- Special Stain Slides -->
+    <div class="item-row">
+      <span class="item-label">ขอสไลด์ย้อมพิเศษหมายเลข</span>
+      <span class="item-value">{{ special_slide_nos or '' }}</span>
+      <span class="item-count-label">จำนวน</span>
+      <span class="item-count">{{ special_count if special_count else '' }}</span>
+      <span class="item-unit">สไลด์</span>
+    </div>
+    <div class="item-row" style="margin-top:0;">
+      <span class="item-label" style="min-width:0;">ระบุชนิดการย้อมพิเศษ ได้แก่</span>
+      <span class="item-value" style="min-width:280px;">{{ special_stain_names or '' }}</span>
+    </div>
+
+    <!-- Cytology Slides -->
+    <div class="item-row">
+      <span class="item-label">ขอสไลด์ Cytology หมายเลข</span>
+      <span class="item-value">{{ cyto_slide_nos or '' }}</span>
+      <span class="item-count-label">จำนวน</span>
+      <span class="item-count">{{ cyto_count if cyto_count else '' }}</span>
+      <span class="item-unit">สไลด์</span>
+    </div>
+
+    <!-- Delivery channel -->
+    <div class="delivery-section">
+      <p>
+        ใบรายงานผลทางศัลยพยาธิวิทยา (Pathology report) ให้ส่งช่องทาง
+        <span class="blank-long">{{ reference_doc_no or '' }}</span>
+      </p>
+      <div class="blank-full"></div>
+      <div class="blank-full"></div>
+      <div class="blank-full"></div>
+    </div>
+
+    <!-- ═══ Notice ═══ -->
+    <div class="notice">
+      เป็นผู้รับผิดชอบในการสูญหายของสไลด์และบล็อกพาราฟินที่ท่านนำออกไป
+      จึงเรียนมาเพื่อทราบ
+    </div>
+
+    <!-- ═══ Signatures ═══ -->
+    <div class="sig-row">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          {% if pathologist_name %}
+          <span>({{ pathologist_name }})</span>
+          {% else %}
+          <span>(............................................)</span>
+          {% endif %}
+          พยาธิแพทย์
+        </div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          {% if recipient_name %}
+          <span>({{ recipient_name }})</span>
+          {% else %}
+          <span>(............................................)</span>
+          {% endif %}
+          ผู้ขอ
+        </div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          {% if released_by_name %}
+          <span>({{ released_by_name }})</span>
+          {% else %}
+          <span>(............................................)</span>
+          {% endif %}
+          เจ้าหน้าที่ผู้รับเรื่อง
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

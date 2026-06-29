@@ -1,0 +1,32 @@
+.sidebar-logo-container {
+  transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.sidebar-logo-container:hover {
+  transform: translateY(-1px);
+}
+
+.sidebar-logo-container:active {
+  transform: scale(0.96);
+}
+
+.sidebar-logo-container:hover .ant-typography,
+.sidebar-logo-container:hover .anticon {
+  color: #4096ff !important;
+}
+
+.sidebar-logo-light:hover {
+  background: rgba(22, 119, 255, 0.05);
+}
+.sidebar-logo-light:active {
+  background: rgba(22, 119, 255, 0.1);
+}
+
+.sidebar-logo-dark:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sidebar-logo-dark:active {
+  background: rgba(255, 255, 255, 0.12);
+}

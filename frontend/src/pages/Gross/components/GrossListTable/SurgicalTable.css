@@ -1,0 +1,22 @@
+/* SurgicalTable.css */
+
+/* ทำให้แถวเปลี่ยนสีเมื่อเมาส์ชี้ (Visual Feedback) */
+.editable-row {
+    transition: background-color 0.2s;
+}
+
+.editable-row:hover > td {
+    background-color: #f0f7ff !important; /* สีฟ้าอ่อน Lab Style */
+}
+
+/* เพิ่มการเน้นข้อความเมื่อ Hover เพื่อให้รู้ว่าคลิกได้ */
+.editable-row:hover .ant-space b {
+    color: #40a9ff;
+    text-decoration: underline;
+}
+
+/* ตกแต่งตารางให้ดูสะอาดตาแบบ Medical UI */
+.ant-table-thead > tr > th {
+    background-color: #fafafa;
+    font-weight: 600;
+}

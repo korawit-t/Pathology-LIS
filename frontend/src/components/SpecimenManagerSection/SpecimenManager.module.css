@@ -1,0 +1,17 @@
+/* Animation: เลื่อนจากล่างขึ้นบน + Fade In */
+@keyframes slideUpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px); /* เริ่มจากต่ำกว่าตำแหน่งจริง 20px */
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* คลาสที่จะใช้กับแถวใหม่ */
+.row-slide-up {
+  animation: slideUpIn 0.4s ease-out;
+  animation-fill-mode: backwards;
+}

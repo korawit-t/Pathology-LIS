@@ -1,0 +1,73 @@
+import json
+import httpx
+from app.models.llm_profile import LlmProfile
+from app.core.config import OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENAI_COMPATIBLE_API_KEY
+
+
+def _get_api_key(provider: str) -> str:
+    if provider == "anthropic":
+        return ANTHROPIC_API_KEY
+    if provider == "openai_compatible":
+        return OPENAI_COMPATIBLE_API_KEY
+    return OPENAI_API_KEY
+
+
+async def call_llm(
+    profile: LlmProfile,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int = 512,
+    timeout: float = 30.0,
+) -> str:
+    api_key = _get_api_key(profile.provider)
+
+    if profile.provider == "anthropic":
+        return await _call_anthropic(api_key, profile.model, system_prompt, user_message, max_tokens, timeout)
+
+    base_url = (profile.base_url or "https://api.openai.com").rstrip("/")
+    return await _call_openai_compat(api_key, base_url, profile.model, system_prompt, user_message, max_tokens, timeout)
+
+
+async def _call_openai_compat(
+    api_key: str, base_url: str, model: str, system_prompt: str, user_message: str,
+    max_tokens: int = 512, timeout: float = 30.0,
+) -> str:
+    url = f"{base_url}/v1/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1,
+        "max_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload, headers={"Authorization": f"Bearer {api_key}"})
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+async def _call_anthropic(
+    api_key: str, model: str, system_prompt: str, user_message: str,
+    max_tokens: int = 512, timeout: float = 30.0,
+) -> str:
+    url = "https://api.anthropic.com/v1/messages"
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["content"][0]["text"]

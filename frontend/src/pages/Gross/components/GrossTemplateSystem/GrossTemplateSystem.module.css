@@ -1,0 +1,22 @@
+.templatePreview {
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+}
+
+.editArea {
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.labelInfo {
+  font-size: 12px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.toolBox {
+  margin-bottom: 8px;
+  display: flex;
+  gap: 8px;
+}

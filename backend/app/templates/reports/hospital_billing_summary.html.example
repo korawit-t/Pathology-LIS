@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ใบสรุปค่าบริการทางพยาธิวิทยา (Hospital Billing Summary)</title>
+    <style>
+        @font-face {
+            font-family: 'Sarabun';
+            src: url('{{ font_path | safe }}/Sarabun-Regular.ttf') format('truetype');
+            font-weight: normal;
+        }
+        @font-face {
+            font-family: 'Sarabun';
+            src: url('{{ font_path | safe }}/Sarabun-Bold.ttf') format('truetype');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            font-size: 14pt;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 20pt;
+        }
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .meta-info p {
+            margin: 5px 0;
+            font-size: 14pt;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12pt;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-align: center;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .grand-total {
+            font-size: 16pt;
+            font-weight: bold;
+            background-color: #e6f7ff;
+            color: #000;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: right;
+            font-size: 12pt;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ใบสรุปค่าบริการทางพยาธิวิทยากายวิภาค</h1>
+        <h3>(Anatomical Pathology Billing Summary)</h3>
+    </div>
+
+    <div class="meta-info">
+        <div>
+            <p><strong>โรงพยาบาล (Hospital):</strong> {{ hospital_name }}</p>
+        </div>
+        <div style="text-align: right;">
+            <p><strong>รอบบิล (Period):</strong> {{ start_date }} ถึง {{ end_date }}</p>
+            <p><strong>วันที่พิมพ์ (Printed On):</strong> {{ printed_on }}</p>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="5%">ลำดับ<br>No.</th>
+                <th width="20%">เลขที่สิ่งส่งตรวจ<br>Accession No.</th>
+                <th width="15%">HN</th>
+                <th width="30%">ชื่อผู้ป่วย<br>Patient Name</th>
+                <th width="15%">วันที่รับ<br>Received Date</th>
+                <th width="15%">จำนวนเงินรวม<br>Total (THB)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr style="background-color: #f9f9f9; font-weight: bold;">
+                <td class="text-center">{{ loop.index }}</td>
+                <td class="text-center">{{ item.accession_no }}</td>
+                <td class="text-center">{{ item.hn or '-' }}</td>
+                <td>{{ item.patient_name }}</td>
+                <td class="text-center">{{ item.registered_at.strftime('%d/%m/%Y %H:%M') if item.registered_at else '-' }}</td>
+                <td class="text-right">{{ "{:,.2f}".format(item.grand_total) }}</td>
+            </tr>
+            {% for detail in item['items'] %}
+            <tr>
+                <td></td>
+                <td colspan="4" style="padding-left: 20px; font-size: 11pt; color: #555;">
+                    - {{ detail.category }}: {{ detail.test_name }} {% if detail.quantity > 1 %}(x{{ detail.quantity }}){% endif %}
+                </td>
+                <td class="text-right" style="font-size: 11pt; color: #555;">
+                    {{ "{:,.2f}".format(detail.total_price) }}
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center">ไม่พบข้อมูล (No data available)</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="grand-total">
+                <td colspan="5" class="text-right" style="padding: 10px;">
+                    ยอดรวมสุทธิ (Grand Total) - จำนวน {{ total_cases }} รายการ
+                </td>
+                <td class="text-right" style="padding: 10px;">
+                    {{ "{:,.2f}".format(all_cases_grand_total) }}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="footer">
+        <p>เจ้าหน้าที่ผู้ตรวจทาน: ______________________________</p>
+        <p>(...........................................................)</p>
+    </div>
+</body>
+</html>

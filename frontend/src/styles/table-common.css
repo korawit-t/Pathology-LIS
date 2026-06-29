@@ -1,0 +1,51 @@
+/* table-common.css */
+
+/* 1. สไตล์พื้นฐานของตาราง (Medical UI) */
+.standard-table .ant-table-thead > tr > th {
+    background-color: #fafafa !important;
+    font-weight: 600;
+    color: #262626;
+}
+
+/* 2. ทำให้แถวคลิกได้และมีการตอบสนอง */
+.editable-row {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+/* 3. Highlight เมื่อ Hover (สีฟ้าอ่อน Lab Style) */
+.editable-row:hover > td {
+    background-color: #f0f7ff !important; 
+}
+
+/* 4. เน้นข้อความสำคัญเมื่อ Hover */
+.editable-row:hover b, 
+.editable-row:hover .ant-space b {
+    color: #40a9ff;
+    text-decoration: underline;
+}
+
+/* 5. ป้องกันการเลือกข้อความโดยไม่ตั้งใจขณะคลิกเร็วๆ */
+.editable-row td {
+    user-select: none;
+}
+.row-express b {
+    color: #ff4d4f;
+}
+
+/* Scrollable list with always-visible scrollbar */
+.always-scroll {
+    overflow-y: scroll !important;
+    scrollbar-width: thin;
+    scrollbar-color: #d9d9d9 transparent;
+}
+.always-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+.always-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.always-scroll::-webkit-scrollbar-thumb {
+    background-color: #d9d9d9;
+    border-radius: 3px;
+}

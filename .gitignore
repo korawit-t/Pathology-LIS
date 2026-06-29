@@ -1,0 +1,59 @@
+# --- OS & IDE Files ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.suo
+
+# --- Python / Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.log
+*.sqlite3
+*.db
+
+# --- Node.js / Frontend ---
+node_modules/
+dist/
+dist-ssr/
+build/
+.npm
+.eslintcache
+
+# --- Docker ---
+.dockerignore
+# ไม่ควร ignore docker-compose.yml แต่บางคนจะ ignore ไฟล์ override
+# docker-compose.override.yml
+
+# --- Environment Variables (สำคัญมาก) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# --- Internal / Sensitive Docs (ห้ามขึ้น public repo) ---
+SECURITY_AUDIT.md
+TODO.md
+
+# --- Project Specific (Pathology LIS) ---
+# เก็บไฟล์รูปภาพ Gross ที่อัพโหลดไว้ในเครื่อง (ถ้าไม่อยากให้อัพขึ้น Git)
+backend/data/storage/
+backend/uploads/
+# HIS custom SQL files (hospital-specific, must not be committed to repo)
+backend/data/*.sql
+# Report templates — each lab customizes locally; .html.example files are the tracked defaults
+backend/app/templates/reports/*.html
+# หากมีไฟล์ที่สร้างจาก Alembic แต่ต้องการล้างประวัติ
+# backend/alembic/versions/*.py (ปกติจะไม่อิกนอร์เพื่อให้ทีมใช้ด้วยกันได้)
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
