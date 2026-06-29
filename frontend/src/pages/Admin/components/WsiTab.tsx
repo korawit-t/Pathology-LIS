@@ -55,15 +55,20 @@ const WsiTab: React.FC = () => {
 
   const handleSaveSettings = async () => {
     const values = settingsForm.getFieldsValue();
+    console.log("[WSI DEBUG] form values:", values);
+    const payload = {
+      wsi_root_path: values.wsi_root_path || null,
+      default_scanner_profile_id: values.default_scanner_profile_id ?? null,
+    };
+    console.log("[WSI DEBUG] payload to API:", payload);
     setSavingSettings(true);
     try {
-      await WsiSettingService.updateSettings({
-        wsi_root_path: values.wsi_root_path || null,
-        default_scanner_profile_id: values.default_scanner_profile_id ?? null,
-      });
+      const result = await WsiSettingService.updateSettings(payload);
+      console.log("[WSI DEBUG] API response:", result);
       message.success("WSI settings saved");
       load();
-    } catch {
+    } catch (err) {
+      console.error("[WSI DEBUG] save error:", err);
       message.error("Failed to save WSI settings");
     } finally {
       setSavingSettings(false);
