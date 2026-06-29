@@ -33,7 +33,21 @@ def get_all_settings(db: Session = Depends(get_db)):
 @router.get("/public", response_model=SystemSettingResponse)
 def get_public_settings(slug: str = "master", db: Session = Depends(get_db)):
     """ดึงข้อมูล Branding สำหรับหน้า Login และหน้าทั่วไป (ไม่ต้อง Login)"""
-    return crud.get_settings(db, hospital_slug=slug)
+    from app.models.system_setting import SystemSetting as SystemSettingModel
+    from sqlalchemy.orm import joinedload
+    settings = (
+        db.query(SystemSettingModel)
+        .filter(SystemSettingModel.hospital_slug == slug)
+        .options(
+            joinedload(SystemSettingModel.default_surgical_test),
+            joinedload(SystemSettingModel.default_gyne_test),
+            joinedload(SystemSettingModel.default_non_gyne_test),
+        )
+        .first()
+    )
+    if not settings:
+        return crud.get_settings(db, hospital_slug="master")
+    return settings
 
 
 @router.patch("/update", response_model=SystemSettingResponse)

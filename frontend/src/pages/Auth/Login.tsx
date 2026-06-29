@@ -26,7 +26,8 @@ const { Title, Text } = Typography;
 
 const Login: React.FC = () => {
   const { isDarkMode, backgroundStyle } = useTheme();
-  const { hospitalSlug } = useParams<{ hospitalSlug: string }>();
+  const { hospitalSlug: rawSlug } = useParams<{ hospitalSlug: string }>();
+  const hospitalSlug = rawSlug && /^[a-zA-Z0-9-]+$/.test(rawSlug) ? rawSlug : undefined;
   const [form] = Form.useForm();
   const [loading, setLoading] = useState<boolean>(false);
   const [branding, setBranding] = useState<SystemSetting | null>(null);
