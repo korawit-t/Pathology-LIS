@@ -112,6 +112,7 @@
         line-height: 1.4;
       }
 
+
       .badge-container {
         position: absolute;
         top: 10px;
@@ -295,7 +296,7 @@
                 {% elif is_pending %}
                 <span class="badge badge-pending">PENDING</span>
                 {% else %}
-                <span class="badge badge-final">✓ FINAL REPORT</span>
+                <span class="badge badge-final">FINAL REPORT</span>
                 {% endif %}
               </div>
               <div style="font-size: 15px; color: #0f172a; line-height: 1.5; padding-right: 120px; word-wrap: break-word;">{{ (diagnosis_summary or '-') | safe }}</div>

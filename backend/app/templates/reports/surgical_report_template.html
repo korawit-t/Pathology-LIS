@@ -515,20 +515,15 @@
                 <span class="badge badge-pending">PENDING</span>
                 {% else %}
                 <span class="badge badge-final">FINAL REPORT</span>
-                {% endif %} {% if has_malignancy %}
-                <span class="badge badge-malignancy">! MALIGNANCY</span>
-                {% endif %} {% if has_critical %}
-                <span class="badge badge-critical">! CRITICAL</span>
+                {% endif %}
+                {% if has_malignancy %}
+                <span class="badge badge-malignancy">MALIGNANCY</span>
+                {% endif %}
+                {% if has_critical %}
+                <span class="badge badge-critical">CRITICAL</span>
                 {% endif %}
               </div>
-
-              <div
-                style="
-                  font-size: 15px;
-                  color: #0f172a;
-                  line-height: 1.5;
-                "
-              >
+              <div style="font-size: 15px; color: #0f172a; line-height: 1.5;">
                 {{ diagnosis_summary | safe }}
               </div>
             </div>
