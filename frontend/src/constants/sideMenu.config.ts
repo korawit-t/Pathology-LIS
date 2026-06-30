@@ -38,6 +38,8 @@ export interface SideMenuItem {
   icon?: ComponentType;
   roles?: UserRole[];
   children?: SideMenuItem[];
+  /** Hide this item when the named SystemSetting boolean is false */
+  featureFlag?: string;
 }
 
 export const SIDE_MENU_CONFIG: SideMenuItem[] = [
@@ -215,6 +217,7 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         label: "Slide Dispatch",
         view: "nongyne-slide-dispatch",
         roles: PAGE_PERMISSIONS["slide-dispatch"],
+        featureFlag: "nongyne_slide_dispatch_enabled",
       },
       {
         key: "nongyne-cell-block",
@@ -426,14 +429,19 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
 export function buildAuthorizedMenuItems(
   config: SideMenuItem[],
   roles: string[],
+  enabledFlags: Record<string, boolean> = {},
 ): NonNullable<MenuProps["items"]> {
   const hasAccess = (item: SideMenuItem) =>
     !item.roles || item.roles.some((r) => roles.includes(r));
+
+  const isVisible = (item: SideMenuItem) =>
+    !item.featureFlag || enabledFlags[item.featureFlag] !== false;
 
   const build = (items: SideMenuItem[]): NonNullable<MenuProps["items"]> =>
     items
       .map((item): NonNullable<MenuProps["items"]>[number] | null => {
         if (!hasAccess(item)) return null;
+        if (!isVisible(item)) return null;
         if (item.children) {
           const children = build(item.children);
           if (children.length === 0) return null;

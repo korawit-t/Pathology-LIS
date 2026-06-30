@@ -204,12 +204,9 @@ const ReportMasterControl: React.FC<ReportMasterControlProps> = ({
   form,
 }) => {
   // --- Logic การหา Order ล่าสุด ---
-  // ถ้าไม่มี reports เลยให้เริ่มที่ 1
-  // ถ้ามีแล้ว ให้หาเลข diagnosis_order ที่สูงที่สุดแล้วบวก 1
-  const nextOrder =
-    reports.length > 0
-      ? Math.max(...reports.map((r) => r.diagnosis_order ?? 0)) + 1
-      : 1;
+  const maxOrder = reports.length > 0 ? Math.max(...reports.map((r) => r.diagnosis_order ?? 0)) : 0;
+  const maxOrderAllSigned = maxOrder > 0 && reports.filter((r) => (r.diagnosis_order ?? 0) === maxOrder).every((r) => r.status === "signed");
+  const nextOrder = maxOrder === 0 ? 1 : maxOrderAllSigned ? maxOrder + 1 : maxOrder;
 
   const [controlOpen, setControlOpen] = useState(false);
 

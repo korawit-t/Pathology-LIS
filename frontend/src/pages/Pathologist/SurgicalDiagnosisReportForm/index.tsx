@@ -53,7 +53,7 @@ import SurgicalReportToolbar from "./components/SurgicalReportToolbar";
 import ReportHistorySection from "./components/ReportHistorySection";
 import PathologistDiagnosisManager from "./components/PathologistDiagnosisManager";
 import ReportMasterControl from "./components/ReportMasterControl";
-import FinalizeReportModal from "./components/FinalizeReportModal";
+import FinalizeReportPage from "./components/FinalizeReportPage";
 import ReportStationSettingsModal from "./components/ReportStationSettingsModal";
 import CaseFlagManager from "./components/CaseFlagManager";
 import CytoHistoCorrelationCard from "./components/CytoHistoCorrelationCard";
@@ -70,7 +70,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import logger from "../../../utils/logger";
 import type { User } from "../../../types/user";
 import type { SurgicalReport } from "../../../types/surgicalReport";
-import { FinalizeData } from "./components/FinalizeReportModal";
+import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
 import type { WsiFile } from "../../../types/system";
 
@@ -1314,7 +1314,7 @@ const handleOpenFinalizeModal = async () => {
         </Row>
       </Modal>
 
-      <FinalizeReportModal
+      <FinalizeReportPage
         open={isFinalizeModalOpen}
         onCancel={() => setIsFinalizeModalOpen(false)}
         onConfirm={handleConfirmFinalize}

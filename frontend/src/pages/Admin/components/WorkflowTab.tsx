@@ -280,6 +280,16 @@ const WorkflowTab: React.FC = () => {
                 <NonGyneSignSwitch />
               </Form.Item>
           </SettingRow>
+
+          <SettingRow
+            icon={<ControlOutlined style={{ color: "#722ed1" }} />}
+            title="Non-Gyne: Enable Slide Dispatch"
+            description='สำหรับ Non-Gyne Cytology — เปิด: Cytotechnologist กด "Send to Pathologist" แล้วต้องรอ Lab Tech สแกนส่งสไลด์ผ่านหน้า Slide Dispatch อีกครั้ง | ปิด: กด "Send to Pathologist" เพียงครั้งเดียวแล้วสไลด์ถูกส่งถึง Pathologist ทันที'
+          >
+            <Form.Item name="nongyne_slide_dispatch_enabled" valuePropName="checked" noStyle>
+              <Switch checkedChildren="ON" unCheckedChildren="OFF" />
+            </Form.Item>
+          </SettingRow>
         </div>
 
         {/* Section: Session Security */}

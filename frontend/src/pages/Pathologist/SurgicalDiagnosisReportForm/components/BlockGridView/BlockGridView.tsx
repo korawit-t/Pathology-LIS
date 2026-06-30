@@ -22,7 +22,7 @@ import {
 import SurgicalBlockService from "../../../../../services/surgicalBlockService";
 import { SurgicalBlock } from "../../../../../types/surgical";
 import SurgicalBlockStainService from "../../../../../services/surgicalBlockStainService";
-import StainManagementModal from "./StainManagementModal";
+import StainManagementPage from "./StainManagementPage";
 import styles from "./BlockGridView.module.css";
 import logger from "../../../../../utils/logger";
 
@@ -49,8 +49,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
 }) => {
   const [blocks, setBlocks] = useState<SurgicalBlock[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedBlock, setSelectedBlock] = useState<SurgicalBlock | null>(null);
+  const [stainPageBlock, setStainPageBlock] = useState<SurgicalBlock | null>(null);
   const [editingCell, setEditingCell] = useState<{ id: number; field: "tissue_count" | "tissue_description" } | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
   const [recutBlock, setRecutBlock] = useState<SurgicalBlock | null>(null);
@@ -83,8 +82,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
   }, [fetchBlocks]);
 
   const handleBlockClick = (block: SurgicalBlock) => {
-    setSelectedBlock(block);
-    setIsModalOpen(true);
+    setStainPageBlock(block);
   };
 
   const startEdit = (block: SurgicalBlock, field: "tissue_count" | "tissue_description") => {
@@ -506,10 +504,10 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
         )}
       </div>
 
-      <StainManagementModal
-        open={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
-        selectedBlock={selectedBlock}
+      <StainManagementPage
+        open={!!stainPageBlock}
+        onCancel={() => { fetchBlocks(); setStainPageBlock(null); }}
+        selectedBlock={stainPageBlock}
         defaultLabel={defaultLabel}
         onSuccess={fetchBlocks}
         caseInfo={caseInfo}

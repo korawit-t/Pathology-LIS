@@ -17,6 +17,7 @@ from app.models.notification_channel import NotificationChannel
 from app.models.system_setting import SystemSetting
 from app.models.notification_rule import NotificationRule
 from app.models.tissue_processing import ProcessorMachine, ProcessingProgram
+from app.models.stain_panel import StainPanel, StainPanelItem
 
 
 # 1. ฟังก์ชันสร้างคำนำหน้า
@@ -2148,6 +2149,375 @@ def seed_tissue_processing(db: Session):
         print(f"❌ Error seeding tissue processing: {e}")
 
 
+def seed_stain_panels(db: Session):
+    """Seed common IHC / Special-stain panels used in surgical pathology."""
+
+    admin = db.query(User).filter(User.username == "admin").first()
+    admin_id = admin.id if admin else None
+
+    def _find(name: str):
+        return (
+            db.query(AnatomicalPathologyTest)
+            .filter(AnatomicalPathologyTest.name == name)
+            .first()
+        )
+
+    PANELS = [
+        # ── Lymphoma ──────────────────────────────────────────────────────
+        {
+            "name": "B-cell Lymphoma Screening",
+            "category": "Lymphoma",
+            "description": "First-line IHC for B-cell lymphoma workup. Covers lineage, follicular markers, and proliferation index.",
+            "tests": [
+                "CD20", "CD3", "CD5", "CD10", "CD23", "Bcl-2", "Bcl-6",
+                "Ki-67 (MIB-1)", "CD79a", "CD45",
+            ],
+        },
+        {
+            "name": "T-cell Lymphoma Screening",
+            "category": "Lymphoma",
+            "description": "First-line IHC for T-cell / NK-cell lymphoma. Includes cytotoxic markers.",
+            "tests": [
+                "CD3", "CD4", "CD8", "CD5", "CD56", "CD30",
+                "TIA-1", "Granzyme B", "CD45", "Ki-67 (MIB-1)",
+            ],
+        },
+        {
+            "name": "Hodgkin Lymphoma",
+            "category": "Lymphoma",
+            "description": "Classic Hodgkin lymphoma (cHL) vs NLPHL differentiation. RS cell markers plus background.",
+            "tests": [
+                "CD30", "CD15", "CD20", "CD3", "CD45", "EBV",
+                "Ki-67 (MIB-1)", "BOB-1", "CD79a", "EMA",
+            ],
+        },
+        {
+            "name": "Mantle Cell Lymphoma",
+            "category": "Lymphoma",
+            "description": "MCL panel. Cyclin D1 overexpression + CD5+/CD23- pattern is hallmark.",
+            "tests": [
+                "CD20", "CD5", "Cyclin D1", "CD23", "Ki-67 (MIB-1)",
+                "CD3", "Bcl-2", "CD79a",
+            ],
+        },
+        {
+            "name": "Follicular Lymphoma",
+            "category": "Lymphoma",
+            "description": "FL grading and follicular vs diffuse architecture distinction.",
+            "tests": [
+                "CD20", "Bcl-2", "Bcl-6", "CD10", "CD3",
+                "CD23", "Ki-67 (MIB-1)", "CD5",
+            ],
+        },
+        {
+            "name": "Diffuse Large B-Cell Lymphoma (DLBCL)",
+            "category": "Lymphoma",
+            "description": "DLBCL profiling for GCB vs non-GCB (Hans algorithm) and double-hit assessment.",
+            "tests": [
+                "CD20", "CD3", "CD10", "Bcl-2", "Bcl-6",
+                "MUM-1", "Ki-67 (MIB-1)", "c-myc", "CD30", "CD45",
+            ],
+        },
+        {
+            "name": "Anaplastic Large Cell Lymphoma (ALCL)",
+            "category": "Lymphoma",
+            "description": "ALCL panel. ALK status separates ALK+ (better prognosis) from ALK-.",
+            "tests": [
+                "CD30", "ALK protein", "EMA", "CD3", "CD20",
+                "CD45", "TIA-1", "Granzyme B", "Ki-67 (MIB-1)",
+            ],
+        },
+        {
+            "name": "Plasma Cell Neoplasm / Myeloma",
+            "category": "Lymphoma",
+            "description": "Multiple myeloma / plasmacytoma workup. Light chain restriction assessment.",
+            "tests": [
+                "CD138", "MUM-1", "Kappa", "Lambda", "EMA",
+                "CD20", "CD3", "Ki-67 (MIB-1)",
+            ],
+        },
+        # ── Breast ───────────────────────────────────────────────────────
+        {
+            "name": "Breast Carcinoma — ER/PR/HER2/Ki67",
+            "category": "Breast",
+            "description": "Standard breast carcinoma biomarker panel for treatment decision (hormonal therapy, trastuzumab).",
+            "tests": [
+                "ER (Estrogen Receptor)", "PR (Progesterone Receptor)",
+                "HER-2", "Ki-67 (MIB-1)",
+            ],
+        },
+        {
+            "name": "Breast Carcinoma Extended",
+            "category": "Breast",
+            "description": "Extended breast panel including basal markers and E-cadherin for lobular vs ductal distinction.",
+            "tests": [
+                "ER (Estrogen Receptor)", "PR (Progesterone Receptor)", "HER-2",
+                "Ki-67 (MIB-1)", "p53", "EGFR", "E-cadherin",
+                "GCDFP-15", "CK-5/6", "p63",
+            ],
+        },
+        {
+            "name": "Breast vs Metastatic Carcinoma",
+            "category": "Breast",
+            "description": "Distinguish primary breast carcinoma from metastatic adenocarcinoma to breast.",
+            "tests": [
+                "ER (Estrogen Receptor)", "PR (Progesterone Receptor)", "GCDFP-15",
+                "CEA", "CK-7", "CK-20", "CK-5/6", "EMA",
+            ],
+        },
+        # ── Lung ─────────────────────────────────────────────────────────
+        {
+            "name": "Lung Carcinoma Subtyping",
+            "category": "Lung",
+            "description": "Adenocarcinoma (TTF-1+) vs squamous cell carcinoma (p63/CK-5/6+) vs SCLC (NE markers).",
+            "tests": [
+                "TTF-1", "CK-7", "p63", "CK-5/6",
+                "Synaptophysin", "Chromogranin A", "CD56", "NSE", "Ki-67 (MIB-1)",
+            ],
+        },
+        {
+            "name": "Pulmonary Neuroendocrine Tumor",
+            "category": "Lung",
+            "description": "SCLC, carcinoid, large-cell neuroendocrine. Ki-67 separates typical from atypical carcinoid.",
+            "tests": [
+                "Synaptophysin", "Chromogranin A", "CD56", "NSE",
+                "Ki-67 (MIB-1)", "CK-7", "TTF-1", "EMA",
+            ],
+        },
+        # ── Gastrointestinal ─────────────────────────────────────────────
+        {
+            "name": "GI Neuroendocrine Tumor (NET)",
+            "category": "GI",
+            "description": "GI NET workup including hormonal markers for functional tumors.",
+            "tests": [
+                "Synaptophysin", "Chromogranin A", "Ki-67 (MIB-1)", "CD56",
+                "NSE", "Glucagon", "Serotonin", "Insulin", "Gastrin", "Somatostatin",
+            ],
+        },
+        {
+            "name": "GIST Panel",
+            "category": "GI",
+            "description": "Gastrointestinal stromal tumor. CD117 (c-kit) is the key marker; DOG1 equivalent via SMA for smooth muscle.",
+            "tests": [
+                "CD117", "CD34", "Smooth muscle actin (SMA)",
+                "Desmin", "S-100", "Ki-67 (MIB-1)",
+            ],
+        },
+        {
+            "name": "GI Adenocarcinoma Origin",
+            "category": "GI",
+            "description": "CK7/CK20/CDX2 algorithm to identify colonic vs upper GI vs other adenocarcinoma origin.",
+            "tests": [
+                "CK-7", "CK-20", "CDX-2", "CEA",
+                "EMA", "MOC-31", "Villin", "MUC-2",
+            ],
+        },
+        {
+            "name": "H. pylori & GI Infections",
+            "category": "GI",
+            "description": "IHC panel for common GI infective agents when morphology is equivocal.",
+            "tests": [
+                "H. pylori", "CMV", "Cryptosporidium",
+            ],
+        },
+        # ── Soft Tissue ───────────────────────────────────────────────────
+        {
+            "name": "Soft Tissue Tumor — Basic Lineage",
+            "category": "Soft Tissue",
+            "description": "First-line panel to assign lineage (epithelial / mesenchymal / neural) in soft-tissue masses.",
+            "tests": [
+                "Vimentin", "AE 1/AE3", "S-100", "CD34",
+                "Smooth muscle actin (SMA)", "Desmin", "CD99", "EMA",
+            ],
+        },
+        {
+            "name": "Rhabdomyosarcoma",
+            "category": "Soft Tissue",
+            "description": "RMS panel. Myogenin is most specific; Desmin/Myoglobin confirm skeletal muscle differentiation.",
+            "tests": [
+                "Myogenin", "Desmin", "Myoglobin", "Myosin",
+                "Sarcomeric actin", "CD99", "Vimentin", "HHF-35",
+            ],
+        },
+        {
+            "name": "Nerve Sheath Tumor (MPNST / Schwannoma)",
+            "category": "Soft Tissue",
+            "description": "Neural/nerve sheath differentiation; S-100 loss in high-grade MPNST.",
+            "tests": [
+                "S-100", "CD34", "EMA", "p63",
+                "Neurofilament", "PGP 9.5",
+            ],
+        },
+        {
+            "name": "Vascular Tumor Panel",
+            "category": "Soft Tissue",
+            "description": "Endothelial differentiation markers. CD31 most sensitive; Factor VIII most specific.",
+            "tests": [
+                "CD31", "CD34", "Factor VIII",
+                "CD141 (Thrombomodulin)", "Ulex B279",
+            ],
+        },
+        # ── Melanoma ──────────────────────────────────────────────────────
+        {
+            "name": "Melanoma Panel",
+            "category": "IHC",
+            "description": "Melanoma confirmation and differentiation from carcinoma / sarcoma.",
+            "tests": [
+                "S-100", "HMB-45", "Melan A", "Tyrosinase",
+                "Ki-67 (MIB-1)", "Vimentin",
+            ],
+        },
+        # ── Prostate ──────────────────────────────────────────────────────
+        {
+            "name": "Prostate Carcinoma",
+            "category": "IHC",
+            "description": "PCa confirmation (PSA/PSAP/AMACR) and basal cell absence (p63/CK-5/6).",
+            "tests": [
+                "PSA", "PSAP", "P504S (AMACR)",
+                "p63", "CK-5/6", "CK-7",
+            ],
+        },
+        # ── Thyroid ───────────────────────────────────────────────────────
+        {
+            "name": "Thyroid Tumor Panel",
+            "category": "IHC",
+            "description": "PTC/FTC (TG+/TTF-1+), MTC (Calcitonin+/CEA+), undifferentiated (loss of markers).",
+            "tests": [
+                "Thyroglobulin (TG)", "TTF-1", "Calcitonin",
+                "CEA", "Ki-67 (MIB-1)", "p63", "CK-5/6", "EMA",
+            ],
+        },
+        # ── Renal ─────────────────────────────────────────────────────────
+        {
+            "name": "Renal Cell Carcinoma Panel",
+            "category": "IHC",
+            "description": "RCC subtyping: clear cell (CD10+/RCCAg+), papillary (AMACR+/CK7+), chromophobe (CK7+/CD117+).",
+            "tests": [
+                "Renal cell carcinoma Ag", "CD10", "CK-7",
+                "Vimentin", "CD34", "EMA",
+                "Wilms' tumor (WT-1)", "P504S (AMACR)",
+            ],
+        },
+        # ── Liver ─────────────────────────────────────────────────────────
+        {
+            "name": "Hepatic Tumor Panel",
+            "category": "IHC",
+            "description": "HCC (Hepatocyte+/AFP+/CD34 sinusoidal) vs cholangiocarcinoma (CK7+/CK19+) vs metastasis.",
+            "tests": [
+                "Hepatocyte", "AFP", "CEA", "CD34",
+                "CK-7", "CK-20", "CK-19", "HBsAg", "HBcAg", "EMA",
+            ],
+        },
+        # ── Germ Cell ─────────────────────────────────────────────────────
+        {
+            "name": "Germ Cell Tumor Panel",
+            "category": "IHC",
+            "description": "Seminoma (PLAP+/OCT3/4+/CD117+) vs embryonal carcinoma (CD30+) vs choriocarcinoma (β-hCG+).",
+            "tests": [
+                "PLAP", "OCT-3/4", "CD117", "AFP",
+                "Beta-hCG", "EMA", "CD30", "CK-7", "CD99",
+            ],
+        },
+        # ── CNS ───────────────────────────────────────────────────────────
+        {
+            "name": "Brain Tumor — Basic",
+            "category": "IHC",
+            "description": "Astrocytic (GFAP+), neuronal (Synaptophysin+/NF+), embryonal (CD99+), meningeal (EMA+) lineage.",
+            "tests": [
+                "GFAP", "S-100", "Neurofilament", "Synaptophysin",
+                "Ki-67 (MIB-1)", "EMA", "Vimentin", "CD99", "Chromogranin A",
+            ],
+        },
+        # ── Mesothelioma ──────────────────────────────────────────────────
+        {
+            "name": "Mesothelioma vs Adenocarcinoma",
+            "category": "IHC",
+            "description": "2 positive mesothelioma markers + 2 negative adenocarcinoma markers approach.",
+            "tests": [
+                "Calretinin", "Wilms' tumor (WT-1)", "CK-5/6",
+                "Ber-EP 4", "CEA", "MOC-31", "EMA",
+            ],
+        },
+        # ── Unknown Primary ───────────────────────────────────────────────
+        {
+            "name": "Carcinoma of Unknown Primary (CUP)",
+            "category": "IHC",
+            "description": "Broad panel for determining origin of metastatic carcinoma. Interpret CK7/CK20 pattern first.",
+            "tests": [
+                "CK-7", "CK-20", "TTF-1", "CDX-2", "PSA",
+                "ER (Estrogen Receptor)", "CK-5/6", "p63",
+                "Hepatocyte", "CEA", "Thyroglobulin (TG)",
+            ],
+        },
+        # ── Renal Biopsy IF ───────────────────────────────────────────────
+        {
+            "name": "Renal Biopsy — Immunofluorescence",
+            "category": "IHC",
+            "description": "Immune deposit characterisation in medical renal disease (IgA nephropathy, lupus, membranous).",
+            "tests": [
+                "IgA", "IgG", "IgM", "C1q", "C3c",
+                "Fibrinogen", "Kappa", "Lambda",
+            ],
+        },
+        # ── Infection IHC ─────────────────────────────────────────────────
+        {
+            "name": "Infection IHC Screen",
+            "category": "IHC",
+            "description": "IHC confirmation of common opportunistic and viral pathogens in tissue sections.",
+            "tests": [
+                "CMV", "EBV", "H. pylori", "HSV (type II)",
+                "HBsAg", "Chlamydia", "Cryptosporidium", "Pneumocystis",
+            ],
+        },
+        # ── Special Stain ─────────────────────────────────────────────────
+        {
+            "name": "Infection Special Stains",
+            "category": "Special Stain",
+            "description": "AFB for mycobacteria; GMS for fungi. Order together when granulomatous inflammation or fungal infection is suspected.",
+            "tests": [
+                "AFB (Acid Fast Bacilli)", "GMS (Grocott's Methenamine Silver)",
+            ],
+        },
+    ]
+
+    print("🌱 Seeding Stain Panels...")
+    added = skipped = not_found_total = 0
+
+    for panel_data in PANELS:
+        exists = db.query(StainPanel).filter(StainPanel.name == panel_data["name"]).first()
+        if exists:
+            skipped += 1
+            continue
+
+        panel = StainPanel(
+            name=panel_data["name"],
+            category=panel_data["category"],
+            description=panel_data.get("description"),
+            is_active=True,
+            created_by_id=admin_id,
+        )
+        db.add(panel)
+        db.flush()
+
+        found_tests = []
+        for test_name in panel_data["tests"]:
+            test = _find(test_name)
+            if test:
+                found_tests.append(test)
+            else:
+                not_found_total += 1
+                print(f"   ⚠️  Test not found: '{test_name}' (panel: {panel_data['name']})")
+
+        for i, test in enumerate(found_tests):
+            db.add(StainPanelItem(stain_panel_id=panel.id, test_id=test.id, sort_order=i))
+
+        db.commit()
+        print(f"   + [{panel_data['category']}] {panel_data['name']} ({len(found_tests)} tests)")
+        added += 1
+
+    print(f"✅ Stain Panels: เพิ่ม {added} panels, ข้าม {skipped} (มีอยู่แล้ว), test ไม่พบ {not_found_total} รายการ")
+
+
 if __name__ == "__main__":
     db = SessionLocal()
     try:
@@ -2180,6 +2550,9 @@ if __name__ == "__main__":
 
         # 7. Notification Rules
         seed_notification_rules(db)
+
+        # 8. Stain Panels
+        seed_stain_panels(db)
 
         print("\n✅ All seeding operations completed successfully!")
     except Exception as e:

@@ -56,7 +56,7 @@ import GyneClinicalInfoCard from "./components/GyneClinicalInfoCard";
 import GyneReportedResult from "./components/GyneReportedResult";
 import GyneCytologyImagesSection from "./components/GyneCytologyImagesSection";
 import GyneQCReviewSection from "./components/GyneQCReviewSection";
-import GyneSlideQualityModal from "./components/GyneSlideQualityModal";
+import GyneSignOffPage from "./components/GyneSignOffPage";
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -1205,7 +1205,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
       </Modal>
 
       {/* ── Slide Quality Modal ── */}
-      <GyneSlideQualityModal
+      <GyneSignOffPage
         open={slideQualityModalOpen}
         caseId={caseId}
         caseData={caseData}

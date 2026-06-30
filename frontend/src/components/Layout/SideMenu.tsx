@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Menu } from 'antd';
 import { SIDE_MENU_CONFIG, buildAuthorizedMenuItems, SideMenuItem } from '../../constants/sideMenu.config';
+import SystemSettingService from '../../services/systemSettingService';
 
 /* =======================
    Types
@@ -37,11 +38,18 @@ const findGroupKey = (
 
 const SideMenu: React.FC<SideMenuProps> = ({ user, setCurrentView, currentView }) => {
   const roles = user?.roles ?? [];
+  const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    SystemSettingService.getSettings()
+      .then((s) => setEnabledFlags({ nongyne_slide_dispatch_enabled: s.nongyne_slide_dispatch_enabled ?? true }))
+      .catch(() => {});
+  }, []);
 
   const menuItems = useMemo(
-    () => buildAuthorizedMenuItems(SIDE_MENU_CONFIG, roles),
+    () => buildAuthorizedMenuItems(SIDE_MENU_CONFIG, roles, enabledFlags),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [roles.join(',')],
+    [roles.join(','), enabledFlags],
   );
 
   const [openKeys, setOpenKeys] = useState<string[]>(() => {

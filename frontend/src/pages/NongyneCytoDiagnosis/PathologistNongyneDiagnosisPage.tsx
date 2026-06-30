@@ -19,7 +19,6 @@ import {
   Tooltip,
   Switch,
   Modal,
-  Radio,
   Drawer,
   Table,
 } from "antd";
@@ -29,7 +28,6 @@ import {
   EditOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
-  ExclamationCircleOutlined,
   LockOutlined,
   WarningOutlined,
   CameraOutlined,
@@ -73,8 +71,9 @@ import logger from "../../utils/logger";
 import SecureImage from "../../components/SecureImage";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
-import CriticalNotificationSection from "../../components/CriticalNotificationSection";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
+import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
+import NongyneSignOffPage from "./components/NongyneSignOffPage";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -157,20 +156,13 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   );
   const [descMap, setDescMap] = useState<Record<number, string>>({});
   const [slideQualityModalOpen, setSlideQualityModalOpen] = useState(false);
-  const [slideQuality, setSlideQuality] = useState<string | null>(null);
-  const [stainQuality, setStainQuality] = useState<string | null>(null);
-  const [isCasePending, setIsCasePending] = useState(false);
-  const [pendingReason, setPendingReason] = useState("");
-  const [slideQualityPdfUrl, setSlideQualityPdfUrl] = useState<string | null>(
-    null,
-  );
-  const [slideQualityPdfLoading, setSlideQualityPdfLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
   const [consultModalOpen, setConsultModalOpen] = useState(false);
   const [consultHistoryKey, setConsultHistoryKey] = useState(0);
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
+  const [grossTemplateDrawerOpen, setGrossTemplateDrawerOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
   const [completedReports, setCompletedReports] = useState<any[]>([]);
@@ -281,8 +273,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     ])
       .then(([caseRes, settings, users, me]) => {
         setCaseData(caseRes);
-        setSlideQuality(caseRes.slide_quality ?? null);
-        setStainQuality(caseRes.stain_quality ?? null);
         setSystemSettings(settings);
         setAllUsers(users);
         setCurrentUser(me);
@@ -335,36 +325,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   useEffect(() => {
     fetchDiagnosis();
   }, [caseId, form]);
-
-  useEffect(() => {
-    let activeUrl: string | null = null;
-    let cancelled = false;
-    if (slideQualityModalOpen && caseId) {
-      setSlideQualityPdfLoading(true);
-      NongyneDiagnosisService.previewReportPdf(
-        Number(caseId),
-        isCasePending,
-        isCasePending ? pendingReason : undefined,
-      )
-        .then((blob) => {
-          if (cancelled) return;
-          activeUrl = URL.createObjectURL(blob);
-          setSlideQualityPdfUrl(activeUrl);
-        })
-        .catch((err) => {
-          if (!cancelled) logger.error("pdf preview", err);
-        })
-        .finally(() => {
-          if (!cancelled) setSlideQualityPdfLoading(false);
-        });
-    } else {
-      setSlideQualityPdfUrl(null);
-    }
-    return () => {
-      cancelled = true;
-      if (activeUrl) URL.revokeObjectURL(activeUrl);
-    };
-  }, [slideQualityModalOpen, caseId, isCasePending, pendingReason]);
 
   const isFinalized = useMemo(
     () =>
@@ -487,14 +447,15 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   };
 
   const handleFinalizeClick = () => {
-    setSlideQuality(caseData?.slide_quality ?? null);
-    setStainQuality(caseData?.stain_quality ?? null);
-    setIsCasePending(caseData?.is_pending ?? false);
-    setPendingReason("");
     setSlideQualityModalOpen(true);
   };
 
-  const handleFinalize = async () => {
+  const handleFinalize = async (
+    slideQuality: string | null,
+    stainQuality: string | null,
+    isCasePending: boolean,
+    pendingReason: string,
+  ) => {
     if (!diagnosis) return;
     try {
       setSubmitting(true);
@@ -1053,13 +1014,18 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   styles={{ body: { padding: "24px" } }}
                   style={{ height: "100%" }}
                 >
-                  <div style={{ marginBottom: 8 }}>
+                  <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <Space>
                       <EyeOutlined style={{ color: "#595959" }} />
                       <Text strong style={{ textTransform: "uppercase" }}>
                         Gross Description
                       </Text>
                     </Space>
+                    {!isFormLocked && (
+                      <Button size="small" icon={<FileTextOutlined />} onClick={() => setGrossTemplateDrawerOpen(true)}>
+                        Templates
+                      </Button>
+                    )}
                   </div>
                   <Form.Item name="gross_description" noStyle>
                     <SimpleTiptapEditor
@@ -1447,191 +1413,17 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         onSuccess={() => fetchImages()}
       />
 
-      {/* ── Sign Off Modal ── */}
-      <Modal
+      <NongyneSignOffPage
         open={slideQualityModalOpen}
-        title={
-          <Space>
-            <ExclamationCircleOutlined style={{ color: "#faad14" }} />
-            <span>Sign Off Report</span>
-          </Space>
-        }
-        okText="Confirm & Sign Off"
-        cancelText="Cancel"
-        okButtonProps={{
-          disabled: !slideQuality || !stainQuality,
-          loading: submitting,
-          danger: true,
-        }}
-        onCancel={() => setSlideQualityModalOpen(false)}
-        onOk={async () => {
-          setSlideQualityModalOpen(false);
-          await handleFinalize();
-        }}
-        width={1400}
-        centered
-        style={{ top: 20 }}
-      >
-        <Row gutter={24}>
-          <Col span={8} style={{ borderRight: "1px solid #f0f0f0" }}>
-            <p style={{ margin: "0 0 16px 0" }}>
-              Results cannot be edited after sign-off. Please verify the
-              accuracy of the report before confirming.
-            </p>
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                1. Slide Quality <span style={{ color: "#ff4d4f" }}>*</span>
-              </div>
-              <Radio.Group
-                value={slideQuality}
-                onChange={(e) => setSlideQuality(e.target.value)}
-                style={{ width: "100%" }}
-              >
-                <Space direction="vertical" style={{ width: "100%" }}>
-                  <Radio value="good">
-                    <Tag color="success">Good</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Good quality, ready to read
-                    </span>
-                  </Radio>
-                  <Radio value="fair">
-                    <Tag color="warning">Fair</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Moderate quality, readable with limitations
-                    </span>
-                  </Radio>
-                  <Radio value="poor">
-                    <Tag color="error">Poor</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Poor quality, difficult to read
-                    </span>
-                  </Radio>
-                </Space>
-              </Radio.Group>
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                2. Stain Quality <span style={{ color: "#ff4d4f" }}>*</span>
-              </div>
-              <Radio.Group
-                value={stainQuality}
-                onChange={(e) => setStainQuality(e.target.value)}
-                style={{ width: "100%" }}
-              >
-                <Space direction="vertical" style={{ width: "100%" }}>
-                  <Radio value="good">
-                    <Tag color="success">Good</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Uniform and clear staining
-                    </span>
-                  </Radio>
-                  <Radio value="fair">
-                    <Tag color="warning">Fair</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Acceptable staining with minor defects
-                    </span>
-                  </Radio>
-                  <Radio value="poor">
-                    <Tag color="error">Poor</Tag>
-                    <span style={{ color: "#595959" }}>
-                      Non-uniform staining, affecting diagnosis
-                    </span>
-                  </Radio>
-                </Space>
-              </Radio.Group>
-            </div>
-            {(!slideQuality || !stainQuality) && (
-              <div style={{ marginTop: 12, color: "#ff4d4f", fontSize: 12 }}>
-                Please complete both assessments before proceeding.
-              </div>
-            )}
-            <div
-              style={{
-                marginTop: 20,
-                paddingTop: 16,
-                borderTop: "1px solid #f0f0f0",
-              }}
-            >
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                3. Report Completion
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  marginBottom: 8,
-                }}
-              >
-                <Switch
-                  checked={!isCasePending}
-                  onChange={(checked) => {
-                    setIsCasePending(!checked);
-                    if (checked) setPendingReason("");
-                  }}
-                  checkedChildren="Complete"
-                  unCheckedChildren="Pending"
-                  style={{
-                    backgroundColor: !isCasePending ? "#52c41a" : "#faad14",
-                  }}
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {isCasePending
-                    ? "Report will be marked as Provisional/Pending"
-                    : "Final signed report"}
-                </Text>
-              </div>
-              {isCasePending && (
-                <TextArea
-                  rows={2}
-                  placeholder="Reason for provisional status (e.g. awaiting IHC results)..."
-                  value={pendingReason}
-                  onChange={(e) => setPendingReason(e.target.value)}
-                  style={{ marginTop: 4 }}
-                />
-              )}
-            </div>
-            {caseId && (
-              <CriticalNotificationSection
-                caseId={Number(caseId)}
-                caseType="NONGYNE_CYTO"
-                accessionNo={caseData?.accession_no}
-              />
-            )}
-          </Col>
-          <Col span={16}>
-            <div
-              style={{
-                height: "75vh",
-                background: "#f5f5f5",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                borderRadius: 8,
-                border: "1px solid #d9d9d9",
-                overflow: "hidden",
-              }}
-            >
-              {slideQualityPdfLoading ? (
-                <Spin tip="Generating Preview..." size="large" />
-              ) : slideQualityPdfUrl ? (
-                <iframe
-                  src={slideQualityPdfUrl}
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none" }}
-                  title="PDF Preview"
-                />
-              ) : (
-                <div style={{ textAlign: "center", color: "#999" }}>
-                  <FilePdfOutlined style={{ fontSize: 48, marginBottom: 8 }} />
-                  <p>No Preview Available</p>
-                </div>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Modal>
+        caseId={caseId}
+        caseData={caseData}
+        finalizing={submitting}
+        initialSlideQuality={caseData?.slide_quality ?? null}
+        initialStainQuality={caseData?.stain_quality ?? null}
+        initialIsCasePending={caseData?.is_pending ?? false}
+        onClose={() => setSlideQualityModalOpen(false)}
+        onConfirm={handleFinalize}
+      />
 
       {/* Case Already Signed Off popup */}
       <Modal
@@ -1835,6 +1627,25 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                 : curMicro + data.microscopic,
             );
             setTemplateDrawerOpen(false);
+          }}
+        />
+      </Drawer>
+
+      <Drawer
+        title="Gross Description Templates"
+        open={grossTemplateDrawerOpen}
+        onClose={() => setGrossTemplateDrawerOpen(false)}
+        width={720}
+        destroyOnClose
+      >
+        <GrossTemplateSystem
+          onFinishedText={(text, mode) => {
+            const cur = (form.getFieldValue("gross_description") as string) ?? "";
+            form.setFieldValue(
+              "gross_description",
+              mode === "replace" ? text : cur + text,
+            );
+            setGrossTemplateDrawerOpen(false);
           }}
         />
       </Drawer>

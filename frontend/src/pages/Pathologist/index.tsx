@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Tabs, Button, Badge, Modal, Typography, Tag, Space } from "antd";
+import { Tabs, Button, Badge, Modal, Typography, Tag, Space, Alert, Table, Spin } from "antd";
 import {
   ReloadOutlined,
   DeploymentUnitOutlined,
@@ -16,12 +16,17 @@ import {
   FormOutlined,
   FilePdfOutlined,
   LockOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons";
 
 const { Text } = Typography;
 import { useSurgicalCaseWorklist } from "./hooks/useCaseWorklist";
 import SurgicalCaseWorklist, { WorklistRow } from "./SurgicalDiagnosisReportForm/SurgicalCaseWorklist";
 import type { User } from "../../types/user";
+import PathologistService from "../../services/pathologistService";
+import { calculateTATProgress } from "../../utils/tatUtils";
+import { CASE_STATUS } from "../../constants/lab.constants";
 import GyneCytoWorklist from "../GyneCytoDiagnosis/GyneCytoWorklist";
 import PathologistNongyneWorklist from "../NongyneCytoDiagnosis/PathologistNongyneWorklist";
 import MySlideDispatches from "./components/MySlideDispatches";
@@ -43,10 +48,13 @@ const PathologistPage: React.FC<{
   defaultTab?: string;
 }> = ({ user, onSelectCase, defaultTab }) => {
   const { isDarkMode } = useTheme();
+  const [activeTab, setActiveTab] = useState(defaultTab || "surgical");
   const [readyStainCount, setReadyStainCount] = useState(0);
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
   const [pendingConsultCount, setPendingConsultCount] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [tatCases, setTatCases] = useState<(WorklistRow & { tatPercent: number; tatDisplay: string })[]>([]);
+  const [tatLoading, setTatLoading] = useState(false);
 
   const {
     filteredData,
@@ -68,6 +76,25 @@ const PathologistPage: React.FC<{
     refresh();
     setCytoRefreshTrigger((n) => n + 1);
   };
+
+  useEffect(() => {
+    if (activeTab !== "tat-overdue" || !user?.id || !systemSettings) return;
+    setTatLoading(true);
+    PathologistService.getMyWorklist(user.id, 0, 500, "", "ALL")
+      .then((data: any) => {
+        const items: WorklistRow[] = Array.isArray(data) ? data : (data.items ?? []);
+        const overdue = items
+          .flatMap((row) => {
+            const tat = calculateTATProgress(row.registered_at ?? "", "SURGICAL", systemSettings, row.is_express, holidays);
+            if (!tat?.isOverdue) return [];
+            return [{ ...row, tatPercent: tat.percent, tatDisplay: tat.displayTime }];
+          })
+          .sort((a, b) => b.tatPercent - a.tatPercent);
+        setTatCases(overdue);
+      })
+      .catch(() => {})
+      .finally(() => setTatLoading(false));
+  }, [activeTab, user?.id, systemSettings, holidays]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -110,6 +137,74 @@ const renderWorklist = (
       coSignCount={coSignTotal}
     />
   );
+
+  const tatColumns = [
+    {
+      title: "Accession No",
+      dataIndex: "accession_no",
+      key: "accession_no",
+      width: 140,
+      render: (v: string) => <Text strong style={{ fontFamily: "monospace" }}>{v ?? "-"}</Text>,
+    },
+    {
+      title: "Patient",
+      key: "patient",
+      render: (_: unknown, row: WorklistRow) => {
+        const name = [row.patient?.title?.title, row.patient?.name, row.patient?.ln]
+          .filter(Boolean).join(" ") || row.patient_name || "-";
+        return <Text>{name}</Text>;
+      },
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      width: 160,
+      render: (s: string) => <Tag color={s === CASE_STATUS.SLIDE_SENT ? "blue" : "orange"}>{s}</Tag>,
+    },
+    {
+      title: "TAT Elapsed",
+      key: "tat",
+      width: 120,
+      render: (_: unknown, row: WorklistRow & { tatDisplay: string }) => (
+        <Tag color="red" icon={<WarningOutlined />}>{row.tatDisplay}</Tag>
+      ),
+    },
+  ];
+
+  const renderTATOverdue = () => {
+    if (!tatLoading && tatCases.length === 0) {
+      return (
+        <div style={{ padding: "60px 0", textAlign: "center" }}>
+          <CheckCircleOutlined style={{ fontSize: 48, color: "#52c41a", marginBottom: 12 }} />
+          <div style={{ fontSize: 15, color: "#52c41a", fontWeight: 600 }}>All your cases are on track</div>
+          <div style={{ fontSize: 13, color: "#8c8c8c", marginTop: 4 }}>No cases exceeding SLA turnaround time</div>
+        </div>
+      );
+    }
+    return (
+      <Spin spinning={tatLoading}>
+        {tatCases.length > 0 && (
+          <Alert
+            type="error"
+            showIcon
+            icon={<WarningOutlined />}
+            message={`${tatCases.length} case${tatCases.length > 1 ? "s" : ""} exceeded turnaround time — most overdue shown first`}
+            style={{ marginBottom: 16, borderRadius: 8 }}
+          />
+        )}
+        <Table<WorklistRow & { tatPercent: number; tatDisplay: string }>
+          dataSource={tatCases}
+          columns={tatColumns}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          onRow={(row) => ({ onClick: () => onSelectCase(row.id), style: { cursor: "pointer" } })}
+          locale={{ emptyText: tatLoading ? " " : "No overdue cases" }}
+        />
+      </Spin>
+    );
+  };
 
   const tabItems = [
     {
@@ -198,6 +293,17 @@ const renderWorklist = (
       ),
       children: user?.id ? <MyWorkloadSummary pathologistId={user.id} /> : null,
     },
+    {
+      key: "tat-overdue",
+      label: (
+        <span>
+          <ClockCircleOutlined style={{ marginRight: 6, color: tatCases.length > 0 ? "#ff4d4f" : undefined }} />
+          TAT Overdue
+          {tatCases.length > 0 && <Badge count={tatCases.length} size="small" color="red" style={{ marginLeft: 6 }} />}
+        </span>
+      ),
+      children: renderTATOverdue(),
+    },
   ];
 
   return (
@@ -226,7 +332,8 @@ const renderWorklist = (
       }}
     >
       <Tabs
-        defaultActiveKey={defaultTab || "surgical"}
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={tabItems}
         type="line"
         size="large"

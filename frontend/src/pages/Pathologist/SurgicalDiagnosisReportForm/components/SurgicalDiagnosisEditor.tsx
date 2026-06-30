@@ -41,6 +41,7 @@ interface SurgicalDiagnosisEditorProps {
   isLocked: boolean;
   hasOriginalSigned: boolean;
   specimen: SurgicalSpecimen;
+  allSpecimens?: SurgicalSpecimen[];
   microImages?: MicroscopicImage[];
   onOpenMicroCapture?: (specimenId: number) => void;
   onEditMicroImage: (image: MicroscopicImage) => void;
@@ -56,6 +57,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
   form,
   isLocked,
   specimen,
+  allSpecimens,
   microImages = [],
   hideDiagnosisOnly,
   onOpenMicroCapture,
@@ -108,24 +110,12 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
     };
 
     if (target === "all") {
-      // 🚩 ปรับใหม่: แทนที่จะดึงจาก form.getFieldValue("diagnoses")
-      // ให้หาทางดึงจากรายชื่อ Specimen ทั้งหมดในเคสนี้
-      // ถ้าคุณมี props 'allSpecimens' ให้ใช้ตัวนั้นวนลูปครับ
+      const specimenIds = allSpecimens && allSpecimens.length > 0
+        ? allSpecimens.map((s) => s.id)
+        : [specimen.id];
 
-      const allFormValues = form.getFieldsValue();
-      const diagnosesObj = allFormValues.diagnoses || {};
-      const targetIds = Object.keys(diagnosesObj);
-
-      if (targetIds.length > 0) {
-        targetIds.forEach((specId) => {
-          applyToSpecimen(Number(specId));
-        });
-        message.success(`Applied to ${targetIds.length} specimens`);
-      } else {
-        // Fallback: ถ้าหาใน diagnoses ไม่เจอเลย ให้ทำตัวปัจจุบัน
-        applyToSpecimen(specimen.id);
-        message.success("Applied to current specimen");
-      }
+      specimenIds.forEach((specId) => applyToSpecimen(specId));
+      message.success(`Applied to ${specimenIds.length} specimen${specimenIds.length > 1 ? "s" : ""}`);
     } else {
       applyToSpecimen(specimen.id);
       message.success("Applied to current specimen");

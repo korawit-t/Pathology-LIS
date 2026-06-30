@@ -41,6 +41,7 @@ import dayjs from "dayjs";
 import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
 import NotificationRuleService from "../../services/notificationRuleService";
+import SystemSettingService from "../../services/systemSettingService";
 import NongyneReportService from "../../services/nongyneReportService";
 import NongyneCaseImageService, {
   NongyneCaseImage,
@@ -64,6 +65,7 @@ import SecureImage from "../../components/SecureImage";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
+import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -146,10 +148,12 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const [consultModalOpen, setConsultModalOpen] = useState(false);
   const [consultHistoryKey, setConsultHistoryKey] = useState(0);
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
+  const [grossTemplateDrawerOpen, setGrossTemplateDrawerOpen] = useState(false);
   const [pathologistPickerOpen, setPathologistPickerOpen] = useState(false);
   const [selectedPathologistId, setSelectedPathologistId] = useState<
     number | null
   >(null);
+  const [slideDispatchEnabled, setSlideDispatchEnabled] = useState(true);
 
   const PATHO_ROLES: import("../../constants/roles.constants").UserRole[] = [
     "pathologist",
@@ -237,6 +241,9 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
   useEffect(() => {
     if (!caseId) return;
+    SystemSettingService.getSettings()
+      .then((s) => setSlideDispatchEnabled(s.nongyne_slide_dispatch_enabled ?? true))
+      .catch(() => {});
     Promise.all([
       NongyneCytologyCaseService.getById(Number(caseId)),
       UserService.getUsers(),
@@ -377,6 +384,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         pathologist_id: selectedPathologistId,
         ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
         is_screened: true,
+        ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
       });
 
       if (diagnosis) {
@@ -794,13 +802,18 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                   style={{ height: "100%" }}
                 >
                   <section>
-                    <div style={{ marginBottom: 8 }}>
+                    <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <Space>
                         <EyeOutlined style={{ color: "#595959" }} />
                         <Text strong style={{ textTransform: "uppercase" }}>
                           Gross Description
                         </Text>
                       </Space>
+                      {!isFormLocked && (
+                        <Button size="small" icon={<FileTextOutlined />} onClick={() => setGrossTemplateDrawerOpen(true)}>
+                          Templates
+                        </Button>
+                      )}
                     </div>
                     <Form.Item name="gross_description" noStyle>
                       <SimpleTiptapEditor
@@ -1203,6 +1216,25 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                 : curMicro + data.microscopic,
             );
             setTemplateDrawerOpen(false);
+          }}
+        />
+      </Drawer>
+
+      <Drawer
+        title="Gross Description Templates"
+        open={grossTemplateDrawerOpen}
+        onClose={() => setGrossTemplateDrawerOpen(false)}
+        width={720}
+        destroyOnClose
+      >
+        <GrossTemplateSystem
+          onFinishedText={(text, mode) => {
+            const cur = (form.getFieldValue("gross_description") as string) ?? "";
+            form.setFieldValue(
+              "gross_description",
+              mode === "replace" ? text : cur + text,
+            );
+            setGrossTemplateDrawerOpen(false);
           }}
         />
       </Drawer>

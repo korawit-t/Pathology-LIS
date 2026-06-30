@@ -10,7 +10,6 @@ import {
   Table,
   Popconfirm,
   Input,
-  Tabs,
   Row,
   Col,
   Timeline,
@@ -112,6 +111,7 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
   const [masterTests, setMasterTests] = useState<AnatomicalPathologyTest[]>([]);
   const [stains, setStains] = useState<StainRecord[]>([]);
   const [staged, setStaged] = useState<StagedItem[]>([]);
+  const [activeTab, setActiveTab] = useState("all");
   const [allSearch, setAllSearch] = useState("");
   const [ihcSearch, setIhcSearch] = useState("");
   const [specialSearch, setSpecialSearch] = useState("");
@@ -128,6 +128,7 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
   const [isManagePanelOpen, setIsManagePanelOpen] = useState(false);
   const [editingPanel, setEditingPanel] = useState<Partial<StainPanel> | null>(null);
   const [editingTestIds, setEditingTestIds] = useState<number[]>([]);
+  const [panelTestSearch, setPanelTestSearch] = useState("");
   const [panelSaving, setPanelSaving] = useState(false);
 
   const fetchTimeline = async (blockId: number) => {
@@ -283,12 +284,14 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
   const openNewPanel = () => {
     setEditingPanel({ name: "", category: "General", description: "" });
     setEditingTestIds([]);
+    setPanelTestSearch("");
     setIsManagePanelOpen(true);
   };
 
   const openEditPanel = (panel: StainPanel) => {
     setEditingPanel(panel);
     setEditingTestIds(panel.items.map((i) => i.test_id));
+    setPanelTestSearch("");
     setIsManagePanelOpen(true);
   };
 
@@ -575,7 +578,7 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
       open={open}
       onCancel={onCancel}
       footer={null}
-      width={1200}
+      width={900}
       destroyOnClose
       styles={{ body: { padding: "16px 24px" } }}
     >
@@ -583,213 +586,104 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
 
         {/* ── LEFT: Test selector ── */}
         <Col span={8} style={{ display: "flex", flexDirection: "column" }}>
-          <Tabs
-            size="small"
-            defaultActiveKey="all"
-            style={{ flex: 1 }}
-            items={[
-              {
-                key: "all",
-                label: <Text style={{ fontSize: 13 }}>All ({stainOrderTests.length})</Text>,
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search all tests..."
-                      value={allSearch}
-                      onChange={(e) => setAllSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      autoFocus
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 360, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {filteredAll.length > 0 ? filteredAll.map(renderTestItem) : (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-              {
-                key: "ihc",
-                label: (
-                  <Space size={4}>
-                    <Tag color="purple" style={{ margin: 0 }}>IHC</Tag>
-                    <Text style={{ fontSize: 13 }}>{ihcTests.length}</Text>
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search IHC..."
-                      value={ihcSearch}
-                      onChange={(e) => setIhcSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 360, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {filteredIhc.length > 0 ? filteredIhc.map(renderTestItem) : (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-              {
-                key: "special",
-                label: (
-                  <Space size={4}>
-                    <Tag color="cyan" style={{ margin: 0 }}>Special Stain</Tag>
-                    <Text style={{ fontSize: 13 }}>{specialTests.length}</Text>
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search Special Stain..."
-                      value={specialSearch}
-                      onChange={(e) => setSpecialSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 360, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {filteredSpecial.length > 0 ? filteredSpecial.map(renderTestItem) : (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-              {
-                key: "ish",
-                label: (
-                  <Space size={4}>
-                    <Tag color="gold" style={{ margin: 0 }}>ISH</Tag>
-                    <Text style={{ fontSize: 13 }}>{ishTests.length}</Text>
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search ISH / FISH / CISH..."
-                      value={ishSearch}
-                      onChange={(e) => setIshSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 360, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {filteredIsh.length > 0 ? filteredIsh.map(renderTestItem) : (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No ISH tests available yet.</Text>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-              {
-                key: "molecular",
-                label: (
-                  <Space size={4}>
-                    <Tag color="volcano" style={{ margin: 0 }}>Molecular</Tag>
-                    <Text style={{ fontSize: 13 }}>{molecularTests.length}</Text>
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search Molecular..."
-                      value={molecularSearch}
-                      onChange={(e) => setMolecularSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 360, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {filteredMolecular.length > 0 ? filteredMolecular.map(renderTestItem) : (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No Molecular tests available yet.</Text>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-              {
-                key: "panels",
-                label: (
-                  <Space size={4}>
-                    <AppstoreOutlined />
-                    <Text style={{ fontSize: 13 }}>Panels</Text>
-                    {panels.length > 0 && <Text style={{ fontSize: 13 }}>{panels.length}</Text>}
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Search
-                      placeholder="Search panels..."
-                      value={panelSearch}
-                      onChange={(e) => setPanelSearch(e.target.value)}
-                      size="small"
-                      allowClear
-                      style={{ marginBottom: 6 }}
-                    />
-                    <div style={{ height: 310, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
-                      {panels.filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase())).length === 0 ? (
-                        <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>
-                          No panels yet. Click "Manage" to create one.
-                        </Text>
-                      ) : (
-                        panels
-                          .filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase()))
-                          .map((panel) => (
-                            <div
-                              key={panel.id}
-                              onClick={() => applyPanel(panel)}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                padding: "8px 10px",
-                                marginBottom: 4,
-                                borderRadius: 6,
-                                cursor: "pointer",
-                                border: "1px solid #f0f0f0",
-                                background: "#fafafa",
-                                transition: "background 0.15s",
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = "#f0e6ff")}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = "#fafafa")}
-                            >
-                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                <Space size={6}>
-                                  <AppstoreOutlined style={{ color: "#722ed1", fontSize: 12 }} />
-                                  <Text style={{ fontSize: 13, fontWeight: 500 }}>{panel.name}</Text>
-                                </Space>
-                                <Space size={4}>
-                                  {panel.category && panel.category !== "General" && (
-                                    <Tag color="purple" style={{ fontSize: 10, margin: 0, padding: "0 4px" }}>{panel.category}</Tag>
-                                  )}
-                                  <Text type="secondary" style={{ fontSize: 11 }}>{panel.items.length} test{panel.items.length !== 1 ? "s" : ""}</Text>
-                                </Space>
-                              </div>
-                              <PlusOutlined style={{ color: "#bfbfbf", fontSize: 12 }} />
-                            </div>
-                          ))
-                      )}
-                    </div>
-                    <Button
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={() => { setEditingPanel(null); setEditingTestIds([]); setIsManagePanelOpen(true); }}
-                      style={{ marginTop: 6, width: "100%" }}
+          {/* Wrap tab nav */}
+          {(() => {
+            const tabs = [
+              { key: "all",       label: `All (${stainOrderTests.length})`,       color: "#595959" },
+              { key: "ihc",       label: `IHC (${ihcTests.length})`,              color: "#531dab" },
+              { key: "special",   label: `Special Stain (${specialTests.length})`,color: "#08979c" },
+              { key: "ish",       label: `ISH (${ishTests.length})`,              color: "#d48806" },
+              { key: "molecular", label: `Molecular (${molecularTests.length})`,  color: "#cc3300" },
+              { key: "panels",    label: `Panels (${panels.length})`,             color: "#722ed1" },
+            ];
+            return (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8, borderBottom: "1px solid #f0f0f0", paddingBottom: 8 }}>
+                {tabs.map((t) => {
+                  const active = activeTab === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => setActiveTab(t.key)}
+                      style={{
+                        padding: "2px 10px",
+                        borderRadius: 4,
+                        border: active ? `1px solid ${t.color}` : "1px solid #d9d9d9",
+                        background: active ? t.color : "#fff",
+                        color: active ? "#fff" : "#595959",
+                        fontSize: 12,
+                        fontWeight: active ? 600 : 400,
+                        cursor: "pointer",
+                        lineHeight: "22px",
+                        transition: "all 0.15s",
+                        whiteSpace: "nowrap",
+                      }}
                     >
-                      Manage Panels
-                    </Button>
-                  </>
-                ),
-              },
-            ]}
-          />
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Tab content */}
+          {activeTab === "all" && <>
+            <Search placeholder="Search all tests..." value={allSearch} onChange={(e) => setAllSearch(e.target.value)} size="small" allowClear autoFocus style={{ marginBottom: 6 }} />
+            <div style={{ height: 300, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {filteredAll.length > 0 ? filteredAll.map(renderTestItem) : <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>}
+            </div>
+          </>}
+          {activeTab === "ihc" && <>
+            <Search placeholder="Search IHC..." value={ihcSearch} onChange={(e) => setIhcSearch(e.target.value)} size="small" allowClear style={{ marginBottom: 6 }} />
+            <div style={{ height: 300, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {filteredIhc.length > 0 ? filteredIhc.map(renderTestItem) : <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>}
+            </div>
+          </>}
+          {activeTab === "special" && <>
+            <Search placeholder="Search Special Stain..." value={specialSearch} onChange={(e) => setSpecialSearch(e.target.value)} size="small" allowClear style={{ marginBottom: 6 }} />
+            <div style={{ height: 300, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {filteredSpecial.length > 0 ? filteredSpecial.map(renderTestItem) : <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No results.</Text>}
+            </div>
+          </>}
+          {activeTab === "ish" && <>
+            <Search placeholder="Search ISH / FISH / CISH..." value={ishSearch} onChange={(e) => setIshSearch(e.target.value)} size="small" allowClear style={{ marginBottom: 6 }} />
+            <div style={{ height: 300, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {filteredIsh.length > 0 ? filteredIsh.map(renderTestItem) : <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No ISH tests available yet.</Text>}
+            </div>
+          </>}
+          {activeTab === "molecular" && <>
+            <Search placeholder="Search Molecular..." value={molecularSearch} onChange={(e) => setMolecularSearch(e.target.value)} size="small" allowClear style={{ marginBottom: 6 }} />
+            <div style={{ height: 300, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {filteredMolecular.length > 0 ? filteredMolecular.map(renderTestItem) : <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No Molecular tests available yet.</Text>}
+            </div>
+          </>}
+          {activeTab === "panels" && <>
+            <Search placeholder="Search panels..." value={panelSearch} onChange={(e) => setPanelSearch(e.target.value)} size="small" allowClear style={{ marginBottom: 6 }} />
+            <div style={{ height: 250, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+              {panels.filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase())).length === 0 ? (
+                <Text type="secondary" style={{ padding: "12px 8px", display: "block", fontSize: 13 }}>No panels yet. Click "Manage Panels" to create one.</Text>
+              ) : panels.filter((p) => p.name.toLowerCase().includes(panelSearch.toLowerCase())).map((panel) => (
+                <div key={panel.id} onClick={() => applyPanel(panel)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 4, borderRadius: 6, cursor: "pointer", border: "1px solid #f0f0f0", background: "#fafafa", transition: "background 0.15s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f0e6ff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fafafa")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <Space size={6}><AppstoreOutlined style={{ color: "#722ed1", fontSize: 12 }} /><Text style={{ fontSize: 13, fontWeight: 500 }}>{panel.name}</Text></Space>
+                    <Space size={4}>
+                      {panel.category && panel.category !== "General" && <Tag color="purple" style={{ fontSize: 10, margin: 0, padding: "0 4px" }}>{panel.category}</Tag>}
+                      <Text type="secondary" style={{ fontSize: 11 }}>{panel.items.length} test{panel.items.length !== 1 ? "s" : ""}</Text>
+                    </Space>
+                    {panel.description && <Text type="secondary" style={{ fontSize: 11, color: "#8c8c8c" }}>{panel.description}</Text>}
+                  </div>
+                  <PlusOutlined style={{ color: "#bfbfbf", fontSize: 12 }} />
+                </div>
+              ))}
+            </div>
+            <Button size="small" icon={<SettingOutlined />} onClick={() => { setEditingPanel(null); setEditingTestIds([]); setIsManagePanelOpen(true); }} style={{ marginTop: 6, width: "100%" }}>
+              Manage Panels
+            </Button>
+          </>}
 
           {/* Staged strip */}
           {staged.length > 0 && (
@@ -984,25 +878,96 @@ const StainManagementModal: React.FC<StainManagementModalProps> = ({
                       { value: "IHC", label: "IHC" },
                       { value: "Special Stain", label: "Special Stain" },
                       { value: "Mixed", label: "Mixed" },
+                      { value: "Lymphoma", label: "Lymphoma" },
+                      { value: "Breast", label: "Breast" },
+                      { value: "Lung", label: "Lung" },
+                      { value: "GI", label: "GI" },
+                      { value: "Soft Tissue", label: "Soft Tissue" },
+                      { value: "Neuroendocrine", label: "Neuroendocrine" },
                     ]}
                   />
                 </div>
 
                 <div>
-                  <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Tests in panel</Text>
-                  <Select
-                    mode="multiple"
-                    showSearch
-                    value={editingTestIds}
-                    onChange={setEditingTestIds}
+                  <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Description / Note</Text>
+                  <Input.TextArea
+                    value={editingPanel.description ?? ""}
+                    onChange={(e) => setEditingPanel((prev) => ({ ...prev!, description: e.target.value }))}
+                    placeholder="e.g. Use for diffuse large B-cell lymphoma workup"
                     size="small"
-                    style={{ width: "100%" }}
-                    placeholder="Select tests..."
-                    options={stainOrderTests.map((t) => ({
-                      value: t.id,
-                      label: `${t.name}${t.category ? ` [${t.category === "Histochem" ? "SS" : t.category}]` : ""}`,
-                    }))}
+                    rows={2}
+                    style={{ resize: "none" }}
                   />
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Tests in panel</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{editingTestIds.length} selected</Text>
+                  </div>
+                  {editingTestIds.length > 0 && (
+                    <div style={{ background: "#f9f0ff", border: "1px dashed #d3adf7", borderRadius: 6, padding: "6px 8px", marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                      {editingTestIds.map((id) => {
+                        const t = stainOrderTests.find((x) => x.id === id);
+                        return t ? (
+                          <Tag
+                            key={id}
+                            color="purple"
+                            closable
+                            onClose={() => setEditingTestIds((prev) => prev.filter((x) => x !== id))}
+                            style={{ fontSize: 11, borderRadius: 8, margin: 0 }}
+                          >
+                            {t.name}
+                          </Tag>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  <Search
+                    placeholder="Search tests..."
+                    value={panelTestSearch}
+                    onChange={(e) => setPanelTestSearch(e.target.value)}
+                    size="small"
+                    allowClear
+                    style={{ marginBottom: 4 }}
+                  />
+                  <div style={{ height: 180, overflowY: "auto", border: "1px solid #f0f0f0", borderRadius: 6, padding: 4 }}>
+                    {stainOrderTests
+                      .filter((t) => t.name.toLowerCase().includes(panelTestSearch.toLowerCase()))
+                      .map((t) => {
+                        const selected = editingTestIds.includes(t.id);
+                        const catLabel = t.category === "Histochem" ? "SS" : t.category;
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() =>
+                              setEditingTestIds((prev) =>
+                                selected ? prev.filter((id) => id !== t.id) : [...prev, t.id],
+                              )
+                            }
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "5px 8px",
+                              marginBottom: 2,
+                              borderRadius: 5,
+                              cursor: "pointer",
+                              background: selected ? "#f0e6ff" : "transparent",
+                              border: selected ? "1px solid #d3adf7" : "1px solid transparent",
+                            }}
+                          >
+                            <Space size={5}>
+                              {selected
+                                ? <CheckOutlined style={{ color: "#722ed1", fontSize: 11 }} />
+                                : <PlusOutlined style={{ fontSize: 11, color: "#bfbfbf" }} />}
+                              <Text style={{ fontSize: 12 }}>{t.name}</Text>
+                            </Space>
+                            <Tag style={{ fontSize: 10, margin: 0, padding: "0 4px" }}>{catLabel}</Tag>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>

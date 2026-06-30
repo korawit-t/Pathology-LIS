@@ -1,6 +1,7 @@
 import React, { useState, useEffect, FC } from "react";
 import {
   Input,
+  AutoComplete,
   Select,
   Space,
   Button,
@@ -102,12 +103,6 @@ const GrossTemplateSystem: FC<GrossTemplateSystemProps> = ({
     }
   };
 
-  const existingCategories = [
-    ...new Set([
-      "General",
-      ...templates.map((t) => t.category).filter(Boolean),
-    ]),
-  ];
 
   // --- Core Logic ---
   const handleSave = async () => {
@@ -554,17 +549,15 @@ const GrossTemplateSystem: FC<GrossTemplateSystemProps> = ({
               </Col>
               <Col span={10}>
                 <Text strong>Category:</Text>
-                <Select
-                  showSearch
+                <AutoComplete
+                  value={editingItem.category ?? ""}
+                  onChange={(val) => setEditingItem({ ...editingItem, category: val })}
+                  options={[...new Set(templates.map((t) => t.category).filter(Boolean))]
+                    .filter((c) => !editingItem.category || c.toLowerCase().includes(editingItem.category.toLowerCase()))
+                    .map((c) => ({ value: c }))}
+                  placeholder="e.g., General, FNA, Fluid"
                   style={{ width: "100%" }}
-                  value={editingItem.category}
-                  onChange={(val) =>
-                    setEditingItem({ ...editingItem, category: val })
-                  }
-                  options={existingCategories.map((cat) => ({
-                    label: cat,
-                    value: cat,
-                  }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.stopPropagation(); }}
                 />
               </Col>
             </Row>

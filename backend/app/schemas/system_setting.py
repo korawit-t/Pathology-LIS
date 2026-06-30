@@ -38,6 +38,7 @@ class SystemSettingBase(BaseModel):
     enable_approve_system: bool = False
     enable_gyne_qc_system: bool = False
     enable_non_gyne_approve_system: bool = False
+    nongyne_slide_dispatch_enabled: bool = True
     nilm_review_every_n: Optional[int] = 10
     require_all_pathologists_sign: Optional[bool] = None
     require_all_gyne_sign: Optional[bool] = None
@@ -108,6 +109,7 @@ class SystemSettingUpdate(SystemSettingBase):
     enable_approve_system: Optional[bool] = None
     enable_gyne_qc_system: Optional[bool] = None
     enable_non_gyne_approve_system: Optional[bool] = None
+    nongyne_slide_dispatch_enabled: Optional[bool] = None
     nilm_review_every_n: Optional[int] = None
     surgical_tat_days: Optional[int] = None
     non_gyne_tat_days: Optional[int] = None

@@ -33,12 +33,13 @@ import {
   Cell,
 } from "recharts";
 import dayjs, { Dayjs } from "dayjs";
-import SurgicalCaseService from "../../services/surgicalCaseService";
+import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
+import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
-type TatData = Awaited<ReturnType<typeof SurgicalCaseService.getTatStats>>;
+type TatData = Awaited<ReturnType<typeof GyneCytologyCaseService.getTatStats>>;
 
 const DIST_COLORS: Record<string, string> = {
   "< 3 days": "#52c41a",
@@ -47,7 +48,11 @@ const DIST_COLORS: Record<string, string> = {
   "> 10 days": "#f5222d",
 };
 
-const TATDashboard: React.FC = () => {
+interface Props {
+  type: "gyne" | "nongyne";
+}
+
+const CytoTATDashboard: React.FC<Props> = ({ type }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<TatData | null>(null);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
@@ -58,19 +63,24 @@ const TATDashboard: React.FC = () => {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await SurgicalCaseService.getTatStats(
-        dateRange[0].format("YYYY-MM-DD"),
-        dateRange[1].format("YYYY-MM-DD"),
-      );
+      const from = dateRange[0].format("YYYY-MM-DD");
+      const to = dateRange[1].format("YYYY-MM-DD");
+      const res =
+        type === "gyne"
+          ? await GyneCytologyCaseService.getTatStats(from, to)
+          : await NongyneCytologyCaseService.getTatStats(from, to);
       setData(res);
     } catch {
       message.error("Failed to load TAT data");
     } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [type, dateRange]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => {
+    setData(null);
+    fetch();
+  }, [fetch]);
 
   const distData = data
     ? [
@@ -82,7 +92,6 @@ const TATDashboard: React.FC = () => {
     : [];
 
   const totalDist = distData.reduce((s, d) => s + d.value, 0);
-
   const chartGridProps = { strokeDasharray: "3 3", stroke: "#f0f0f0" };
   const axisProps = { tick: { fontSize: 11 } };
   const tooltipProps = { contentStyle: { borderRadius: 8, fontSize: 12 } };
@@ -130,7 +139,6 @@ const TATDashboard: React.FC = () => {
       <Divider style={{ margin: "0 0 20px 0" }} />
 
       <Spin spinning={loading}>
-        {/* KPI cards */}
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={6}>
             <Card
@@ -215,7 +223,6 @@ const TATDashboard: React.FC = () => {
 
         {data && (
           <Row gutter={[16, 16]} style={{ marginTop: 20 }}>
-            {/* Distribution bars */}
             <Col xs={24} lg={10}>
               <Card
                 bordered={false}
@@ -229,10 +236,12 @@ const TATDashboard: React.FC = () => {
                     <div key={d.label}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                         <Text style={{ fontSize: 13 }}>{d.label}</Text>
-                        <Text strong>{d.value} cases ({totalDist ? Math.round(d.value / totalDist * 100) : 0}%)</Text>
+                        <Text strong>
+                          {d.value} cases ({totalDist ? Math.round((d.value / totalDist) * 100) : 0}%)
+                        </Text>
                       </div>
                       <Progress
-                        percent={totalDist ? Math.round(d.value / totalDist * 100) : 0}
+                        percent={totalDist ? Math.round((d.value / totalDist) * 100) : 0}
                         strokeColor={DIST_COLORS[d.label]}
                         showInfo={false}
                         size="small"
@@ -257,7 +266,6 @@ const TATDashboard: React.FC = () => {
               </Card>
             </Col>
 
-            {/* Monthly trend */}
             <Col xs={24} lg={14}>
               <Card
                 bordered={false}
@@ -288,7 +296,9 @@ const TATDashboard: React.FC = () => {
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div style={{ textAlign: "center", padding: 60, color: "#999" }}>No data for selected period</div>
+                  <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
+                    No data for selected period
+                  </div>
                 )}
               </Card>
             </Col>
@@ -329,4 +339,4 @@ const TATDashboard: React.FC = () => {
   );
 };
 
-export default TATDashboard;
+export default CytoTATDashboard;

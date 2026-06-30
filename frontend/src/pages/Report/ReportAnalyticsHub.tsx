@@ -27,6 +27,7 @@ import LabTechStatPage from "./LabTechStatPage";
 import SlideQualityStatPage from "./SlideQualityStatPage";
 import CytoHistoCorrelationReport from "./CytoHistoCorrelationReport";
 import CytoWorkloadPage from "./CytoWorkloadPage";
+import CytoTATDashboard from "./CytoTATDashboard";
 import IHCStatPage from "./IHCStatPage";
 
 const INNER_STYLE = { paddingTop: 16 };
@@ -78,28 +79,51 @@ const ReportAnalyticsHub: React.FC = () => {
             ),
           },
           {
-            key: "cytology",
-            label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Cytology</span>,
+            key: "gyne-cyto",
+            label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Gyne Cyto</span>,
             children: (
               <Tabs
                 size="middle"
-                defaultActiveKey="gyne"
+                defaultActiveKey="gyne-stats"
                 style={INNER_STYLE}
                 items={[
                   {
-                    key: "gyne",
-                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Gyne Stats</span>,
+                    key: "gyne-stats",
+                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Stats</span>,
                     children: <CytologyStatPanel type="gyne" />,
-                  },
-                  {
-                    key: "nongyne",
-                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Non-Gyne Stats</span>,
-                    children: <CytologyStatPanel type="nongyne" />,
                   },
                   {
                     key: "cyto-workload",
                     label: <span><TeamOutlined style={{ marginRight: 6 }} />Workload</span>,
                     children: <CytoWorkloadPage />,
+                  },
+                  {
+                    key: "gyne-tat",
+                    label: <span><ClockCircleOutlined style={{ marginRight: 6 }} />TAT</span>,
+                    children: <CytoTATDashboard type="gyne" />,
+                  },
+                ]}
+              />
+            ),
+          },
+          {
+            key: "nongyne-cyto",
+            label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Non-Gyne Cyto</span>,
+            children: (
+              <Tabs
+                size="middle"
+                defaultActiveKey="nongyne-stats"
+                style={INNER_STYLE}
+                items={[
+                  {
+                    key: "nongyne-stats",
+                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Stats</span>,
+                    children: <CytologyStatPanel type="nongyne" />,
+                  },
+                  {
+                    key: "nongyne-tat",
+                    label: <span><ClockCircleOutlined style={{ marginRight: 6 }} />TAT</span>,
+                    children: <CytoTATDashboard type="nongyne" />,
                   },
                 ]}
               />

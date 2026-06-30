@@ -160,6 +160,99 @@ def read_gyne_qc_cases(
     return crud.get_gyne_qc_case_list(db, start, end, review_reason, pathologist_id, cytotechnologist_id)
 
 
+@router.get("/tat-stats")
+def get_gyne_tat_stats(
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
+    db: Session = Depends(get_db),
+    _: Any = Depends(get_current_user),
+):
+    from collections import defaultdict
+    from app.models.system_setting import SystemSetting
+
+    setting = db.query(SystemSetting).first()
+    target_days = (setting.gyne_tat_days if setting else None) or 5
+    express_target_days = (setting.gyne_express_tat_days if setting else None) or 3
+
+    filters = [
+        GyneCytologyCase.report_at.isnot(None),
+        GyneCytologyCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(GyneCytologyCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(GyneCytologyCase.registered_at <= datetime.combine(date_to, time.max))
+
+    cases = (
+        db.query(
+            GyneCytologyCase.id,
+            GyneCytologyCase.registered_at,
+            GyneCytologyCase.report_at,
+            GyneCytologyCase.is_express,
+        )
+        .filter(*filters)
+        .all()
+    )
+
+    empty = {
+        "avg_tat_days": 0,
+        "routine_avg_days": 0,
+        "express_avg_days": 0,
+        "total_reported": 0,
+        "on_time_count": 0,
+        "on_time_pct": 0,
+        "target_days": target_days,
+        "express_target_days": express_target_days,
+        "distribution": {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0},
+        "monthly": [],
+    }
+    if not cases:
+        return empty
+
+    monthly_map: dict = defaultdict(lambda: {"count": 0, "total_days": 0.0})
+    dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_total, routine_n = 0.0, 0
+    express_total, express_n = 0.0, 0
+    on_time_count = 0
+
+    for c in cases:
+        tat = (c.report_at - c.registered_at).total_seconds() / 86400
+        month_key = c.registered_at.strftime("%Y-%m")
+        monthly_map[month_key]["count"] += 1
+        monthly_map[month_key]["total_days"] += tat
+        t = express_target_days if c.is_express else target_days
+        if tat <= t:
+            on_time_count += 1
+        if c.is_express:
+            express_total += tat; express_n += 1
+        else:
+            routine_total += tat; routine_n += 1
+        if tat < 3: dist["lt3"] += 1
+        elif tat < 5: dist["t3_5"] += 1
+        elif tat <= 10: dist["t5_10"] += 1
+        else: dist["gt10"] += 1
+
+    total_n = len(cases)
+    grand_total = routine_total + express_total
+    monthly = sorted(
+        [{"month": k, "case_count": v["count"], "avg_days": round(v["total_days"] / v["count"], 1)}
+         for k, v in monthly_map.items()],
+        key=lambda x: x["month"],
+    )
+    return {
+        "avg_tat_days": round(grand_total / total_n, 1),
+        "routine_avg_days": round(routine_total / routine_n, 1) if routine_n else 0,
+        "express_avg_days": round(express_total / express_n, 1) if express_n else 0,
+        "total_reported": total_n,
+        "on_time_count": on_time_count,
+        "on_time_pct": round(on_time_count / total_n * 100, 1),
+        "target_days": target_days,
+        "express_target_days": express_target_days,
+        "distribution": dist,
+        "monthly": monthly,
+    }
+
+
 @router.get("/{case_id}", response_model=GyneCytologyCaseResponse)
 def read_case(case_id: int, db: Session = Depends(get_db)):
     db_case = crud.get_gyne_case(db, case_id=case_id)

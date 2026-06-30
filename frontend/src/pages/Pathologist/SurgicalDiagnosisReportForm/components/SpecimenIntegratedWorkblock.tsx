@@ -336,6 +336,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                 <SurgicalDiagnosisEditor
                   form={form}
                   specimen={specimen}
+                  allSpecimens={surgicalCase.specimens ?? []}
                   isLocked={isLocked}
                   hasOriginalSigned={hasOriginalSigned}
                   microImages={microImages}
@@ -415,7 +416,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                     isEntirelySubmitted={specimen.is_entirely_submitted ?? false}
                     caseInfo={{
                       hn: surgicalCase?.hn ?? surgicalCase?.patient?.hn ?? "-",
-                      name: surgicalCase?.patient?.name ?? "-",
+                      name: [surgicalCase?.patient?.title?.title, surgicalCase?.patient?.name, surgicalCase?.patient?.ln].filter(Boolean).join(" ") || "-",
                       clinician: surgicalCase?.clinician_name ?? "-",
                       accession_no: surgicalCase?.accession_no ?? "-",
                       id_case: surgicalCase?.accession_no ?? "-",

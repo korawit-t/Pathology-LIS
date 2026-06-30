@@ -112,6 +112,25 @@ const NongyneCytologyCaseService = {
     const response = await api.get(`/nongyne-cytology/request-files/${fileId}`, { responseType: "arraybuffer" });
     return response.data;
   },
+
+  getTatStats: async (dateFrom?: string, dateTo?: string) => {
+    const params: Record<string, string> = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const res = await api.get("/nongyne-cytology/tat-stats", { params });
+    return res.data as {
+      avg_tat_days: number;
+      routine_avg_days: number;
+      express_avg_days: number;
+      total_reported: number;
+      on_time_count: number;
+      on_time_pct: number;
+      target_days: number;
+      express_target_days: number;
+      distribution: { lt3: number; t3_5: number; t5_10: number; gt10: number };
+      monthly: Array<{ month: string; case_count: number; avg_days: number }>;
+    };
+  },
 };
 
 export default NongyneCytologyCaseService;

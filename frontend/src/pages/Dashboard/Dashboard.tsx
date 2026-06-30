@@ -32,6 +32,7 @@ import UserService from "../../services/userService";
 import type { User } from "../../types/user";
 import { useTheme } from "../../contexts/ThemeContext";
 import logger from "../../utils/logger";
+import SystemSettingService from "../../services/systemSettingService";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -49,6 +50,7 @@ const Dashboard: React.FC = () => {
   const [selectedSpecimenId, setSelectedSpecimenId] = useState<number | null>(
     null,
   );
+  const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
 
   const navigate = useNavigate();
   // ดึงข้อมูล User เมื่อ Component mount
@@ -73,6 +75,9 @@ const Dashboard: React.FC = () => {
     };
 
     fetchUser();
+    SystemSettingService.getSettings()
+      .then((s) => setEnabledFlags({ nongyne_slide_dispatch_enabled: s.nongyne_slide_dispatch_enabled ?? true }))
+      .catch(() => {});
   }, [navigate]);
 
   const handleLogout = () => {
@@ -100,8 +105,8 @@ const Dashboard: React.FC = () => {
 
   const authorizedMenuItems = React.useMemo(() => {
     if (!user) return [];
-    return buildAuthorizedMenuItems(SIDE_MENU_CONFIG, user.roles ?? []);
-  }, [user]);
+    return buildAuthorizedMenuItems(SIDE_MENU_CONFIG, user.roles ?? [], enabledFlags);
+  }, [user, enabledFlags]);
 
   if (!user) return <Spin fullscreen tip="Loading user data..." />;
 

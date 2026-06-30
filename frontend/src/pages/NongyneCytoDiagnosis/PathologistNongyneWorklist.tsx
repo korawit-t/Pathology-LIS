@@ -144,6 +144,19 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       ),
     },
     {
+      title: "Registered At",
+      dataIndex: "registered_at",
+      key: "registered_at_col",
+      width: 110,
+      render: (val: string) =>
+        val ? (
+          <div>
+            <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
+            <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
+          </div>
+        ) : "—",
+    },
+    {
       title: (
         <Space size={4}>
           TAT / PROGRESS

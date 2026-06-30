@@ -2,7 +2,6 @@ import React, { Suspense, lazy } from "react";
 import RequireRoleView from "../../components/auth/RequireRoleView";
 import type { User } from "../../types/user";
 import { PAGE_PERMISSIONS, PageKey } from "../../constants/pagePermissions";
-import { useAuth } from "../../hooks/useAuth";
 import { Spin } from "antd";
 
 // --- Lazy Imports (ช่วยลดขนาดไฟล์แรกที่โหลด) ---
@@ -278,8 +277,7 @@ const VIEW_CONFIG: Record<
 };
 
 export const resolveDashboardView = (props: Props) => {
-  const { user } = useAuth(); // ดึง User จาก Context
-  const { currentView, selectedSpecimenId, onOpenReport, onBackToWorklist, onNavigate } =
+  const { user, currentView, selectedSpecimenId, onOpenReport, onBackToWorklist, onNavigate } =
     props;
 
   const view = VIEW_CONFIG[currentView];

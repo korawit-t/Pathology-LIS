@@ -675,6 +675,11 @@ def get_tat_stats(
 ):
     """TAT statistics: average days, distribution buckets, monthly breakdown."""
     from collections import defaultdict
+    from app.models.system_setting import SystemSetting
+
+    setting = db.query(SystemSetting).first()
+    target_days = (setting.surgical_tat_days if setting else None) or 10
+    express_target_days = (setting.surgical_express_tat_days if setting else None) or 3
 
     filters = [
         SurgicalCase.is_cancelled == False,
@@ -705,6 +710,10 @@ def get_tat_stats(
             "routine_avg_days": 0,
             "express_avg_days": 0,
             "total_reported": 0,
+            "on_time_count": 0,
+            "on_time_pct": 0,
+            "target_days": target_days,
+            "express_target_days": express_target_days,
             "distribution": {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0},
             "monthly": [],
         }
@@ -713,12 +722,17 @@ def get_tat_stats(
     dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
     routine_total, routine_n = 0.0, 0
     express_total, express_n = 0.0, 0
+    on_time_count = 0
 
     for c in cases:
         tat = (c.report_at - c.registered_at).total_seconds() / 86400
         month_key = c.registered_at.strftime("%Y-%m")
         monthly_map[month_key]["count"] += 1
         monthly_map[month_key]["total_days"] += tat
+
+        t = express_target_days if c.is_express else target_days
+        if tat <= t:
+            on_time_count += 1
 
         if c.is_express:
             express_total += tat
@@ -744,6 +758,10 @@ def get_tat_stats(
         "routine_avg_days": round(routine_total / routine_n, 1) if routine_n else 0,
         "express_avg_days": round(express_total / express_n, 1) if express_n else 0,
         "total_reported": total_n,
+        "on_time_count": on_time_count,
+        "on_time_pct": round(on_time_count / total_n * 100, 1),
+        "target_days": target_days,
+        "express_target_days": express_target_days,
         "distribution": dist,
         "monthly": [
             {
