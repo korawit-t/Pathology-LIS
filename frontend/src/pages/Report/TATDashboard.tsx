@@ -12,6 +12,7 @@ import {
   Spin,
   message,
   Progress,
+  Segmented,
 } from "antd";
 import {
   ClockCircleOutlined,
@@ -47,9 +48,12 @@ const DIST_COLORS: Record<string, string> = {
   "> 10 days": "#f5222d",
 };
 
+type DistSet = "all" | "routine" | "express";
+
 const TATDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<TatData | null>(null);
+  const [distSet, setDistSet] = useState<DistSet>("all");
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().startOf("year"),
     dayjs().endOf("month"),
@@ -72,12 +76,20 @@ const TATDashboard: React.FC = () => {
 
   useEffect(() => { fetch(); }, [fetch]);
 
-  const distData = data
+  const activeDist = data
+    ? distSet === "routine"
+      ? (data as any).routine_distribution ?? data.distribution
+      : distSet === "express"
+        ? (data as any).express_distribution ?? data.distribution
+        : data.distribution
+    : null;
+
+  const distData = activeDist
     ? [
-        { label: "< 3 days", value: data.distribution.lt3 },
-        { label: "3–5 days", value: data.distribution.t3_5 },
-        { label: "5–10 days", value: data.distribution.t5_10 },
-        { label: "> 10 days", value: data.distribution.gt10 },
+        { label: "< 3 days", value: activeDist.lt3 },
+        { label: "3–5 days", value: activeDist.t3_5 },
+        { label: "5–10 days", value: activeDist.t5_10 },
+        { label: "> 10 days", value: activeDist.gt10 },
       ]
     : [];
 
@@ -221,9 +233,19 @@ const TATDashboard: React.FC = () => {
                 bordered={false}
                 style={{ borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", height: "100%" }}
               >
-                <Title level={5} style={{ marginTop: 0, marginBottom: 16 }}>
-                  TAT Distribution
-                </Title>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <Title level={5} style={{ margin: 0 }}>TAT Distribution</Title>
+                  <Segmented
+                    size="small"
+                    value={distSet}
+                    onChange={(v) => setDistSet(v as DistSet)}
+                    options={[
+                      { label: "All", value: "all" },
+                      { label: "Routine", value: "routine" },
+                      { label: "Express", value: "express" },
+                    ]}
+                  />
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {distData.map((d) => (
                     <div key={d.label}>

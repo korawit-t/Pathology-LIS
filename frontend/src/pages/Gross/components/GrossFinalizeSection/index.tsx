@@ -64,7 +64,7 @@ const GrossFinalizeSection: React.FC<GrossFinalizeSectionProps> = ({
                   showSearch
                   optionFilterProp="children"
                 >
-                  {users.map((u) => (
+                  {users.filter((u) => !u.roles?.includes("clinician")).map((u) => (
                     <Option key={u.id} value={u.id}>
                       {u.report_name || u.full_name}
                     </Option>
@@ -84,7 +84,7 @@ const GrossFinalizeSection: React.FC<GrossFinalizeSectionProps> = ({
                   showSearch
                   optionFilterProp="children"
                 >
-                  {users.map((u) => (
+                  {users.filter((u) => !u.roles?.includes("clinician")).map((u) => (
                     <Option key={u.id} value={u.id}>
                       {u.report_name || u.full_name}
                     </Option>

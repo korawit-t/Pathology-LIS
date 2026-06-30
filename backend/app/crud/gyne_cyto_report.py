@@ -199,6 +199,7 @@ def prepare_gyne_report_data(db: Session, case_id: int):
         "department_name": db_case.department.name if db_case.department else None,
         "clinician_name": db_case.clinician_name,
         
+        # 🚩 Non-Model Fields (case-level, pop before creating GyneCytoReport)
         "specimen_type": db_case.specimen_type,
         "collection_site": db_case.collection_site,
 
@@ -253,6 +254,8 @@ def publish_gyne_report(
     report_data.pop("signers", None)
     report_data.pop("registered_at", None)
     report_data.pop("collect_at", None)
+    report_data.pop("specimen_type", None)
+    report_data.pop("collection_site", None)
 
     db_report = GyneCytoReport(**report_data)
     db.add(db_report)

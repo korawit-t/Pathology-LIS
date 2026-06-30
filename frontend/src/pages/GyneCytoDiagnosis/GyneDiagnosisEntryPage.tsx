@@ -862,6 +862,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                   <Button
                     size="small"
                     danger
+                    disabled={false}
                     onClick={() => setForceEdit(true)}
                   >
                     Unlock & Edit

@@ -194,6 +194,7 @@ def get_gyne_tat_stats(
         .all()
     )
 
+    empty_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
     empty = {
         "avg_tat_days": 0,
         "routine_avg_days": 0,
@@ -203,7 +204,9 @@ def get_gyne_tat_stats(
         "on_time_pct": 0,
         "target_days": target_days,
         "express_target_days": express_target_days,
-        "distribution": {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0},
+        "distribution": {**empty_dist},
+        "routine_distribution": {**empty_dist},
+        "express_distribution": {**empty_dist},
         "monthly": [],
     }
     if not cases:
@@ -211,6 +214,8 @@ def get_gyne_tat_stats(
 
     monthly_map: dict = defaultdict(lambda: {"count": 0, "total_days": 0.0})
     dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    express_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
     routine_total, routine_n = 0.0, 0
     express_total, express_n = 0.0, 0
     on_time_count = 0
@@ -223,14 +228,16 @@ def get_gyne_tat_stats(
         t = express_target_days if c.is_express else target_days
         if tat <= t:
             on_time_count += 1
+        sub_dist = express_dist if c.is_express else routine_dist
         if c.is_express:
             express_total += tat; express_n += 1
         else:
             routine_total += tat; routine_n += 1
-        if tat < 3: dist["lt3"] += 1
-        elif tat < 5: dist["t3_5"] += 1
-        elif tat <= 10: dist["t5_10"] += 1
-        else: dist["gt10"] += 1
+        for d in (dist, sub_dist):
+            if tat < 3: d["lt3"] += 1
+            elif tat < 5: d["t3_5"] += 1
+            elif tat <= 10: d["t5_10"] += 1
+            else: d["gt10"] += 1
 
     total_n = len(cases)
     grand_total = routine_total + express_total
@@ -249,6 +256,8 @@ def get_gyne_tat_stats(
         "target_days": target_days,
         "express_target_days": express_target_days,
         "distribution": dist,
+        "routine_distribution": routine_dist,
+        "express_distribution": express_dist,
         "monthly": monthly,
     }
 

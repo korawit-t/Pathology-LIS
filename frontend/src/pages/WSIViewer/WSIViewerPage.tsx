@@ -95,6 +95,7 @@ export default function WSIViewerPage({ onBack }: Props) {
 
     const viewer = OpenSeadragon({
       element: viewerRef.current,
+      prefixUrl: "/osd-images/",
       showNavigationControl: true,
       showNavigator: true,
       navigatorPosition: "BOTTOM_RIGHT",
