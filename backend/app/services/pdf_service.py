@@ -18,6 +18,7 @@ except ImportError:
 # กำหนด Path พื้นฐาน
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+LOCAL_TEMPLATE_DIR = os.path.join(BASE_DIR, "templates", "reports", "local")
 
 # autoescape=True: all {{ var }} are HTML-escaped by default.
 # Rich-text fields (diagnosis, gross, microscopic, clinical history) that
@@ -31,6 +32,14 @@ env = Environment(
 )
 
 
+def _resolve_template(template_name: str) -> str:
+    """Return reports/local/<name> if a hospital override exists, else the canonical name."""
+    filename = os.path.basename(template_name)
+    if os.path.isfile(os.path.join(LOCAL_TEMPLATE_DIR, filename)):
+        return f"reports/local/{filename}"
+    return template_name
+
+
 def generate_pdf_blob(
     report_data: dict, 
     template_name: str = "reports/surgical_report_template.html", 
@@ -40,8 +49,8 @@ def generate_pdf_blob(
     """
     แปลงข้อมูล report_data เป็นไฟล์ PDF (Binary)
     """
-    # 1. โหลด Template
-    template = env.get_template(template_name)
+    # 1. โหลด Template (local/ override takes precedence over canonical)
+    template = env.get_template(_resolve_template(template_name))
 
     # 2. ใส่ข้อมูล Metadata เพิ่มเติม
     project_root = os.path.dirname(BASE_DIR)

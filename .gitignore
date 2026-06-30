@@ -47,8 +47,9 @@ backend/data/storage/
 backend/uploads/
 # HIS custom SQL files (hospital-specific, must not be committed to repo)
 backend/data/*.sql
-# Report templates — each lab customizes locally; .html.example files are the tracked defaults
-backend/app/templates/reports/*.html
+# Report templates are tracked directly as .html files
+# Hospital-specific overrides go in local/ — NOT tracked (only .gitkeep is tracked)
+backend/app/templates/reports/local/*.html
 # หากมีไฟล์ที่สร้างจาก Alembic แต่ต้องการล้างประวัติ
 # backend/alembic/versions/*.py (ปกติจะไม่อิกนอร์เพื่อให้ทีมใช้ด้วยกันได้)
 

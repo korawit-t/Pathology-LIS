@@ -216,6 +216,18 @@
 
             <div class="section-header">SPECIMEN EVALUATION</div>
             <table class="bethesda-table">
+              {% if specimen_type %}
+              <tr>
+                <td class="bethesda-label">Specimen Type:</td>
+                <td>{{ specimen_type }}</td>
+              </tr>
+              {% endif %}
+              {% if collection_site %}
+              <tr>
+                <td class="bethesda-label">Collection Site:</td>
+                <td>{{ collection_site }}</td>
+              </tr>
+              {% endif %}
               <tr>
                 <td class="bethesda-label">Specimen Adequacy:</td>
                 <td>{{ adequacy_text or '-' }}</td>
