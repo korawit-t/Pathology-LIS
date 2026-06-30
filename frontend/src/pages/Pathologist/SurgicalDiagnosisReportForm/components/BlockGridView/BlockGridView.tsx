@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Space,
   Typography,
@@ -55,6 +55,19 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
   const [recutBlock, setRecutBlock] = useState<SurgicalBlock | null>(null);
   const [recutNote, setRecutNote] = useState("");
   const [recutLoading, setRecutLoading] = useState(false);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(false);
+
+  useEffect(() => {
+    const wrapper = tableWrapRef.current;
+    if (!wrapper) return;
+    const body = wrapper.querySelector<HTMLElement>(".ant-table-body");
+    if (!body) return;
+    const check = () => setIsAtBottom(body.scrollTop + body.clientHeight >= body.scrollHeight - 2);
+    check();
+    body.addEventListener("scroll", check);
+    return () => body.removeEventListener("scroll", check);
+  }, [blocks]);
 
   const fetchBlocks = useCallback(async () => {
     if (!specimenId) return;
@@ -212,7 +225,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
       )}
 
       {/* Block table */}
-      <div style={{ position: "relative" }}>
+      <div ref={tableWrapRef} style={{ position: "relative", boxShadow: blocks.length > 5 && !isAtBottom ? "inset 0 -8px 6px -6px rgba(0,0,0,0.12)" : undefined }}>
         <Table
           size="small"
           pagination={false}
@@ -374,21 +387,8 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
             },
           ]}
         />
-        {blocks.length > 5 && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 32,
-              background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.85))",
-              pointerEvents: "none",
-            }}
-          />
-        )}
       </div>
-      {blocks.length > 5 && (
+      {blocks.length > 5 && !isAtBottom && (
         <Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 2 }}>
           ↓ {blocks.length} blocks total — scroll to see all
         </Text>
