@@ -72,7 +72,7 @@ class GyneCytologyCase(Base):
     is_out_lab_consult = Column(Boolean, default=False, index=True)
     is_out_lab = Column(Boolean, default=False, index=True)
     out_lab_result_pdf_path = Column(String, nullable=True)
-    consult_status = Column(String, default="pending", index=True)
+    consult_status = Column(String, nullable=True, index=True)
     consult_pdf_path = Column(String, nullable=True)
     outlab_report_pdf_path = Column(String, nullable=True)
     is_slide_released = Column(Boolean, default=False, index=True)

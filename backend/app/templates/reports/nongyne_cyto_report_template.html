@@ -360,6 +360,11 @@
                     {% elif signer.role == 'co-signer' %}Co-Signer
                     {% else %}{{ signer.role }}{% endif %}
                   </div>
+                  {% if signer.signed_at %}
+                  <div style="font-size: 10px; color: #94a3b8; margin-top: 1px;">
+                    Signed: {{ signer.signed_at }}
+                  </div>
+                  {% endif %}
                 </div>
                 {% endfor %}
               {% endif %}

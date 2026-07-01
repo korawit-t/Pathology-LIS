@@ -1,6 +1,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from app.utils.time import local_now
 from app.models.nongyne_cyto_report import NongyneCytoReport, NongyneReportStatus, NongyneReportType, NongyneReportSigner
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -16,6 +17,34 @@ from typing import List
 import base64
 import os
 from pathlib import Path
+
+_BKK = ZoneInfo("Asia/Bangkok")
+
+
+def _fmt_dt(val) -> str | None:
+    """Normalize a datetime or ISO string to 'DD/MM/YYYY HH:MM' in Bangkok time."""
+    if not val:
+        return None
+    if isinstance(val, str):
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            if dt.tzinfo:
+                dt = dt.astimezone(_BKK).replace(tzinfo=None)
+        except Exception:
+            return val[:16].replace("T", " ")
+    else:
+        dt = val
+    return dt.strftime("%d/%m/%Y %H:%M")
+
+
+def _stamp_snapshot_signed_at(report: "NongyneCytoReport", user_id: int, signed_at) -> None:
+    """Update one signer's signed_at within report.signers_snapshot, if present."""
+    if not report.signers_snapshot:
+        return
+    report.signers_snapshot = [
+        {**s, "signed_at": _fmt_dt(signed_at)} if s.get("user_id") == user_id else s
+        for s in report.signers_snapshot
+    ]
 
 
 def get_report_by_id(db: Session, report_id: int):
@@ -212,6 +241,11 @@ def publish_nongyne_report(db: Session, case_id: int, signers: List[dict] = None
     db.flush()
 
     if signers:
+        user_map = {
+            u.id: u
+            for u in db.query(User).filter(User.id.in_([s["user_id"] for s in signers])).all()
+        }
+        snapshot_signers = []
         for s in signers:
             signed_at_val = s.get("signed_at")
             if not signed_at_val and current_user_id and s["user_id"] == current_user_id:
@@ -224,6 +258,22 @@ def publish_nongyne_report(db: Session, case_id: int, signers: List[dict] = None
                 signed_at=signed_at_val
             )
             db.add(new_signer)
+
+            u = user_map.get(s["user_id"])
+            if u:
+                snapshot_signers.append({
+                    "user_id": u.id,
+                    "full_name": u.full_name,
+                    "report_name": u.report_name,
+                    "role": s.get("role", "primary"),
+                    "signed_at": _fmt_dt(signed_at_val),
+                })
+
+        # 🚩 Use the actual signer list (with real signed_at) for the snapshot —
+        # prepare_nongyne_report_data() only seeds two null-placeholder entries
+        # from the case's assigned pathologist/cytotechnologist, which never
+        # reflect who actually signed or when.
+        db_report.signers_snapshot = snapshot_signers
 
     # Stamp signers onto the current diagnosis for worklist filtering
     if signers:
@@ -355,7 +405,7 @@ def get_nongyne_snapshot_pdf_data(db: Session, report: NongyneCytoReport) -> dic
                 "full_name": s.user.full_name,
                 "report_name": s.user.report_name,
                 "role": s.role,
-                "signed_at": s.signed_at,
+                "signed_at": _fmt_dt(s.signed_at),
             }
             for s in report.signers
         ]
@@ -364,7 +414,7 @@ def get_nongyne_snapshot_pdf_data(db: Session, report: NongyneCytoReport) -> dic
             "full_name": report.pathologist_name,
             "report_name": report.pathologist_name,
             "role": "primary",
-            "signed_at": report.reported_at,
+            "signed_at": _fmt_dt(report.reported_at),
         }]
 
     data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
@@ -422,6 +472,7 @@ def process_nongyne_report_approval(
         signer.signed_at = now
         signer.agreement = req.agreement
         signer.agreement_note = req.agreement_note
+        _stamp_snapshot_signed_at(db_report, current_user.id, now)
 
         if db_report.case_id is not None:
             db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_report.case_id).first()
@@ -522,6 +573,7 @@ def process_nongyne_cosign(
     signer.signed_at = now
     signer.agreement = req.agreement
     signer.agreement_note = req.agreement_note
+    _stamp_snapshot_signed_at(signer.report, current_user.id, now)
 
     log = CytoReportAuditLog(
         report_type="nongyne",
