@@ -52,6 +52,7 @@ const PathologistPage: React.FC<{
   const [readyStainCount, setReadyStainCount] = useState(0);
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
   const [pendingConsultCount, setPendingConsultCount] = useState(0);
+  const [externalConsultCount, setExternalConsultCount] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [tatCases, setTatCases] = useState<(WorklistRow & { tatPercent: number; tatDisplay: string })[]>([]);
   const [tatLoading, setTatLoading] = useState(false);
@@ -257,11 +258,12 @@ const renderWorklist = (
       label: (
         <span>
           <GlobalOutlined style={{ marginRight: 6 }} />
-          External Consult
+          External Consult{" "}
+          <Badge count={externalConsultCount} size="small" color="blue" />
         </span>
       ),
       children: (
-        <MyConsultCases pathologistId={user?.id} onSelectCase={(id) => onSelectCase(id, "surgical")} />
+        <MyConsultCases pathologistId={user?.id} onSelectCase={(id) => onSelectCase(id, "surgical")} onCountChange={setExternalConsultCount} />
       ),
     },
     {

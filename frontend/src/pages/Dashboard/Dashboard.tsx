@@ -301,7 +301,15 @@ const Dashboard: React.FC = () => {
             isSidebarCollapsed: collapsed,
             isSideLayout: layoutMode === "side",
             selectedSpecimenId,
-            onNavigate: setCurrentView,
+            onNavigate: (view: string) => {
+              if (view.includes(":")) {
+                const [page, tab] = view.split(":");
+                if (page === "pathologist-page") setPathologistDefaultTab(tab);
+                setCurrentView(page);
+              } else {
+                setCurrentView(view);
+              }
+            },
             defaultTab: pathologistDefaultTab,
             onOpenReport: (id, type) => {
               setSelectedSpecimenId(id);

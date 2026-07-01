@@ -175,3 +175,104 @@ export interface LabTechStatResponse {
   };
 }
 
+export interface StaffRegistrationRow {
+  user_id: number;
+  full_name: string;
+  username: string;
+  surgical: number;
+  gyne: number;
+  nongyne: number;
+  total: number;
+}
+
+export interface StaffGrossItem {
+  specimen_name: string;
+  count: number;
+}
+
+export interface StaffGrossRow {
+  user_id: number;
+  full_name: string;
+  specimen_count: number;
+  items: StaffGrossItem[];
+}
+
+export interface StaffGrossStats {
+  examiners: StaffGrossRow[];
+  assistants: StaffGrossRow[];
+}
+
+export interface TissueProcessEmbedRow {
+  user_id: number;
+  full_name: string;
+  block_count: number;
+}
+
+export interface TissueProcessSectionRow {
+  user_id: number;
+  full_name: string;
+  block_count: number;
+  slide_count: number;
+}
+
+export interface TissueProcessStainRow {
+  user_id: number;
+  full_name: string;
+  slide_count: number;
+}
+
+export interface BlockStorageWorkloadRow {
+  user_id: number;
+  full_name: string;
+  block_count: number;
+}
+
+export interface SlideStorageWorkloadRow {
+  user_id: number;
+  full_name: string;
+  HE: number;
+  Special: number;
+  IHC: number;
+  Gyne: number;
+  NonGyne: number;
+  total: number;
+}
+
+export interface StorageStats {
+  block_storage: BlockStorageWorkloadRow[];
+  slide_storage: SlideStorageWorkloadRow[];
+}
+
+export interface TissueProcessingRunRow {
+  user_id: number;
+  full_name: string;
+  run_count: number;
+  block_count: number;
+}
+
+export interface TissueProcessStats {
+  embedding: TissueProcessEmbedRow[];
+  sectioning: TissueProcessSectionRow[];
+  staining: TissueProcessStainRow[];
+  tissue_processing: TissueProcessingRunRow[];
+}
+
+export interface OutlabStainWorkloadRow {
+  user_id: number;
+  full_name: string;
+  run_count: number;
+  slide_count: number;
+}
+
+export interface OutlabConsultWorkloadRow {
+  user_id: number;
+  full_name: string;
+  run_count: number;
+  case_count: number;
+}
+
+export interface OutlabStats {
+  outlab_stain: OutlabStainWorkloadRow[];
+  outlab_consult: OutlabConsultWorkloadRow[];
+}
+

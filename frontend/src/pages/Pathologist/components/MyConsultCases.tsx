@@ -32,9 +32,10 @@ const CONSULT_TAG: Record<string, { color: string; icon: React.ReactNode }> = {
 interface Props {
   pathologistId?: number;
   onSelectCase?: (id: number) => void;
+  onCountChange?: (count: number) => void;
 }
 
-const MyConsultCases: React.FC<Props> = ({ pathologistId, onSelectCase }) => {
+const MyConsultCases: React.FC<Props> = ({ pathologistId, onSelectCase, onCountChange }) => {
   const [cases, setCases] = useState<SurgicalCase[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -56,7 +57,9 @@ const MyConsultCases: React.FC<Props> = ({ pathologistId, onSelectCase }) => {
         consult_status: CONSULT_STATUS_QUERY[consultStatus] ?? consultStatus,
       });
       setCases(res.items || []);
-      setTotal(res.total || 0);
+      const t = res.total || 0;
+      setTotal(t);
+      onCountChange?.(t);
     } catch {
       message.error("Failed to load consult cases");
     } finally {

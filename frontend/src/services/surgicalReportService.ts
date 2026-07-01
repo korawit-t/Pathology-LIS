@@ -56,6 +56,11 @@ import {
   SurgicalReportPagination,
   SurgicalStatResponse,
   LabTechStatResponse,
+  StaffRegistrationRow,
+  StaffGrossStats,
+  TissueProcessStats,
+  StorageStats,
+  OutlabStats,
 } from "../types/surgicalReport";
 import { BulkSaveDraft } from "../types/surgicalBulk";
 import { ArchiveItem } from "./archiveService";
@@ -246,6 +251,61 @@ const SurgicalReportService = {
     const response = await api.get<LabTechStatResponse>(
       `/surgical-reports/lab-stats`,
       { params: { start_date: startDate, end_date: endDate, user_id: userId } },
+    );
+    return response.data;
+  },
+
+  getStaffRegistrationStats: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<StaffRegistrationRow[]> => {
+    const response = await api.get<StaffRegistrationRow[]>(
+      `/surgical-reports/staff-registration-stats`,
+      { params: { start_date: startDate, end_date: endDate } },
+    );
+    return response.data;
+  },
+
+  getStorageStats: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<StorageStats> => {
+    const response = await api.get<StorageStats>(
+      `/surgical-reports/storage-stats`,
+      { params: { start_date: startDate, end_date: endDate } },
+    );
+    return response.data;
+  },
+
+  getTissueProcessStats: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<TissueProcessStats> => {
+    const response = await api.get<TissueProcessStats>(
+      `/surgical-reports/tissue-process-stats`,
+      { params: { start_date: startDate, end_date: endDate } },
+    );
+    return response.data;
+  },
+
+  getStaffGrossStats: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<StaffGrossStats> => {
+    const response = await api.get<StaffGrossStats>(
+      `/surgical-reports/staff-gross-stats`,
+      { params: { start_date: startDate, end_date: endDate } },
+    );
+    return response.data;
+  },
+
+  getOutlabStats: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<OutlabStats> => {
+    const response = await api.get<OutlabStats>(
+      `/surgical-reports/outlab-stats`,
+      { params: { start_date: startDate, end_date: endDate } },
     );
     return response.data;
   },

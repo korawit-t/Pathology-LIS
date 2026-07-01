@@ -14,6 +14,9 @@ import {
   ScissorOutlined,
   LinkOutlined,
   BgColorsOutlined,
+  FormOutlined,
+  InboxOutlined,
+  SendOutlined,
 } from "@ant-design/icons";
 import PageContainer from "../../components/Layout/PageContainer";
 import WorkloadDashboard from "./WorkloadDashboard";
@@ -29,6 +32,11 @@ import CytoHistoCorrelationReport from "./CytoHistoCorrelationReport";
 import CytoWorkloadPage from "./CytoWorkloadPage";
 import CytoTATDashboard from "./CytoTATDashboard";
 import IHCStatPage from "./IHCStatPage";
+import StaffRegistrationPage from "./StaffRegistrationPage";
+import StaffGrossPage from "./StaffGrossPage";
+import HistoPage from "./HistoPage";
+import StorageWorkloadPage from "./StorageWorkloadPage";
+import OutlabWorkloadPage from "./OutlabWorkloadPage";
 
 const INNER_STYLE = { paddingTop: 16 };
 
@@ -157,6 +165,44 @@ const ReportAnalyticsHub: React.FC = () => {
                     key: "cyto-histo",
                     label: <span><LinkOutlined style={{ marginRight: 6 }} />Cyto-Histo Correlation</span>,
                     children: <CytoHistoCorrelationReport />,
+                  },
+                ]}
+              />
+            ),
+          },
+          {
+            key: "workload",
+            label: <span><FormOutlined style={{ marginRight: 6 }} />Workload</span>,
+            children: (
+              <Tabs
+                size="middle"
+                defaultActiveKey="registration"
+                style={INNER_STYLE}
+                items={[
+                  {
+                    key: "registration",
+                    label: <span><TeamOutlined style={{ marginRight: 6 }} />Registration by Staff</span>,
+                    children: <StaffRegistrationPage />,
+                  },
+                  {
+                    key: "gross",
+                    label: <span><ScissorOutlined style={{ marginRight: 6 }} />Grossing</span>,
+                    children: <StaffGrossPage />,
+                  },
+                  {
+                    key: "histo",
+                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Histo</span>,
+                    children: <HistoPage />,
+                  },
+                  {
+                    key: "storage",
+                    label: <span><InboxOutlined style={{ marginRight: 6 }} />Storage</span>,
+                    children: <StorageWorkloadPage />,
+                  },
+                  {
+                    key: "outlab",
+                    label: <span><SendOutlined style={{ marginRight: 6 }} />Outlab</span>,
+                    children: <OutlabWorkloadPage />,
                   },
                 ]}
               />

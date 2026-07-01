@@ -20,7 +20,7 @@ from app.crud.surgical_report import (
     get_pending_cosign_worklist,
 )
 from app.crud.surgical_report_builder import prepare_report_data, get_image_base64_from_path, STORAGE_BASE
-from app.crud.surgical_statistics import get_surgical_statistics, get_lab_tech_statistics
+from app.crud.surgical_statistics import get_surgical_statistics, get_lab_tech_statistics, get_staff_registration_stats, get_staff_gross_stats, get_tissue_process_stats, get_storage_stats, get_outlab_stats
 from app.schemas.surgical_report import (
     SurgicalReportResponse,
     SurgicalReportPagination,
@@ -96,6 +96,66 @@ def read_surgical_statistics(
         end_date=end_date,
         pathologist_id=pathologist_id,
     )
+
+
+@router.get(
+    "/staff-registration-stats",
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def read_staff_registration_stats(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    return get_staff_registration_stats(db=db, start_date=start_date, end_date=end_date)
+
+
+@router.get(
+    "/staff-gross-stats",
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def read_staff_gross_stats(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    return get_staff_gross_stats(db=db, start_date=start_date, end_date=end_date)
+
+
+@router.get(
+    "/storage-stats",
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def read_storage_stats(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    return get_storage_stats(db=db, start_date=start_date, end_date=end_date)
+
+
+@router.get(
+    "/tissue-process-stats",
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def read_tissue_process_stats(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    return get_tissue_process_stats(db=db, start_date=start_date, end_date=end_date)
+
+
+@router.get(
+    "/outlab-stats",
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def read_outlab_stats(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    return get_outlab_stats(db=db, start_date=start_date, end_date=end_date)
 
 
 @router.get(

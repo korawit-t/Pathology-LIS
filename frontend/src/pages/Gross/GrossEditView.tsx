@@ -270,6 +270,12 @@ const GrossEditView: React.FC<Props> = ({
         return;
       }
 
+      const grossStageStatuses: string[] = [
+        CASE_STATUS.REGISTERED,
+        CASE_STATUS.FORMALIN_FIXING,
+        CASE_STATUS.GROSS_IN_PROGRESS,
+        CASE_STATUS.GROSSED,
+      ];
       const formattedCaseValues = {
         clinical_diagnosis: values.clinical_diagnosis,
         gross_at: values.gross_at ? dayjs(values.gross_at).toISOString() : dayjs().toISOString(),
@@ -277,7 +283,7 @@ const GrossEditView: React.FC<Props> = ({
         gross_assistant_id: values.gross_assistant_id,
         pathologist_id: values.pathologist_id,
         is_grossed: true,
-        status: "grossed",
+        status: grossStageStatuses.includes(freshCase.status) ? CASE_STATUS.GROSSED : freshCase.status,
       };
 
       const validIds = freshSpecimens.map((s) => s.id.toString());

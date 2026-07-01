@@ -771,7 +771,7 @@ const handleOpenFinalizeModal = async () => {
         generatingPdf={generatingPdf}
         isLocked={isFinalizeLocked}
         showTopAnchor={showTopAnchor}
-        allDiagnosesCount={allDiagnoses?.length || 0}
+        allDiagnosesCount={new Set(allDiagnoses?.map((d) => d.diagnosis_order)).size || 0}
         isSplitMode={isSplitMode}
         onToggleSplitMode={() => setIsSplitMode(!isSplitMode)}
         onOpenSettings={() => setIsSettingsOpen(true)}

@@ -45,6 +45,23 @@ import type { GyneCytoHistoryItem, NongyneCytoHistoryItem } from "../../services
 
 const { Text } = Typography;
 
+const copyText = (text: string) => {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text);
+    return;
+  }
+  // Fallback for HTTP (non-secure context)
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  document.execCommand("copy");
+  document.body.removeChild(el);
+};
+
 interface PatientInfoCardProps {
   activeCase: SurgicalCase | null;
   isExpanded: boolean;
@@ -340,7 +357,7 @@ const PatientInfoCard: React.FC<PatientInfoCardProps> = ({
                   style={{ color: "#bfbfbf", padding: "0 2px" }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(activeCase.hn);
+                    copyText(activeCase.hn);
                     message.success("Copied HN: " + activeCase.hn);
                   }}
                 />
@@ -360,7 +377,7 @@ const PatientInfoCard: React.FC<PatientInfoCardProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     const fullName = [p.title?.title, p.name, p.ln].filter(Boolean).join(" ");
-                    navigator.clipboard.writeText(fullName);
+                    copyText(fullName);
                     message.success("Copied: " + fullName);
                   }}
                 />

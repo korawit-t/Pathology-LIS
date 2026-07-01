@@ -146,7 +146,7 @@ const PathologistDashboard: React.FC<Props> = ({ user, onNavigate }) => {
           description="Please prioritize these cases in your worklist immediately."
           style={{ marginBottom: 16, borderRadius: 8 }}
           action={
-            <Button size="small" danger onClick={() => nav("pathologist-page")}>
+            <Button size="small" danger onClick={() => nav("pathologist-page:tat-overdue")}>
               View Now
             </Button>
           }
