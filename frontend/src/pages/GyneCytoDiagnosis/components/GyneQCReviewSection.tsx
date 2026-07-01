@@ -38,6 +38,16 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
     setDiscrepancyLevel(null);
   };
 
+  const handleAgreeClick = () => {
+    Modal.confirm({
+      title: "Confirm Agreement",
+      content:
+        "This will publish the report immediately and cannot be undone from here. Are you sure you agree with the cytotechnologist's interpretation?",
+      okText: "Agree & Publish",
+      onOk: onAgree,
+    });
+  };
+
   return (
     <>
       {/* QC Review Banner */}
@@ -64,7 +74,7 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
                   size="small"
                   type="primary"
                   loading={completingReview}
-                  onClick={onAgree}
+                  onClick={handleAgreeClick}
                   style={{
                     background:
                       caseData?.review_reason === "random_10pct"

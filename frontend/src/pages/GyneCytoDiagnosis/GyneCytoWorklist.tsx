@@ -263,7 +263,11 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       };
     }
     if (tab === "awaiting_cosign") {
-      return { signed_by: userId, assigned_user_id: userId };
+      return {
+        signed_by: userId,
+        assigned_user_id: userId,
+        exclude_status: "published",
+      };
     }
     if (tab === "submitted") {
       return { status: "screened", assigned_user_id: userId };
@@ -272,9 +276,9 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       return { status: "pending_review", assigned_user_id: userId };
     }
     if (tab === "co_sign") {
-      return { signer_id: userId };
+      return { signer_id: userId, exclude_status: "published" };
     }
-    // "all" → cases assigned to current user only
+    // "all" → cases assigned to current user only, including published
     return { assigned_user_id: userId };
   };
 

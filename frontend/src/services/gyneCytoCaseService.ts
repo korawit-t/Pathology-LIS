@@ -26,6 +26,7 @@ const GyneCytologyCaseService = {
     assigned_to_me?: boolean;
     assigned_user_id?: number;
     signer_id?: number;
+    exclude_status?: string;
     exclude_signed_by?: number;
     signed_by?: number;
     is_reviewed?: boolean;

@@ -108,6 +108,7 @@ def get_gyne_cases(
     status: str = None,
     assigned_user_id: int = None,
     signer_id: int = None,
+    exclude_status: str = None,
     exclude_signed_by: int = None,
     signed_by: int = None,
     hospital_id: int = None,
@@ -176,6 +177,9 @@ def get_gyne_cases(
             query = query.filter(GyneCytologyCase.is_screened.is_(True))
         else:
             query = query.filter(GyneCytologyCase.status == status.lower())
+
+    if exclude_status:
+        query = query.filter(GyneCytologyCase.status != exclude_status.lower())
 
     # 3. ค้นหาแบบ Global Search (Accession No, HN, Name)
     if search:

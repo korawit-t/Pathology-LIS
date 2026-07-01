@@ -56,6 +56,9 @@ const GyneQCReviewTable = lazy(
 const GyneDiagnosisEntryPage = lazy(
   () => import("../GyneCytoDiagnosis/GyneDiagnosisEntryPage"),
 );
+const PathologistGyneDiagnosisPage = lazy(
+  () => import("../GyneCytoDiagnosis/PathologistGyneDiagnosisPage"),
+);
 const NongyneCytoWorklist = lazy(
   () => import("../NongyneCytoDiagnosis/NongyneCytoWorklist"),
 );
@@ -218,6 +221,10 @@ const VIEW_CONFIG: Record<
   "gyne-cyto-diagnosis-entry": {
     pageKey: "gyne-cyto-diagnosis-entry", // ใช้ Permission เดียวกับหน้า Worklist
     component: GyneDiagnosisEntryPage,
+  },
+  "pathologist-gyne-diagnosis": {
+    pageKey: "gyne-cyto-diagnosis-entry",
+    component: PathologistGyneDiagnosisPage,
   },
 
   "gyne-cyto-stains": {

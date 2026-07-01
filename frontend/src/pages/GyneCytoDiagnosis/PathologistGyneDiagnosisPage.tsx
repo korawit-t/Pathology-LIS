@@ -27,6 +27,8 @@ import {
   EditOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
+  CheckCircleFilled,
+  UnlockOutlined,
   LockOutlined,
   ExclamationCircleOutlined,
   HistoryOutlined,
@@ -59,7 +61,7 @@ import GyneSignOffPage from "./components/GyneSignOffPage";
 const { TextArea } = Input;
 const { Text, Title } = Typography;
 
-interface GyneDiagnosisEntryPageProps {
+interface PathologistGyneDiagnosisPageProps {
   caseId?: string | number;
   onBack?: () => void;
 }
@@ -79,9 +81,9 @@ const CASE_STATUS_CONFIG: Record<
   reported: { color: "success", label: "Reported" },
 };
 
-const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
-  props,
-) => {
+const PathologistGyneDiagnosisPage: React.FC<
+  PathologistGyneDiagnosisPageProps
+> = (props) => {
   const { caseId: propsCaseId, onBack } = props;
   const caseId = propsCaseId;
   const { message, notification } = App.useApp();
@@ -119,8 +121,6 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   const [forceEdit, setForceEdit] = useState(false);
   const [isAbnormal, setIsAbnormal] = useState(false);
   const [completingReview, setCompletingReview] = useState(false);
-  const [sendToPathoModalOpen, setSendToPathoModalOpen] = useState(false);
-  const [selectedPathoId, setSelectedPathoId] = useState<number | null>(null);
   const [slideQualityModalOpen, setSlideQualityModalOpen] = useState(false);
   const [consultModalOpen, setConsultModalOpen] = useState(false);
   const [consultHistoryKey, setConsultHistoryKey] = useState(0);
@@ -167,6 +167,13 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     [caseData],
   );
 
+  const isPathologist = useMemo(
+    () =>
+      !!currentUser?.roles?.includes("pathologist") ||
+      !!currentUser?.roles?.includes("senior_pathologist"),
+    [currentUser],
+  );
+
   const isPendingReview = caseData?.status === "pending_review";
 
   // Set default signers when no diagnosis exists
@@ -177,6 +184,26 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         form.setFieldValue("signers", defaultSigners);
     }
   }, [loading, diagnosis, caseData, defaultSigners, form]);
+
+  // Add current user to signers on revision after disagree
+  useEffect(() => {
+    if (isRevision && caseData?.review_result === "disagree" && currentUser) {
+      const current: GyneSigner[] = form.getFieldValue("signers") || [];
+      const alreadyIn = current.some(
+        (s) => Number(s.user_id) === Number(currentUser.id),
+      );
+      if (!alreadyIn) {
+        form.setFieldValue("signers", [
+          ...current,
+          {
+            user_id: currentUser.id,
+            role: "co-sign pathologist",
+            signed_at: null,
+          },
+        ]);
+      }
+    }
+  }, [isRevision, caseData?.review_result, currentUser, form]);
 
   // Sync isAbnormal from selected category
   useEffect(() => {
@@ -300,6 +327,22 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
           signed_at: null,
         }));
 
+        if (caseData?.review_result === "disagree" && currentUser) {
+          const signersList: GyneSigner[] = values.signers || [];
+          const alreadyInList = signersList.some(
+            (s) => Number(s.user_id) === Number(currentUser.id),
+          );
+          if (!alreadyInList) {
+            values.signers = [
+              ...signersList,
+              {
+                user_id: currentUser.id,
+                role: "co-sign pathologist",
+                signed_at: null,
+              },
+            ];
+          }
+        }
         await GyneDiagnosisService.reviseReport(diagnosis.id, values);
         message.success("Revised report saved successfully.");
         setIsRevision(false);
@@ -460,29 +503,31 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   };
 
-  const handleSendToPathologistClick = () => {
-    const signers: GyneSigner[] = form.getFieldValue("signers") || [];
-    const existing = signers.find((s) => s.role === "pathologist");
-    setSelectedPathoId(existing?.user_id ?? null);
-    setSendToPathoModalOpen(true);
-  };
-
-  const handleSendToPathoConfirm = () => {
-    if (!selectedPathoId) {
-      message.warning("Please select a pathologist.");
-      return;
-    }
-    const current: GyneSigner[] = form.getFieldValue("signers") || [];
-    const alreadyIn = current.some((s) => s.user_id === selectedPathoId);
-    if (!alreadyIn) {
-      const withoutOtherPatho = current.filter((s) => s.role !== "pathologist");
-      form.setFieldValue("signers", [
-        ...withoutOtherPatho,
-        { user_id: selectedPathoId, role: "pathologist", signed_at: null },
-      ]);
-    }
-    setSendToPathoModalOpen(false);
-    handleFinalize(null, null);
+  const handleUnlockAndReset = () => {
+    Modal.confirm({
+      title: "Unlock & Edit Report",
+      content: (
+        <div>
+          <p>
+            Unlocking will <b>reset all signatures</b>.
+          </p>
+          <p style={{ color: "#ff4d4f" }}>
+            All signers will need to sign again.
+          </p>
+        </div>
+      ),
+      okText: "Unlock & Reset",
+      okType: "danger",
+      onOk: () => {
+        const resetSigners = (form.getFieldValue("signers") || []).map((s) => ({
+          ...s,
+          signed_at: null,
+        }));
+        form.setFieldValue("signers", resetSigners);
+        setForceEdit(true);
+        message.info("Report unlocked. All signatures have been reset.");
+      },
+    });
   };
 
   const handleCompleteReview = async (
@@ -517,14 +562,42 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   };
 
+  const isPrimary = useMemo(() => {
+    if (!diagnosis || !currentUser) return true;
+    const primary = diagnosis.signers?.find((s) => s.role === "pathologist");
+    return primary?.user_id === currentUser.id;
+  }, [diagnosis, currentUser]);
+
+  const isCoSigner = useMemo(() => {
+    if (!diagnosis || !currentUser) return false;
+    return diagnosis.signers?.some(
+      (s) => s.user_id === currentUser.id && s.role.startsWith("co-sign"),
+    );
+  }, [diagnosis, currentUser]);
+
   const isFormMode = !diagnosis || isRevision || !isFinalized;
-  const isFormLocked = isFinalized && !isRevision;
+  const isFormLocked =
+    (isFinalized && !isRevision) || (isCoSigner && !forceEdit);
+
+  const isPrimarySigned = useMemo(() => {
+    if (!diagnosis?.signers) return false;
+    const patho = diagnosis.signers.find((s) => s.role === "pathologist");
+    const cyto = diagnosis.signers.find((s) => s.role === "cytotechnologist");
+    if (patho) return !!patho.signed_at;
+    if (cyto) return !!cyto.signed_at;
+    return false;
+  }, [diagnosis]);
 
   const isCurrentUserSigned = useMemo(() => {
     if (!diagnosis || !currentUser) return false;
     return !!diagnosis.signers?.find((s) => s.user_id === currentUser.id)
       ?.signed_at;
   }, [diagnosis, currentUser]);
+
+  const canCoSignConfirm = useMemo(
+    () => isCoSigner && isPrimarySigned && !isCurrentUserSigned,
+    [isCoSigner, isPrimarySigned, isCurrentUserSigned],
+  );
 
   const caseStatus = caseData?.status;
   const statusConfig = CASE_STATUS_CONFIG[caseStatus] ?? {
@@ -638,34 +711,43 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                       </Button>
                     )}
 
-                    <Button
-                      type="primary"
-                      icon={<SaveOutlined />}
-                      loading={submitting}
-                      disabled={finalizing}
-                      onClick={() => form.submit()}
-                      style={{ background: "#52c41a", border: "none" }}
-                    >
-                      {isRevision ? "Save Draft Revision" : "Save Draft"}
-                    </Button>
-                    {(!isFinalized || isRevision) && diagnosis && (
+                    {canCoSignConfirm ? (
                       <Button
                         type="primary"
-                        icon={<CheckCircleOutlined />}
+                        icon={<CheckCircleFilled />}
                         loading={finalizing}
-                        onClick={
-                          isAbnormal
-                            ? handleSendToPathologistClick
-                            : handleFinalizeClick
-                        }
-                        disabled={submitting}
-                        style={{
-                          background: isAbnormal ? "#fa8c16" : "#cf1322",
-                          border: "none",
-                        }}
+                        onClick={handleFinalizeClick}
+                        style={{ background: "#52c41a", border: "none" }}
                       >
-                        {isAbnormal ? "Send to Pathologist" : "Sign-off"}
+                        Confirm & Sign
                       </Button>
+                    ) : (
+                      <>
+                        <Button
+                          type="primary"
+                          icon={<SaveOutlined />}
+                          loading={submitting}
+                          disabled={finalizing}
+                          onClick={() => form.submit()}
+                          style={{ background: "#52c41a", border: "none" }}
+                        >
+                          {isRevision ? "Save Draft Revision" : "Save Draft"}
+                        </Button>
+                        {(!isFinalized || isRevision) && diagnosis && (
+                          <Button
+                            type="primary"
+                            icon={<CheckCircleOutlined />}
+                            loading={finalizing}
+                            onClick={handleFinalizeClick}
+                            disabled={
+                              submitting || (isCoSigner && !isPrimarySigned)
+                            }
+                            style={{ background: "#cf1322", border: "none" }}
+                          >
+                            {isPrimary ? "Sign-off" : "Confirm & Sign-off"}
+                          </Button>
+                        )}
+                      </>
                     )}
                   </>
                 ) : null}
@@ -690,12 +772,11 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
       {caseData && <GyneClinicalInfoCard caseData={caseData} />}
 
       <div style={{ padding: "0 24px 32px" }}>
-        {/* ── QC Review Banner (read-only here — Agree/Disagree happen on
-             the pathologist's own review page) + Discordance Banner ──────── */}
+        {/* ── QC Review Banner + Discordance Banner ────────────────────── */}
         <GyneQCReviewSection
           caseData={caseData}
           isPendingReview={isPendingReview}
-          isPathologist={false}
+          isPathologist={isPathologist}
           completingReview={completingReview}
           onAgree={() => handleCompleteReview("agree")}
           onDisagree={(note, level) =>
@@ -866,7 +947,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                     </Select>
                   </Form.Item>
 
-                  {!isRevision && (
+                  {!isCoSigner && !isRevision && (
                     <Form.Item label="Result Type">
                       <Space>
                         <Switch
@@ -884,7 +965,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                           style={{ fontSize: 12 }}
                         >
                           {isAbnormal
-                            ? "Will route to pathologist for review"
+                            ? "Abnormal result"
                             : "Normal result — will finalize after sign-off"}
                         </Typography.Text>
                       </Space>
@@ -980,6 +1061,15 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
             />
 
             {/* ── Signers ── */}
+            {isCoSigner && !forceEdit && !isCurrentUserSigned && (
+              <Button
+                icon={<UnlockOutlined />}
+                onClick={handleUnlockAndReset}
+                style={{ marginBottom: 12 }}
+              >
+                Unlock & Edit
+              </Button>
+            )}
             <GynePathologistDiagnosisManager
               form={form}
               pathologists={pathologists}
@@ -987,6 +1077,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
               isLocked={isFormLocked}
               namePath={SIGNERS_PATH}
               settings={managerSettings}
+              hideCT={isCoSigner}
             />
 
             <CytoCorrelationManager
@@ -1036,39 +1127,6 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
           </Form>
         )}
       </div>
-
-      {/* ── Send to Pathologist Modal ── */}
-      <Modal
-        title="Send to Pathologist"
-        open={sendToPathoModalOpen}
-        onCancel={() => setSendToPathoModalOpen(false)}
-        onOk={handleSendToPathoConfirm}
-        okText="Confirm & Send"
-        okButtonProps={{ style: { background: "#fa8c16", border: "none" } }}
-        confirmLoading={finalizing}
-      >
-        <p style={{ marginBottom: 16, color: "#595959" }}>
-          This case is flagged as <b style={{ color: "#fa8c16" }}>abnormal</b>.
-          Select a pathologist to assign for review.
-        </p>
-        <Select
-          showSearch
-          placeholder="Select pathologist"
-          style={{ width: "100%" }}
-          value={selectedPathoId}
-          onChange={(val) => setSelectedPathoId(val)}
-          options={pathologists
-            .filter((p) =>
-              p.roles?.some(
-                (r) => r === "pathologist" || r === "senior_pathologist",
-              ),
-            )
-            .map((p) => ({
-              value: p.id,
-              label: p.full_name ?? `User #${p.id}`,
-            }))}
-        />
-      </Modal>
 
       {/* ── Slide Quality Modal ── */}
       <GyneSignOffPage
@@ -1287,4 +1345,4 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   );
 };
 
-export default GyneDiagnosisEntryPage;
+export default PathologistGyneDiagnosisPage;

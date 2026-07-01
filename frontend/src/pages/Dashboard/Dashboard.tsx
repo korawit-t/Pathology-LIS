@@ -324,7 +324,14 @@ const Dashboard: React.FC = () => {
                   setCurrentView("approval-manage");
                 }
               } else if (currentView === "gyne-cyto-work-list" || currentView === "gyne-qc-review" || type === "gyne") {
-                setCurrentView("gyne-cyto-diagnosis-entry");
+                const isPathologistUser = user?.roles?.some(
+                  (r) => r === "pathologist" || r === "senior_pathologist",
+                );
+                setCurrentView(
+                  isPathologistUser
+                    ? "pathologist-gyne-diagnosis"
+                    : "gyne-cyto-diagnosis-entry",
+                );
               } else if (currentView === "pathologist-page" && type === "nongyne") {
                 setCurrentView("pathologist-nongyne-diagnosis");
               } else if (currentView === "nongyne-cyto-work-list" || type === "nongyne") {
@@ -344,6 +351,9 @@ const Dashboard: React.FC = () => {
               } else if (currentView === "gyne-cyto-diagnosis-entry") {
                 setCurrentView(previousView === "gyne-qc-review" ? "gyne-qc-review" : "gyne-cyto-work-list");
                 setPreviousView(null);
+              } else if (currentView === "pathologist-gyne-diagnosis") {
+                setPathologistDefaultTab("gyne");
+                setCurrentView("pathologist-page");
               } else if (currentView === "pathologist-nongyne-diagnosis") {
                 setPathologistDefaultTab("nongyne");
                 setCurrentView("pathologist-page");
