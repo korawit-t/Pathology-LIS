@@ -223,9 +223,17 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
       .catch(() => {});
   }, [caseId, diagnosis]);
 
-  // Auto-show popup once when entering a finalized case
+  // Auto-show popup once when entering a finalized case.
+  // Skip pending_review — that status means the case is awaiting the
+  // pathologist's QC decision (see GyneQCReviewSection), not that it's
+  // already signed off.
   useEffect(() => {
-    if (caseData && isFinalized && !completedCasePopupShownRef.current) {
+    if (
+      caseData &&
+      isFinalized &&
+      caseData.status !== "pending_review" &&
+      !completedCasePopupShownRef.current
+    ) {
       completedCasePopupShownRef.current = true;
       setCompletedCasePopupOpen(true);
     }
@@ -1406,6 +1414,11 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                 {h.category_1_obj && (
                   <div style={{ fontSize: 12, color: "#434343" }}>
                     Category: {h.category_1_obj.code} — {h.category_1_obj.text}
+                  </div>
+                )}
+                {h.category_2_obj && (
+                  <div style={{ fontSize: 12, color: "#434343" }}>
+                    Sub Category: {h.category_2_obj.code} — {h.category_2_obj.text}
                   </div>
                 )}
               </div>

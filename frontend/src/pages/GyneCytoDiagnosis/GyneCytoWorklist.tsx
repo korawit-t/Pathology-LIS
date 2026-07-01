@@ -116,6 +116,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   const [guideOpen, setGuideOpen] = useState(false);
   const [settings, setSettings] = useState<SystemSetting | null>(null);
   const [qcSlideCount, setQcSlideCount] = useState(0);
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [holidays, setHolidays] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -250,6 +251,33 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     HolidayService.getHolidayDateList().then(setHolidays).catch(() => {});
   }, []);
 
+  const buildTabParams = (
+    tab: string,
+    userId: number,
+  ): Record<string, unknown> => {
+    if (tab === "stained") {
+      return {
+        status: "stained",
+        assigned_user_id: userId,
+        exclude_signed_by: userId,
+      };
+    }
+    if (tab === "awaiting_cosign") {
+      return { signed_by: userId, assigned_user_id: userId };
+    }
+    if (tab === "submitted") {
+      return { status: "screened", assigned_user_id: userId };
+    }
+    if (tab === "qc_slide_queue") {
+      return { status: "pending_review", assigned_user_id: userId };
+    }
+    if (tab === "co_sign") {
+      return { signer_id: userId };
+    }
+    // "all" → cases assigned to current user only
+    return { assigned_user_id: userId };
+  };
+
   const loadQcSlideCount = async (userId: number) => {
     try {
       const data = await GyneCytologyCaseService.getAll({
@@ -263,46 +291,64 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     }
   };
 
+  const loadAllTabCounts = async (userId: number, tabs: typeof tabOptions) => {
+    try {
+      const entries = await Promise.all(
+        tabs.map(async (t) => {
+          const data = await GyneCytologyCaseService.getAll({
+            ...buildTabParams(t.value, userId),
+            limit: 1,
+          });
+          return [t.value, data.total] as const;
+        }),
+      );
+      setTabCounts(Object.fromEntries(entries));
+    } catch {
+      // non-critical
+    }
+  };
+
+  // Load counts for every tab as soon as the worklist opens, not only the active one
+  useEffect(() => {
+    if (currentUser) {
+      loadAllTabCounts(currentUser.id, tabOptions);
+      if (!isPathologist) loadQcSlideCount(currentUser.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, isPathologist]);
+
   useEffect(() => {
     if (currentUser && activeTab !== null) {
       loadCases();
-      if (!isPathologist) loadQcSlideCount(currentUser.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, activeTab, searchText]);
 
   useEffect(() => {
-    if (refreshTrigger && currentUser && activeTab !== null) loadCases();
+    if (refreshTrigger && currentUser && activeTab !== null) {
+      loadCases();
+      loadAllTabCounts(currentUser.id, tabOptions);
+      if (!isPathologist) loadQcSlideCount(currentUser.id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
+
+  // Keep the active tab's badge in sync with the exact total once loaded
+  useEffect(() => {
+    if (activeTab) {
+      setTabCounts((prev) => ({ ...prev, [activeTab]: total }));
+    }
+  }, [activeTab, total]);
 
   const loadCases = async () => {
     if (!currentUser || activeTab === null) return;
     try {
       setLoading(true);
-      const params: Record<string, unknown> = { limit: 50 };
+      const params: Record<string, unknown> = {
+        limit: 50,
+        ...buildTabParams(activeTab, currentUser.id),
+      };
       if (searchText.trim()) params.search = searchText.trim();
-
-      if (activeTab === "stained") {
-        params.status = "stained";
-        params.assigned_user_id = currentUser.id;
-        params.exclude_signed_by = currentUser.id;
-      } else if (activeTab === "awaiting_cosign") {
-        params.signed_by = currentUser.id;
-        params.assigned_user_id = currentUser.id;
-      } else if (activeTab === "submitted") {
-        params.status = "screened";
-        params.assigned_user_id = currentUser.id;
-      } else if (activeTab === "qc_slide_queue") {
-        params.status = "pending_review";
-        params.assigned_user_id = currentUser.id;
-      } else if (activeTab === "co_sign") {
-        params.signer_id = currentUser.id;
-      }
-      // "all" → cases assigned to current user only
-      else if (activeTab === "all") {
-        params.assigned_user_id = currentUser.id;
-      }
 
       const data = await GyneCytologyCaseService.getAll(params);
       setCases(data.items);
@@ -580,13 +626,14 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
         value: t.value,
       };
     }
+    const count = tabCounts[t.value] ?? 0;
     return {
       label:
-        activeTab === t.value && total > 0 ? (
+        count > 0 ? (
           <span>
             {t.label}{" "}
             <Badge
-              count={total}
+              count={count}
               size="small"
               color="gold"
               style={{ marginLeft: 4 }}
