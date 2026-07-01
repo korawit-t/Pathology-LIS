@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Form, Typography, Empty, Tag, Space, Button, Modal, Switch, message } from "antd";
 import { HistoryOutlined, LayoutOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
@@ -41,6 +41,22 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
   const [submittedMap, setSubmittedMap] = useState<Record<number, boolean>>(() =>
     Object.fromEntries(specimens.map((s) => [s.id, s.is_entirely_submitted ?? false]))
   );
+
+  // specimens can arrive after this component's first mount (e.g. parent loads them
+  // asynchronously), so fill in any entries missed by the initial state above.
+  useEffect(() => {
+    setSubmittedMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      specimens.forEach((s) => {
+        if (!(s.id in next)) {
+          next[s.id] = s.is_entirely_submitted ?? false;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [specimens]);
 
   const [blockRefreshMap, setBlockRefreshMap] = useState<Record<number, number>>({});
   const bumpBlockRefresh = (specId: number) =>
@@ -245,6 +261,7 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
               <Switch
                 size="small"
                 checked={submittedMap[spec.id] ?? false}
+                onClick={(_checked, e) => e.stopPropagation()}
                 onChange={() => toggleAllSubmitted(spec.id)}
                 checkedChildren={<CheckCircleOutlined />}
               />
