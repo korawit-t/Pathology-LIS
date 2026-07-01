@@ -403,6 +403,17 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
           return;
         }
         allSigned = updatedSigners.every((s) => !!s.signed_at);
+      } else if (isAbnormal) {
+        // Sending to a pathologist for review — only the current user's own
+        // entry is actually signed right now. The pathologist's signature is
+        // recorded later, at the moment they complete the QC review, so the
+        // report doesn't show both signed at the same send-time.
+        updatedSigners = updatedSigners.map((s) =>
+          Number(s.user_id) === Number(currentUser?.id)
+            ? { ...s, signed_at: s.signed_at || now }
+            : s,
+        );
+        allSigned = true;
       } else {
         updatedSigners = updatedSigners.map((s) => ({
           ...s,

@@ -138,6 +138,7 @@ def prepare_gyne_report_data(db: Session, case_id: int):
             u = user_map.get(s['user_id'])
             if u:
                 s_obj = {
+                    "user_id": u.id,
                     "full_name": u.full_name,
                     "report_name": u.report_name,
                     "role": s.get("role", "primary"),
@@ -245,6 +246,22 @@ def publish_gyne_report(
     if not report_data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
 
+    # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
+    # re-publish (e.g. revising an already-abnormal, already-reviewed case),
+    # a stale/wrong frontend flag must not let it slip into the random NILM
+    # QC pool. Re-derive from the current diagnosis's own category.
+    db_diag_for_check = (
+        db.query(GyneDiagnosis)
+        .filter(GyneDiagnosis.case_id == case_id, GyneDiagnosis.is_current == True)
+        .first()
+    )
+    category_is_abnormal = bool(
+        db_diag_for_check
+        and db_diag_for_check.category_1_obj
+        and (db_diag_for_check.category_1_obj.code or "").startswith("3")
+    )
+    is_abnormal = bool(is_abnormal) or category_is_abnormal
+
     existing_count = db.query(GyneCytoReport).filter(GyneCytoReport.case_id == case_id).count()
     report_data["version_no"] = existing_count + 1
 
@@ -289,7 +306,26 @@ def publish_gyne_report(
             db_case.status = "pending_review"
         else:
             flagged_for_review = False
-            if qc_enabled:
+
+            # 🚩 A pathologist signing off IS the review — random NILM sampling
+            # exists to catch missed abnormalities in a cytotechnologist's
+            # unsupervised NILM call, so it doesn't apply when a pathologist
+            # is the one publishing.
+            publisher = (
+                db.query(User).filter(User.id == current_user_id).first()
+                if current_user_id
+                else None
+            )
+            publisher_is_pathologist = bool(
+                publisher
+                and publisher.roles
+                and any(
+                    r in ("pathologist", "senior_pathologist")
+                    for r in publisher.roles
+                )
+            )
+
+            if qc_enabled and not publisher_is_pathologist:
                 review_every_n = settings.nilm_review_every_n if settings else 10
                 ct_user_id = db_case.cytotechnologist_id
                 if not ct_user_id and signers:
@@ -355,11 +391,40 @@ def complete_gyne_review(
         if latest_report:
             latest_report.status = GyneReportStatus.DRAFT
     else:
-        # agree → pathologist's review IS the approval, publish directly
+        # agree → pathologist's review IS the approval, publish directly.
+        # Record the reviewer's actual signature time now — it was left null
+        # when the cytotechnologist originally sent the case for review, so
+        # the report doesn't show the pathologist as signing at send-time.
+        now = local_now()
         db_case.status = "published"
         if latest_report:
             latest_report.status = GyneReportStatus.PUBLISHED
-            latest_report.published_at = local_now()
+            latest_report.published_at = now
+
+            if latest_report.signers_snapshot:
+                latest_report.signers_snapshot = [
+                    {**s, "signed_at": _fmt_dt(now)}
+                    if s.get("user_id") == reviewer_id
+                    else s
+                    for s in latest_report.signers_snapshot
+                ]
+
+            for signer_row in latest_report.signers:
+                if signer_row.user_id == reviewer_id and not signer_row.signed_at:
+                    signer_row.signed_at = now
+
+        current_diag = (
+            db.query(GyneDiagnosis)
+            .filter(GyneDiagnosis.case_id == case_id, GyneDiagnosis.is_current == True)
+            .first()
+        )
+        if current_diag and current_diag.signers:
+            current_diag.signers = [
+                {**s, "signed_at": now.isoformat()}
+                if s.get("user_id") == reviewer_id
+                else s
+                for s in current_diag.signers
+            ]
 
     db.commit()
     db.refresh(db_case)
