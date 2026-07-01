@@ -142,7 +142,7 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
-    consult_status: str = "pending"
+    consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
 
     # Cell Block

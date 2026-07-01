@@ -120,7 +120,7 @@ class SurgicalCaseResponse(SurgicalCaseBase):
     is_pending: bool
     pending_reason: Optional[str] = None
     is_out_lab_consult: bool = False
-    consult_status: str = "pending"
+    consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
