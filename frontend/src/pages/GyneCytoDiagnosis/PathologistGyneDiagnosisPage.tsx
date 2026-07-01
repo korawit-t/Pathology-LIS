@@ -107,6 +107,7 @@ const PathologistGyneDiagnosisPage: React.FC<
     mainCategories,
     adequacyOptions,
     zoneOptions,
+    qualityOptions,
     defaultSigners,
     fetchDiagnosis,
     fetchCaseData,
@@ -141,6 +142,16 @@ const PathologistGyneDiagnosisPage: React.FC<
   const [selectedPopupReportId, setSelectedPopupReportId] = useState<number | null>(null);
   const [popupPdfUrl, setPopupPdfUrl] = useState<string | null>(null);
   const [popupPdfLoading, setPopupPdfLoading] = useState(false);
+
+  const selectedAdequacyId = Form.useWatch("adequacy_id", form);
+  const selectedAdequacyText = useMemo(
+    () => adequacyOptions.find((o) => o.id === selectedAdequacyId)?.text ?? "",
+    [adequacyOptions, selectedAdequacyId],
+  );
+  const isUnsatisfactoryAdequacy = /unsatisfactory/i.test(selectedAdequacyText);
+  const isLimitedAdequacy = /limited by/i.test(selectedAdequacyText);
+  const showZoneField = !isUnsatisfactoryAdequacy;
+  const showQualityField = isUnsatisfactoryAdequacy || isLimitedAdequacy;
 
   const selectedCat1 = Form.useWatch("category_1_id", form);
   const subCategories = useMemo(
@@ -860,6 +871,16 @@ const PathologistGyneDiagnosisPage: React.FC<
                       placeholder="Select adequacy"
                       allowClear
                       size="large"
+                      onChange={(value) => {
+                        const text =
+                          adequacyOptions.find((o) => o.id === value)?.text ??
+                          "";
+                        if (/unsatisfactory/i.test(text)) {
+                          form.setFieldValue("endocervical_status_id", null);
+                        } else if (!/limited by/i.test(text)) {
+                          form.setFieldValue("quality_id", null);
+                        }
+                      }}
                     >
                       {adequacyOptions.map((opt) => (
                         <Select.Option key={opt.id} value={opt.id}>
@@ -870,19 +891,38 @@ const PathologistGyneDiagnosisPage: React.FC<
                     </Select>
                   </Form.Item>
 
-                  <Form.Item
-                    name="endocervical_status_id"
-                    label="Endocervical / Transformation Zone"
-                  >
-                    <Select placeholder="Select status" allowClear size="large">
-                      {zoneOptions.map((opt) => (
-                        <Select.Option key={opt.id} value={opt.id}>
-                          {opt.code ? `(${opt.code}) ` : ""}
-                          {opt.text}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
+                  {showZoneField && (
+                    <Form.Item
+                      name="endocervical_status_id"
+                      label="Endocervical / Transformation Zone"
+                    >
+                      <Select placeholder="Select status" allowClear size="large">
+                        {zoneOptions.map((opt) => (
+                          <Select.Option key={opt.id} value={opt.id}>
+                            {opt.code ? `(${opt.code}) ` : ""}
+                            {opt.text}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  )}
+
+                  {showQualityField && (
+                    <Form.Item
+                      name="quality_id"
+                      label="Reason (Unsatisfactory / Limited by)"
+                      rules={[{ required: true, message: "Required" }]}
+                    >
+                      <Select placeholder="Select reason" allowClear size="large">
+                        {qualityOptions.map((opt) => (
+                          <Select.Option key={opt.id} value={opt.id}>
+                            {opt.code ? `(${opt.code}) ` : ""}
+                            {opt.text}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  )}
                 </StyledCard>
               </Col>
 

@@ -48,36 +48,76 @@ def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
     return user
 
 
-# 4. สร้าง User ใหม่ (🔒 จำกัดสิทธิ์: Admin เท่านั้น)
+# 4. สร้าง User ใหม่ (🔒 จำกัดสิทธิ์: Admin และ Lab Manager)
 @router.post(
     "",
     response_model=UserResponse,
-    dependencies=[Depends(check_password_status), Depends(CAN_MANAGE_USERS)],
+    dependencies=[Depends(check_password_status)],
 )
-def create_new_user(data: UserCreate, db: Session = Depends(get_db)):
+def create_new_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_MANAGE_USERS),
+):
+    # 🔒 Lab manager สร้าง user ใหม่ได้ แต่ห้ามตั้ง role admin ให้ user ใหม่
+    if "admin" in data.roles and "admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can grant the admin role.",
+        )
     # (Optional) ตรงนี้คุณอาจจะอยากเช็คว่า email ซ้ำไหมก่อน create
     return create_user(db, data)
 
 
-# 5. แก้ไข User (🔒 จำกัดสิทธิ์: Admin เท่านั้น)
+# 5. แก้ไข User (🔒 จำกัดสิทธิ์: Admin และ Lab Manager แต่ห้ามแก้ไข account admin)
 @router.put(
     "/{user_id}",
     response_model=UserResponse,
-    dependencies=[Depends(check_password_status), Depends(CAN_MANAGE_USERS)],
+    dependencies=[Depends(check_password_status)],
 )
-def update_existing_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
+def update_existing_user(
+    user_id: int,
+    data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_MANAGE_USERS),
+):
+    target_user = get_user(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 🔒 ป้องกัน lab_manager แก้ไข/เปลี่ยนรหัสผ่านของ account admin
+    if "admin" in (target_user.roles or []) and "admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can modify an admin account.",
+        )
+
     updated = update_user(db, user_id, data)
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
     return updated
 
 
-# 6. ลบ User (🔒 จำกัดสิทธิ์: Admin เท่านั้น)
+# 6. ลบ User (🔒 จำกัดสิทธิ์: Admin และ Lab Manager แต่ห้ามลบ account admin)
 @router.delete(
     "/{user_id}",
-    dependencies=[Depends(check_password_status), Depends(CAN_MANAGE_USERS)],
+    dependencies=[Depends(check_password_status)],
 )
-def delete_existing_user(user_id: int, db: Session = Depends(get_db)):
+def delete_existing_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_MANAGE_USERS),
+):
+    target_user = get_user(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if "admin" in (target_user.roles or []) and "admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can delete an admin account.",
+        )
+
     deleted = delete_user(db, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")

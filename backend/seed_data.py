@@ -1557,19 +1557,9 @@ def seed_gyne_specimen_adequacy(db: Session):
     zone_data = [
         {"code": "011", "text": "Endocervical/ transformation zone present."},
         {"code": "012", "text": "Endocervical/ transformation zone absent."},
-        {"code": "013", "text": "Specimen rejected because of"},
-        {"code": "014", "text": "Specimen rejected because slide received unlabeled."},
-        {
-            "code": "015",
-            "text": "Specimen processed and examined but unsatisfactory for evaluation of epithelial abnormality because of",
-        },
         {
             "code": "016",
             "text": "Endocervical/ transformation zone absent, status post hysterectomy",
-        },
-        {
-            "code": "017",
-            "text": "Specimen processed and examined but unsatisfactory for evaluation of epithelial abnormality because of insufficient squamous cell component",
         },
     ]
 
@@ -1580,8 +1570,18 @@ def seed_gyne_specimen_adequacy(db: Session):
         {"code": "031", "text": "Unsatisfactory for evaluation (PAP)"},
     ]
 
-    # 3. Quality Indicators / Limitation Reasons
+    # 3. Quality Indicators / Limitation Reasons (also used as Unsatisfactory reasons)
     quality_data = [
+        {"code": "013", "text": "Specimen rejected because of"},
+        {"code": "014", "text": "Specimen rejected because slide received unlabeled."},
+        {
+            "code": "015",
+            "text": "Specimen processed and examined but unsatisfactory for evaluation of epithelial abnormality because of",
+        },
+        {
+            "code": "017",
+            "text": "Specimen processed and examined but unsatisfactory for evaluation of epithelial abnormality because of insufficient squamous cell component",
+        },
         {"code": "027,036", "text": "Air drying artifact."},
         {"code": "022", "text": "Partial obscuring inflammation."},
         {"code": "023", "text": "Partial obscuring blood."},

@@ -333,13 +333,15 @@ def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
         # Logo base64
         if settings.report_logo_url:
             try:
-                storage_root = Path("uploads")
-                full_path = storage_root / settings.report_logo_url.lstrip("/storage/")
+                storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
+                full_path = storage_root / settings.report_logo_url.removeprefix("/storage/")
                 if full_path.exists():
                     with open(full_path, "rb") as f:
                         encoded = base64.b64encode(f.read()).decode("utf-8")
                         ext = full_path.suffix.lower().lstrip(".")
                         data["report_logo_url_snapshot"] = f"data:image/{ext};base64,{encoded}"
+                else:
+                    data.setdefault("report_logo_url_snapshot", None)
             except Exception:
                 data.setdefault("report_logo_url_snapshot", None)
         else:

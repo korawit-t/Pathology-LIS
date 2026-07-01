@@ -100,6 +100,7 @@ const OutlabStainRunList = () => {
   };
 
   const sentCount = runs.filter((r) => r.status === "sent").length;
+  const partialCount = runs.filter((r) => r.status === "partial").length;
   const receivedCount = runs.filter((r) => r.status === "received").length;
 
   const columns = [
@@ -136,6 +137,7 @@ const OutlabStainRunList = () => {
       render: (text: string) => {
         let color = "default";
         if (text === "sent") color = "processing";
+        if (text === "partial") color = "gold";
         if (text === "received") color = "success";
         return <Tag color={color}>{text.toUpperCase()}</Tag>;
       },
@@ -203,6 +205,12 @@ const OutlabStainRunList = () => {
             <ClockCircleOutlined style={{ color: "#faad14" }} />
             <Typography.Text type="secondary">
               In Transit: <strong>{sentCount}</strong>
+            </Typography.Text>
+          </Space>
+          <Space size={4}>
+            <ClockCircleOutlined style={{ color: "#d4b106" }} />
+            <Typography.Text type="secondary">
+              Partial: <strong>{partialCount}</strong>
             </Typography.Text>
           </Space>
           <Space size={4}>

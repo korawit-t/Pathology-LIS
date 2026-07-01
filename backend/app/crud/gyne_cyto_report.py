@@ -453,6 +453,7 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
         data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
         data["cytology_images"] = _embed_case_images(db, case_id)
+        _enrich_gyne_settings_snapshot(data, db)
         return data
 
     # ถ้ามีรายงานแล้ว ให้แปลงเป็นดิคชันนารี
@@ -493,6 +494,15 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
     data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
     
+    _enrich_gyne_settings_snapshot(data, db)
+
+    data["cytology_images"] = _embed_case_images(db, case_id)
+    return data
+
+
+def _enrich_gyne_settings_snapshot(data: dict, db: Session) -> dict:
+    """Add lab name/address/footer/logo snapshot fields from current SystemSetting.
+    Shared by both the live-preview (no report yet) and existing-report code paths."""
     settings = db.query(SystemSetting).first()
     if settings:
         data["lab_name_en_snapshot"] = settings.lab_name_en or settings.lab_name_th or ""
@@ -500,8 +510,8 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         data["report_footer_snapshot"] = settings.gyne_report_footer or settings.report_footer_text or ""
         if settings.report_logo_url:
             try:
-                storage_root = Path("uploads")
-                full_path = storage_root / settings.report_logo_url.lstrip("/storage/")
+                storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
+                full_path = storage_root / settings.report_logo_url.removeprefix("/storage/")
                 if full_path.exists():
                     with open(full_path, "rb") as f:
                         encoded = base64.b64encode(f.read()).decode("utf-8")
@@ -518,8 +528,6 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         data.setdefault("lab_address_snapshot", "")
         data.setdefault("report_footer_snapshot", "")
         data.setdefault("report_logo_url_snapshot", None)
-
-    data["cytology_images"] = _embed_case_images(db, case_id)
     return data
 
 

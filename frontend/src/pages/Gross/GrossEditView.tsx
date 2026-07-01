@@ -57,6 +57,13 @@ dayjs.locale("th");
 
 const { Title, Text } = Typography;
 
+const GROSS_STAGE_STATUSES: string[] = [
+  CASE_STATUS.REGISTERED,
+  CASE_STATUS.FORMALIN_FIXING,
+  CASE_STATUS.GROSS_IN_PROGRESS,
+  CASE_STATUS.GROSSED,
+];
+
 interface Props {
   activeCase: SurgicalCase;
   onBack: () => void;
@@ -270,12 +277,6 @@ const GrossEditView: React.FC<Props> = ({
         return;
       }
 
-      const grossStageStatuses: string[] = [
-        CASE_STATUS.REGISTERED,
-        CASE_STATUS.FORMALIN_FIXING,
-        CASE_STATUS.GROSS_IN_PROGRESS,
-        CASE_STATUS.GROSSED,
-      ];
       const formattedCaseValues = {
         clinical_diagnosis: values.clinical_diagnosis,
         gross_at: values.gross_at ? dayjs(values.gross_at).toISOString() : dayjs().toISOString(),
@@ -283,7 +284,7 @@ const GrossEditView: React.FC<Props> = ({
         gross_assistant_id: values.gross_assistant_id,
         pathologist_id: values.pathologist_id,
         is_grossed: true,
-        status: grossStageStatuses.includes(freshCase.status) ? CASE_STATUS.GROSSED : freshCase.status,
+        status: GROSS_STAGE_STATUSES.includes(freshCase.status) ? CASE_STATUS.GROSSED : freshCase.status,
       };
 
       const validIds = freshSpecimens.map((s) => s.id.toString());
@@ -326,7 +327,7 @@ const GrossEditView: React.FC<Props> = ({
         gross_examiner_id: formValues.gross_examiner_id,
         gross_assistant_id: formValues.gross_assistant_id,
         pathologist_id: formValues.pathologist_id,
-        status: CASE_STATUS.GROSS_IN_PROGRESS,
+        status: GROSS_STAGE_STATUSES.includes(freshCase.status) ? CASE_STATUS.GROSS_IN_PROGRESS : freshCase.status,
       };
 
       const validIds = freshSpecimens.map((s) => s.id.toString());

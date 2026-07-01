@@ -21,6 +21,7 @@ from app.schemas.surgical_block_stain import (
     OutlabRunCreate,
     OutlabRunUpdate,
     OutlabRunResponse,
+    OutlabRunReceiveDetails,
 )
 from app.crud import surgical_block_stain as crud
 from app.dependencies.auth import get_current_user, RoleChecker
@@ -108,6 +109,20 @@ def receive_outlab_run(
     current_user=Depends(get_current_user),
 ):
     result = crud.receive_outlab_run(db, run_id=run_id, user_id=current_user.id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Outlab run not found")
+    return result
+
+@router.patch("/outlab-runs/{run_id}/receive-details", response_model=OutlabRunResponse)
+def receive_outlab_run_details(
+    run_id: int,
+    payload: OutlabRunReceiveDetails,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = crud.receive_outlab_run_details(
+        db, run_id=run_id, user_id=current_user.id, detail_ids=payload.detail_ids
+    )
     if not result:
         raise HTTPException(status_code=404, detail="Outlab run not found")
     return result

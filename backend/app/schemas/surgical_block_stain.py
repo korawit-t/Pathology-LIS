@@ -140,6 +140,8 @@ class OutlabRunDetailResponse(BaseModel):
     accession_no: Optional[str] = None
     block_code: Optional[str] = None
     block_id: Optional[int] = None
+    received_at: Optional[datetime] = None
+    received_by_id: Optional[int] = None
     stain_order: Optional[StainResponse] = None
 
     @model_validator(mode="after")
@@ -161,6 +163,9 @@ class OutlabRunCreate(BaseModel):
 
 class OutlabRunUpdate(BaseModel):
     tracking_number: Optional[str] = None
+
+class OutlabRunReceiveDetails(BaseModel):
+    detail_ids: List[int]
 
 class OutlabRunResponse(BaseModel):
     id: int

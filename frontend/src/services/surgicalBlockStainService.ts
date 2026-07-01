@@ -193,6 +193,13 @@ const SurgicalBlockStainService = {
     return res.data;
   },
 
+  receiveOutlabRunDetails: async (runId: number, detailIds: number[]): Promise<unknown> => {
+    const res = await api.patch(`/surgical-block-stains/outlab-runs/${runId}/receive-details`, {
+      detail_ids: detailIds,
+    });
+    return res.data;
+  },
+
   toggleHosxpKeyed: async (detailId: number, keyed: boolean): Promise<unknown> => {
     const res = await api.patch(`/surgical-block-stains/outlab-run-details/${detailId}/hosxp-key`, { keyed });
     return res.data;

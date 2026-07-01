@@ -46,7 +46,7 @@ CAN_REQUEST_CONSULT = RoleChecker(["admin", "pathologist", "senior_pathologist",
 # --- กลุ่มสิทธิ์สำหรับการตั้งค่า (Settings) ---
 CAN_MANAGE_SETTINGS = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist"])
 
-CAN_MANAGE_USERS = RoleChecker(["admin"])
+CAN_MANAGE_USERS = RoleChecker(["admin", "lab_manager"])
 
 # 2. การตั้งค่าระบบหลัก (Branding, Logo, Global Config)
 CAN_MANAGE_SYSTEM_SETTINGS = RoleChecker(["admin"])

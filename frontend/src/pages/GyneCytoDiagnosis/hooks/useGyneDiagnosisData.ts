@@ -178,6 +178,10 @@ export function useGyneDiagnosisData(
     () => adequacies.filter((a) => a.group_type === "ZONE"),
     [adequacies],
   );
+  const qualityOptions = useMemo(
+    () => adequacies.filter((a) => a.group_type === "QUALITY"),
+    [adequacies],
+  );
 
   const defaultSigners = useMemo(() => {
     if (!currentUser) return [];
@@ -226,6 +230,7 @@ export function useGyneDiagnosisData(
     mainCategories,
     adequacyOptions,
     zoneOptions,
+    qualityOptions,
     defaultSigners,
     fetchDiagnosis,
     fetchCaseData,

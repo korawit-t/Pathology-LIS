@@ -309,7 +309,11 @@ const handleOpenFinalizeModal = async () => {
     SurgicalReportService.getReportHistory(Number(surgicalCase.id))
       .then((data) => {
         setCompletedReports(data.items);
-        const latest = data.items.find((r) => r.status === "published");
+        const publishedReports = data.items.filter((r) => r.status === "published");
+        const latest = publishedReports.reduce<SurgicalReport | null>(
+          (best, r) => (!best || r.version_no > best.version_no ? r : best),
+          null,
+        );
         if (latest) setSelectedReportId(latest.id);
       })
       .catch(() => {})

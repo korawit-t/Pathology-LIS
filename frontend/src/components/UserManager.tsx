@@ -31,6 +31,8 @@ import { User } from "../types/user";
 import { Hospital } from "../types/hospital";
 import PageContainer from "./Layout/PageContainer";
 import logger from "../utils/logger";
+import { useAuth } from "../hooks/useAuth";
+import { hasRole } from "../utils/hasRole";
 
 
 interface Position {
@@ -39,6 +41,9 @@ interface Position {
 }
 
 const UserManager: React.FC = () => {
+  const { user: currentUser } = useAuth();
+  const isCurrentUserAdmin = hasRole(currentUser, "admin");
+
   // --- 2. Typed States ---
   const [users, setUsers] = useState<User[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -225,23 +230,32 @@ const UserManager: React.FC = () => {
       key: "action",
       width: 100,
       align: "center",
-      render: (_, record) => (
-        <Space>
-          <Tooltip title="Edit">
-            <Button
-              icon={<EditOutlined />}
-              onClick={() => openEditModal(record)}
-              size="small"
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete this user?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button icon={<DeleteOutlined />} danger size="small" />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) => {
+        const isTargetAdmin = record.roles?.includes("admin");
+        const canManageTarget = isCurrentUserAdmin || !isTargetAdmin;
+
+        return (
+          <Space>
+            <Tooltip title={canManageTarget ? "Edit" : "Only an admin can edit an admin account"}>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => openEditModal(record)}
+                disabled={!canManageTarget}
+                size="small"
+              />
+            </Tooltip>
+            <Popconfirm
+              title="Delete this user?"
+              onConfirm={() => handleDelete(record.id)}
+              disabled={!canManageTarget}
+            >
+              <Tooltip title={canManageTarget ? "" : "Only an admin can delete an admin account"}>
+                <Button icon={<DeleteOutlined />} danger size="small" disabled={!canManageTarget} />
+              </Tooltip>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -368,7 +382,11 @@ const UserManager: React.FC = () => {
           >
             <Select
               mode="multiple"
-              options={ROLE_OPTIONS}
+              options={
+                isCurrentUserAdmin
+                  ? ROLE_OPTIONS
+                  : ROLE_OPTIONS.filter((opt) => opt.value !== "admin")
+              }
               allowClear
               placeholder="Select Roles"
             />

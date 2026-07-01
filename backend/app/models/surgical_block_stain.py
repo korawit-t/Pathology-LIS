@@ -162,7 +162,7 @@ class SurgicalOutlabRun(Base):
     sent_at = Column(DateTime, default=func.now())
     received_at = Column(DateTime, nullable=True)
     received_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String, default="sent")  # 'sent', 'received'
+    status = Column(String, default="sent")  # 'sent', 'partial', 'received'
     tracking_number = Column(String(200), nullable=True)
 
     details = relationship(
@@ -192,10 +192,13 @@ class SurgicalOutlabRunDetail(Base):
     remark = Column(String, nullable=True)
     is_hosxp_keyed = Column(Boolean, default=False, nullable=False)
     hosxp_keyed_at = Column(DateTime, nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    received_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     outlab_run = relationship("SurgicalOutlabRun", back_populates="details")
     stain_order = relationship("SurgicalBlockStain")
+    received_by = relationship("User", foreign_keys=[received_by_id])
 
     @property
     def accession_no(self):

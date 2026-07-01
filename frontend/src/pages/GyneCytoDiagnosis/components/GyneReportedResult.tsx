@@ -44,6 +44,11 @@ const GyneReportedResult: React.FC<GyneReportedResultProps> = ({
       <Descriptions.Item label="Endocervical / Zone">
         {diagnosis.endocervical_status_obj?.text || "—"}
       </Descriptions.Item>
+      {diagnosis.quality_obj?.text && (
+        <Descriptions.Item label="Reason (Unsatisfactory / Limited by)" span={2}>
+          {diagnosis.quality_obj.text}
+        </Descriptions.Item>
+      )}
       <Descriptions.Item label="Category" span={2}>
         <Space wrap>
           {diagnosis.category_1_obj && (

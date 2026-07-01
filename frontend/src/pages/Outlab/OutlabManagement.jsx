@@ -17,6 +17,7 @@ import {
   Input,
   Tooltip,
   Spin,
+  Checkbox,
 } from "antd";
 import {
   ExperimentOutlined,
@@ -385,6 +386,7 @@ const TrackingTab = ({ refreshTrigger }) => {
   const [editingTrackingId, setEditingTrackingId] = useState(null);
   const [editingTrackingValue, setEditingTrackingValue] = useState("");
   const [searchAccession, setSearchAccession] = useState("");
+  const [selectedDetailIds, setSelectedDetailIds] = useState({});
   const printRef = useRef(null);
 
   useEffect(() => {
@@ -407,13 +409,16 @@ const TrackingTab = ({ refreshTrigger }) => {
 
   useEffect(() => { fetchRuns(); }, [refreshTrigger]);
 
-  const handleReceive = async (runId) => {
+  const handleReceiveSelected = async (runId) => {
+    const ids = Array.from(selectedDetailIds[runId] || []);
+    if (ids.length === 0) return;
     try {
-      await SurgicalBlockStainService.receiveOutlabRun(runId);
-      message.success("Slide return recorded — status updated to Completed");
+      await SurgicalBlockStainService.receiveOutlabRunDetails(runId, ids);
+      message.success(`Recorded return of ${ids.length} slide(s)`);
+      setSelectedDetailIds((prev) => ({ ...prev, [runId]: new Set() }));
       fetchRuns();
     } catch {
-      message.error("Failed to record slide return");
+      message.error("Failed to record selected slide returns");
     }
   };
 
@@ -461,6 +466,7 @@ const TrackingTab = ({ refreshTrigger }) => {
     : runs;
 
   const sentCount = runs.filter((r) => r.status === "sent").length;
+  const partialCount = runs.filter((r) => r.status === "partial").length;
   const receivedCount = runs.filter((r) => r.status === "received").length;
 
   const columns = [
@@ -485,6 +491,7 @@ const TrackingTab = ({ refreshTrigger }) => {
     {
       title: "เลขพัสดุ",
       key: "tracking_number",
+      onCell: () => ({ onClick: (e) => e.stopPropagation() }),
       render: (_, record) => {
         if (editingTrackingId === record.id) {
           return (
@@ -542,6 +549,16 @@ const TrackingTab = ({ refreshTrigger }) => {
             </Space>
           );
         }
+        if (text === "partial") {
+          const receivedN = (record.details || []).filter((d) => d.received_at).length;
+          const totalN = record.details?.length || 0;
+          return (
+            <Space direction="vertical" size={0}>
+              <Tag color="gold" icon={<ClockCircleOutlined />}>Partially returned</Tag>
+              <Text type="secondary" style={{ fontSize: 11 }}>{receivedN}/{totalN} slides</Text>
+            </Space>
+          );
+        }
         return <Tag color="processing" icon={<ClockCircleOutlined />}>Awaiting return</Tag>;
       },
     },
@@ -549,6 +566,7 @@ const TrackingTab = ({ refreshTrigger }) => {
       title: "Actions",
       key: "action",
       width: 220,
+      onCell: () => ({ onClick: (e) => e.stopPropagation() }),
       render: (_, record) => (
         <Space size="small">
           <Button
@@ -558,19 +576,6 @@ const TrackingTab = ({ refreshTrigger }) => {
           >
             Print
           </Button>
-          {record.status === "sent" && (
-            <Popconfirm
-              title="Confirm slide return?"
-              description="All slides in this run will be marked as Completed"
-              onConfirm={() => handleReceive(record.id)}
-              okText="Confirm"
-              cancelText="Cancel"
-            >
-              <Button type="primary" size="small" icon={<CheckCircleOutlined />}>
-                Receive
-              </Button>
-            </Popconfirm>
-          )}
           {record.status === "sent" && (
             <Popconfirm
               title="Confirm cancellation?"
@@ -594,6 +599,9 @@ const TrackingTab = ({ refreshTrigger }) => {
         <Tag color="processing" style={{ padding: "4px 12px", fontSize: 13 }}>
           <ClockCircleOutlined /> Pending at lab: {sentCount} run(s)
         </Tag>
+        <Tag color="gold" style={{ padding: "4px 12px", fontSize: 13 }}>
+          <ClockCircleOutlined /> Partially returned: {partialCount} run(s)
+        </Tag>
         <Tag color="success" style={{ padding: "4px 12px", fontSize: 13 }}>
           <CheckCircleOutlined /> Received: {receivedCount} run(s)
         </Tag>
@@ -616,8 +624,19 @@ const TrackingTab = ({ refreshTrigger }) => {
         rowKey="id"
         loading={loading}
         pagination={{ pageSize: 15 }}
-        rowClassName={(record) => record.status === "received" ? "outlab-row-received" : ""}
+        rowClassName={(record) =>
+          record.status === "received"
+            ? "outlab-row-received"
+            : record.status === "partial"
+            ? "outlab-row-partial"
+            : ""
+        }
+        onRow={(record) => ({
+          style: (record.details?.length || 0) > 0 ? { cursor: "pointer" } : undefined,
+        })}
         expandable={{
+          expandRowByClick: true,
+          expandIcon: () => null,
           expandedRowRender: (record) => {
             const grouped = {};
             (record.details || []).forEach((d) => {
@@ -625,32 +644,81 @@ const TrackingTab = ({ refreshTrigger }) => {
               if (!grouped[acc]) grouped[acc] = [];
               grouped[acc].push(d);
             });
+            const runSelected = selectedDetailIds[record.id] || new Set();
+            const toggleDetail = (detailId, checked) => {
+              setSelectedDetailIds((prev) => {
+                const next = new Set(prev[record.id] || []);
+                if (checked) next.add(detailId); else next.delete(detailId);
+                return { ...prev, [record.id]: next };
+              });
+            };
+            const unreceivedIds = (record.details || []).filter((d) => !d.received_at).map((d) => d.id);
+            const unreceivedCount = unreceivedIds.length;
+            const allSelected = unreceivedCount > 0 && unreceivedIds.every((id) => runSelected.has(id));
+            const toggleSelectAll = () => {
+              setSelectedDetailIds((prev) => ({
+                ...prev,
+                [record.id]: allSelected ? new Set() : new Set(unreceivedIds),
+              }));
+            };
             return (
               <div style={{ padding: "8px 16px" }}>
-                <Text strong style={{ display: "block", marginBottom: 10 }}>Slides in this run:</Text>
+                <Space style={{ marginBottom: 10, width: "100%", justifyContent: "space-between" }}>
+                  <Text strong>Slides in this run:</Text>
+                  {unreceivedCount > 0 && (
+                    <Space size="small">
+                      <Button size="small" onClick={toggleSelectAll}>
+                        {allSelected ? "Deselect all" : "Select all"}
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={runSelected.size === 0}
+                        onClick={() => handleReceiveSelected(record.id)}
+                      >
+                        Receive selected ({runSelected.size})
+                      </Button>
+                    </Space>
+                  )}
+                </Space>
                 <Space direction="vertical" size={8} style={{ width: "100%" }}>
                   {Object.entries(grouped).map(([acc, details]) => (
                     <div key={acc} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <Text strong style={{ color: "#1890ff", minWidth: 120, paddingTop: 2 }}>
                         {acc}
                       </Text>
-                      <Space wrap size={4}>
+                      <Space wrap size={[8, 4]}>
                         {details.map((d) => (
-                          <Tag
+                          <Space
                             key={d.id}
-                            color="geekblue"
-                            style={{ cursor: "pointer" }}
-                            icon={<HistoryOutlined />}
-                            onClick={() =>
-                              setHistoryBlock({
-                                id: d.block_id || d.stain_order?.block_id,
-                                block_code: d.block_code,
-                                accession_no: d.accession_no,
-                              })
-                            }
+                            size={4}
+                            style={{ border: "1px solid #f0f0f0", borderRadius: 4, padding: "2px 6px" }}
                           >
-                            {d.block_code || "-"} — {d.stain_order?.test?.name || "Unknown"}
-                          </Tag>
+                            {!d.received_at ? (
+                              <Checkbox
+                                checked={runSelected.has(d.id)}
+                                onChange={(e) => toggleDetail(d.id, e.target.checked)}
+                              />
+                            ) : (
+                              <Tooltip title={`Received ${dayjs(d.received_at).format("DD/MM/YYYY HH:mm")}`}>
+                                <CheckCircleOutlined style={{ color: "#52c41a" }} />
+                              </Tooltip>
+                            )}
+                            <Tag
+                              color="geekblue"
+                              style={{ cursor: "pointer", margin: 0 }}
+                              icon={<HistoryOutlined />}
+                              onClick={() =>
+                                setHistoryBlock({
+                                  id: d.block_id || d.stain_order?.block_id,
+                                  block_code: d.block_code,
+                                  accession_no: d.accession_no,
+                                })
+                              }
+                            >
+                              {d.block_code || "-"} — {d.stain_order?.test?.name || "Unknown"}
+                            </Tag>
+                          </Space>
                         ))}
                       </Space>
                     </div>
@@ -737,7 +805,7 @@ const CaseViewTab = ({ refreshTrigger }) => {
       run_no: run.run_no,
       sent_at: run.sent_at,
       run_status: run.status,
-      received_at: run.received_at,
+      received_at: d.received_at,
       tracking_number: run.tracking_number,
       received_by_name: run.received_by_name,
     }; })
@@ -859,17 +927,15 @@ const CaseViewTab = ({ refreshTrigger }) => {
       width: 160,
       fixed: "right",
       render: (_, record) => {
-        if (record.run_status === "received") {
+        if (record.received_at) {
           return (
             <div>
               <Tag color="success" icon={<CheckCircleOutlined />}>Returned</Tag>
-              {record.received_at && (
-                <div>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {dayjs(record.received_at).format("DD/MM/YYYY HH:mm")}
-                  </Text>
-                </div>
-              )}
+              <div>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {dayjs(record.received_at).format("DD/MM/YYYY HH:mm")}
+                </Text>
+              </div>
             </div>
           );
         }
@@ -924,7 +990,7 @@ const CaseViewTab = ({ refreshTrigger }) => {
         rowKey="key"
         loading={loading}
         pagination={{ pageSize: 20, showSizeChanger: true }}
-        rowClassName={(record) => record.run_status === "received" ? "outlab-row-received" : ""}
+        rowClassName={(record) => record.received_at ? "outlab-row-received" : ""}
         locale={{ emptyText: "No outlab stain items found" }}
         scroll={{ x: "max-content", y: "calc(100vh - 340px)" }}
         sticky
@@ -1635,6 +1701,9 @@ const OutlabManagement = () => {
       <style>{`
         .outlab-row-received td {
           background-color: #f6ffed !important;
+        }
+        .outlab-row-partial td {
+          background-color: #fffbe6 !important;
         }
         .hosxp-row-keyed td {
           background-color: #f6ffed !important;

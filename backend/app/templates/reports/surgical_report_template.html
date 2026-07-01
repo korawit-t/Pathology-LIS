@@ -157,13 +157,13 @@
       }
 
       .badge-container {
-        float: right;
+        position: absolute;
+        top: 15px;
+        right: 15px;
         text-align: right;
         display: flex;
         flex-direction: column;
         gap: 4px;
-        margin-left: 10px;
-        margin-bottom: 4px;
       }
 
       .badge {
@@ -256,12 +256,12 @@
       }
 
       .diagnosis-box {
-        overflow: hidden;
+        position: relative;
         border: 1.5px solid var(--primary);
         border-radius: 4px;
         background: #fff;
         margin: 5px 15px;
-        padding: 15px;
+        padding: 6px 15px 15px;
         min-height: 60px;
         page-break-inside: auto;
         box-decoration-break: clone;
@@ -523,7 +523,7 @@
                 <span class="badge badge-critical">CRITICAL</span>
                 {% endif %}
               </div>
-              <div style="font-size: 15px; color: #0f172a; line-height: 1.5;">
+              <div style="font-size: 15px; color: #0f172a; line-height: 1.5; padding-right: 130px; word-wrap: break-word;">
                 {{ diagnosis_summary | safe }}
               </div>
             </div>

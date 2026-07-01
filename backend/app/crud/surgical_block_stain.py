@@ -465,6 +465,8 @@ def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
                 "remark": detail.remark,
                 "is_hosxp_keyed": bool(detail.is_hosxp_keyed),
                 "hosxp_keyed_at": detail.hosxp_keyed_at,
+                "received_at": detail.received_at,
+                "received_by_id": detail.received_by_id,
                 "accession_no": accession_no,
                 "block_code": block_code,
                 "hn": hn,
@@ -486,23 +488,52 @@ def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
         })
     return result
 
-def receive_outlab_run(db: Session, run_id: int, user_id: int):
+def _recompute_outlab_run_status(db_run) -> None:
+    """Derive run.status from each detail's received_at. Does not commit."""
+    details = db_run.details
+    if not details:
+        return
+    received_count = sum(1 for d in details if d.received_at is not None)
+    if received_count == 0:
+        db_run.status = "sent"
+    elif received_count == len(details):
+        if db_run.status != "received":
+            db_run.status = "received"
+            if db_run.received_at is None:
+                db_run.received_at = local_now()
+    else:
+        db_run.status = "partial"
+
+
+def _receive_outlab_run_details(db: Session, run_id: int, user_id: int, detail_ids=None):
+    """
+    Core logic: mark the given detail_ids (or ALL not-yet-received details
+    when detail_ids is None) as received, flip their stain_order status
+    sent -> stained, then recompute run.status. Idempotent: already-received
+    detail_ids are skipped silently.
+    """
     db_run = db.query(SurgicalOutlabRun).options(
         joinedload(SurgicalOutlabRun.details).joinedload(SurgicalOutlabRunDetail.stain_order)
     ).filter(SurgicalOutlabRun.id == run_id).first()
     if not db_run:
         return None
-    if db_run.status != "sent":
-        return db_run
 
     try:
-        db_run.status = "received"
-        db_run.received_at = local_now()
-        db_run.received_by_id = user_id
-
+        target_ids = set(detail_ids) if detail_ids is not None else None
+        now = local_now()
         for detail in db_run.details:
+            if target_ids is not None and detail.id not in target_ids:
+                continue
+            if detail.received_at is not None:
+                continue
+            detail.received_at = now
+            detail.received_by_id = user_id
             if detail.stain_order and detail.stain_order.status == "sent":
                 detail.stain_order.status = "stained"
+
+        _recompute_outlab_run_status(db_run)
+        if db_run.status in ("partial", "received"):
+            db_run.received_by_id = user_id
 
         db.commit()
         db.refresh(db_run)
@@ -510,6 +541,18 @@ def receive_outlab_run(db: Session, run_id: int, user_id: int):
     except Exception as e:
         db.rollback()
         raise e
+
+
+def receive_outlab_run(db: Session, run_id: int, user_id: int):
+    """Receive everything not yet received in this run."""
+    return _receive_outlab_run_details(db, run_id, user_id, detail_ids=None)
+
+
+def receive_outlab_run_details(db: Session, run_id: int, user_id: int, detail_ids: list[int]):
+    """Receive a specific subset of details in this run."""
+    if not detail_ids:
+        return db.query(SurgicalOutlabRun).filter(SurgicalOutlabRun.id == run_id).first()
+    return _receive_outlab_run_details(db, run_id, user_id, detail_ids=detail_ids)
 
 
 def update_outlab_run(db: Session, run_id: int, obj_in):
