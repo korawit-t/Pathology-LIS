@@ -288,13 +288,24 @@ def _classify_gyne_group(
     return "other"
 
 
-def _has_gyne_result(is_satisfied_specimen: bool | None, code: str | None, category_1_code: str | None) -> bool:
+def _has_gyne_result(
+    is_satisfied_specimen: bool | None,
+    code: str | None,
+    category_1_code: str | None,
+    is_out_lab: bool = False,
+) -> bool:
     """False when no adequacy/diagnosis result has been issued yet for the case.
 
     Such cases (still pending screening/reporting) should not be counted anywhere
     in the correlation summary — not registration counts, not the diagnosis breakdown.
+
+    Out-lab cases (e.g. Liquid Based sent to an external lab) are the exception:
+    their diagnosis is never entered as a local Bethesda category, so an empty
+    diagnosis there is expected, not "pending" — they must still count.
     """
     if is_satisfied_specimen is False:
+        return True
+    if is_out_lab:
         return True
     return bool(code or category_1_code)
 
@@ -335,7 +346,7 @@ def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict
     for case, diag, cat in gyne_q.all():
         code = cat.code if cat else None
         cat_1_code = diag.category_1_obj.code if diag and diag.category_1_obj else None
-        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code):
+        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code, case.is_out_lab):
             continue  # no adequacy/diagnosis result issued yet — exclude entirely
 
         specimen = (case.specimen_type or "").lower()
@@ -415,7 +426,7 @@ def get_correlation_group_cases(db: Session, group: str, start_date=None, end_da
         code = cat.code if cat else None
         cat_1 = diag.category_1_obj if diag else None
         cat_1_code = cat_1.code if cat_1 else None
-        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code):
+        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code, case.is_out_lab):
             continue  # no adequacy/diagnosis result issued yet — never shown in a drill-down
         if _classify_gyne_group(case.is_satisfied_specimen, code, cat_1_code) != group:
             continue
