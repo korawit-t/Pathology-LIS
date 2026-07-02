@@ -295,10 +295,24 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     }
   };
 
+  // "stained" (Pending Report) is a merged view of stained + co_sign + awaiting_cosign
+  const PENDING_REPORT_SUB_TABS = ["stained", "co_sign", "awaiting_cosign"];
+
   const loadAllTabCounts = async (userId: number, tabs: typeof tabOptions) => {
     try {
       const entries = await Promise.all(
         tabs.map(async (t) => {
+          if (t.value === "stained") {
+            const subTotals = await Promise.all(
+              PENDING_REPORT_SUB_TABS.map((sub) =>
+                GyneCytologyCaseService.getAll({
+                  ...buildTabParams(sub, userId),
+                  limit: 1,
+                }),
+              ),
+            );
+            return [t.value, subTotals.reduce((sum, d) => sum + d.total, 0)] as const;
+          }
           const data = await GyneCytologyCaseService.getAll({
             ...buildTabParams(t.value, userId),
             limit: 1,
@@ -348,11 +362,34 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     if (!currentUser || activeTab === null) return;
     try {
       setLoading(true);
+      const searchParam = searchText.trim() ? { search: searchText.trim() } : {};
+
+      if (activeTab === "stained") {
+        // Pending Report = union of stained + co_sign + awaiting_cosign
+        const results = await Promise.all(
+          PENDING_REPORT_SUB_TABS.map((sub) =>
+            GyneCytologyCaseService.getAll({
+              limit: 50,
+              ...buildTabParams(sub, currentUser.id),
+              ...searchParam,
+            }),
+          ),
+        );
+        const merged = new Map<number, GyneCytologyCase>();
+        results.forEach((r) =>
+          r.items.forEach((c: GyneCytologyCase) => merged.set(c.id, c)),
+        );
+        const mergedItems = Array.from(merged.values());
+        setCases(mergedItems);
+        setTotal(mergedItems.length);
+        return;
+      }
+
       const params: Record<string, unknown> = {
         limit: 50,
         ...buildTabParams(activeTab, currentUser.id),
+        ...searchParam,
       };
-      if (searchText.trim()) params.search = searchText.trim();
 
       const data = await GyneCytologyCaseService.getAll(params);
       setCases(data.items);
@@ -651,7 +688,8 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   });
 
   const TAB_DESCRIPTIONS: Record<string, string> = {
-    stained: "เคส Stained ที่ assign ให้คุณ และยังไม่ได้ submit ผล",
+    stained:
+      "รวมเคสที่ต้องดำเนินการ: Stained ที่ยังไม่ submit + รอคุณ Sign + รออีกคน Co-sign",
     co_sign: "เคสที่คนอื่น sign ไปแล้ว รอคุณมาลงนามเพื่อให้ครบ",
     awaiting_cosign: "เคสที่คุณ sign ไปแล้ว แต่รออีกคนมาลงนามเพื่อให้ครบ",
     qc_slide_queue: "สไลด์ที่ถูกสุ่ม QC หรือผลผิดปกติ รอเก็บส่ง Pathologist",

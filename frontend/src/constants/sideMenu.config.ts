@@ -301,6 +301,12 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         roles: PAGE_PERMISSIONS["pathologist-page"],
       },
       {
+        key: "diagnosis-gyne-qc-review",
+        label: "QC Review",
+        view: "gyne-qc-review",
+        roles: PAGE_PERMISSIONS["gyne-qc-review"],
+      },
+      {
         key: "all-report",
         label: "Report Archive",
         view: "all-report",
@@ -309,7 +315,6 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       {
         key: "approval",
         label: "Approval",
-        icon: AuditOutlined,
         view: "approval",
         roles: PAGE_PERMISSIONS["approval"],
       },
