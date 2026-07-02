@@ -13,11 +13,13 @@ from app.schemas.nongyne_cyto_case import (
     NongyneCytologyCaseUpdate,
     NongyneCytologyCaseResponse,
     NongyneCytologyListResponse,
+    NongyneCaseCancelRequest,
 )
 from app.crud import nongyne_cyto_case as crud
 from app.dependencies.auth import get_current_user
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.models.user import User
 
 NONGYNE_UPLOAD_DIR = os.path.join(os.getcwd(), "uploads", "requests")
 os.makedirs(NONGYNE_UPLOAD_DIR, exist_ok=True)
@@ -244,6 +246,21 @@ def delete_case(case_id: int, db: Session = Depends(get_db)):
             status_code=404, detail="Case not found or cannot be deleted"
         )
     return None
+
+
+@router.post("/{case_id}/cancel", response_model=NongyneCytologyCaseResponse)
+def cancel_case(
+    case_id: int,
+    payload: NongyneCaseCancelRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_case = crud.cancel_nongyne_case(
+        db, case_id=case_id, user_id=current_user.id, reason=payload.reason
+    )
+    if not db_case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return db_case
 
 
 @router.post("/{case_id}/request-files", response_model=None)

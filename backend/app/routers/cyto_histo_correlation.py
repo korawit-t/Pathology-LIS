@@ -35,6 +35,17 @@ def get_summary(
     return crud.get_correlation_summary(db, start_date=start_date, end_date=end_date)
 
 
+@router.get("/summary/cases")
+def get_summary_group_cases(
+    group: str = Query(...),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return crud.get_correlation_group_cases(db, group=group, start_date=start_date, end_date=end_date)
+
+
 @router.get("/by-nongyne-case/{case_id}")
 def get_by_nongyne_case(case_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     return crud.get_by_nongyne_case(db, case_id)

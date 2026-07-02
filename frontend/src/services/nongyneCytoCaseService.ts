@@ -79,6 +79,16 @@ const NongyneCytologyCaseService = {
     await api.delete(`/nongyne-cytology/${id}`);
   },
 
+  /**
+   * ยกเลิกเคส (Cancel) — ใช้เมื่อเคสผ่านสถานะ registered ไปแล้ว
+   */
+  cancel: async (id: number, reason: string): Promise<NongyneCytologyCase> => {
+    const res = await api.post<NongyneCytologyCase>(`/nongyne-cytology/${id}/cancel`, {
+      reason,
+    });
+    return res.data;
+  },
+
   uploadRequestFile: async (caseId: number, file: File): Promise<{ message: string; file_id: number }> => {
     const formData = new FormData();
     formData.append("file", file);

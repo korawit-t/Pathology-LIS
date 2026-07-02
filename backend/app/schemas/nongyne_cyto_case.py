@@ -180,7 +180,17 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     # Computed: whether a cyto-histo correlation exists for this case
     has_correlation: Optional[bool] = None
 
+    # Cancellation
+    is_cancelled: bool = False
+    cancelled_at: Optional[datetime] = None
+    cancelled_by_id: Optional[int] = None
+    cancel_reason: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneCaseCancelRequest(BaseModel):
+    reason: str
 
 
 class NongyneCytologyListResponse(BaseModel):

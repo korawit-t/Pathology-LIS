@@ -58,18 +58,7 @@ interface ListResponse {
   total: number;
 }
 
-interface DiagBreakdownRow {
-  group: string;
-  label: string;
-  conventional: number;
-  liquid_based: number;
-  total: number;
-}
-
 interface CorrelationSummary {
-  registration_counts: { conventional: number; liquid_based: number; other: number; total: number };
-  breakdown: DiagBreakdownRow[];
-  grand_total: { conventional: number; liquid_based: number; total: number };
   hsil_total: number;
   hsil_major_discordant: number;
   hsil_minor_discordant: number;
@@ -310,144 +299,44 @@ const CytoHistoCorrelationReport: React.FC = () => {
         </Button>
       </Space>
 
-      {/* Registration Counts Table — Gyne only */}
+      {/* HSIL+ Cyto-Histo Discordant — Gyne only */}
       {tab === "gyne" && (summary || summaryLoading) && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 20, maxWidth: 420 }}>
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           <Divider orientation={"left" as any} style={{ marginTop: 4, marginBottom: 12, fontWeight: 600 }}>
-            จำนวนเคสจากการลงทะเบียน
+            HSIL หรือสูงกว่า — Cyto-Histo Correlation
           </Divider>
-          <Table<{ key: string; label: string; count: number; bold?: boolean }>
+          <Table<{ key: string; label: string; count: number; color?: string }>
             loading={summaryLoading}
             dataSource={summary ? [
-              { key: "conv",  label: "Conventional Pap", count: summary.registration_counts.conventional },
-              { key: "liq",   label: "Liquid Based",     count: summary.registration_counts.liquid_based },
-              { key: "other", label: "อื่นๆ",             count: summary.registration_counts.other },
-              { key: "total", label: "รวม",              count: summary.registration_counts.total, bold: true },
+              { key: "hsil_total", label: "HSIL+ ทั้งหมด",    count: summary.hsil_total },
+              { key: "major",      label: "Major Discordant", count: summary.hsil_major_discordant, color: "#cf1322" },
+              { key: "minor",      label: "Minor Discordant", count: summary.hsil_minor_discordant, color: "#fa8c16" },
             ] : []}
             rowKey="key"
             pagination={false}
             size="small"
             bordered
-            style={{ maxWidth: 320 }}
-            onRow={(row) => row.bold ? { style: { background: "#f0f5ff", fontWeight: 600 } } : {}}
             columns={[
               {
                 title: "ประเภท",
                 dataIndex: "label",
                 key: "label",
-                render: (label: string, row) => <Text strong={row.bold}>{label}</Text>,
+                render: (label: string, row) => <Text style={{ color: row.color }}>{label}</Text>,
               },
               {
                 title: "จำนวน",
                 dataIndex: "count",
                 key: "count",
                 align: "center" as const,
-                width: 100,
-                render: (v: number, row) => <Text strong={row.bold}>{v}</Text>,
+                width: 90,
+                render: (v: number, row) => (
+                  <Text strong style={{ color: v > 0 ? row.color : undefined }}>{v}</Text>
+                ),
               },
             ]}
           />
         </div>
-      )}
-
-      {/* Gyne Summary Tables — Gyne only */}
-      {tab === "gyne" && (summary || summaryLoading) && (
-        <Row gutter={24} style={{ marginBottom: 20 }}>
-          {/* Table 1: specimen counts */}
-          <Col xs={24} md={12}>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <Divider orientation={"left" as any} style={{ marginTop: 4, marginBottom: 12, fontWeight: 600 }}>
-              ตารางสรุปผล Gyne Cytology
-            </Divider>
-            <Table<DiagBreakdownRow>
-              loading={summaryLoading}
-              dataSource={summary?.breakdown ?? []}
-              rowKey="group"
-              pagination={false}
-              size="small"
-              bordered
-              scroll={{ x: "max-content" }}
-              onRow={(row) => row.group === "unsatisfactory" ? { style: { background: "#fff7e6" } } : {}}
-              summary={() => summary && (
-                <Table.Summary.Row style={{ background: "#f0f5ff", fontWeight: 600 }}>
-                  <Table.Summary.Cell index={0}><Text strong>รวมทั้งหมด</Text></Table.Summary.Cell>
-                  <Table.Summary.Cell index={1} align="center"><Text strong>{summary.grand_total.conventional}</Text></Table.Summary.Cell>
-                  <Table.Summary.Cell index={2} align="center"><Text strong>{summary.grand_total.liquid_based}</Text></Table.Summary.Cell>
-                  <Table.Summary.Cell index={3} align="center"><Text strong>{summary.grand_total.total}</Text></Table.Summary.Cell>
-                </Table.Summary.Row>
-              )}
-              columns={[
-                {
-                  title: "ประเภท / Diagnosis",
-                  dataIndex: "label",
-                  key: "label",
-                  width: 220,
-                },
-                {
-                  title: "Conventional Pap",
-                  dataIndex: "conventional",
-                  key: "conventional",
-                  align: "center" as const,
-                  width: 130,
-                },
-                {
-                  title: "Liquid Based",
-                  dataIndex: "liquid_based",
-                  key: "liquid_based",
-                  align: "center" as const,
-                  width: 110,
-                },
-                {
-                  title: "รวม",
-                  dataIndex: "total",
-                  key: "total",
-                  align: "center" as const,
-                  width: 80,
-                  render: (v: number) => <Text strong>{v}</Text>,
-                },
-              ]}
-            />
-          </Col>
-
-          {/* Table 2: HSIL+ discordant */}
-          <Col xs={24} md={12}>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <Divider orientation={"left" as any} style={{ marginTop: 4, marginBottom: 12, fontWeight: 600 }}>
-              HSIL หรือสูงกว่า — Cyto-Histo Correlation
-            </Divider>
-            <Table<{ key: string; label: string; count: number; color?: string }>
-              loading={summaryLoading}
-              dataSource={summary ? [
-                { key: "hsil_total", label: "HSIL+ ทั้งหมด",    count: summary.hsil_total },
-                { key: "major",      label: "Major Discordant", count: summary.hsil_major_discordant, color: "#cf1322" },
-                { key: "minor",      label: "Minor Discordant", count: summary.hsil_minor_discordant, color: "#fa8c16" },
-              ] : []}
-              rowKey="key"
-              pagination={false}
-              size="small"
-              bordered
-              columns={[
-                {
-                  title: "ประเภท",
-                  dataIndex: "label",
-                  key: "label",
-                  render: (label: string, row) => <Text style={{ color: row.color }}>{label}</Text>,
-                },
-                {
-                  title: "จำนวน",
-                  dataIndex: "count",
-                  key: "count",
-                  align: "center" as const,
-                  width: 90,
-                  render: (v: number, row) => (
-                    <Text strong style={{ color: v > 0 ? row.color : undefined }}>{v}</Text>
-                  ),
-                },
-              ]}
-            />
-          </Col>
-        </Row>
       )}
 
       {/* Summary cards */}

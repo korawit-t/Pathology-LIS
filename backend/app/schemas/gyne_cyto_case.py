@@ -175,6 +175,12 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     # Computed: whether a cyto-histo correlation exists
     has_correlation: Optional[bool] = None
 
+    # Cancellation
+    is_cancelled: bool = False
+    cancelled_at: Optional[datetime] = None
+    cancelled_by_id: Optional[int] = None
+    cancel_reason: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -182,3 +188,7 @@ class GyneCytologyListResponse(BaseModel):
     items: List[GyneCytologyCaseResponse]
     total: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class GyneCaseCancelRequest(BaseModel):
+    reason: str

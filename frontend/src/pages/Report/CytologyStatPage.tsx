@@ -75,6 +75,40 @@ interface GyneSummaryRow {
   total: number;
 }
 
+interface DiagBreakdownRow {
+  group: string;
+  label: string;
+  conventional: number;
+  liquid_based: number;
+  total: number;
+}
+
+interface CorrelationSummary {
+  registration_counts: { conventional: number; liquid_based: number; other: number; total: number };
+  breakdown: DiagBreakdownRow[];
+  grand_total: { conventional: number; liquid_based: number; total: number };
+  hsil_total: number;
+  hsil_major_discordant: number;
+  hsil_minor_discordant: number;
+}
+
+interface GroupCaseRow {
+  id: number;
+  accession_no: string;
+  hn: string | null;
+  patient_title: string | null;
+  patient_name: string | null;
+  patient_ln: string | null;
+  specimen_type: string | null;
+  registered_at: string | null;
+  is_satisfied_specimen: boolean | null;
+  category_1_code: string | null;
+  category_1_text: string | null;
+  category_code: string | null;
+  category_text: string | null;
+  interpretation: string | null;
+}
+
 const fetchCytoStats = async (
   type: "gyne" | "nongyne",
   start: string,
@@ -103,9 +137,14 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
   const [stats, setStats] = useState<CytoStatResponse | null>(null);
   const [qcStats, setQcStats] = useState<QCStatResponse | null>(null);
   const [summaryRows, setSummaryRows] = useState<GyneSummaryRow[]>([]);
+  const [correlationSummary, setCorrelationSummary] = useState<CorrelationSummary | null>(null);
   const [qcCaseModal, setQcCaseModal] = useState<{ open: boolean; reason: "random_10pct" | "abnormal" | null }>({ open: false, reason: null });
   const [qcCases, setQcCases] = useState<any[]>([]);
   const [qcCasesLoading, setQcCasesLoading] = useState(false);
+  const [groupCasesOpen, setGroupCasesOpen] = useState(false);
+  const [groupCasesLoading, setGroupCasesLoading] = useState(false);
+  const [groupCasesData, setGroupCasesData] = useState<GroupCaseRow[]>([]);
+  const [groupCasesLabel, setGroupCasesLabel] = useState("");
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [cytotechs, setCytotechs] = useState<User[]>([]);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>([
@@ -133,7 +172,7 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
       const data = await fetchCytoStats(type, start, end, selectedPathologist, selectedCytotech);
       setStats(data);
       if (type === "gyne") {
-        const [qc, summary] = await Promise.all([
+        const [qc, summary, correlation] = await Promise.all([
           api.get<QCStatResponse>("/gyne-cytology/qc-statistics", {
             params: {
               start_date: start,
@@ -150,9 +189,13 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
               cytotechnologist_id: selectedCytotech ?? undefined,
             },
           }),
+          api.get<CorrelationSummary>("/cyto-histo-correlations/summary", {
+            params: { start_date: start, end_date: end },
+          }),
         ]);
         setQcStats(qc.data);
         setSummaryRows(summary.data);
+        setCorrelationSummary(correlation.data);
       }
     } catch (e) {
       logger.error(e);
@@ -190,6 +233,27 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
       logger.error(e);
     } finally {
       setQcCasesLoading(false);
+    }
+  };
+
+  const openGroupCases = async (group: string, label: string) => {
+    if (!dateRange?.[0] || !dateRange?.[1]) return;
+    setGroupCasesLabel(label);
+    setGroupCasesOpen(true);
+    setGroupCasesLoading(true);
+    try {
+      const res = await api.get<GroupCaseRow[]>("/cyto-histo-correlations/summary/cases", {
+        params: {
+          group,
+          start_date: dateRange[0].format("YYYY-MM-DD"),
+          end_date: dateRange[1].format("YYYY-MM-DD"),
+        },
+      });
+      setGroupCasesData(res.data);
+    } catch (e) {
+      logger.error(e);
+    } finally {
+      setGroupCasesLoading(false);
     }
   };
 
@@ -412,6 +476,73 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
           </Modal>
         )}
 
+        {type === "gyne" && (
+          <Modal
+            open={groupCasesOpen}
+            title={`รายชื่อเคส — ${groupCasesLabel} (${groupCasesData.length})`}
+            footer={null}
+            width={960}
+            centered
+            onCancel={() => setGroupCasesOpen(false)}
+          >
+            <Table<GroupCaseRow>
+              dataSource={groupCasesData}
+              loading={groupCasesLoading}
+              rowKey="id"
+              size="small"
+              bordered
+              pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} cases` }}
+              columns={[
+                {
+                  title: "Accession No.",
+                  dataIndex: "accession_no",
+                  key: "accession_no",
+                  width: 130,
+                  render: (v: string) => <Text strong style={{ color: "#722ed1" }}>{v}</Text>,
+                },
+                { title: "HN", dataIndex: "hn", key: "hn", width: 110 },
+                {
+                  title: "Patient",
+                  key: "patient",
+                  render: (r: GroupCaseRow) =>
+                    [r.patient_title, r.patient_name, r.patient_ln].filter(Boolean).join(" ") || "—",
+                },
+                { title: "Specimen", dataIndex: "specimen_type", key: "specimen_type", width: 130 },
+                {
+                  title: "Registered",
+                  dataIndex: "registered_at",
+                  key: "registered_at",
+                  width: 110,
+                  render: (v: string | null) => v ? dayjs(v).format("DD/MM/YYYY") : "—",
+                },
+                {
+                  title: "Category 1",
+                  key: "category_1",
+                  width: 150,
+                  render: (r: GroupCaseRow) =>
+                    r.category_1_text
+                      ? <Text>{r.category_1_text}{r.category_1_code ? ` (${r.category_1_code})` : ""}</Text>
+                      : <Text type="secondary">—</Text>,
+                },
+                {
+                  title: "Diagnosis (category_2)",
+                  key: "diagnosis",
+                  render: (r: GroupCaseRow) => (
+                    <div>
+                      {r.category_text
+                        ? <Text>{r.category_text}{r.category_code ? ` (${r.category_code})` : ""}</Text>
+                        : <Text type="secondary">ไม่มีผล / No current diagnosis</Text>}
+                      {r.interpretation && (
+                        <div><Text type="secondary" style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>{r.interpretation}</Text></div>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </Modal>
+        )}
+
         {type === "gyne" && qcStats && (
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
             <Col span={24}>
@@ -492,6 +623,101 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                     )}
                   </Col>
                 </Row>
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {type === "gyne" && correlationSummary && (
+          <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+            <Col xs={24} md={8}>
+              <Card title="จำนวนเคสจากการลงทะเบียน">
+                <Table<{ key: string; label: string; count: number; bold?: boolean }>
+                  dataSource={[
+                    { key: "conv",  label: "Conventional Pap", count: correlationSummary.registration_counts.conventional },
+                    { key: "liq",   label: "Liquid Based",     count: correlationSummary.registration_counts.liquid_based },
+                    { key: "other", label: "อื่นๆ",             count: correlationSummary.registration_counts.other },
+                    { key: "total", label: "รวม",              count: correlationSummary.registration_counts.total, bold: true },
+                  ]}
+                  rowKey="key"
+                  pagination={false}
+                  size="small"
+                  bordered
+                  onRow={(row) => row.bold ? { style: { background: "#f0f5ff", fontWeight: 600 } } : {}}
+                  columns={[
+                    {
+                      title: "ประเภท",
+                      dataIndex: "label",
+                      key: "label",
+                      render: (label: string, row) => <Text strong={row.bold}>{label}</Text>,
+                    },
+                    {
+                      title: "จำนวน",
+                      dataIndex: "count",
+                      key: "count",
+                      align: "center" as const,
+                      width: 100,
+                      render: (v: number, row) => <Text strong={row.bold}>{v}</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} md={16}>
+              <Card title="ตารางสรุปผล Gyne Cytology (คลิกแถวเพื่อดูรายชื่อเคส)">
+                <Table<DiagBreakdownRow>
+                  dataSource={correlationSummary.breakdown}
+                  rowKey="group"
+                  pagination={false}
+                  size="small"
+                  bordered
+                  scroll={{ x: "max-content" }}
+                  onRow={(row) => ({
+                    onClick: () => openGroupCases(row.group, row.label),
+                    style: {
+                      cursor: "pointer",
+                      background: row.group === "unsatisfactory" ? "#fff7e6" : undefined,
+                    },
+                  })}
+                  summary={() => (
+                    <Table.Summary.Row style={{ background: "#f0f5ff", fontWeight: 600 }}>
+                      <Table.Summary.Cell index={0}><Text strong>รวมทั้งหมด</Text></Table.Summary.Cell>
+                      <Table.Summary.Cell index={1} align="center"><Text strong>{correlationSummary.grand_total.conventional}</Text></Table.Summary.Cell>
+                      <Table.Summary.Cell index={2} align="center"><Text strong>{correlationSummary.grand_total.liquid_based}</Text></Table.Summary.Cell>
+                      <Table.Summary.Cell index={3} align="center"><Text strong>{correlationSummary.grand_total.total}</Text></Table.Summary.Cell>
+                    </Table.Summary.Row>
+                  )}
+                  columns={[
+                    {
+                      title: "ประเภท / Diagnosis",
+                      dataIndex: "label",
+                      key: "label",
+                      width: 220,
+                    },
+                    {
+                      title: "Conventional Pap",
+                      dataIndex: "conventional",
+                      key: "conventional",
+                      align: "center" as const,
+                      width: 130,
+                    },
+                    {
+                      title: "Liquid Based",
+                      dataIndex: "liquid_based",
+                      key: "liquid_based",
+                      align: "center" as const,
+                      width: 110,
+                    },
+                    {
+                      title: "รวม",
+                      dataIndex: "total",
+                      key: "total",
+                      align: "center" as const,
+                      width: 80,
+                      render: (v: number) => <Text strong>{v}</Text>,
+                    },
+                  ]}
+                />
               </Card>
             </Col>
           </Row>

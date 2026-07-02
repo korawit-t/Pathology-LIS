@@ -682,11 +682,31 @@ const TrackingTab = ({ refreshTrigger }) => {
                   )}
                 </Space>
                 <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                  {Object.entries(grouped).map(([acc, details]) => (
+                  {Object.entries(grouped).map(([acc, details]) => {
+                    const groupUnreceivedIds = details.filter((d) => !d.received_at).map((d) => d.id);
+                    const groupAllSelected = groupUnreceivedIds.length > 0 && groupUnreceivedIds.every((id) => runSelected.has(id));
+                    const groupSomeSelected = groupUnreceivedIds.some((id) => runSelected.has(id));
+                    const toggleGroup = (checked) => {
+                      setSelectedDetailIds((prev) => {
+                        const next = new Set(prev[record.id] || []);
+                        groupUnreceivedIds.forEach((id) => (checked ? next.add(id) : next.delete(id)));
+                        return { ...prev, [record.id]: next };
+                      });
+                    };
+                    return (
                     <div key={acc} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <Text strong style={{ color: "#1890ff", minWidth: 120, paddingTop: 2 }}>
-                        {acc}
-                      </Text>
+                      <Space size={6} style={{ minWidth: 120, paddingTop: 2 }}>
+                        {groupUnreceivedIds.length > 0 && (
+                          <Checkbox
+                            checked={groupAllSelected}
+                            indeterminate={groupSomeSelected && !groupAllSelected}
+                            onChange={(e) => toggleGroup(e.target.checked)}
+                          />
+                        )}
+                        <Text strong style={{ color: "#1890ff" }}>
+                          {acc}
+                        </Text>
+                      </Space>
                       <Space wrap size={[8, 4]}>
                         {details.map((d) => (
                           <Space
@@ -722,7 +742,8 @@ const TrackingTab = ({ refreshTrigger }) => {
                         ))}
                       </Space>
                     </div>
-                  ))}
+                    );
+                  })}
                 </Space>
               </div>
             );

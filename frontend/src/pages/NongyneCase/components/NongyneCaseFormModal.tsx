@@ -465,10 +465,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
 
         try {
           setLoading(true);
-          await NongyneCytologyCaseService.update(editingId!, {
-            status: "cancelled",
-            clinical_history: cancelReason, // Temporary hack for reason
-          });
+          await NongyneCytologyCaseService.cancel(editingId!, cancelReason);
 
           message.success("Case cancelled successfully");
           onSuccess(null);

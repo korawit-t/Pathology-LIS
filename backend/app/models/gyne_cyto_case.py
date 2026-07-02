@@ -96,6 +96,12 @@ class GyneCytologyCase(Base):
     stain_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
     slide_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
 
+    # --- Cancellation & Soft Delete ---
+    is_cancelled = Column(Boolean, default=False, index=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancel_reason = Column(Text, nullable=True)
+
     # --- 8. Relationships ---
     patient = relationship("Patient", back_populates="gyne_cytology_cases")
     cytotechnologist = relationship("User", foreign_keys=[cytotechnologist_id])

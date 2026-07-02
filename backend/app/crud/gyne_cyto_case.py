@@ -342,6 +342,28 @@ def delete_gyne_case(db: Session, case_id: int):
         raise e
 
 
+def cancel_gyne_case(db: Session, case_id: int, user_id: int, reason: str):
+    db_obj = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+
+    if not db_obj:
+        return None
+
+    db_obj.is_cancelled = True
+    db_obj.status = "cancelled"
+    db_obj.cancelled_at = func.now()
+    db_obj.cancelled_by_id = user_id
+    db_obj.cancel_reason = reason
+
+    try:
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    except Exception as e:
+        db.rollback()
+        raise e
+
+
 def get_gyne_statistics(
     db: Session, start_date, end_date, pathologist_id: int = None, cytotechnologist_id: int = None
 ):

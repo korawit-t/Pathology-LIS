@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   Modal,
   Form,
+  Input,
   Button,
   Row,
   Col,
@@ -14,7 +15,7 @@ import {
   Divider,
 } from "antd";
 import type { UploadFile, UploadProps } from "antd";
-import { DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import debounce from "lodash/debounce";
 
@@ -348,6 +349,44 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
+  const handleCancel = () => {
+    let cancelReason = "";
+
+    Modal.confirm({
+      title: "Confirm case cancellation?",
+      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
+      content: (
+        <div style={{ marginTop: 16 }}>
+          <p>Please provide a reason for cancellation:</p>
+          <Input.TextArea
+            rows={3}
+            placeholder="e.g. Wrong HN, Changed hospital, Other..."
+            onChange={(e) => (cancelReason = e.target.value)}
+          />
+        </div>
+      ),
+      okText: "Confirm Cancel",
+      okType: "danger",
+      cancelText: "Close",
+      onOk: async () => {
+        if (!cancelReason.trim()) {
+          message.warning("Please provide a reason before cancelling");
+          return Promise.reject();
+        }
+        try {
+          setLoading(true);
+          await GyneCytologyCaseService.cancel(editingId!, cancelReason);
+          message.success("Case cancelled successfully");
+          onSuccess(null);
+        } catch {
+          message.error("Failed to cancel case");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+  };
+
   const doSave = async (values: any) => {
     setLoading(true);
     try {
@@ -564,19 +603,35 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
               <Button onClick={onCancel} size="large">
                 ยกเลิก
               </Button>
-              {editingId && form.getFieldValue("status") === "registered" && (
-                <Popconfirm
-                  title="Delete this case?"
-                  description="This will permanently remove the case from the system."
-                  onConfirm={handleDelete}
-                  okText="Delete"
-                  cancelText="Cancel"
-                  okButtonProps={{ danger: true, loading }}
-                >
-                  <Button danger icon={<DeleteOutlined />} type="text">
-                    Delete Case
-                  </Button>
-                </Popconfirm>
+              {editingId && (
+                <>
+                  {form.getFieldValue("status") === "registered" ? (
+                    <Popconfirm
+                      title="Delete this case?"
+                      description="This will permanently remove the case from the system."
+                      onConfirm={handleDelete}
+                      okText="Delete"
+                      cancelText="Cancel"
+                      okButtonProps={{ danger: true, loading }}
+                    >
+                      <Button danger icon={<DeleteOutlined />} type="text">
+                        Delete Case
+                      </Button>
+                    </Popconfirm>
+                  ) : (
+                    <Popconfirm
+                      title="Confirm cancel this case?"
+                      onConfirm={handleCancel}
+                      okText="Confirm Cancel"
+                      cancelText="Close"
+                      okButtonProps={{ danger: true, loading }}
+                    >
+                      <Button danger icon={<CloseCircleOutlined />} type="text">
+                        Cancel Case
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </>
               )}
             </Space>
             <Space size={12}>

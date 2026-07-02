@@ -85,6 +85,16 @@ const GyneCytologyCaseService = {
   },
 
   /**
+   * ยกเลิกเคส (Cancel) — ใช้เมื่อเคสผ่านสถานะ registered ไปแล้ว
+   */
+  cancel: async (id: number, reason: string): Promise<GyneCytologyCase> => {
+    const res = await api.post<GyneCytologyCase>(`/gyne-cytology/${id}/cancel`, {
+      reason,
+    });
+    return res.data;
+  },
+
+  /**
    * ดึงรายการรายงานทั้งหมดที่รออนุมัติ (Filter by status=pending)
    */
   getPendingReports: async (

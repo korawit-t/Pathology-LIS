@@ -268,23 +268,61 @@ _DIAG_GROUPS: list[tuple[str, str, frozenset | None]] = [
 _HSIL_GROUP_KEYS = {"asc_h", "hsil", "scc", "agc", "ais", "adenocarcinoma", "malignant"}
 
 
-def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict:
-    """Detailed Gyne Cytology breakdown (diagnosis × specimen type) plus HSIL+ cyto-histo discordant counts."""
+def _classify_gyne_group(
+    is_satisfied_specimen: bool | None, code: str | None, category_1_code: str | None = None
+) -> str:
+    """Map a case's adequacy flag + category_2 code to a `_DIAG_GROUPS` key.
+
+    Falls back to the category_1 header code (e.g. "100" NILM, "200" NILM w/ organism)
+    when no category_2 sub-finding was picked, since category_1 codes 100-299 already
+    fall within the NILM range.
+    """
+    if is_satisfied_specimen is False:
+        return "unsatisfactory"
+    effective_code = code or category_1_code
+    for gkey, _label, gcodes in _DIAG_GROUPS:
+        if gkey in ("unsatisfactory", "other"):
+            continue
+        if gcodes and effective_code in gcodes:
+            return gkey
+    return "other"
+
+
+def _has_gyne_result(is_satisfied_specimen: bool | None, code: str | None, category_1_code: str | None) -> bool:
+    """False when no adequacy/diagnosis result has been issued yet for the case.
+
+    Such cases (still pending screening/reporting) should not be counted anywhere
+    in the correlation summary — not registration counts, not the diagnosis breakdown.
+    """
+    if is_satisfied_specimen is False:
+        return True
+    return bool(code or category_1_code)
+
+
+def _gyne_summary_query(db: Session, start_date=None, end_date=None):
     from app.models.gyne_diagnosis import GyneDiagnosis, GyneDiagnosisCategory
     from sqlalchemy import and_, func
+    from sqlalchemy.orm import joinedload
 
-    gyne_q = (
-        db.query(GyneCytologyCase, GyneDiagnosisCategory)
+    q = (
+        db.query(GyneCytologyCase, GyneDiagnosis, GyneDiagnosisCategory)
         .outerjoin(
             GyneDiagnosis,
             and_(GyneDiagnosis.case_id == GyneCytologyCase.id, GyneDiagnosis.is_current.is_(True)),
         )
         .outerjoin(GyneDiagnosisCategory, GyneDiagnosisCategory.id == GyneDiagnosis.category_2_id)
+        .options(joinedload(GyneDiagnosis.category_1_obj))
     )
     if start_date:
-        gyne_q = gyne_q.filter(func.date(GyneCytologyCase.registered_at) >= start_date)
+        q = q.filter(func.date(GyneCytologyCase.registered_at) >= start_date)
     if end_date:
-        gyne_q = gyne_q.filter(func.date(GyneCytologyCase.registered_at) <= end_date)
+        q = q.filter(func.date(GyneCytologyCase.registered_at) <= end_date)
+    return q
+
+
+def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict:
+    """Detailed Gyne Cytology breakdown (diagnosis × specimen type) plus HSIL+ cyto-histo discordant counts."""
+    gyne_q = _gyne_summary_query(db, start_date, end_date)
 
     def _zero():
         return {"conventional": 0, "liquid_based": 0, "total": 0}
@@ -294,7 +332,12 @@ def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict
     reg = {"conventional": 0, "liquid_based": 0, "other": 0, "total": 0}
     hsil_case_ids: set[int] = set()
 
-    for case, cat in gyne_q.all():
+    for case, diag, cat in gyne_q.all():
+        code = cat.code if cat else None
+        cat_1_code = diag.category_1_obj.code if diag and diag.category_1_obj else None
+        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code):
+            continue  # no adequacy/diagnosis result issued yet — exclude entirely
+
         specimen = (case.specimen_type or "").lower()
         is_conv = "conventional" in specimen
         is_liq = "liquid" in specimen or "lbc" in specimen
@@ -310,17 +353,7 @@ def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict
         reg["total"] += 1
 
         # Classify into a diagnosis group
-        if case.is_satisfied_specimen is False:
-            group = "unsatisfactory"
-        else:
-            code = cat.code if cat else None
-            group = "other"
-            for gkey, _label, gcodes in _DIAG_GROUPS:
-                if gkey in ("unsatisfactory", "other"):
-                    continue
-                if gcodes and code in gcodes:
-                    group = gkey
-                    break
+        group = _classify_gyne_group(case.is_satisfied_specimen, code, cat_1_code)
 
         buckets[group][spec_key] += 1
         buckets[group]["total"] += 1
@@ -363,3 +396,46 @@ def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict
         "hsil_major_discordant": hsil_major,
         "hsil_minor_discordant": hsil_minor,
     }
+
+
+def get_correlation_group_cases(db: Session, group: str, start_date=None, end_date=None) -> list[dict]:
+    """List the Gyne Cytology cases behind one `_DIAG_GROUPS` bucket from get_correlation_summary (drill-down)."""
+    from app.models.patient import Patient
+    from sqlalchemy.orm import joinedload
+
+    if group not in {g[0] for g in _DIAG_GROUPS}:
+        return []
+
+    gyne_q = _gyne_summary_query(db, start_date, end_date).options(
+        joinedload(GyneCytologyCase.patient).joinedload(Patient.title),
+    )
+
+    results = []
+    for case, diag, cat in gyne_q.all():
+        code = cat.code if cat else None
+        cat_1 = diag.category_1_obj if diag else None
+        cat_1_code = cat_1.code if cat_1 else None
+        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code):
+            continue  # no adequacy/diagnosis result issued yet — never shown in a drill-down
+        if _classify_gyne_group(case.is_satisfied_specimen, code, cat_1_code) != group:
+            continue
+        patient = case.patient
+        results.append({
+            "id": case.id,
+            "accession_no": case.accession_no,
+            "hn": case.hn,
+            "patient_title": patient.title.title if patient and patient.title else None,
+            "patient_name": patient.name if patient else None,
+            "patient_ln": patient.ln if patient else None,
+            "specimen_type": case.specimen_type,
+            "registered_at": case.registered_at,
+            "is_satisfied_specimen": case.is_satisfied_specimen,
+            "category_1_code": cat_1.code if cat_1 else None,
+            "category_1_text": cat_1.text if cat_1 else None,
+            "category_code": cat.code if cat else None,
+            "category_text": cat.text if cat else None,
+            "interpretation": diag.interpretation if diag else None,
+        })
+
+    results.sort(key=lambda r: r["registered_at"] or "", reverse=True)
+    return results
