@@ -22,9 +22,9 @@ if (Test-Path $envFile) {
     }
 }
 
-Write-Host "Running alembic upgrade head..."
-alembic upgrade head
-if ($LASTEXITCODE -ne 0) { exit 1 }
+# Write-Host "Running alembic upgrade head..."
+# alembic upgrade head
+# if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "Starting server..."
 uvicorn main:app --host 0.0.0.0 --port 8000
