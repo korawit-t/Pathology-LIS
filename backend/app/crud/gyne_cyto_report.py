@@ -240,6 +240,8 @@ def publish_gyne_report(
     signers: List[dict] = None,
     current_user_id: int = None,
     is_abnormal: bool = False,
+    is_out_lab_consult: bool = None,
+    consult_reason: str = None,
 ):
     """สร้าง Snapshot และส่งเข้าสู่กระบวนการอนุมัติ (Pending) พร้อม 10% QC routing"""
     report_data = prepare_gyne_report_data(db, case_id)
@@ -295,6 +297,18 @@ def publish_gyne_report(
     if db_case:
         db_case.is_reported = True
         db_case.report_at = local_now()
+
+        was_consult_dispatched = (
+            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
+        )
+        if is_out_lab_consult is not None:
+            db_case.is_out_lab_consult = is_out_lab_consult
+            if is_out_lab_consult and db_case.consult_status is None:
+                db_case.consult_status = "pending"
+        if consult_reason is not None:
+            db_case.consult_reason = consult_reason
+        if was_consult_dispatched:
+            db_case.consult_status = "received"
 
         settings = db.query(SystemSetting).first()
         qc_enabled = settings.enable_gyne_qc_system if settings else False
@@ -359,6 +373,8 @@ def complete_gyne_review(
     review_result: str = "agree",
     review_note: str = None,
     discrepancy_level: str = None,
+    is_out_lab_consult: bool = None,
+    consult_reason: str = None,
 ):
     """Pathologist marks QC review done.
     agree    → publish directly (pathologist is the authority).
@@ -395,6 +411,18 @@ def complete_gyne_review(
         # Record the reviewer's actual signature time now — it was left null
         # when the cytotechnologist originally sent the case for review, so
         # the report doesn't show the pathologist as signing at send-time.
+        was_consult_dispatched = (
+            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
+        )
+        if is_out_lab_consult is not None:
+            db_case.is_out_lab_consult = is_out_lab_consult
+            if is_out_lab_consult and db_case.consult_status is None:
+                db_case.consult_status = "pending"
+        if consult_reason is not None:
+            db_case.consult_reason = consult_reason
+        if was_consult_dispatched:
+            db_case.consult_status = "received"
+
         now = local_now()
         db_case.status = "published"
         if latest_report:

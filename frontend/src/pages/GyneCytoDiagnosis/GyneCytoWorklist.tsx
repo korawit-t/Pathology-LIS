@@ -43,6 +43,7 @@ import type { SystemSetting } from "../../types/system";
 import AccessionTag from "../../components/AccessionTag";
 import logger from "../../utils/logger";
 import { calculateTATProgress } from "../../utils/tatUtils";
+import { renderConsultBadge } from "../../utils/consultBadge";
 
 const { Text } = Typography;
 
@@ -596,6 +597,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
               Correlated
             </Tag>
           )}
+          {renderConsultBadge(record)}
         </div>
       );
     },

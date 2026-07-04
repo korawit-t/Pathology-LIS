@@ -123,10 +123,14 @@ const GyneDiagnosisService = {
     caseId: number,
     signers?: { user_id: number; role: string; signed_at?: string | null }[],
     isAbnormal?: boolean,
+    isOutLabConsult?: boolean,
+    consultReason?: string,
   ): Promise<GyneCytologyCase> => {
     const res = await api.post(`/gyne-cyto-reports/${caseId}/publish`, {
       signers,
       is_abnormal: isAbnormal ?? false,
+      is_out_lab_consult: isOutLabConsult,
+      consult_reason: consultReason,
     });
     return res.data;
   },
@@ -136,11 +140,15 @@ const GyneDiagnosisService = {
     reviewResult: "agree" | "disagree",
     reviewNote?: string,
     discrepancyLevel?: "minor" | "major",
+    isOutLabConsult?: boolean,
+    consultReason?: string,
   ): Promise<void> => {
     await api.post(`/gyne-cyto-reports/cases/${caseId}/complete-review`, {
       review_result: reviewResult,
       review_note: reviewNote ?? null,
       discrepancy_level: discrepancyLevel ?? null,
+      is_out_lab_consult: isOutLabConsult,
+      consult_reason: consultReason,
     });
   },
 

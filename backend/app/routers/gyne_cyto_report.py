@@ -42,6 +42,8 @@ router = APIRouter(
 class PublishReportRequest(BaseModel):
     signers: Optional[List[GyneReportSignerCreate]] = None
     is_abnormal: bool = False
+    is_out_lab_consult: Optional[bool] = None
+    consult_reason: Optional[str] = None
 
 
 @router.get(
@@ -95,6 +97,8 @@ def publish_report(
         signers=signers_data,
         current_user_id=current_user.id,
         is_abnormal=payload.is_abnormal,
+        is_out_lab_consult=payload.is_out_lab_consult,
+        consult_reason=payload.consult_reason,
     )
     from app.services.notification_service import notify_signed_out
     notify_signed_out(db, {
@@ -151,6 +155,8 @@ class CompleteReviewRequest(BaseModel):
     review_result: str = "agree"   # "agree" | "disagree"
     review_note: Optional[str] = None
     discrepancy_level: Optional[str] = None  # "minor" | "major"
+    is_out_lab_consult: Optional[bool] = None
+    consult_reason: Optional[str] = None
 
 
 @router.post(
@@ -171,6 +177,8 @@ def complete_review(
         review_result=payload.review_result,
         review_note=payload.review_note,
         discrepancy_level=payload.discrepancy_level,
+        is_out_lab_consult=payload.is_out_lab_consult,
+        consult_reason=payload.consult_reason,
     )
 
 

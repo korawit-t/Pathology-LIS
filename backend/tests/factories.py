@@ -16,6 +16,7 @@ from app.models.patient import Patient
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.models.gyne_cyto_case import GyneCytologyCase
 
 
 def make_hospital(db) -> Hospital:
@@ -76,6 +77,23 @@ def make_bare_nongyne_case(db, registrar_id: int, hospital: Hospital = None, pat
     patient = patient or make_patient(db)
     case = NongyneCytologyCase(
         accession_no=f"N26-{uuid.uuid4().hex[:8]}",
+        patient_id=patient.id,
+        registrar_id=registrar_id,
+        hospital_id=hospital.id,
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    return case
+
+
+def make_bare_gyne_case(db, registrar_id: int, hospital: Hospital = None, patient: Patient = None) -> GyneCytologyCase:
+    """A GyneCytologyCase with no diagnosis — diagnoses are created via the
+    real create_initial_diagnosis/update_diagnosis crud calls."""
+    hospital = hospital or make_hospital(db)
+    patient = patient or make_patient(db)
+    case = GyneCytologyCase(
+        accession_no=f"C26-{uuid.uuid4().hex[:8]}",
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,

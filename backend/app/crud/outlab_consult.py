@@ -52,6 +52,10 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
                 from app.models.nongyne_cyto_case import NongyneCytologyCase
                 nc = db.query(NongyneCytologyCase.consult_report_out_at).filter(NongyneCytologyCase.id == item.case_id).first()
                 report_out_at = nc.consult_report_out_at if nc else None
+            elif item.case_type == "gyne":
+                from app.models.gyne_cyto_case import GyneCytologyCase
+                gc = db.query(GyneCytologyCase.consult_report_out_at).filter(GyneCytologyCase.id == item.case_id).first()
+                report_out_at = gc.consult_report_out_at if gc else None
 
             detail = OutlabConsultRunDetail(
                 run_id=db_run.id,

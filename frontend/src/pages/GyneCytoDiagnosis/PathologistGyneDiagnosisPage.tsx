@@ -57,6 +57,7 @@ import GyneReportedResult from "./components/GyneReportedResult";
 import GyneCytologyImagesSection from "./components/GyneCytologyImagesSection";
 import GyneQCReviewSection from "./components/GyneQCReviewSection";
 import GyneSignOffPage from "./components/GyneSignOffPage";
+import { getConsultLockState } from "../Pathologist/utils/consultLockState";
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -239,18 +240,26 @@ const PathologistGyneDiagnosisPage: React.FC<
   // Auto-show popup once when entering a finalized case.
   // Skip pending_review — that status means the case is awaiting the
   // pathologist's QC decision (see GyneQCReviewSection), not that it's
-  // already signed off.
+  // already signed off. Also suppressed while a consult round is actively
+  // awaiting the pathologist's attention, so it doesn't cover up the
+  // now-reachable Sign-off button (mirrors the same fix applied to
+  // Surgical/NonGyne's equivalent popup). Checked inline (rather than via
+  // getConsultLockState) since that hook isn't computed until after
+  // isCoSigner further down this component.
   useEffect(() => {
+    const hasActiveConsult =
+      !!caseData?.is_out_lab_consult && caseData?.consult_status === "processing";
     if (
       caseData &&
       isFinalized &&
       caseData.status !== "pending_review" &&
+      !hasActiveConsult &&
       !completedCasePopupShownRef.current
     ) {
       completedCasePopupShownRef.current = true;
       setCompletedCasePopupOpen(true);
     }
-  }, [caseData?.id, caseData?.status, isFinalized]);
+  }, [caseData?.id, caseData?.status, caseData?.is_out_lab_consult, caseData?.consult_status, isFinalized]);
 
   // Load report list when popup opens
   useEffect(() => {
@@ -429,9 +438,10 @@ const PathologistGyneDiagnosisPage: React.FC<
     setSlideQualityModalOpen(true);
   };
 
-  const handleFinalize = async (
+  const finalizeCore = async (
     sq: string | null = null,
     stq: string | null = null,
+    outLab?: { reason: string },
   ) => {
     if (!caseId || !currentUser) return;
     try {
@@ -486,8 +496,12 @@ const PathologistGyneDiagnosisPage: React.FC<
           Number(caseId),
           updatedSigners,
           isAbnormal,
+          outLab ? true : undefined,
+          outLab?.reason,
         );
-        if (result.status === "published") {
+        if (outLab) {
+          message.success("Report signed off — flagged for Out-Lab Consult");
+        } else if (result.status === "published") {
           notification.success({
             title: "NILM — Report Published",
             description:
@@ -517,6 +531,12 @@ const PathologistGyneDiagnosisPage: React.FC<
       setFinalizing(false);
     }
   };
+
+  const handleFinalize = (sq: string | null = null, stq: string | null = null) =>
+    finalizeCore(sq, stq);
+
+  const handleOutLabConsult = (reason: string, sq: string, stq: string) =>
+    finalizeCore(sq, stq, { reason });
 
   const handleUnlockAndReset = () => {
     Modal.confirm({
@@ -549,6 +569,7 @@ const PathologistGyneDiagnosisPage: React.FC<
     result: "agree" | "disagree",
     note?: string,
     level?: "minor" | "major" | null,
+    outLab?: { reason: string },
   ) => {
     if (!caseId) return;
     try {
@@ -558,11 +579,15 @@ const PathologistGyneDiagnosisPage: React.FC<
         result,
         note,
         level ?? undefined,
+        outLab ? true : undefined,
+        outLab?.reason,
       );
       message.success(
-        result === "agree"
-          ? "Agreed — case published."
-          : "Discordance recorded — case returned to cytotechnologist.",
+        outLab
+          ? "Agreed & published — flagged for Out-Lab Consult"
+          : result === "agree"
+            ? "Agreed — case published."
+            : "Discordance recorded — case returned to cytotechnologist.",
       );
       const updated = await GyneCytologyCaseService.getById(Number(caseId));
       setCaseData(updated);
@@ -577,6 +602,9 @@ const PathologistGyneDiagnosisPage: React.FC<
     }
   };
 
+  const handleAgreeWithOutLabConsult = (reason: string) =>
+    handleCompleteReview("agree", undefined, undefined, { reason });
+
   const isPrimary = useMemo(() => {
     if (!diagnosis || !currentUser) return true;
     const primary = diagnosis.signers?.find((s) => s.role === "primary");
@@ -590,9 +618,16 @@ const PathologistGyneDiagnosisPage: React.FC<
     );
   }, [diagnosis, currentUser]);
 
-  const isFormMode = !diagnosis || isRevision || !isFinalized;
-  const isFormLocked =
-    (isFinalized && !isRevision) || (isCoSigner && !forceEdit);
+  const { isConsultEditorLocked, isConsultFinalizeLocked, isEditorLocked, isFinalizeLocked } =
+    getConsultLockState({
+      isLocked: (isFinalized && !isRevision) || (isCoSigner && !forceEdit),
+      isAddendumMode: isRevision,
+      isAwaitingApproval: false,
+      isOutLabConsult: !!caseData?.is_out_lab_consult,
+      consultStatus: caseData?.consult_status,
+      consultPdfPath: caseData?.consult_pdf_path,
+    });
+  const isFormMode = !diagnosis || isRevision || !isFinalized || isConsultEditorLocked;
 
   const isPrimarySigned = useMemo(() => {
     if (!diagnosis?.signers) return false;
@@ -664,7 +699,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                 }
               />
               {isRevision && <Tag color="orange">Revision Mode</Tag>}
-              {isFormLocked && (
+              {isEditorLocked && (
                 <Tooltip title="Form is locked">
                   <LockOutlined style={{ color: "#8c8c8c" }} />
                 </Tooltip>
@@ -677,7 +712,7 @@ const PathologistGyneDiagnosisPage: React.FC<
             <Checkbox
               checked={caseData?.is_out_lab_consult || false}
               onChange={(e) => handleToggleOutLabConsult(e.target.checked)}
-              disabled={isFormLocked && !isRevision}
+              disabled={isEditorLocked && !isRevision}
             >
               Out-Lab Consult
             </Checkbox>
@@ -748,14 +783,14 @@ const PathologistGyneDiagnosisPage: React.FC<
                         >
                           {isRevision ? "Save Draft Revision" : "Save Draft"}
                         </Button>
-                        {(!isFinalized || isRevision) && diagnosis && (
+                        {(!isFinalized || isRevision || isConsultEditorLocked) && diagnosis && (
                           <Button
                             type="primary"
                             icon={<CheckCircleOutlined />}
                             loading={finalizing}
                             onClick={handleFinalizeClick}
                             disabled={
-                              submitting || (isCoSigner && !isPrimarySigned)
+                              submitting || (isCoSigner && !isPrimarySigned) || isFinalizeLocked
                             }
                             style={{ background: "#cf1322", border: "none" }}
                           >
@@ -797,6 +832,7 @@ const PathologistGyneDiagnosisPage: React.FC<
           onDisagree={(note, level) =>
             handleCompleteReview("disagree", note, level)
           }
+          onAgreeWithOutLab={handleAgreeWithOutLabConsult}
         />
 
         {/* ── Finalized view ───────────────────────────────────────────── */}
@@ -960,7 +996,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                     <Select
                       placeholder="Select main category"
                       onChange={() => form.setFieldValue("category_2_id", null)}
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                       allowClear
                       size="large"
                     >
@@ -980,7 +1016,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                     <Select
                       placeholder="Select sub category (optional)"
                       allowClear
-                      disabled={!selectedCat1 || isFormLocked}
+                      disabled={!selectedCat1 || isEditorLocked}
                       size="large"
                     >
                       {subCategories.map((c) => (
@@ -999,7 +1035,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                           onChange={setIsAbnormal}
                           checkedChildren="Abnormal"
                           unCheckedChildren="NILM"
-                          disabled={isFormLocked}
+                          disabled={isEditorLocked}
                           style={{
                             background: isAbnormal ? "#fa8c16" : undefined,
                           }}
@@ -1020,7 +1056,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                     <TextArea
                       rows={2}
                       placeholder="Additional diagnostic details..."
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                     />
                   </Form.Item>
                 </StyledCard>
@@ -1054,7 +1090,7 @@ const PathologistGyneDiagnosisPage: React.FC<
                     <TextArea
                       rows={3}
                       placeholder="Recommendations or remarks..."
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                     />
                   </Form.Item>
                 </Col>
@@ -1088,7 +1124,7 @@ const PathologistGyneDiagnosisPage: React.FC<
             <GyneCytologyImagesSection
               images={images}
               descMap={descMap}
-              isFormLocked={isFormLocked}
+              isFormLocked={isEditorLocked}
               onDescChange={(imgId, value) =>
                 setDescMap((prev) => ({ ...prev, [imgId]: value }))
               }
@@ -1118,7 +1154,7 @@ const PathologistGyneDiagnosisPage: React.FC<
               form={form}
               pathologists={pathologists}
               defaultSigners={defaultSigners}
-              isLocked={isFormLocked}
+              isLocked={isEditorLocked}
               namePath={SIGNERS_PATH}
               settings={managerSettings}
               hideCT={isCoSigner}
@@ -1128,7 +1164,7 @@ const PathologistGyneDiagnosisPage: React.FC<
               caseId={Number(caseId)}
               caseType="gyne"
               diagnosisSnapshot={diagnosis?.interpretation ?? undefined}
-              isLocked={isFormLocked}
+              isLocked={isEditorLocked}
             />
 
             {activeReportId && (
@@ -1180,6 +1216,7 @@ const PathologistGyneDiagnosisPage: React.FC<
         finalizing={finalizing}
         onClose={() => setSlideQualityModalOpen(false)}
         onFinalize={handleFinalize}
+        onConfirmAndOutLab={handleOutLabConsult}
       />
 
       <ReportPreviewModal

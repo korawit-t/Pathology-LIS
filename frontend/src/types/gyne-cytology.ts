@@ -55,6 +55,10 @@ export interface GyneCytologyCase {
   is_out_lab: boolean;
   out_lab_result_pdf_path: string | null;
   consult_status: "pending" | "processing" | "received" | string;
+  consult_pdf_path?: string | null;
+  consult_reason?: string | null;
+  consult_pdf_received_at?: string | null;
+  consult_report_out_at?: string | null;
   outlab_report_pdf_path: string | null;
 
   created_at: string;
@@ -111,6 +115,10 @@ export interface GyneCytologyCaseUpdate extends Partial<GyneCytologyCaseCreate> 
   is_out_lab?: boolean;
   out_lab_result_pdf_path?: string | null;
   consult_status?: string;
+  consult_pdf_path?: string | null;
+  consult_reason?: string | null;
+  consult_pdf_received_at?: string | null;
+  consult_report_out_at?: string | null;
   outlab_report_pdf_path?: string | null;
   slide_quality?: string;
   stain_quality?: string;

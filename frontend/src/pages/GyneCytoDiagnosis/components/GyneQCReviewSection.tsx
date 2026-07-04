@@ -15,6 +15,7 @@ interface GyneQCReviewSectionProps {
     note: string,
     level: "minor" | "major" | null,
   ) => Promise<void>;
+  onAgreeWithOutLab?: (reason: string) => Promise<void>;
 }
 
 const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
@@ -24,12 +25,15 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
   completingReview,
   onAgree,
   onDisagree,
+  onAgreeWithOutLab,
 }) => {
   const [disagreeModalOpen, setDisagreeModalOpen] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
   const [discrepancyLevel, setDiscrepancyLevel] = useState<
     "minor" | "major" | null
   >(null);
+  const [outLabOpen, setOutLabOpen] = useState(false);
+  const [outLabReason, setOutLabReason] = useState("");
 
   const handleDisagreeConfirm = async () => {
     await onDisagree(reviewNote, discrepancyLevel);
@@ -46,6 +50,12 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
       okText: "Agree & Publish",
       onOk: onAgree,
     });
+  };
+
+  const handleOutLabConfirm = async () => {
+    await onAgreeWithOutLab?.(outLabReason);
+    setOutLabOpen(false);
+    setOutLabReason("");
   };
 
   return (
@@ -94,6 +104,15 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
                 >
                   Disagree
                 </Button>
+                {onAgreeWithOutLab && (
+                  <Button
+                    size="small"
+                    onClick={() => { setOutLabReason(""); setOutLabOpen(true); }}
+                    style={{ width: "100%", color: "#722ed1", borderColor: "#722ed1" }}
+                  >
+                    Agree + Out-Lab Consult
+                  </Button>
+                )}
               </div>
             ) : null
           }
@@ -189,6 +208,23 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
           value={reviewNote}
           onChange={(e) => setReviewNote(e.target.value)}
           placeholder="Describe how your finding differs from the cytotechnologist's interpretation..."
+        />
+      </Modal>
+
+      {/* Out-Lab Consult Modal */}
+      <Modal
+        title="Out-Lab Consult Reason"
+        open={outLabOpen}
+        onCancel={() => setOutLabOpen(false)}
+        onOk={handleOutLabConfirm}
+        okText="Agree & Confirm"
+        confirmLoading={completingReview}
+      >
+        <TextArea
+          rows={3}
+          value={outLabReason}
+          onChange={(e) => setOutLabReason(e.target.value)}
+          placeholder="Why is this case being sent for external consultation?"
         />
       </Modal>
     </>

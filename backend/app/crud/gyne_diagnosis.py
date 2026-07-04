@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app.models.gyne_diagnosis import GyneDiagnosis, GyneSpecimenAdequacy, GyneDiagnosisCategory
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate, GyneDiagnosisUpdate
+from app.utils.consult_lock import assert_consult_not_locked
 from typing import Optional, List
 
 
@@ -33,6 +34,9 @@ def get_diagnosis_by_id(db: Session, diag_id: int):
 
 
 def create_initial_diagnosis(db: Session, diag_in: GyneDiagnosisCreate):
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == diag_in.case_id).first()
+    assert_consult_not_locked(case)
+
     db_diag = GyneDiagnosis(**diag_in.model_dump(mode='json'))
     db.add(db_diag)
     db.commit()
@@ -57,6 +61,9 @@ def revise_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
 
         if not old_diag:
             raise HTTPException(status_code=404, detail="Current diagnosis not found")
+
+        case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == old_diag.case_id).first()
+        assert_consult_not_locked(case)
 
         # 2. ปิดสถานะของเดิม
         old_diag.is_current = False
@@ -109,7 +116,10 @@ def update_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
     db_diag = db.query(GyneDiagnosis).filter(GyneDiagnosis.id == diag_id).first()
     if not db_diag:
         return None
-    
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == db_diag.case_id).first()
+    assert_consult_not_locked(case)
+
     update_data = diag_in.model_dump(exclude_unset=True, mode='json')
     for key, value in update_data.items():
         setattr(db_diag, key, value)

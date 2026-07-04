@@ -789,6 +789,8 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
     try {
       if (uploadTarget.case_type === "nongyne") {
         await NongyneCytologyCaseService.uploadConsultPdf(uploadTarget.case_id, uploadFile, uploadReceivedAt.toISOString());
+      } else if (uploadTarget.case_type === "gyne") {
+        await GyneCytologyCaseService.uploadConsultPdf(uploadTarget.case_id, uploadFile, uploadReceivedAt.toISOString());
       } else {
         await SurgicalCaseService.uploadConsultPdf(uploadTarget.case_id, uploadFile, uploadReceivedAt.toISOString());
       }
@@ -970,7 +972,7 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       width: 220,
       render: (_, d) => (
         <Space direction="vertical" size={4}>
-          {(d.case_type === "surgical" || d.case_type === "nongyne") && (
+          {(d.case_type === "surgical" || d.case_type === "nongyne" || d.case_type === "gyne") && (
             <Button
               size="small"
               icon={<UploadOutlined />}

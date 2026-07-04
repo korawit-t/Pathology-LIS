@@ -74,6 +74,9 @@ class GyneCytologyCase(Base):
     out_lab_result_pdf_path = Column(String, nullable=True)
     consult_status = Column(String, nullable=True, index=True)
     consult_pdf_path = Column(String, nullable=True)
+    consult_reason = Column(Text, nullable=True)
+    consult_report_out_at = Column(DateTime, nullable=True)
+    consult_pdf_received_at = Column(DateTime, nullable=True)
     outlab_report_pdf_path = Column(String, nullable=True)
     is_slide_released = Column(Boolean, default=False, index=True)
 

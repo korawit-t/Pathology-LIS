@@ -222,6 +222,27 @@ const GyneCytologyCaseService = {
     return res.data;
   },
 
+  uploadConsultPdf: async (caseId: number, file: File, receivedAt?: string): Promise<{ message: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (receivedAt) formData.append("received_at", receivedAt);
+    const res = await api.post(`/gyne-cytology/${caseId}/consult-pdf`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  deleteConsultPdf: async (caseId: number): Promise<void> => {
+    await api.delete(`/gyne-cytology/${caseId}/consult-pdf`);
+  },
+
+  getConsultPdfBlob: async (caseId: number): Promise<Blob> => {
+    const response = await api.get(`/gyne-cytology/${caseId}/consult-pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
   getTatStats: async (dateFrom?: string, dateTo?: string) => {
     const params: Record<string, string> = {};
     if (dateFrom) params.date_from = dateFrom;

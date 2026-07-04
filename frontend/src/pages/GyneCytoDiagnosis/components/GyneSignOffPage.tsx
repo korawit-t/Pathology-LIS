@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { Radio, Space, Tag, Spin, Button, Typography } from "antd";
+import { Radio, Space, Tag, Spin, Button, Typography, Modal, Input, message } from "antd";
 import {
   ArrowLeftOutlined,
   LockOutlined,
   SafetyCertificateOutlined,
   FilePdfOutlined,
+  SendOutlined,
 } from "@ant-design/icons";
 import GyneDiagnosisService from "../../../services/gyneDiagnosisService";
 import CriticalNotificationSection from "../../../components/CriticalNotificationSection";
@@ -21,6 +22,11 @@ interface GyneSignOffPageProps {
   finalizing: boolean;
   onClose: () => void;
   onFinalize: (slideQuality: string | null, stainQuality: string | null) => Promise<void>;
+  onConfirmAndOutLab?: (
+    reason: string,
+    slideQuality: string,
+    stainQuality: string,
+  ) => Promise<void>;
 }
 
 const QUALITY_OPTIONS = [
@@ -36,11 +42,14 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
   finalizing,
   onClose,
   onFinalize,
+  onConfirmAndOutLab,
 }) => {
   const [slideQuality, setSlideQuality] = useState<string | null>(null);
   const [stainQuality, setStainQuality] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [outLabOpen, setOutLabOpen] = useState(false);
+  const [outLabReason, setOutLabReason] = useState("");
 
   useEffect(() => {
     let activeUrl: string | null = null;
@@ -78,6 +87,22 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
     await onFinalize(slideQuality, stainQuality);
   };
 
+  const handleConfirmAndOutLabClick = () => {
+    if (!canFinalize) return;
+    setOutLabReason("");
+    setOutLabOpen(true);
+  };
+
+  const handleOutLabConfirm = async () => {
+    if (!outLabReason.trim()) {
+      message.warning("Please enter a reason for Out-Lab Consult.");
+      return;
+    }
+    setOutLabOpen(false);
+    onClose();
+    await onConfirmAndOutLab?.(outLabReason, slideQuality as string, stainQuality as string);
+  };
+
   if (!open) return null;
 
   return ReactDOM.createPortal(
@@ -96,6 +121,16 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
           <Tag color="blue" style={{ fontSize: 14 }}>{caseData.accession_no}</Tag>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {onConfirmAndOutLab && (
+            <Button
+              icon={<SendOutlined />}
+              onClick={handleConfirmAndOutLabClick}
+              disabled={!canFinalize || finalizing}
+              style={{ color: "#722ed1", borderColor: "#722ed1" }}
+            >
+              Out-Lab Consult
+            </Button>
+          )}
           <Button onClick={onClose} disabled={finalizing}>Cancel</Button>
           <Button
             type="primary"
@@ -193,6 +228,21 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
         </div>
 
       </div>
+
+      <Modal
+        open={outLabOpen}
+        title="Out-Lab Consult Reason"
+        onCancel={() => setOutLabOpen(false)}
+        onOk={handleOutLabConfirm}
+        okText="Confirm & Sign Off"
+      >
+        <Input.TextArea
+          rows={3}
+          placeholder="Why is this case being sent for external consultation?"
+          value={outLabReason}
+          onChange={(e) => setOutLabReason(e.target.value)}
+        />
+      </Modal>
     </div>,
     document.body,
   );
