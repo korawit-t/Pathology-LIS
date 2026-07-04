@@ -67,13 +67,13 @@ const HospitalBillingPage: React.FC = () => {
       setHospitals(res);
     } catch (error) {
       logger.error("Failed to fetch hospitals:", error);
-      message.error("ไม่สามารถดึงข้อมูลโรงพยาบาลได้");
+      message.error("Failed to fetch hospital data");
     }
   };
 
   const handleSearch = async () => {
     if (!dateRange || !dateRange[0] || !dateRange[1]) {
-      message.warning("กรุณาเลือกช่วงเวลา");
+      message.warning("Please select a date range");
       return;
     }
 
@@ -93,7 +93,7 @@ const HospitalBillingPage: React.FC = () => {
       setGrandTotal(res.all_cases_grand_total);
     } catch (error) {
       logger.error("Failed to fetch billing summary:", error);
-      message.error("ไม่สามารถดึงข้อมูลสรุปค่าใช้จ่ายได้");
+      message.error("Failed to fetch billing summary");
     } finally {
       setLoading(false);
     }
@@ -101,7 +101,7 @@ const HospitalBillingPage: React.FC = () => {
 
   const handleExport = async () => {
     if (!dateRange || !dateRange[0] || !dateRange[1]) {
-      message.warning("กรุณาเลือกช่วงเวลา");
+      message.warning("Please select a date range");
       return;
     }
 
@@ -117,10 +117,10 @@ const HospitalBillingPage: React.FC = () => {
         selectedHospital,
         fileName
       );
-      message.success("ดาวน์โหลดไฟล์ PDF สำเร็จ");
+      message.success("PDF downloaded successfully");
     } catch (error) {
       logger.error("Failed to export PDF:", error);
-      message.error("ไม่สามารถดาวน์โหลดไฟล์ PDF ได้");
+      message.error("Failed to download PDF file");
     } finally {
       setExportLoading(false);
     }

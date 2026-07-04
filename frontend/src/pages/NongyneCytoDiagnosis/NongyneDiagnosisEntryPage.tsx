@@ -397,7 +397,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       }
 
       setPathologistPickerOpen(false);
-      message.success("ส่งเคสให้พยาธิแพทย์เรียบร้อยแล้ว");
+      message.success("Case sent to pathologist successfully");
       if (onBack) setTimeout(onBack, 800);
     } catch (err) {
       logger.error(err);
@@ -789,7 +789,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                     </div>
                     <Form.Item name="clinical_history" noStyle>
                       <SimpleTiptapEditor
-                        placeholder="ประวัติการรักษาและผลตรวจที่เกี่ยวข้อง..."
+                        placeholder="Clinical history and relevant test results..."
                         style={{ minHeight: "90px" }}
                       />
                     </Form.Item>
@@ -1163,11 +1163,11 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         title={
           <Space>
             <UserOutlined style={{ color: "#722ed1" }} />
-            <span>เลือกพยาธิแพทย์ผู้รับผิดชอบ</span>
+            <span>Select Responsible Pathologist</span>
           </Space>
         }
-        okText="ยืนยัน & ดำเนินการต่อ"
-        cancelText="ยกเลิก"
+        okText="Confirm & Continue"
+        cancelText="Cancel"
         okButtonProps={{ disabled: !selectedPathologistId, type: "primary" }}
         onCancel={() => setPathologistPickerOpen(false)}
         onOk={handlePathologistPickerConfirm}
@@ -1177,7 +1177,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         <div style={{ padding: "12px 0 8px" }}>
           <Select
             style={{ width: "100%" }}
-            placeholder="เลือกพยาธิแพทย์..."
+            placeholder="Select pathologist..."
             value={selectedPathologistId}
             onChange={setSelectedPathologistId}
             options={pathologistOptions}
@@ -1185,7 +1185,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
           />
           {!selectedPathologistId && (
             <div style={{ marginTop: 8, color: "#ff4d4f", fontSize: 12 }}>
-              กรุณาเลือกพยาธิแพทย์ก่อนดำเนินการต่อ
+              Please select a pathologist before continuing
             </div>
           )}
         </div>

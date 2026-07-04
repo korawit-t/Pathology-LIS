@@ -20,6 +20,7 @@ import {
   Drawer,
   Timeline,
   Table,
+  Popover,
 } from "antd";
 import {
   SaveOutlined,
@@ -32,6 +33,7 @@ import {
   HistoryOutlined,
   FilePdfOutlined,
   FileAddOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { GyneDiagnosisResponse } from "../../types/gyne-diagnosis";
@@ -66,7 +68,11 @@ interface GyneDiagnosisEntryPageProps {
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 type BadgeStatus = "success" | "processing" | "error" | "default" | "warning";
-type GyneSigner = { user_id: number; role: string; signed_at?: string | null };
+type GyneSigner = {
+  user_id: number;
+  role: "primary" | "cytotechnologist" | "co-sign pathologist" | "co-sign cytotechnologist";
+  signed_at?: string | null;
+};
 const CASE_STATUS_CONFIG: Record<
   string,
   { color: BadgeStatus; label: string }
@@ -189,14 +195,13 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   }, [loading, diagnosis, caseData, defaultSigners, form]);
 
-  // Sync isAbnormal from selected category
+  // Force pathologist review for Unsatisfactory specimens, same as abnormal
+  // (LSIL/HSIL+) categories — either condition routes to a pathologist.
   useEffect(() => {
-    if (!selectedCat1) return;
     const cat = mainCategories.find((c) => c.id === selectedCat1);
-    if (cat) {
-      setIsAbnormal(cat.code?.startsWith("3") ?? false);
-    }
-  }, [selectedCat1, mainCategories]);
+    const categoryAbnormal = cat?.code?.startsWith("3") ?? false;
+    setIsAbnormal(categoryAbnormal || isUnsatisfactoryAdequacy);
+  }, [selectedCat1, mainCategories, isUnsatisfactoryAdequacy]);
 
   useEffect(() => {
     if (!caseId || !diagnosis) return;
@@ -484,7 +489,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
 
   const handleSendToPathologistClick = () => {
     const signers: GyneSigner[] = form.getFieldValue("signers") || [];
-    const existing = signers.find((s) => s.role === "pathologist");
+    const existing = signers.find((s) => s.role === "primary");
     setSelectedPathoId(existing?.user_id ?? null);
     setSendToPathoModalOpen(true);
   };
@@ -497,10 +502,10 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     const current: GyneSigner[] = form.getFieldValue("signers") || [];
     const alreadyIn = current.some((s) => s.user_id === selectedPathoId);
     if (!alreadyIn) {
-      const withoutOtherPatho = current.filter((s) => s.role !== "pathologist");
+      const withoutOtherPatho = current.filter((s) => s.role !== "primary");
       form.setFieldValue("signers", [
         ...withoutOtherPatho,
-        { user_id: selectedPathoId, role: "pathologist", signed_at: null },
+        { user_id: selectedPathoId, role: "primary", signed_at: null },
       ]);
     }
     setSendToPathoModalOpen(false);
@@ -553,6 +558,51 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     color: "default",
     label: caseStatus,
   };
+
+  const sortedMainCategories = useMemo(
+    () =>
+      [...mainCategories].sort((a, b) =>
+        (a.code ?? "").localeCompare(b.code ?? ""),
+      ),
+    [mainCategories],
+  );
+
+  const resultTypeHelpContent = (
+    <div style={{ maxWidth: 380 }}>
+      <Typography.Paragraph style={{ marginBottom: 8, fontSize: 12 }}>
+        The case will be <b>forced to route to a Pathologist</b> (via the
+        "Send to Pathologist" button) when either condition is met:
+      </Typography.Paragraph>
+      <ul style={{ paddingLeft: 18, marginBottom: 12, fontSize: 12 }}>
+        <li>
+          Adequacy = <b>Unsatisfactory</b>
+        </li>
+        <li>Selected Diagnosis Category is in the Abnormal group (code starts with 3)</li>
+      </ul>
+      <Table
+        size="small"
+        pagination={false}
+        dataSource={sortedMainCategories}
+        rowKey="id"
+        scroll={{ y: 260 }}
+        columns={[
+          { title: "Code", dataIndex: "code", key: "code", width: 55 },
+          { title: "Category", dataIndex: "text", key: "text" },
+          {
+            title: "Result",
+            key: "result",
+            width: 90,
+            render: (_: unknown, c: { code: string }) =>
+              c.code?.startsWith("3") ? (
+                <Tag color="orange">Abnormal</Tag>
+              ) : (
+                <Tag color="green">NILM</Tag>
+              ),
+          },
+        ]}
+      />
+    </div>
+  );
 
   if (loading || loadingMaster)
     return (
@@ -918,7 +968,23 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                   </Form.Item>
 
                   {!isRevision && (
-                    <Form.Item label="Result Type">
+                    <Form.Item
+                      label={
+                        <Space size={4}>
+                          <span>Result Type</span>
+                          <Popover
+                            content={resultTypeHelpContent}
+                            title="Pathologist Routing Criteria"
+                            trigger="click"
+                            placement="rightTop"
+                          >
+                            <QuestionCircleOutlined
+                              style={{ color: "#8c8c8c", cursor: "pointer" }}
+                            />
+                          </Popover>
+                        </Space>
+                      }
+                    >
                       <Space>
                         <Switch
                           checked={isAbnormal}

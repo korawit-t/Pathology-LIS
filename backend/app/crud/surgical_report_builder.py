@@ -498,7 +498,8 @@ def _get_icd_o_for_report(db: Session, case_id: int) -> dict | None:
 
 
 def prepare_report_data(
-    db: Session, case_id: int, active_specimen_ids: list[int] = None, preview_overrides: dict = None
+    db: Session, case_id: int, active_specimen_ids: list[int] = None, preview_overrides: dict = None,
+    target_report_id: int = None,
 ):
     ROLE_PRIORITY = {"primary": 1, "consultant": 2, "co-signer": 3, "resident": 4}
 
@@ -539,7 +540,7 @@ def prepare_report_data(
     actual_latest_order = max(order_groups.keys()) if order_groups else None
 
     if actual_latest_order is not None:
-        latest_signers = (
+        signers_query = (
             db.query(ReportSigner)
             .join(SurgicalReport, ReportSigner.report_id == SurgicalReport.id)
             .filter(
@@ -547,8 +548,13 @@ def prepare_report_data(
                 SurgicalReport.status != "cancelled",
                 ReportSigner.diagnosis_order == actual_latest_order,
             )
-            .all()
         )
+        if target_report_id is not None:
+            # Scope to the specific report being resolved — a reused diagnosis_order
+            # (e.g. a second out-lab-consult round reusing the prior round's order)
+            # would otherwise pull in signers from an unrelated report at that order.
+            signers_query = signers_query.filter(ReportSigner.report_id == target_report_id)
+        latest_signers = signers_query.all()
 
         if latest_signers:
             latest_signers.sort(key=lambda x: ROLE_PRIORITY.get(x.role, 99))

@@ -220,7 +220,16 @@ def prepare_nongyne_report_data(db: Session, case_id: int):
     }
 
 
-def publish_nongyne_report(db: Session, case_id: int, signers: List[dict] = None, current_user_id: int = None, is_pending: bool = False, pending_reason: str = None):
+def publish_nongyne_report(
+    db: Session,
+    case_id: int,
+    signers: List[dict] = None,
+    current_user_id: int = None,
+    is_pending: bool = False,
+    pending_reason: str = None,
+    is_out_lab_consult: bool = None,
+    consult_reason: str = None,
+):
     """สร้าง Snapshot และส่งเข้าสู่กระบวนการอนุมัติ"""
     report_data = prepare_nongyne_report_data(db, case_id)
     if not report_data:
@@ -291,8 +300,24 @@ def publish_nongyne_report(db: Session, case_id: int, signers: List[dict] = None
     if db_case:
         db_case.is_reported = True
         db_case.is_pending = is_pending
+        db_case.pending_reason = pending_reason if is_pending else None
         db_case.report_at = local_now()
         db_case.status = "pending_approval"
+
+        # Captured before this block's own mutations below — resolves round 2
+        # (already flagged, already "processing"/"received") while leaving
+        # round 1 (a fresh flag here would only just become "pending") alone.
+        was_consult_dispatched = (
+            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
+        )
+        if is_out_lab_consult is not None:
+            db_case.is_out_lab_consult = is_out_lab_consult
+            if is_out_lab_consult and db_case.consult_status is None:
+                db_case.consult_status = "pending"
+        if consult_reason is not None:
+            db_case.consult_reason = consult_reason
+        if was_consult_dispatched:
+            db_case.consult_status = "received"
 
     db.commit()
     db.refresh(db_report)

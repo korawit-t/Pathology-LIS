@@ -170,10 +170,10 @@ const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
           render: (_: unknown, r: OutlabConsultRunResponse) =>
             r.status !== "completed" ? (
               <Popconfirm
-                title="ยืนยันการรับรายงานกลับ?"
+                title="Confirm report receipt?"
                 onConfirm={() => onReceive(r.id)}
-                okText="ยืนยัน"
-                cancelText="ยกเลิก"
+                okText="Confirm"
+                cancelText="Cancel"
               >
                 <Button size="small" type="primary" icon={<CheckCircleOutlined />}>
                   Receive

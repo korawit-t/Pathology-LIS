@@ -92,6 +92,7 @@ const CYTO_TABS = [
   { label: "Sign Required", value: "co_sign" },
   { label: "Awaiting Co-sign", value: "awaiting_cosign" },
   { label: "QC Slide Queue", value: "qc_slide_queue" },
+  { label: "Express", value: "express" },
   { label: "All", value: "all" },
 ];
 
@@ -99,6 +100,7 @@ const PATHO_TABS = [
   { label: "Pending Report", value: "stained" },
   { label: "Sign Required", value: "co_sign" },
   { label: "Awaiting Co-sign", value: "awaiting_cosign" },
+  { label: "Express", value: "express" },
   { label: "All", value: "all" },
 ];
 
@@ -139,25 +141,25 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   const workflowSteps = useMemo(
     () => [
       {
-        title: "ลงทะเบียนรับสิ่งส่งตรวจ",
+        title: "Register Specimen",
         icon: <FormOutlined />,
         description:
-          "เจ้าหน้าที่ลงทะเบียนรับสิ่งส่งตรวจ ระบบออก Accession Number อัตโนมัติ และมอบหมายนักเทคนิค (CT) กับแพทย์พยาธิวิทยา — สถานะ: Registered",
+          "Staff registers the specimen. The system auto-generates the Accession Number and assigns a cytotechnologist (CT) and pathologist — Status: Registered",
       },
       {
-        title: "ย้อมสีและเตรียมสไลด์",
+        title: "Staining and Slide Preparation",
         icon: <ExperimentOutlined />,
         description:
-          "นักเทคนิค (CT) ดำเนินการย้อมสี Batch สไลด์ตามรายการ — สถานะเปลี่ยนเป็น: Stained",
+          "Cytotechnologist (CT) stains the batch of slides on the list — status changes to: Stained",
       },
       {
-        title: "อ่านสไลด์และบันทึกผล (Screening)",
+        title: "Read Slides and Record Results (Screening)",
         icon: <AuditOutlined />,
         description: (
           <div>
             <div>
-              CT เปิดเคสใน <b>My Queue</b> → อ่านสไลด์ →
-              บันทึกผลวินิจฉัยและส่งผล
+              CT opens the case in <b>My Queue</b> → reads the slide →
+              records the diagnosis and submits the result
             </div>
             <div
               style={{
@@ -167,25 +169,25 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
               }}
             >
               <div>
-                <Tag color="blue">ผลปกติ (NILM)</Tag>
+                <Tag color="blue">Normal (NILM)</Tag>
                 <div style={{ marginLeft: 8, marginTop: 2 }}>
                   {qcEnabled ? (
                     <>
-                      — ระบบนับเคส ทุก <b>{nilmN}</b> เคสจะสุ่มตรวจ QC →{" "}
+                      — the system counts cases; every <b>{nilmN}</b> cases is randomly selected for QC →{" "}
                       <Tag color="purple">Pending Review</Tag>
-                      <br />— เคสอื่นๆ →{" "}
-                      <Tag color="green">Published</Tag> ทันที
+                      <br />— other cases →{" "}
+                      <Tag color="green">Published</Tag> immediately
                     </>
                   ) : (
                     <>
-                      — <Tag color="green">Published</Tag> ทันที (ระบบ QC ปิดอยู่)
+                      — <Tag color="green">Published</Tag> immediately (QC system is off)
                     </>
                   )}
                 </div>
               </div>
               <div style={{ marginTop: 8 }}>
-                <Tag color="orange">ผิดปกติ (Abnormal)</Tag>{" "}
-                ทุกเคสต้องผ่านแพทย์ตรวจสอบเสมอ →{" "}
+                <Tag color="orange">Abnormal</Tag>{" "}
+                every case must always be reviewed by a pathologist →{" "}
                 <Tag color="purple">Pending Review</Tag>
               </div>
             </div>
@@ -193,12 +195,12 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
         ),
       },
       {
-        title: "QC Review โดยแพทย์พยาธิวิทยา",
+        title: "QC Review by Pathologist",
         icon: <SafetyCertificateOutlined />,
         description: (
           <div>
             <div>
-              แพทย์เปิดเคสจากหน้า <b>QC Review</b> → ตรวจสอบผลของ CT
+              Pathologist opens the case from the <b>QC Review</b> page → reviews the CT's result
             </div>
             <div
               style={{
@@ -208,12 +210,12 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
               }}
             >
               <div>
-                <Tag color="success">Agree</Tag> เห็นด้วยกับผล CT →{" "}
-                <Tag color="green">Published</Tag> ทันที
+                <Tag color="success">Agree</Tag> agrees with the CT's result →{" "}
+                <Tag color="green">Published</Tag> immediately
               </div>
               <div style={{ marginTop: 6 }}>
-                <Tag color="error">Disagree</Tag> ไม่เห็นด้วย →
-                บันทึกความคลาดเคลื่อน → CT แก้ไขและส่งผลใหม่
+                <Tag color="error">Disagree</Tag> disagrees →
+                records the discrepancy → CT revises and resubmits the result
               </div>
             </div>
           </div>
@@ -277,6 +279,9 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     }
     if (tab === "co_sign") {
       return { signer_id: userId, exclude_status: "published" };
+    }
+    if (tab === "express") {
+      return { assigned_user_id: userId, is_express: true };
     }
     // "all" → cases assigned to current user only, including published
     return { assigned_user_id: userId };
@@ -395,7 +400,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       setCases(data.items);
       setTotal(data.total);
     } catch {
-      message.error("ไม่สามารถโหลดข้อมูลเคสได้");
+      message.error("Failed to load case data");
     } finally {
       setLoading(false);
     }
@@ -632,7 +637,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
           icon={<InboxOutlined />}
           style={{ borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}
         >
-          เก็บ Slide ส่ง Pathologist
+          Collect Slide for Pathologist
         </Tag>
       ),
     },
@@ -689,11 +694,12 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
 
   const TAB_DESCRIPTIONS: Record<string, string> = {
     stained:
-      "รวมเคสที่ต้องดำเนินการ: Stained ที่ยังไม่ submit + รอคุณ Sign + รออีกคน Co-sign",
-    co_sign: "เคสที่คนอื่น sign ไปแล้ว รอคุณมาลงนามเพื่อให้ครบ",
-    awaiting_cosign: "เคสที่คุณ sign ไปแล้ว แต่รออีกคนมาลงนามเพื่อให้ครบ",
-    qc_slide_queue: "สไลด์ที่ถูกสุ่ม QC หรือผลผิดปกติ รอเก็บส่ง Pathologist",
-    all: "เคสทั้งหมดที่ assign ให้คุณ",
+      "Combined cases requiring action: Stained not yet submitted + awaiting your Sign + awaiting Co-sign from someone else",
+    co_sign: "Cases someone else has already signed, awaiting your signature to complete",
+    awaiting_cosign: "Cases you have already signed, but awaiting another person's signature to complete",
+    qc_slide_queue: "Slides randomly selected for QC or with abnormal results, awaiting collection for the Pathologist",
+    express: "Urgent (Express/Urgent) cases assigned to you",
+    all: "All cases assigned to you",
   };
 
   const content = (
@@ -781,7 +787,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
           <QuestionCircleOutlined
             style={{ marginRight: 8, color: "#1677ff" }}
           />
-          ขั้นตอนการทำงาน — Gyne Cytology
+          Workflow — Gyne Cytology
         </span>
       }
       open={guideOpen}
@@ -857,7 +863,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
             icon={<QuestionCircleOutlined />}
             onClick={() => setGuideOpen(true)}
           >
-            คู่มือ Workflow
+            Workflow Guide
           </Button>
           <Button
             icon={<ReloadOutlined />}

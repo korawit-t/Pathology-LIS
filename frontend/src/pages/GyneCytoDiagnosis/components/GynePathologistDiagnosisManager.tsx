@@ -199,7 +199,7 @@ const GynePathologistDiagnosisManager: React.FC<
                         disabled={isLocked || isSigned}
                         variant="borderless"
                       >
-                        <Select.Option value="pathologist">
+                        <Select.Option value="primary">
                           Pathologist
                         </Select.Option>
                         <Select.Option value="co-sign pathologist">
@@ -271,7 +271,7 @@ const GynePathologistDiagnosisManager: React.FC<
 
                   {/* Consult note — only for non-primary signers (Fix #2) */}
                   {signerData?.role &&
-                    signerData.role !== "pathologist" &&
+                    signerData.role !== "primary" &&
                     signerData.role !== "cytotechnologist" && (
                       <Col span={24} style={{ paddingTop: 2 }}>
                         <Form.Item
@@ -297,7 +297,9 @@ const GynePathologistDiagnosisManager: React.FC<
             {!isLocked && (
               <Button
                 type="dashed"
-                onClick={() => add({ role: "co-signer", signed_at: null })}
+                onClick={() =>
+                  add({ role: "co-sign pathologist", signed_at: null })
+                }
                 block
                 icon={<PlusOutlined />}
                 style={{ marginTop: 8, borderRadius: "8px" }}

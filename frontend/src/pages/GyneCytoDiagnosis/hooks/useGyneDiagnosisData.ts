@@ -187,7 +187,7 @@ export function useGyneDiagnosisData(
     if (!currentUser) return [];
 
     const isCyto = currentUser.roles?.some((r) => r === "cytotechnologist");
-    const currentUserRole = isCyto ? "cytotechnologist" : "pathologist";
+    const currentUserRole = isCyto ? "cytotechnologist" : "primary";
 
     const signers: { user_id: number; role: string; signed_at: null }[] = [
       { user_id: currentUser.id, role: currentUserRole, signed_at: null },
@@ -198,7 +198,7 @@ export function useGyneDiagnosisData(
     const pathoId = caseData?.pathologist?.id ?? caseData?.pathologist_id;
 
     if (pathoId && pathoId !== currentUser.id) {
-      signers.push({ user_id: pathoId, role: "pathologist", signed_at: null });
+      signers.push({ user_id: pathoId, role: "primary", signed_at: null });
     }
     if (cytoId && cytoId !== currentUser.id) {
       signers.push({

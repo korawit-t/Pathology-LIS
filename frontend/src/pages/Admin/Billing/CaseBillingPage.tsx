@@ -57,7 +57,7 @@ const BillingManagementPage: React.FC = () => {
       setTotal(res.total);
     } catch (error) {
       logger.error("Failed to fetch cases:", error);
-      message.error("ไม่สามารถโหลดข้อมูลเคสได้");
+      message.error("Failed to load case data");
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ const BillingManagementPage: React.FC = () => {
       setCostData(resp as { items: CostItem[]; grand_total: number });
     } catch (err) {
       logger.error("Failed to fetch cost summary:", err);
-      message.error("ไม่สามารถดึงข้อมูลค่าใช้จ่ายได้");
+      message.error("Failed to fetch cost data");
     } finally {
       setCostLoading(false);
     }

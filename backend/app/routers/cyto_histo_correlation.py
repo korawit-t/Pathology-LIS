@@ -37,13 +37,25 @@ def get_summary(
 
 @router.get("/summary/cases")
 def get_summary_group_cases(
-    group: str = Query(...),
+    group: Optional[str] = Query(None),
+    specimen: Optional[str] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    return crud.get_correlation_group_cases(db, group=group, start_date=start_date, end_date=end_date)
+    return crud.get_correlation_group_cases(db, group=group, specimen=specimen, start_date=start_date, end_date=end_date)
+
+
+@router.get("/hsil-discordant")
+def get_hsil_discordant(
+    result: str = Query(...),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return crud.get_hsil_discordant_correlations(db, result=result, start_date=start_date, end_date=end_date)
 
 
 @router.get("/by-nongyne-case/{case_id}")

@@ -42,6 +42,8 @@ class PublishReportRequest(BaseModel):
     signers: Optional[List[NongyneReportSignerCreate]] = None
     is_pending: bool = False
     pending_reason: Optional[str] = None
+    is_out_lab_consult: Optional[bool] = None
+    consult_reason: Optional[str] = None
 
 
 @router.get("", response_model=NongyneCytoReportPagination)
@@ -87,6 +89,8 @@ def publish_report(
         current_user_id=current_user.id,
         is_pending=payload.is_pending,
         pending_reason=payload.pending_reason,
+        is_out_lab_consult=payload.is_out_lab_consult,
+        consult_reason=payload.consult_reason,
     )
     from app.services.notification_service import notify_signed_out
     notify_signed_out(db, {

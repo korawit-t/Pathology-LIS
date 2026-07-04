@@ -10,6 +10,27 @@ import NongyneCytologyCaseService from "../../../services/nongyneCytoCaseService
 import logger from "../../../utils/logger";
 import type { SystemSetting } from "../../../types/system";
 
+// Same bucket definitions as GyneCytoWorklist.tsx's buildTabParams for
+// "stained" (Pending Report), "co_sign" (Sign Required) and "express".
+// Fetched as a union of case ids (not summed) so a case appearing in more
+// than one bucket — e.g. an express case awaiting the pathologist's
+// signature — is only counted once.
+const fetchGyneBadgeTotal = async (userId: number): Promise<number> => {
+  const paramSets = [
+    { status: "stained", assigned_user_id: userId, exclude_signed_by: userId },
+    { signer_id: userId, exclude_status: "published" },
+    { assigned_user_id: userId, is_express: true },
+  ];
+  const results = await Promise.all(
+    paramSets.map((params) =>
+      GyneCytologyCaseService.getAll({ ...params, limit: 500 }),
+    ),
+  );
+  const ids = new Set<number>();
+  results.forEach((r) => r.items.forEach((c) => ids.add(c.id)));
+  return ids.size;
+};
+
 export const useSurgicalCaseWorklist = (userId: number | undefined) => {
   const [data, setData] = useState({
     surgical: { items: [], total: 0 },
@@ -26,20 +47,23 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
   const [slideSentTotal, setSlideSentTotal] = useState(0);
   const [pendingTotal, setPendingTotal] = useState(0);
   const [coSignTotal, setCoSignTotal] = useState(0);
+  const [expressTotal, setExpressTotal] = useState(0);
   const [systemSettings, setSystemSettings] = useState<SystemSetting | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
 
   const fetchTabCounts = useCallback(async () => {
     if (!userId) return;
     try {
-      const [slideSentRes, pendingRes, coSignRes] = await Promise.all([
+      const [slideSentRes, pendingRes, coSignRes, expressRes] = await Promise.all([
         PathologistService.getMyWorklist(userId, 0, 1, "", CASE_STATUS.SLIDE_SENT),
         PathologistService.getMyWorklist(userId, 0, 1, "", undefined, true),
         SurgicalReportService.getPendingCosignWorklist(1, 1, ""),
+        PathologistService.getMyWorklist(userId, 0, 1, "", undefined, undefined, true),
       ]);
       setSlideSentTotal(slideSentRes.total || 0);
       setPendingTotal(pendingRes.total || 0);
       setCoSignTotal(coSignRes.total || 0);
+      setExpressTotal(expressRes.total || 0);
     } catch {
       /* ignore */
     }
@@ -99,7 +123,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           statusParam = CASE_STATUS.SLIDE_SENT;
         } else if (currentStatus === CASE_STATUS.PENDING_DIAGNOSIS) {
           statusParam = undefined;
-        } else if (currentStatus === "ALL") {
+        } else if (currentStatus === "ALL" || currentStatus === "EXPRESS") {
           statusParam = undefined;
         }
 
@@ -110,6 +134,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           searchText,
           statusParam,
           currentStatus === CASE_STATUS.PENDING_DIAGNOSIS ? true : undefined,
+          currentStatus === "EXPRESS" ? true : undefined,
         );
       }
 
@@ -134,6 +159,11 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           })),
           total: gyneRaw.total || 0,
         };
+
+        // Badge total = union of Pending Report + Sign Required + Express
+        // (same buckets as the Gyne Cytology worklist's own tabs), deduped by
+        // case id so a case counted under more than one bucket isn't counted twice.
+        gyneResponse.total = await fetchGyneBadgeTotal(userId);
       } catch (gErr) {
         logger.error("Failed to fetch Gyne worklist:", gErr);
       }
@@ -225,6 +255,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
     slideSentTotal,
     pendingTotal,
     coSignTotal,
+    expressTotal,
     systemSettings,
     holidays,
     loading,

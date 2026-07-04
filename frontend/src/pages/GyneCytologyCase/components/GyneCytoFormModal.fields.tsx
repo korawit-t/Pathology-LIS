@@ -193,7 +193,7 @@ const GyneCytoFormFields: React.FC<GyneCytoFormFieldsProps> = ({
         <Col span={editingId ? 8 : 12}>
           <Form.Item
             name="pathologist_id"
-            label="Reported by (Pathologist)"
+            label="Assigned Pathologist"
           >
             <Select
               placeholder="เลือกพยาธิแพทย์"

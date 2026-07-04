@@ -275,7 +275,7 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       },
       {
         key: "outlab-report-queue",
-        label: "Outlab Consult Report Upload",
+        label: "Gyne Outlab Consult Report Upload",
         view: "outlab-report-queue",
         roles: PAGE_PERMISSIONS["outlab-report-queue"],
       },

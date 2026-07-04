@@ -44,7 +44,7 @@ def _get_next_nongyne_accession_no(db: Session) -> str:
 def create_nongyne_case(db: Session, obj_in: NongyneCytologyCaseCreate, registrar_id: int):
     try:
         new_accession_no = _get_next_nongyne_accession_no(db)
-        case_data = obj_in.model_dump(exclude={"accession_no", "registrar_id"})
+        case_data = obj_in.model_dump(exclude={"accession_no", "registrar_id", "num_slides"})
 
         db_obj = NongyneCytologyCase(
             **case_data,
@@ -69,9 +69,24 @@ def create_nongyne_case(db: Session, obj_in: NongyneCytologyCaseCreate, registra
             .first()
         )
 
-        # Auto-create slide logic
+        # Auto-create slide logic — if the caller didn't specify a count,
+        # fall back to the specimen type's configured default (master data),
+        # or 1 if that specimen type has no template/config either.
+        num_slides = obj_in.num_slides
+        if num_slides is None:
+            from app.models.specimen_template import SpecimenTemplate
+            template = (
+                db.query(SpecimenTemplate)
+                .filter(
+                    SpecimenTemplate.name == obj_in.specimen_type,
+                    SpecimenTemplate.category == "nongyne_cyto",
+                )
+                .first()
+            )
+            num_slides = template.default_slide_count if template else 1
+
         from app.crud.nongyne_cyto_stain import auto_create_default_stain
-        auto_create_default_stain(db, case_id=db_obj.id)
+        auto_create_default_stain(db, case_id=db_obj.id, count=num_slides)
 
         return full_case
 
@@ -91,6 +106,7 @@ def get_nongyne_case(db: Session, case_id: int):
             selectinload(NongyneCytologyCase.hospital),
             selectinload(NongyneCytologyCase.department),
             selectinload(NongyneCytologyCase.medical_scheme),
+            selectinload(NongyneCytologyCase.stains),
         )
         .filter(NongyneCytologyCase.id == case_id)
         .first()
@@ -118,8 +134,12 @@ def get_nongyne_cases(
     date_from: datetime = None,
     date_to: datetime = None,
     stain_status: str = None,
+    is_express: bool = None,
 ):
     query = db.query(NongyneCytologyCase).join(Patient)
+
+    if is_express is not None:
+        query = query.filter(NongyneCytologyCase.is_express == is_express)
 
     if assigned_user_id:
         query = query.filter(

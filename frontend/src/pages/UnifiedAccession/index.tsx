@@ -213,7 +213,7 @@ const UnifiedAccession: React.FC = () => {
       setPdfUrl(URL.createObjectURL(blob));
       setIsPreviewOpen(true);
     } catch {
-      message.error("ไม่สามารถโหลดรายงานได้");
+      message.error("Failed to load report");
     } finally {
       setLoadingPdfKey(null);
     }
@@ -291,7 +291,7 @@ const UnifiedAccession: React.FC = () => {
       }
       setModalReports(reports ?? []);
     } catch {
-      message.error("ไม่สามารถโหลดรายการรายงานได้");
+      message.error("Failed to load report list");
     } finally {
       setModalReportsLoading(false);
     }
@@ -356,7 +356,7 @@ const UnifiedAccession: React.FC = () => {
     try {
       setOutlabRuns(await OutlabConsultRunService.getRuns({ limit: 500 }));
     } catch {
-      message.error("ไม่สามารถโหลด Out Lab ได้");
+      message.error("Failed to load Out Lab data");
     } finally {
       setOutlabLoading(false);
     }
@@ -365,10 +365,10 @@ const UnifiedAccession: React.FC = () => {
   const handleReceiveConsultRun = useCallback(async (runId: number) => {
     try {
       await OutlabConsultRunService.receiveRun(runId);
-      message.success("บันทึกการรับรายงานกลับสำเร็จ");
+      message.success("Report received successfully");
       loadOutlabRuns();
     } catch {
-      message.error("ไม่สามารถบันทึกการรับกลับได้");
+      message.error("Failed to save receipt");
     }
   }, [loadOutlabRuns]);
 
@@ -424,7 +424,7 @@ const UnifiedAccession: React.FC = () => {
   const headerExtra = (
     <Space size={8}>
       <Button icon={<QuestionCircleOutlined />} onClick={() => setGuideOpen(true)}>
-        คู่มือการใช้งาน
+        User Guide
       </Button>
       <Button type="primary" icon={<ScissorOutlined />} onClick={() => setSurgModal({ open: true, id: null })}>
         New Surgical

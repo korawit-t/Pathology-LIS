@@ -57,7 +57,9 @@ def read_cases(
     hospital_id: Optional[int] = Query(None),
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
+    has_out_lab_result: Optional[bool] = Query(None),
     consult_status: str = None,
+    exclude_consult_status: Optional[str] = Query(None),
     is_reported: bool = None,
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
@@ -67,6 +69,7 @@ def read_cases(
     exclude_signed_by: Optional[int] = Query(None),
     signed_by: Optional[int] = Query(None),
     is_reviewed: Optional[bool] = Query(None),
+    is_express: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
@@ -87,11 +90,14 @@ def read_cases(
         hospital_id=hospital_id,
         is_out_lab_consult=is_out_lab_consult,
         is_out_lab=is_out_lab,
+        has_out_lab_result=has_out_lab_result,
         consult_status=consult_status,
+        exclude_consult_status=exclude_consult_status,
         is_reported=is_reported,
         date_from=datetime.combine(date_from, time.min) if date_from else None,
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         review_reason=review_reason,
+        is_express=is_express,
     )
 
 
@@ -121,6 +127,21 @@ def read_gyne_summary_table(
     start = date_type.fromisoformat(start_date)
     end = date_type.fromisoformat(end_date)
     return crud.get_gyne_summary_table(db, start, end, pathologist_id, cytotechnologist_id)
+
+
+@router.get("/summary-table/cases")
+def read_gyne_summary_table_cases(
+    start_date: str,
+    end_date: str,
+    metric: str,
+    pathologist_id: int = None,
+    cytotechnologist_id: int = None,
+    db: Session = Depends(get_db),
+):
+    from datetime import date as date_type
+    start = date_type.fromisoformat(start_date)
+    end = date_type.fromisoformat(end_date)
+    return crud.get_gyne_summary_table_cases(db, start, end, metric, pathologist_id, cytotechnologist_id)
 
 
 @router.get("/slide-quality-stats")

@@ -15,6 +15,7 @@ from app.models.user import User
 
 from datetime import datetime
 from app.utils.time import local_now
+from app.utils.consult_lock import assert_consult_not_locked
 from fastapi import HTTPException
 
 
@@ -243,12 +244,7 @@ def bulk_save_draft_orchestrator(db: Session, data: BulkSaveDraft):
         # - No PDF yet → hard block (423), nothing saved.
         # - PDF uploaded → allow case-metadata save only, skip diagnosis bump & creation.
         if surgical_case.is_out_lab_consult and surgical_case.consult_status == "processing":
-            if not surgical_case.consult_pdf_path:
-                raise HTTPException(
-                    status_code=423,
-                    detail="Case is locked: slides have been dispatched for external consultation. "
-                           "Upload the consult PDF to unlock.",
-                )
+            assert_consult_not_locked(surgical_case)
             # PDF uploaded: save case metadata then return — no new addendum created.
             surgical_case.diagnosis_mode = data.diagnosis_mode
             surgical_case.clinical_diagnosis = data.clinical_diagnosis

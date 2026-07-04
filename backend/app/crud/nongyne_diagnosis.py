@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func as sql_func
 from datetime import datetime
 from app.utils.time import local_now
+from app.utils.consult_lock import assert_consult_not_locked
 
 from app.models.nongyne_diagnosis import NongyneDiagnosis
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -36,6 +37,9 @@ def get_current_diagnosis(db: Session, case_id: int):
     )
 
 def create_nongyne_diagnosis(db: Session, obj_in: NongyneDiagnosisCreate):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == obj_in.case_id).first()
+    assert_consult_not_locked(case)
+
     if obj_in.diagnosis_order is not None:
         diagnosis_order = obj_in.diagnosis_order
     else:
@@ -63,6 +67,9 @@ def create_nongyne_diagnosis(db: Session, obj_in: NongyneDiagnosisCreate):
     return db_obj
 
 def update_nongyne_diagnosis(db: Session, db_obj: NongyneDiagnosis, obj_in: NongyneDiagnosisUpdate):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_obj.case_id).first()
+    assert_consult_not_locked(case)
+
     update_data = obj_in.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():

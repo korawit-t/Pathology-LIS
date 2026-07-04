@@ -31,7 +31,7 @@ const TYPE_COLOR: Record<string, string> = {
 const TYPE_LABEL: Record<string, string> = {
   critical_value: "Critical Value",
   malignancy: "Malignancy",
-  other: "อื่นๆ",
+  other: "Other",
 };
 
 const CASE_TYPE_COLOR: Record<string, string> = {
@@ -93,11 +93,11 @@ const CriticalNotificationLogPage: React.FC = () => {
         recipient_name: editName || undefined,
         recipient_role: editRole || undefined,
       });
-      message.success("บันทึกแล้ว");
+      message.success("Saved");
       setEditingId(null);
       fetch();
     } catch {
-      message.error("ไม่สามารถบันทึกได้");
+      message.error("Failed to save");
     } finally {
       setSaving(false);
     }
@@ -105,7 +105,7 @@ const CriticalNotificationLogPage: React.FC = () => {
 
   const columns = [
     {
-      title: "ประเภท Case",
+      title: "Case Type",
       dataIndex: "case_type",
       width: 110,
       render: (v: string) => (
@@ -119,7 +119,7 @@ const CriticalNotificationLogPage: React.FC = () => {
       render: (v: string, row: CriticalNotificationRecord) => v || `#${row.case_id}`,
     },
     {
-      title: "ประเภทการแจ้ง",
+      title: "Notification Type",
       dataIndex: "notification_type",
       width: 140,
       render: (v: string) => (
@@ -127,13 +127,13 @@ const CriticalNotificationLogPage: React.FC = () => {
       ),
     },
     {
-      title: "วัน/เวลาที่แจ้ง",
+      title: "Notified Date/Time",
       dataIndex: "notified_at",
       width: 140,
       render: (v: string) => dayjs(v).format("DD/MM/YY HH:mm"),
     },
     {
-      title: "ผู้รับแจ้ง",
+      title: "Recipient",
       dataIndex: "recipient_name",
       render: (_: any, row: CriticalNotificationRecord) => {
         if (editingId === row.id) {
@@ -143,20 +143,20 @@ const CriticalNotificationLogPage: React.FC = () => {
                 size="small"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                placeholder="ชื่อผู้รับแจ้ง"
+                placeholder="Recipient name"
                 style={{ width: 140 }}
               />
               <Input
                 size="small"
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
-                placeholder="ตำแหน่ง"
+                placeholder="Role"
                 style={{ width: 100 }}
               />
-              <Tooltip title="บันทึก">
+              <Tooltip title="Save">
                 <Button size="small" type="primary" icon={<CheckOutlined />} loading={saving} onClick={() => saveEdit(row.id)} />
               </Tooltip>
-              <Tooltip title="ยกเลิก">
+              <Tooltip title="Cancel">
                 <Button size="small" icon={<CloseOutlined />} onClick={cancelEdit} />
               </Tooltip>
             </Space>
@@ -168,7 +168,7 @@ const CriticalNotificationLogPage: React.FC = () => {
         return (
           <Space size={4}>
             {display}
-            <Tooltip title="แก้ไขผู้รับแจ้ง">
+            <Tooltip title="Edit recipient">
               <Button size="small" type="text" icon={<EditOutlined />} onClick={() => startEdit(row)} />
             </Tooltip>
           </Space>
@@ -176,7 +176,7 @@ const CriticalNotificationLogPage: React.FC = () => {
       },
     },
     {
-      title: "Channel ที่แจ้ง",
+      title: "Notified Channel",
       dataIndex: "notified_channel_names",
       width: 160,
       render: (v: string[] | null) =>
@@ -185,18 +185,18 @@ const CriticalNotificationLogPage: React.FC = () => {
           : <Typography.Text type="secondary" style={{ fontSize: 12 }}>—</Typography.Text>,
     },
     {
-      title: "ผู้แจ้ง",
+      title: "Notified By",
       dataIndex: "notified_by",
       width: 130,
       render: (v: any) => v?.full_name ?? v?.username ?? "—",
     },
     {
-      title: "หมายเหตุ",
+      title: "Note",
       dataIndex: "note",
       render: (v: string) => v || "—",
     },
     {
-      title: "บันทึกเมื่อ",
+      title: "Recorded At",
       dataIndex: "created_at",
       width: 130,
       render: (v: string) => dayjs(v).format("DD/MM/YY HH:mm"),
@@ -219,7 +219,7 @@ const CriticalNotificationLogPage: React.FC = () => {
     >
       <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
         <Select
-          placeholder="ประเภท Case"
+          placeholder="Case Type"
           allowClear
           style={{ width: 160 }}
           value={filterCaseType}
@@ -234,7 +234,7 @@ const CriticalNotificationLogPage: React.FC = () => {
           ]}
         />
         <Select
-          placeholder="ประเภทการแจ้ง"
+          placeholder="Notification Type"
           allowClear
           style={{ width: 200 }}
           value={filterNotifType}
@@ -245,12 +245,12 @@ const CriticalNotificationLogPage: React.FC = () => {
           options={[
             { value: "critical_value", label: "Critical Value" },
             { value: "malignancy", label: "Malignancy" },
-            { value: "other", label: "อื่นๆ" },
+            { value: "other", label: "Other" },
           ]}
         />
         <RangePicker
           onChange={(v) => setDateRange(v as [Dayjs, Dayjs] | null)}
-          placeholder={["วันเริ่ม", "วันสิ้นสุด"]}
+          placeholder={["Start date", "End date"]}
         />
         <Button icon={<ReloadOutlined />} onClick={fetch} loading={loading}>
           Reload
@@ -267,7 +267,7 @@ const CriticalNotificationLogPage: React.FC = () => {
           current: page,
           pageSize,
           total,
-          showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+          showTotal: (t) => `Total ${t} records`,
           onChange: setPage,
         }}
       />

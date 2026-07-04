@@ -64,6 +64,22 @@ interface CorrelationSummary {
   hsil_minor_discordant: number;
 }
 
+interface GroupCaseRow {
+  id: number;
+  accession_no: string;
+  hn: string | null;
+  patient_title: string | null;
+  patient_name: string | null;
+  patient_ln: string | null;
+  specimen_type: string | null;
+  registered_at: string | null;
+  category_1_code: string | null;
+  category_1_text: string | null;
+  category_code: string | null;
+  category_text: string | null;
+  interpretation: string | null;
+}
+
 const PAGE_SIZE = 20;
 
 const CytoHistoCorrelationReport: React.FC = () => {
@@ -77,6 +93,13 @@ const CytoHistoCorrelationReport: React.FC = () => {
 
   const [summary, setSummary] = useState<CorrelationSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  const [hsilModalOpen, setHsilModalOpen] = useState(false);
+  const [hsilModalLoading, setHsilModalLoading] = useState(false);
+  const [hsilModalLabel, setHsilModalLabel] = useState("");
+  const [hsilCaseData, setHsilCaseData] = useState<GroupCaseRow[]>([]);
+  const [hsilCorrelationData, setHsilCorrelationData] = useState<CorrelationRecord[]>([]);
+  const [hsilModalKind, setHsilModalKind] = useState<"cases" | "correlations">("cases");
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -112,6 +135,46 @@ const CytoHistoCorrelationReport: React.FC = () => {
       logger.error("CytoHistoCorrelationReport summary fetch", err);
     } finally {
       setSummaryLoading(false);
+    }
+  }, [dateRange]);
+
+  const openHsilCases = useCallback(async (label: string) => {
+    setHsilModalKind("cases");
+    setHsilModalLabel(label);
+    setHsilModalOpen(true);
+    setHsilModalLoading(true);
+    try {
+      const params: Record<string, unknown> = { group: "hsil_plus" };
+      if (dateRange) {
+        params.start_date = dateRange[0].format("YYYY-MM-DD");
+        params.end_date = dateRange[1].format("YYYY-MM-DD");
+      }
+      const res = await api.get<GroupCaseRow[]>("/cyto-histo-correlations/summary/cases", { params });
+      setHsilCaseData(res.data);
+    } catch (err) {
+      logger.error("CytoHistoCorrelationReport hsil cases fetch", err);
+    } finally {
+      setHsilModalLoading(false);
+    }
+  }, [dateRange]);
+
+  const openHsilDiscordant = useCallback(async (result: string, label: string) => {
+    setHsilModalKind("correlations");
+    setHsilModalLabel(label);
+    setHsilModalOpen(true);
+    setHsilModalLoading(true);
+    try {
+      const params: Record<string, unknown> = { result };
+      if (dateRange) {
+        params.start_date = dateRange[0].format("YYYY-MM-DD");
+        params.end_date = dateRange[1].format("YYYY-MM-DD");
+      }
+      const res = await api.get<CorrelationRecord[]>("/cyto-histo-correlations/hsil-discordant", { params });
+      setHsilCorrelationData(res.data);
+    } catch (err) {
+      logger.error("CytoHistoCorrelationReport hsil discordant fetch", err);
+    } finally {
+      setHsilModalLoading(false);
     }
   }, [dateRange]);
 
@@ -317,6 +380,14 @@ const CytoHistoCorrelationReport: React.FC = () => {
             pagination={false}
             size="small"
             bordered
+            onRow={(row) => ({
+              style: { cursor: "pointer" },
+              onClick: () => {
+                if (row.key === "hsil_total") openHsilCases(row.label);
+                else if (row.key === "major") openHsilDiscordant("major_discrepancy", row.label);
+                else openHsilDiscordant("minor_discrepancy", row.label);
+              },
+            })}
             columns={[
               {
                 title: "ประเภท",
@@ -443,6 +514,74 @@ const CytoHistoCorrelationReport: React.FC = () => {
           title={previewTitle}
           style={{ width: "100%", height: "72vh", border: "none" }}
         />
+      </Modal>
+
+      <Modal
+        open={hsilModalOpen}
+        title={`รายชื่อ — ${hsilModalLabel} (${hsilModalKind === "cases" ? hsilCaseData.length : hsilCorrelationData.length})`}
+        footer={null}
+        width={hsilModalKind === "cases" ? 960 : 1200}
+        centered
+        onCancel={() => setHsilModalOpen(false)}
+      >
+        {hsilModalKind === "cases" ? (
+          <Table<GroupCaseRow>
+            dataSource={hsilCaseData}
+            loading={hsilModalLoading}
+            rowKey="id"
+            size="small"
+            bordered
+            pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} cases` }}
+            columns={[
+              {
+                title: "Accession No.",
+                dataIndex: "accession_no",
+                key: "accession_no",
+                width: 130,
+                render: (v: string) => <Text strong style={{ color: "#722ed1" }}>{v}</Text>,
+              },
+              { title: "HN", dataIndex: "hn", key: "hn", width: 110 },
+              {
+                title: "Patient",
+                key: "patient",
+                render: (r: GroupCaseRow) =>
+                  [r.patient_title, r.patient_name, r.patient_ln].filter(Boolean).join(" ") || "—",
+              },
+              { title: "Specimen", dataIndex: "specimen_type", key: "specimen_type", width: 130 },
+              {
+                title: "Registered",
+                dataIndex: "registered_at",
+                key: "registered_at",
+                width: 110,
+                render: (v: string | null) => v ? dayjs(v).format("DD/MM/YYYY") : "—",
+              },
+              {
+                title: "Diagnosis",
+                key: "diagnosis",
+                render: (r: GroupCaseRow) => (
+                  <div>
+                    {r.category_text
+                      ? <Text>{r.category_text}{r.category_code ? ` (${r.category_code})` : ""}</Text>
+                      : <Text type="secondary">—</Text>}
+                    {r.interpretation && (
+                      <div><Text type="secondary" style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>{r.interpretation}</Text></div>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <Table<CorrelationRecord>
+            dataSource={hsilCorrelationData}
+            columns={columns}
+            loading={hsilModalLoading}
+            rowKey="id"
+            size="small"
+            bordered
+            pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} records` }}
+          />
+        )}
       </Modal>
     </div>
   );

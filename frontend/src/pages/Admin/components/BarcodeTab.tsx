@@ -148,21 +148,21 @@ const BarcodeTabInner: React.FC = () => {
             icon={<InfoCircleOutlined />}
             showIcon
             type="info"
-            message="วัตถุประสงค์และรูปแบบ Barcode"
+            message="Barcode Purpose and Format"
             description={
               <Space direction="vertical" size={6} style={{ marginTop: 4 }}>
                 <Text>
-                  Barcode ที่พิมพ์บนรายงานผลใช้สำหรับให้{" "}
-                  <Text strong>HOSxP อ่านอัตโนมัติ</Text>{" "}
-                  เมื่อ Upload ไฟล์ PDF เข้าระบบ{" "}
-                  <Text strong>"เอกสาร Scan"</Text> ของ HOSxP
-                  โดยระบบจะจับคู่ผลตรวจกับ Visit (VN) หรือ Admission (AN) ของผู้ป่วยได้ทันที
+                  The barcode printed on the report is used so that{" "}
+                  <Text strong>HOSxP can read it automatically</Text>{" "}
+                  when the PDF file is uploaded into the{" "}
+                  <Text strong>"Scanned Document"</Text> module of HOSxP.
+                  The system then matches the result to the patient's Visit (VN) or Admission (AN) instantly.
                 </Text>
                 <Text type="secondary">
-                  รูปแบบ Code 39:{" "}
-                  <Text code>aa</Text> รหัสประเภทการเข้ารับบริการ (OPD / IPD){" "}
-                  + <Text code>bb</Text> รหัสประเภทเคส{" "}
-                  + <Text code>xxx</Text> เลข VN (ผู้ป่วยนอก) หรือ AN (ผู้ป่วยใน)
+                  Code 39 format:{" "}
+                  <Text code>aa</Text> visit type code (OPD / IPD){" "}
+                  + <Text code>bb</Text> case type code{" "}
+                  + <Text code>xxx</Text> VN number (outpatient) or AN number (inpatient)
                 </Text>
               </Space>
             }
@@ -184,7 +184,7 @@ const BarcodeTabInner: React.FC = () => {
 
             <SettingRow
               title="OPD Prefix"
-              description="รหัสนำหน้าสำหรับผู้ป่วยนอก (Outpatient) — ค่าเริ่มต้น: 2"
+              description="Prefix code for outpatients (Outpatient) — default: 2"
             >
               <Form.Item name="barcode_opd_prefix" noStyle>
                 <Input
@@ -197,7 +197,7 @@ const BarcodeTabInner: React.FC = () => {
 
             <SettingRow
               title="IPD Prefix"
-              description="รหัสนำหน้าสำหรับผู้ป่วยใน (Inpatient) — ค่าเริ่มต้น: 3"
+              description="Prefix code for inpatients (Inpatient) — default: 3"
             >
               <Form.Item name="barcode_ipd_prefix" noStyle>
                 <Input
@@ -224,7 +224,7 @@ const BarcodeTabInner: React.FC = () => {
 
             <SettingRow
               title="Surgical Pathology Code"
-              description="รหัสสำหรับเคส Surgical Pathology — ค่าเริ่มต้น: 08"
+              description="Code for Surgical Pathology cases — default: 08"
             >
               <Form.Item name="barcode_surgical_type_code" noStyle>
                 <Input
@@ -237,7 +237,7 @@ const BarcodeTabInner: React.FC = () => {
 
             <SettingRow
               title="Gyne Cytology Code"
-              description="รหัสสำหรับเคส Gyne Cytology (Pap Smear) — ค่าเริ่มต้น: 09"
+              description="Code for Gyne Cytology cases (Pap Smear) — default: 09"
             >
               <Form.Item name="barcode_gyne_type_code" noStyle>
                 <Input
@@ -250,7 +250,7 @@ const BarcodeTabInner: React.FC = () => {
 
             <SettingRow
               title="Non-Gyne Cytology Code"
-              description="รหัสสำหรับเคส Non-Gyne Cytology — ค่าเริ่มต้น: 10"
+              description="Code for Non-Gyne Cytology cases — default: 10"
             >
               <Form.Item name="barcode_nongyne_type_code" noStyle>
                 <Input

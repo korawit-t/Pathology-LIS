@@ -58,6 +58,7 @@ export interface NongyneCytologyCase {
   status: "registered" | "screened" | "reported" | "revised" | "cancelled" | string;
   is_screened?: boolean;
   is_pending?: boolean;
+  pending_reason?: string | null;
   cytotechnologist_id: number | null;
   pathologist_id: number | null;
   registrar_id: number;
@@ -73,6 +74,11 @@ export interface NongyneCytologyCase {
   is_satisfied_specimen: boolean;
   is_out_lab_consult: boolean;
   is_out_lab: boolean;
+  consult_status?: string | null;
+  consult_pdf_path?: string | null;
+  consult_reason?: string | null;
+  consult_pdf_received_at?: string | null;
+  consult_report_out_at?: string | null;
 
   // Cell Block
   is_cell_block: boolean;
@@ -83,6 +89,7 @@ export interface NongyneCytologyCase {
 
   slide_quality?: string;
   stain_quality?: string;
+  slide_count?: number;
 
   request_files?: RequestFile[];
 
@@ -108,6 +115,7 @@ export interface NongyneCytologyCaseCreate {
   collect_at?: string;
   is_out_lab_consult?: boolean;
   is_out_lab?: boolean;
+  num_slides?: number;
 }
 
 export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCreate> {
@@ -117,8 +125,15 @@ export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCr
   is_screened?: boolean;
   is_reported?: boolean;
   has_malignancy?: boolean;
+  is_pending?: boolean;
+  pending_reason?: string;
   is_out_lab_consult?: boolean;
   is_out_lab?: boolean;
+  consult_status?: string;
+  consult_pdf_path?: string;
+  consult_reason?: string;
+  consult_report_out_at?: string;
+  consult_pdf_received_at?: string;
   is_cell_block?: boolean;
   cell_block_status?: string;
   cell_block_prepared_at?: string;

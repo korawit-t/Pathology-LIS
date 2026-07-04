@@ -108,7 +108,7 @@ const SystemSettings: React.FC = () => {
 
           {activeKey === "about" && (
             <div>
-              <Title level={5} style={{ marginBottom: 24 }}>เกี่ยวกับระบบ</Title>
+              <Title level={5} style={{ marginBottom: 24 }}>About System</Title>
               <Descriptions bordered column={1} size="middle" style={{ maxWidth: 480 }}>
                 <Descriptions.Item label="Frontend Version">
                   <Tag color="blue">v{APP_VERSION}</Tag>

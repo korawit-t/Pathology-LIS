@@ -6,11 +6,18 @@ export interface SpecimenTemplate {
   id: number;
   name: string;
   category: SpecimenCategory;
+  default_slide_count: number;
+  requires_slide_count: boolean;
+  requires_volume: boolean;
+  sort_order: number;
 }
 
 export interface SpecimenTemplatePayload {
   name: string;
   category?: SpecimenCategory;
+  default_slide_count?: number;
+  requires_slide_count?: boolean;
+  requires_volume?: boolean;
 }
 
 const SpecimenTemplateService = {
@@ -33,6 +40,17 @@ const SpecimenTemplateService = {
 
   deleteTemplate: async (id: number): Promise<void> => {
     await api.delete(`/specimen-templates/${id}`);
+  },
+
+  reorderTemplates: async (
+    category: SpecimenCategory,
+    ids: number[],
+  ): Promise<SpecimenTemplate[]> => {
+    const res = await api.patch<SpecimenTemplate[]>("/specimen-templates/reorder", {
+      category,
+      ids,
+    });
+    return res.data;
   },
 };
 

@@ -32,11 +32,14 @@ const GyneCytologyCaseService = {
     is_reviewed?: boolean;
     is_out_lab_consult?: boolean;
     is_out_lab?: boolean;
+    has_out_lab_result?: boolean;
     consult_status?: string;
+    exclude_consult_status?: string;
     is_reported?: boolean;
     date_from?: string;
     date_to?: string;
     review_reason?: string;
+    is_express?: boolean;
   }): Promise<GyneCytologyListResponse> => {
     // 🚩 2. ปรับ Generic type ใน api.get ให้ตรงกัน
     const res = await api.get<GyneCytologyListResponse>("/gyne-cytology", {

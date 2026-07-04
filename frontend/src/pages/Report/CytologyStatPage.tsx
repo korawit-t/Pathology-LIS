@@ -16,6 +16,7 @@ import {
   Progress,
   Modal,
   Table,
+  Tooltip as AntTooltip,
 } from "antd";
 import { SafetyCertificateOutlined, SearchOutlined, ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import { exportToCsv } from "../../utils/exportCsv";
@@ -109,6 +110,22 @@ interface GroupCaseRow {
   interpretation: string | null;
 }
 
+interface MonthlyCaseRow {
+  id: number;
+  accession_no: string;
+  hn: string | null;
+  patient_title: string | null;
+  patient_name: string | null;
+  patient_ln: string | null;
+  specimen_type: string | null;
+  registered_at: string | null;
+  is_satisfied_specimen: boolean | null;
+  category_code: string | null;
+  category_text: string | null;
+  discrepancy_level: string | null;
+  review_result: string | null;
+}
+
 const fetchCytoStats = async (
   type: "gyne" | "nongyne",
   start: string,
@@ -145,6 +162,10 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
   const [groupCasesLoading, setGroupCasesLoading] = useState(false);
   const [groupCasesData, setGroupCasesData] = useState<GroupCaseRow[]>([]);
   const [groupCasesLabel, setGroupCasesLabel] = useState("");
+  const [monthlyModalOpen, setMonthlyModalOpen] = useState(false);
+  const [monthlyModalLoading, setMonthlyModalLoading] = useState(false);
+  const [monthlyModalData, setMonthlyModalData] = useState<MonthlyCaseRow[]>([]);
+  const [monthlyModalLabel, setMonthlyModalLabel] = useState("");
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [cytotechs, setCytotechs] = useState<User[]>([]);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>([
@@ -236,7 +257,7 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
     }
   };
 
-  const openGroupCases = async (group: string, label: string) => {
+  const openGroupCases = async (filters: { group?: string; specimen?: string }, label: string) => {
     if (!dateRange?.[0] || !dateRange?.[1]) return;
     setGroupCasesLabel(label);
     setGroupCasesOpen(true);
@@ -244,7 +265,7 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
     try {
       const res = await api.get<GroupCaseRow[]>("/cyto-histo-correlations/summary/cases", {
         params: {
-          group,
+          ...filters,
           start_date: dateRange[0].format("YYYY-MM-DD"),
           end_date: dateRange[1].format("YYYY-MM-DD"),
         },
@@ -254,6 +275,29 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
       logger.error(e);
     } finally {
       setGroupCasesLoading(false);
+    }
+  };
+
+  const openMonthlyCases = async (period: string, metric: string, label: string) => {
+    setMonthlyModalLabel(label);
+    setMonthlyModalOpen(true);
+    setMonthlyModalLoading(true);
+    try {
+      const monthStart = dayjs(period + "-01");
+      const res = await api.get<MonthlyCaseRow[]>("/gyne-cytology/summary-table/cases", {
+        params: {
+          start_date: monthStart.startOf("month").format("YYYY-MM-DD"),
+          end_date: monthStart.endOf("month").format("YYYY-MM-DD"),
+          metric,
+          pathologist_id: selectedPathologist ?? undefined,
+          cytotechnologist_id: selectedCytotech ?? undefined,
+        },
+      });
+      setMonthlyModalData(res.data);
+    } catch (e) {
+      logger.error(e);
+    } finally {
+      setMonthlyModalLoading(false);
     }
   };
 
@@ -543,6 +587,67 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
           </Modal>
         )}
 
+        {type === "gyne" && (
+          <Modal
+            open={monthlyModalOpen}
+            title={`รายชื่อเคส — ${monthlyModalLabel} (${monthlyModalData.length})`}
+            footer={null}
+            width={960}
+            centered
+            onCancel={() => setMonthlyModalOpen(false)}
+          >
+            <Table<MonthlyCaseRow>
+              dataSource={monthlyModalData}
+              loading={monthlyModalLoading}
+              rowKey="id"
+              size="small"
+              bordered
+              pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} cases` }}
+              columns={[
+                {
+                  title: "Accession No.",
+                  dataIndex: "accession_no",
+                  key: "accession_no",
+                  width: 130,
+                  render: (v: string) => <Text strong style={{ color: "#722ed1" }}>{v}</Text>,
+                },
+                { title: "HN", dataIndex: "hn", key: "hn", width: 110 },
+                {
+                  title: "Patient",
+                  key: "patient",
+                  render: (r: MonthlyCaseRow) =>
+                    [r.patient_title, r.patient_name, r.patient_ln].filter(Boolean).join(" ") || "—",
+                },
+                { title: "Specimen", dataIndex: "specimen_type", key: "specimen_type", width: 130 },
+                {
+                  title: "Registered",
+                  dataIndex: "registered_at",
+                  key: "registered_at",
+                  width: 110,
+                  render: (v: string | null) => v ? dayjs(v).format("DD/MM/YYYY") : "—",
+                },
+                {
+                  title: "Diagnosis",
+                  key: "diagnosis",
+                  render: (r: MonthlyCaseRow) =>
+                    r.category_text
+                      ? <Text>{r.category_text}{r.category_code ? ` (${r.category_code})` : ""}</Text>
+                      : <Text type="secondary">—</Text>,
+                },
+                {
+                  title: "QC Review",
+                  key: "qc",
+                  width: 160,
+                  render: (r: MonthlyCaseRow) =>
+                    r.discrepancy_level
+                      ? <Tag color={r.discrepancy_level === "major" ? "error" : "warning"}>{r.discrepancy_level === "major" ? "Major Discordant" : "Minor Discordant"}</Tag>
+                      : <Text type="secondary">—</Text>,
+                },
+              ]}
+            />
+          </Modal>
+        )}
+
         {type === "gyne" && qcStats && (
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
             <Col span={24}>
@@ -631,19 +736,22 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
         {type === "gyne" && correlationSummary && (
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
             <Col xs={24} md={8}>
-              <Card title="จำนวนเคสจากการลงทะเบียน">
-                <Table<{ key: string; label: string; count: number; bold?: boolean }>
+              <Card title="จำนวนเคสจากการลงทะเบียน (คลิกแถวเพื่อดูรายชื่อเคส)">
+                <Table<{ key: string; label: string; count: number; bold?: boolean; specimen?: string }>
                   dataSource={[
-                    { key: "conv",  label: "Conventional Pap", count: correlationSummary.registration_counts.conventional },
-                    { key: "liq",   label: "Liquid Based",     count: correlationSummary.registration_counts.liquid_based },
-                    { key: "other", label: "อื่นๆ",             count: correlationSummary.registration_counts.other },
+                    { key: "conv",  label: "Conventional Pap", count: correlationSummary.registration_counts.conventional, specimen: "conventional" },
+                    { key: "liq",   label: "Liquid Based",     count: correlationSummary.registration_counts.liquid_based, specimen: "liquid_based" },
+                    { key: "other", label: "อื่นๆ",             count: correlationSummary.registration_counts.other, specimen: "other" },
                     { key: "total", label: "รวม",              count: correlationSummary.registration_counts.total, bold: true },
                   ]}
                   rowKey="key"
                   pagination={false}
                   size="small"
                   bordered
-                  onRow={(row) => row.bold ? { style: { background: "#f0f5ff", fontWeight: 600 } } : {}}
+                  onRow={(row) => ({
+                    onClick: () => openGroupCases(row.specimen ? { specimen: row.specimen } : {}, row.label),
+                    style: { cursor: "pointer", ...(row.bold ? { background: "#f0f5ff", fontWeight: 600 } : {}) },
+                  })}
                   columns={[
                     {
                       title: "ประเภท",
@@ -673,7 +781,7 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                   bordered
                   scroll={{ x: "max-content" }}
                   onRow={(row) => ({
-                    onClick: () => openGroupCases(row.group, row.label),
+                    onClick: () => openGroupCases({ group: row.group }, row.label),
                     style: {
                       cursor: "pointer",
                       background: row.group === "unsatisfactory" ? "#fff7e6" : undefined,
@@ -739,8 +847,8 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                         { header: "Liquid Based", key: "liquid_based" },
                         { header: "Unsatisfactory", key: "unsatisfactory" },
                         { header: "LSIL", key: "lsil" },
-                        { header: "HSIL+ Major Discordant", key: "hsil_major_discordant" },
-                        { header: "HSIL+ Minor Discordant", key: "hsil_minor_discordant" },
+                        { header: "QC Review Major Discordant (HSIL+)", key: "hsil_major_discordant" },
+                        { header: "QC Review Minor Discordant (HSIL+)", key: "hsil_minor_discordant" },
                         { header: "รวม", key: "total" },
                       ])
                     }
@@ -786,6 +894,9 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       key: "conventional",
                       align: "center" as const,
                       width: 140,
+                      render: (v: number, row: GyneSummaryRow) => (
+                        <a onClick={() => openMonthlyCases(row.period, "conventional", `${dayjs(row.period + "-01").format("MMM YYYY")} — Conventional Pap`)}>{v}</a>
+                      ),
                     },
                     {
                       title: "Liquid Based",
@@ -793,6 +904,9 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       key: "liquid_based",
                       align: "center" as const,
                       width: 120,
+                      render: (v: number, row: GyneSummaryRow) => (
+                        <a onClick={() => openMonthlyCases(row.period, "liquid_based", `${dayjs(row.period + "-01").format("MMM YYYY")} — Liquid Based`)}>{v}</a>
+                      ),
                     },
                     {
                       title: "Unsatisfactory",
@@ -800,6 +914,9 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       key: "unsatisfactory",
                       align: "center" as const,
                       width: 130,
+                      render: (v: number, row: GyneSummaryRow) => (
+                        <a onClick={() => openMonthlyCases(row.period, "unsatisfactory", `${dayjs(row.period + "-01").format("MMM YYYY")} — Unsatisfactory`)}>{v}</a>
+                      ),
                     },
                     {
                       title: "LSIL",
@@ -807,26 +924,37 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       key: "lsil",
                       align: "center" as const,
                       width: 80,
+                      render: (v: number, row: GyneSummaryRow) => (
+                        <a onClick={() => openMonthlyCases(row.period, "lsil", `${dayjs(row.period + "-01").format("MMM YYYY")} — LSIL`)}>{v}</a>
+                      ),
                     },
                     {
-                      title: "HSIL หรือสูงกว่า",
+                      title: (
+                        <AntTooltip title="ผลจาก QC Review (พยาธิแพทย์ทวนซ้ำเทียบกับ cytotechnologist ที่ screen) — ไม่ใช่ค่าจากการเทียบผล cytology กับ surgical/histology จริง">
+                          QC Review Discordant (HSIL+)
+                        </AntTooltip>
+                      ),
                       key: "hsil_group",
                       children: [
                         {
-                          title: <span style={{ color: "#cf1322" }}>Major Discordant</span>,
+                          title: <span style={{ color: "#cf1322" }}>Major</span>,
                           dataIndex: "hsil_major_discordant",
                           key: "hsil_major",
                           align: "center" as const,
                           width: 150,
-                          render: (v: number) => <Text style={{ color: v > 0 ? "#cf1322" : undefined }}>{v}</Text>,
+                          render: (v: number, row: GyneSummaryRow) => (
+                            <a style={{ color: v > 0 ? "#cf1322" : undefined }} onClick={() => openMonthlyCases(row.period, "hsil_major_discordant", `${dayjs(row.period + "-01").format("MMM YYYY")} — QC Review Major Discordant (HSIL+)`)}>{v}</a>
+                          ),
                         },
                         {
-                          title: <span style={{ color: "#fa8c16" }}>Minor Discordant</span>,
+                          title: <span style={{ color: "#fa8c16" }}>Minor</span>,
                           dataIndex: "hsil_minor_discordant",
                           key: "hsil_minor",
                           align: "center" as const,
                           width: 150,
-                          render: (v: number) => <Text style={{ color: v > 0 ? "#fa8c16" : undefined }}>{v}</Text>,
+                          render: (v: number, row: GyneSummaryRow) => (
+                            <a style={{ color: v > 0 ? "#fa8c16" : undefined }} onClick={() => openMonthlyCases(row.period, "hsil_minor_discordant", `${dayjs(row.period + "-01").format("MMM YYYY")} — QC Review Minor Discordant (HSIL+)`)}>{v}</a>
+                          ),
                         },
                       ],
                     },
@@ -836,7 +964,9 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       key: "total",
                       align: "center" as const,
                       width: 80,
-                      render: (v: number) => <Text strong>{v}</Text>,
+                      render: (v: number, row: GyneSummaryRow) => (
+                        <a style={{ fontWeight: 600 }} onClick={() => openMonthlyCases(row.period, "total", `${dayjs(row.period + "-01").format("MMM YYYY")} — รวมทั้งหมด`)}>{v}</a>
+                      ),
                     },
                   ]}
                 />

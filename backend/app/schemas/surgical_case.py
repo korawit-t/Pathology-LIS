@@ -125,6 +125,10 @@ class SurgicalCaseResponse(SurgicalCaseBase):
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
 
+    # Computed: whether any block on this case has ever had an IHC stain
+    # ordered (see get_cases in crud/surgical_case.py — not a stored column).
+    has_ihc: bool = False
+
     has_malignancy: Optional[bool] = None
     has_critical: Optional[bool] = None
 

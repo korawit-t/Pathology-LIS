@@ -84,14 +84,14 @@ const NotificationChannelTab: React.FC = () => {
         content: (
           <span>
             <CheckCircleOutlined style={{ color: "#52c41a", marginRight: 6 }} />
-            {result.detail} — ข้อความทดสอบถูกส่งสำเร็จ!
+            {result.detail} — Test message sent successfully!
           </span>
         ),
         duration: 5,
       });
     } catch (err: any) {
       const errMsg =
-        err?.response?.data?.detail || "ไม่สามารถส่งข้อความทดสอบได้";
+        err?.response?.data?.detail || "Failed to send test message";
       message.error({
         content: (
           <span>
@@ -215,7 +215,7 @@ const NotificationChannelTab: React.FC = () => {
       key: "actions",
       render: (_: unknown, record: NotificationChannel) => (
         <Space size="small">
-          <Tooltip title="ส่งข้อความทดสอบ (Dummy Data)">
+          <Tooltip title="Send a test message (Dummy Data)">
             <Button
               type="default"
               icon={<SendOutlined />}
@@ -256,8 +256,8 @@ const NotificationChannelTab: React.FC = () => {
         <div>
           <h2 style={{ margin: 0 }}>Notification Channels</h2>
           <p style={{ color: "#888", marginTop: 4, fontSize: 13 }}>
-            กด <strong>Test</strong> เพื่อส่งข้อความทดสอบด้วย Dummy Data ไปยัง
-            channel นั้น
+            Click <strong>Test</strong> to send a test message with Dummy Data to
+            that channel
           </p>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
@@ -320,7 +320,7 @@ const NotificationChannelTab: React.FC = () => {
             rules={[
               { required: true, message: "Please provide credentials in JSON" },
             ]}
-            tooltip="เลือก Platform ก่อนแล้วระบบจะแสดง template ให้อัตโนมัติ"
+            tooltip="Select a Platform first and the system will automatically show a template"
           >
             <Input.TextArea
               rows={8}

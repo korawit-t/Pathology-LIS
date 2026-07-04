@@ -67,20 +67,20 @@ const NonGyneSignSwitch: React.FC<{
   const handleChange = (checked: boolean) => {
     if (!checked) {
       Modal.confirm({
-        title: 'ปิด "Require All Signatures (Non-Gyne)"?',
+        title: 'Turn off "Require All Signatures (Non-Gyne)"?',
         icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
         content: (
           <p>
-            หากปิดการตั้งค่านี้{" "}
+            If you turn off this setting,{" "}
             <strong>
-              Cytotechnologist จะสามารถออกผลโดยไม่ต้องมีพยาธิแพทย์ร่วมลงนาม
+              the Cytotechnologist will be able to issue results without a pathologist co-signing
             </strong>{" "}
-            ต้องการปิดจริงหรือไม่?
+            . Are you sure you want to turn it off?
           </p>
         ),
-        okText: "ปิดการตั้งค่า",
+        okText: "Turn Off",
         okButtonProps: { danger: true },
-        cancelText: "ยกเลิก",
+        cancelText: "Cancel",
         onOk: () => onChange?.(false),
       });
     } else {
@@ -156,7 +156,7 @@ const WorkflowTab: React.FC = () => {
           >
             <Form.Item name="default_gyne_test_id" noStyle>
               <Select
-                placeholder="เลือกรายการตรวจ"
+                placeholder="Select test"
                 style={{ width: 220 }}
                 options={gyneOptions}
                 showSearch
@@ -172,7 +172,7 @@ const WorkflowTab: React.FC = () => {
           >
             <Form.Item name="default_surgical_test_id" noStyle>
               <Select
-                placeholder="เลือกรายการตรวจ"
+                placeholder="Select test"
                 style={{ width: 220 }}
                 options={surgicalOptions}
                 showSearch
@@ -194,7 +194,7 @@ const WorkflowTab: React.FC = () => {
 
           <SettingRow
             title="Enable Surgical Approval"
-            description="ต้องมีการ Approve ผล Surgical Pathology ก่อนพิมพ์รายงาน"
+            description="Requires approval of Surgical Pathology results before printing the report"
           >
             <Form.Item
               name="enable_approve_system"
@@ -207,7 +207,7 @@ const WorkflowTab: React.FC = () => {
 
           <SettingRow
             title="Enable Gyne QC & Review System"
-            description="เปิดระบบ QC สำหรับ Gyne Cytology: สุ่มตรวจ NILM และบังคับให้ pathologist review เคส Abnormal ก่อน publish"
+            description="Enables the QC system for Gyne Cytology: randomly samples NILM cases and requires a pathologist to review Abnormal cases before publishing"
           >
             <Form.Item
               name="enable_gyne_qc_system"
@@ -221,8 +221,8 @@ const WorkflowTab: React.FC = () => {
           {gyneQcOn && (
             <SettingRow
               icon={<ExperimentOutlined style={{ color: "#722ed1" }} />}
-              title="NILM QC Review — อัตราสุ่มตรวจ"
-              description="% ของเคส NILM ที่จะถูกสุ่มส่ง QC Review แต่ละเคสมีโอกาสถูกเลือกอย่างอิสระ (เช่น 10 = แต่ละเคสมีโอกาส 10%)"
+              title="NILM QC Review — Sampling Rate"
+              description="% of NILM cases randomly sent to QC Review. Each case has an independent chance of being selected (e.g. 10 = each case has a 10% chance)"
             >
               <Space>
                 <Form.Item name="nilm_review_every_n" noStyle>
@@ -234,7 +234,7 @@ const WorkflowTab: React.FC = () => {
 
           <SettingRow
             title="Enable Non-Gyne Approval"
-            description="ต้องมีการ Approve ผล Non-Gynecology ก่อนพิมพ์รายงาน"
+            description="Requires approval of Non-Gynecology results before printing the report"
           >
             <Form.Item
               name="enable_non_gyne_approve_system"
@@ -248,7 +248,7 @@ const WorkflowTab: React.FC = () => {
           <SettingRow
               icon={<UsergroupAddOutlined style={{ color: "#1890ff" }} />}
               title="Require All Signatures (Surgical)"
-              description="Surgical Patho: ต้องให้พยาธิแพทย์ทุกคน (Co-signers) เซ็นครบก่อน จึงจะดำเนินการขั้นต่อไป (Pending Approval หรือ Public)"
+              description="Surgical Patho: requires all pathologists (Co-signers) to sign before proceeding to the next step (Pending Approval or Publish)"
           >
               <Form.Item
               name="require_all_pathologists_sign"
@@ -263,7 +263,7 @@ const WorkflowTab: React.FC = () => {
             <SettingRow
               icon={<UsergroupAddOutlined style={{ color: "#eb2f96" }} />}
               title="Require All Signatures (Gyne)"
-              description="Gyne Cyto: ต้องให้ทั้ง Cytotechnologist และ Pathologist เซ็นครบก่อน จึงจะ publish"
+              description="Gyne Cyto: requires both the Cytotechnologist and Pathologist to sign before publishing"
             >
               <Form.Item name="require_all_gyne_sign" valuePropName="checked" noStyle>
                 <Switch checkedChildren="ON" unCheckedChildren="OFF" />
@@ -274,7 +274,7 @@ const WorkflowTab: React.FC = () => {
           <SettingRow
               icon={<UsergroupAddOutlined style={{ color: "#722ed1" }} />}
               title="Require All Signatures (Non-Gyne)"
-              description="Non-Gyne Cyto: ต้องให้ทั้ง Cytotechnologist และ Pathologist เซ็นครบก่อน จึงจะดำเนินการขั้นต่อไป — หากปิด Cytotechnologist จะออกผลได้โดยไม่ต้องมีพยาธิแพทย์"
+              description="Non-Gyne Cyto: requires both the Cytotechnologist and Pathologist to sign before proceeding — if turned off, the Cytotechnologist can issue results without a pathologist"
           >
               <Form.Item name="require_all_non_gyne_sign" noStyle>
                 <NonGyneSignSwitch />
@@ -284,7 +284,7 @@ const WorkflowTab: React.FC = () => {
           <SettingRow
             icon={<ControlOutlined style={{ color: "#722ed1" }} />}
             title="Non-Gyne: Enable Slide Dispatch"
-            description='สำหรับ Non-Gyne Cytology — เปิด: Cytotechnologist กด "Send to Pathologist" แล้วต้องรอ Lab Tech สแกนส่งสไลด์ผ่านหน้า Slide Dispatch อีกครั้ง | ปิด: กด "Send to Pathologist" เพียงครั้งเดียวแล้วสไลด์ถูกส่งถึง Pathologist ทันที'
+            description='For Non-Gyne Cytology — On: after the Cytotechnologist clicks "Send to Pathologist", the Lab Tech must scan and send the slide again via the Slide Dispatch page | Off: clicking "Send to Pathologist" once sends the slide to the Pathologist immediately'
           >
             <Form.Item name="nongyne_slide_dispatch_enabled" valuePropName="checked" noStyle>
               <Switch checkedChildren="ON" unCheckedChildren="OFF" />
@@ -300,20 +300,20 @@ const WorkflowTab: React.FC = () => {
           <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
             <SettingRow
               title="Idle Timeout"
-              description={`ออกจากระบบอัตโนมัติเมื่อไม่มีการใช้งาน — จะแสดงคำเตือน ${warningMinutes} นาทีก่อนหมดเวลา`}
+              description={`Automatically logs out when idle — a warning is shown ${warningMinutes} minutes before timeout`}
               icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
             >
               <Form.Item name="idle_timeout_minutes" noStyle>
-                <InputNumber min={2} max={480} step={5} addonAfter="นาที" style={{ width: 160 }} />
+                <InputNumber min={2} max={480} step={5} addonAfter="min" style={{ width: 160 }} />
               </Form.Item>
             </SettingRow>
             <SettingRow
               title="Warning Lead Time"
-              description="แสดงคำเตือนล่วงหน้าก่อนออกจากระบบ"
+              description="Shows a warning before automatically logging out"
               icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
             >
               <Form.Item name="idle_warning_minutes" noStyle>
-                <InputNumber min={1} max={10} step={1} addonAfter="นาที" style={{ width: 160 }} />
+                <InputNumber min={1} max={10} step={1} addonAfter="min" style={{ width: 160 }} />
               </Form.Item>
             </SettingRow>
           </div>
@@ -358,8 +358,8 @@ const WorkflowTab: React.FC = () => {
             <ClockCircleOutlined /> Turnaround Time (SLA)
           </Title>
           <Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
-            กำหนดเป้าหมายเวลาทำงาน (Working Days)
-            โดยระบบจะไม่นับรวมวันเสาร์-อาทิตย์ และวันหยุดราชการ
+            Sets the target turnaround time (Working Days).
+            The system excludes Saturdays, Sundays, and public holidays.
           </Text>
 
           <div
@@ -372,7 +372,7 @@ const WorkflowTab: React.FC = () => {
           >
             <SettingRow
               title="Surgical Pathology"
-              description="เป้าหมายเวลาสำหรับเคสตรวจชิ้นเนื้อทางศัลยกรรม"
+              description="Target turnaround time for surgical tissue cases"
             >
               <Space size="large">
                 <Form.Item
@@ -394,7 +394,7 @@ const WorkflowTab: React.FC = () => {
 
             <SettingRow
               title="Non-Gynecology"
-              description="เป้าหมายเวลาสำหรับเคสเซลล์วิทยาที่ไม่ใช่สูตินรีเวช"
+              description="Target turnaround time for non-gynecologic cytology cases"
             >
               <Space size="large">
                 <Form.Item
@@ -416,7 +416,7 @@ const WorkflowTab: React.FC = () => {
 
             <SettingRow
               title="Gynecology (Pap Smear)"
-              description="เป้าหมายเวลาสำหรับเคสตรวจมะเร็งปากมดลูก"
+              description="Target turnaround time for cervical cancer screening cases"
               icon={null}
             >
               <Space size="large">
@@ -441,7 +441,7 @@ const WorkflowTab: React.FC = () => {
 
         <Alert
           icon={<InfoCircleOutlined />}
-          message="การตั้งค่าเหล่านี้จะมีผลกับเคสใหม่ที่ลงทะเบียนหลังจากกดบันทึกแล้วเท่านั้น"
+          message="These settings will only apply to new cases registered after saving"
           type="info"
           showIcon
         />

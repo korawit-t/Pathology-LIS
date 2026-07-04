@@ -35,7 +35,9 @@ def create_final_report_snapshot(db: Session, case_id: int, report_id: int = Non
             .first()
         )
 
-    report_dict = prepare_report_data(db, case_id)
+    report_dict = prepare_report_data(
+        db, case_id, target_report_id=existing_report.id if existing_report else None
+    )
     if not report_dict:
         return None
 
@@ -204,15 +206,37 @@ def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSave
             report_draft_result = None
             current_order_no = None
 
-            _consult_snap = prepare_report_data(db, case_id)
-            if _consult_snap:
-                _allowed = {c.name for c in SurgicalReport.__table__.columns}
-                _safe = {k: v for k, v in _consult_snap.items() if k in _allowed}
-                _safe.pop("id", None)
-                _consult_draft = SurgicalReport(**_safe)
-                _consult_draft.status = ReportStatus.DRAFT
-                db.add(_consult_draft)
-                db.flush()
+            # Apply the pathologist's pending toggle before snapshotting, so a
+            # resolved consult round doesn't bake the stale "awaiting consult"
+            # pending flag into the just-published report (mirrors the same
+            # assignment bulk_save_draft_orchestrator does for normal draft saves).
+            if db_case:
+                db_case.is_pending = data.is_pending
+                db_case.pending_reason = data.pending_reason if data.is_pending else None
+
+            # Reuse an already-in-flight draft/pending-approval report for this
+            # case instead of unconditionally inserting a new row every call —
+            # avoids leaving an orphaned duplicate report behind on a retry.
+            existing_consult_draft = (
+                db.query(SurgicalReport)
+                .filter(
+                    SurgicalReport.case_id == case_id,
+                    SurgicalReport.status.in_(
+                        [ReportStatus.DRAFT, ReportStatus.PENDING_APPROVAL]
+                    ),
+                )
+                .first()
+            )
+            if not existing_consult_draft:
+                _consult_snap = prepare_report_data(db, case_id)
+                if _consult_snap:
+                    _allowed = {c.name for c in SurgicalReport.__table__.columns}
+                    _safe = {k: v for k, v in _consult_snap.items() if k in _allowed}
+                    _safe.pop("id", None)
+                    _consult_draft = SurgicalReport(**_safe)
+                    _consult_draft.status = ReportStatus.DRAFT
+                    db.add(_consult_draft)
+                    db.flush()
 
         if db_case:
             if data.stain_quality:
@@ -221,7 +245,10 @@ def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSave
                 db_case.tissue_quality = data.tissue_quality
             if data.slide_quality:
                 db_case.slide_quality = data.slide_quality
-            db.add(db_case)
+            # db_case is already persistent (loaded via query above) — no need
+            # to re-add it; doing so was implicated in a session identity-map
+            # conflict when a report row was flushed earlier in this same
+            # transaction (relationship cascade re-attaching a stale instance).
             db.flush()
 
         if not current_order_no or current_order_no == 1:
@@ -306,7 +333,7 @@ def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSave
                 {"status": "signed", "diagnosis_at": now}, synchronize_session=False
             )
 
-            full_payload = prepare_report_data(db, case_id)
+            full_payload = prepare_report_data(db, case_id, target_report_id=report.id)
             report = create_final_report_snapshot(db, case_id, report_id=report.id)
             report.pathologist_name = full_payload.get(
                 "pathologist_name", report.pathologist_name
@@ -322,8 +349,6 @@ def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSave
 
             if is_consult_dispatched:
                 db_case.consult_status = "received"
-
-            db.add(db_case)
         else:
             report = create_final_report_snapshot(db, case_id, report_id=report.id)
             report.status = ReportStatus.DRAFT

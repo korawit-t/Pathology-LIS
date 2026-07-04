@@ -161,6 +161,13 @@ const SurgicalCaseService = {
     await api.delete(`/surgical-cases/${caseId}/consult-pdf`);
   },
 
+  getConsultPdfBlob: async (caseId: number): Promise<Blob> => {
+    const response = await api.get(`/surgical-cases/${caseId}/consult-pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
   downloadConsultPdf: async (caseId: number, fileName: string): Promise<void> => {
     try {
       const response = await api.get(`/surgical-cases/${caseId}/consult-pdf`, {

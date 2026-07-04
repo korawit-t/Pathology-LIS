@@ -409,12 +409,27 @@ def get_correlation_summary(db: Session, start_date=None, end_date=None) -> dict
     }
 
 
-def get_correlation_group_cases(db: Session, group: str, start_date=None, end_date=None) -> list[dict]:
-    """List the Gyne Cytology cases behind one `_DIAG_GROUPS` bucket from get_correlation_summary (drill-down)."""
+def get_correlation_group_cases(
+    db: Session,
+    group: str | None = None,
+    specimen: str | None = None,
+    start_date=None,
+    end_date=None,
+) -> list[dict]:
+    """List the Gyne Cytology cases behind one summary bucket (drill-down).
+
+    `group` selects a `_DIAG_GROUPS` bucket, plus the pseudo-group "hsil_plus"
+    (union of `_HSIL_GROUP_KEYS`, matching `hsil_total` in get_correlation_summary).
+    `specimen` selects a `registration_counts` bucket (conventional/liquid_based/other).
+    Passing neither returns every counted case (the registration/grand total row).
+    """
     from app.models.patient import Patient
     from sqlalchemy.orm import joinedload
 
-    if group not in {g[0] for g in _DIAG_GROUPS}:
+    valid_groups = {g[0] for g in _DIAG_GROUPS} | {"hsil_plus"}
+    if group is not None and group not in valid_groups:
+        return []
+    if specimen is not None and specimen not in {"conventional", "liquid_based", "other"}:
         return []
 
     gyne_q = _gyne_summary_query(db, start_date, end_date).options(
@@ -428,8 +443,23 @@ def get_correlation_group_cases(db: Session, group: str, start_date=None, end_da
         cat_1_code = cat_1.code if cat_1 else None
         if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code, case.is_out_lab):
             continue  # no adequacy/diagnosis result issued yet — never shown in a drill-down
-        if _classify_gyne_group(case.is_satisfied_specimen, code, cat_1_code) != group:
-            continue
+
+        if group is not None:
+            case_group = _classify_gyne_group(case.is_satisfied_specimen, code, cat_1_code)
+            if group == "hsil_plus":
+                if case_group not in _HSIL_GROUP_KEYS:
+                    continue
+            elif case_group != group:
+                continue
+
+        if specimen is not None:
+            spec = (case.specimen_type or "").lower()
+            is_conv = "conventional" in spec
+            is_liq = "liquid" in spec or "lbc" in spec
+            case_specimen = "conventional" if is_conv else "liquid_based" if is_liq else "other"
+            if case_specimen != specimen:
+                continue
+
         patient = case.patient
         results.append({
             "id": case.id,
@@ -450,3 +480,33 @@ def get_correlation_group_cases(db: Session, group: str, start_date=None, end_da
 
     results.sort(key=lambda r: r["registered_at"] or "", reverse=True)
     return results
+
+
+def get_hsil_discordant_correlations(db: Session, result: str, start_date=None, end_date=None) -> list[dict]:
+    """List cyto-histo correlation records for HSIL+ gyne cases with the given
+    correlation_result — mirrors the hsil_major/hsil_minor counting in get_correlation_summary."""
+    gyne_q = _gyne_summary_query(db, start_date, end_date)
+
+    hsil_case_ids: set[int] = set()
+    for case, diag, cat in gyne_q.all():
+        code = cat.code if cat else None
+        cat_1_code = diag.category_1_obj.code if diag and diag.category_1_obj else None
+        if not _has_gyne_result(case.is_satisfied_specimen, code, cat_1_code, case.is_out_lab):
+            continue
+        if cat and cat.code in _HSIL_OR_ABOVE_CODES:
+            hsil_case_ids.add(case.id)
+
+    if not hsil_case_ids:
+        return []
+
+    rows = (
+        db.query(NongyneCytoHistoCorrelation)
+        .filter(
+            NongyneCytoHistoCorrelation.case_type == "gyne",
+            NongyneCytoHistoCorrelation.gyne_case_id.in_(hsil_case_ids),
+            NongyneCytoHistoCorrelation.correlation_result == result,
+        )
+        .order_by(NongyneCytoHistoCorrelation.correlated_at.desc())
+        .all()
+    )
+    return [_serialize_correlation(r) for r in rows]

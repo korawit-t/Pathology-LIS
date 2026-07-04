@@ -27,6 +27,9 @@ export interface OutlabConsultRunDetailResponse {
   block_returned: boolean;
   block_returned_at?: string;
   block_returned_by_id?: number;
+  // Live consult_status of the underlying case (not the run's own status) —
+  // lets the UI show this specific case's own progress within a multi-case run.
+  case_consult_status?: string;
 }
 
 export interface OutlabConsultRunResponse {

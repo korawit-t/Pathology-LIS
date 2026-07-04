@@ -30,20 +30,20 @@ const GuideModal: React.FC<GuideModalProps> = ({ open, onClose }) => (
     title={
       <Space>
         <QuestionCircleOutlined style={{ color: "#1677ff" }} />
-        <span>คู่มือการใช้งาน — Accession</span>
+        <span>User Guide — Accession</span>
       </Space>
     }
     onCancel={onClose}
-    footer={<Button type="primary" onClick={onClose}>เข้าใจแล้ว</Button>}
+    footer={<Button type="primary" onClick={onClose}>Got it</Button>}
     width={640}
     destroyOnHidden
   >
     <div style={{ lineHeight: 2 }}>
-      <Text strong style={{ fontSize: 14 }}>การลงทะเบียนเคส</Text>
+      <Text strong style={{ fontSize: 14 }}>Case Registration</Text>
       <ul style={{ marginTop: 4, paddingLeft: 20 }}>
-        <li><Tag color="blue"><ScissorOutlined /> New Surgical</Tag> — เคสชิ้นเนื้อ (Surgical Pathology)</li>
-        <li><Tag color="green"><MedicineBoxOutlined /> New Gyne</Tag> — เคส Gyne Cytology (Pap smear ฯลฯ)</li>
-        <li><Tag color="orange"><UserOutlined /> New Non-Gyne</Tag> — เคส Non-Gyne Cytology</li>
+        <li><Tag color="blue"><ScissorOutlined /> New Surgical</Tag> — Tissue case (Surgical Pathology)</li>
+        <li><Tag color="green"><MedicineBoxOutlined /> New Gyne</Tag> — Gyne Cytology case (Pap smear, etc.)</li>
+        <li><Tag color="orange"><UserOutlined /> New Non-Gyne</Tag> — Non-Gyne Cytology case</li>
       </ul>
 
       <Divider style={{ margin: "12px 0" }} />
@@ -80,34 +80,34 @@ const GuideModal: React.FC<GuideModalProps> = ({ open, onClose }) => (
         ))}
       </Space>
       <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>
-        Badge ที่มี <CheckCircleFilled style={{ color: "#52c41a", fontSize: 11 }} /> มุมขวาบน = ขั้นตอนนั้นเสร็จแล้ว
+        Badge with <CheckCircleFilled style={{ color: "#52c41a", fontSize: 11 }} /> in the top-right corner = that step is complete
       </div>
 
       <Divider style={{ margin: "12px 0" }} />
 
-      <Text strong style={{ fontSize: 14 }}>Tag พิเศษบน Accession No.</Text>
+      <Text strong style={{ fontSize: 14 }}>Special Tags on Accession No.</Text>
       <ul style={{ marginTop: 4, paddingLeft: 20 }}>
-        <li><FireFilled style={{ color: "#ff4d4f" }} /> — <b>Express/Urgent</b> ต้องรีบดำเนินการ</li>
-        <li><Tag color="purple" style={{ fontSize: 10 }}>Consult</Tag> — ส่ง Outlab Consult แล้ว ยังรอผล</li>
-        <li><Tag color="geekblue" style={{ fontSize: 10 }}>IHC</Tag> — มีการสั่ง IHC ที่ยังไม่ครบการแปลผล</li>
+        <li><FireFilled style={{ color: "#ff4d4f" }} /> — <b>Express/Urgent</b>, needs to be handled quickly</li>
+        <li><Tag color="purple" style={{ fontSize: 10 }}>Consult</Tag> — sent for Outlab Consult, awaiting result</li>
+        <li><Tag color="geekblue" style={{ fontSize: 10 }}>IHC</Tag> — has IHC ordered that is not yet fully interpreted</li>
       </ul>
 
       <Divider style={{ margin: "12px 0" }} />
 
       <Text strong style={{ fontSize: 14 }}>Due Date (TAT)</Text>
       <ul style={{ marginTop: 4, paddingLeft: 20 }}>
-        <li><Text style={{ color: "#ff4d4f", fontWeight: 600 }}>สีแดง</Text> — เลยกำหนดแล้ว (Overdue)</li>
-        <li><Text style={{ color: "#fa8c16", fontWeight: 600 }}>สีส้ม</Text> — เหลือเวลาน้อยกว่า 24 ชั่วโมง</li>
-        <li><CheckCircleOutlined style={{ color: "#52c41a" }} /> — เคสปิดแล้ว (Signed out / Published)</li>
+        <li><Text style={{ color: "#ff4d4f", fontWeight: 600 }}>Red</Text> — past due (Overdue)</li>
+        <li><Text style={{ color: "#fa8c16", fontWeight: 600 }}>Orange</Text> — less than 24 hours remaining</li>
+        <li><CheckCircleOutlined style={{ color: "#52c41a" }} /> — case closed (Signed out / Published)</li>
       </ul>
 
       <Divider style={{ margin: "12px 0" }} />
 
-      <Text strong style={{ fontSize: 14 }}>อื่นๆ</Text>
+      <Text strong style={{ fontSize: 14 }}>Other</Text>
       <ul style={{ marginTop: 4, paddingLeft: 20 }}>
-        <li>คลิกที่แถวในตาราง → เปิด <b>Case Detail</b> ดู Report, Block, IHC Outlab, Consult history</li>
-        <li>ช่องค้นหา (Tab All) รองรับ Accession No., HN, ชื่อผู้ป่วย — เมื่อพิมพ์จะค้นข้อมูลทั้งหมด ไม่จำกัดช่วงวันที่</li>
-        <li>Tab แยกแต่ละประเภท (Surgical / Gyne / Non-Gyne) มี filter Hospital, Status, Date เพิ่มเติม</li>
+        <li>Click a row in the table → opens <b>Case Detail</b> to view Report, Block, IHC Outlab, Consult history</li>
+        <li>The search box (All tab) supports Accession No., HN, patient name — typing searches all data, not limited to a date range</li>
+        <li>Type-specific tabs (Surgical / Gyne / Non-Gyne) have additional Hospital, Status, Date filters</li>
       </ul>
     </div>
   </Modal>

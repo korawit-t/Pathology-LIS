@@ -74,6 +74,7 @@ import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
 import NongyneSignOffPage from "./components/NongyneSignOffPage";
+import { getConsultLockState } from "../Pathologist/utils/consultLockState";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -191,7 +192,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         signed_at: null,
       });
     if (pathoId)
-      signers.push({ user_id: pathoId, role: "pathologist", signed_at: null });
+      signers.push({ user_id: pathoId, role: "primary", signed_at: null });
     return signers;
   }, [caseData]);
 
@@ -333,16 +334,27 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       ),
     [caseData],
   );
-  const isFormMode = !diagnosis || isAddendumMode || !isFinalized;
-  const isFormLocked = isFinalized && !isAddendumMode;
+  const { isConsultEditorLocked, isConsultFinalizeLocked, isEditorLocked, isFinalizeLocked } =
+    getConsultLockState({
+      isLocked: isFinalized && !isAddendumMode,
+      isAddendumMode,
+      isAwaitingApproval: false,
+      isOutLabConsult: !!caseData?.is_out_lab_consult,
+      consultStatus: caseData?.consult_status,
+      consultPdfPath: caseData?.consult_pdf_path,
+    });
+  const isFormMode = !diagnosis || isAddendumMode || !isFinalized || isConsultEditorLocked;
 
-  // Auto-show popup when entering a finalized case
+  // Auto-show popup when entering a finalized case — suppressed while a
+  // consult round is actively awaiting the pathologist's attention, so it
+  // doesn't cover up the now-reachable Sign-off button (mirrors the same
+  // fix applied to Surgical's equivalent popup).
   useEffect(() => {
-    if (caseData && isFinalized && !completedCasePopupShownRef.current) {
+    if (caseData && isFinalized && !isConsultEditorLocked && !completedCasePopupShownRef.current) {
       completedCasePopupShownRef.current = true;
       setCompletedCasePopupOpen(true);
     }
-  }, [caseData?.id, caseData?.status, isFinalized]);
+  }, [caseData?.id, caseData?.status, isFinalized, isConsultEditorLocked]);
 
   // Load report history when popup opens
   useEffect(() => {
@@ -450,11 +462,12 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     setSlideQualityModalOpen(true);
   };
 
-  const handleFinalize = async (
+  const finalizeCore = async (
     slideQuality: string | null,
     stainQuality: string | null,
     isCasePending: boolean,
     pendingReason: string,
+    outLab?: { reason: string },
   ) => {
     if (!diagnosis) return;
     try {
@@ -499,9 +512,13 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         updatedSigners,
         isCasePending,
         isCasePending ? pendingReason : undefined,
+        outLab ? true : undefined,
+        outLab?.reason,
       )) as { id: number };
 
-      if (!requireApproval) {
+      if (outLab) {
+        message.success("Report signed off — flagged for Out-Lab Consult");
+      } else if (!requireApproval) {
         await ApprovalService.processDecision(
           publishedReport.id,
           {
@@ -524,6 +541,26 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       setSubmitting(false);
     }
   };
+
+  const handleFinalize = (
+    slideQuality: string | null,
+    stainQuality: string | null,
+    isCasePending: boolean,
+    pendingReason: string,
+  ) => finalizeCore(slideQuality, stainQuality, isCasePending, pendingReason);
+
+  const handleOutLabConsult = (
+    reason: string,
+    slideQuality: string,
+    stainQuality: string,
+  ) =>
+    finalizeCore(
+      slideQuality,
+      stainQuality,
+      true,
+      "Out-Lab Consult — awaiting results",
+      { reason },
+    );
 
   const handlePreviewPdf = async () => {
     try {
@@ -653,7 +690,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                 </Tag>
               )}
               {isAddendumMode && <Tag color="orange">New Report Mode</Tag>}
-              {isFormLocked && (
+              {isEditorLocked && (
                 <Tooltip title="Form is locked after sign-off">
                   <LockOutlined style={{ color: "#8c8c8c" }} />
                 </Tooltip>
@@ -666,7 +703,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
             <Checkbox
               checked={caseData?.is_out_lab_consult || false}
               onChange={(e) => handleToggleOutLabConsult(e.target.checked)}
-              disabled={isFormLocked}
+              disabled={isEditorLocked}
             >
               Out-Lab Consult
             </Checkbox>
@@ -732,11 +769,12 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   Save Draft
                 </Button>
 
-                {(!isFinalized || isAddendumMode) && diagnosis && (
+                {(!isFinalized || isAddendumMode || isConsultEditorLocked) && diagnosis && (
                   <Button
                     type="primary"
                     icon={<CheckCircleOutlined />}
                     loading={submitting}
+                    disabled={isFinalizeLocked}
                     onClick={handleFinalizeClick}
                     style={{ background: "#cf1322", border: "none" }}
                   >
@@ -953,7 +991,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                     rules={[{ required: true }]}
                     style={{ marginBottom: 0 }}
                   >
-                    <Select disabled={isFormLocked}>
+                    <Select disabled={isEditorLocked}>
                       {SPECIMEN_TYPES.map((t) => (
                         <Select.Option key={t} value={t}>
                           {t}
@@ -970,7 +1008,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   >
                     <Input
                       placeholder="e.g. Right lobe, Ascitic fluid"
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                     />
                   </Form.Item>
                 </Col>
@@ -980,7 +1018,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                     label="Volume (ml)"
                     style={{ marginBottom: 0 }}
                   >
-                    <Input placeholder="e.g. 50" disabled={isFormLocked} />
+                    <Input placeholder="e.g. 50" disabled={isEditorLocked} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -1021,7 +1059,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                         Gross Description
                       </Text>
                     </Space>
-                    {!isFormLocked && (
+                    {!isEditorLocked && (
                       <Button size="small" icon={<FileTextOutlined />} onClick={() => setGrossTemplateDrawerOpen(true)}>
                         Templates
                       </Button>
@@ -1030,7 +1068,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   <Form.Item name="gross_description" noStyle>
                     <SimpleTiptapEditor
                       placeholder="Describe received specimen, fluid volume, color, turbidity, slides..."
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                       style={{ minHeight: "90px" }}
                     />
                   </Form.Item>
@@ -1064,7 +1102,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                             Diagnosis
                           </Text>
                         </Space>
-                        {!isFormLocked && (
+                        {!isEditorLocked && (
                           <Button
                             size="small"
                             icon={<FileTextOutlined />}
@@ -1083,7 +1121,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                       >
                         <SimpleTiptapEditor
                           placeholder="Enter diagnosis..."
-                          disabled={isFormLocked}
+                          disabled={isEditorLocked}
                           style={{ minHeight: "150px" }}
                         />
                       </Form.Item>
@@ -1106,7 +1144,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                         <Switch
                           checked={caseData?.is_cell_block || false}
                           onChange={handleToggleCellBlock}
-                          disabled={isFormLocked}
+                          disabled={isEditorLocked}
                         />
                         <Text strong>Cell block prepared</Text>
                         {caseData?.is_cell_block &&
@@ -1167,7 +1205,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                       <Form.Item name="microscopic_description" noStyle>
                         <SimpleTiptapEditor
                           placeholder="Describe microscopic findings..."
-                          disabled={isFormLocked}
+                          disabled={isEditorLocked}
                           style={{ minHeight: "150px" }}
                         />
                       </Form.Item>
@@ -1209,7 +1247,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                               size="small"
                               placeholder="Description..."
                               value={descMap[img.id] ?? ""}
-                              disabled={isFormLocked}
+                              disabled={isEditorLocked}
                               style={{ marginTop: 4, fontSize: 11 }}
                               onChange={(e) =>
                                 setDescMap((prev) => ({
@@ -1235,7 +1273,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                                   fetchImages();
                                 }}
                               />
-                              {!isFormLocked && (
+                              {!isEditorLocked && (
                                 <Button
                                   size="small"
                                   icon={<EditOutlined />}
@@ -1258,7 +1296,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                           </div>
                         ))}
                       </div>
-                      {!isFormLocked && (
+                      {!isEditorLocked && (
                         <Button
                           icon={<PlusOutlined />}
                           onClick={() => {
@@ -1281,7 +1319,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                 <NongyneIHCResultPanel
                   form={form}
                   caseId={Number(caseId)}
-                  isLocked={isFormLocked}
+                  isLocked={isEditorLocked}
                 />
               </StyledCard>
             )}
@@ -1291,7 +1329,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
               caseId={Number(caseId)}
               caseType="nongyne"
               diagnosisSnapshot={diagnosis?.diagnosis ?? undefined}
-              isLocked={isFormLocked}
+              isLocked={isEditorLocked}
             />
 
             {/* Comment + Signatories */}
@@ -1310,7 +1348,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                     <TextArea
                       autoSize={{ minRows: 3 }}
                       placeholder="Additional comments or remarks..."
-                      disabled={isFormLocked}
+                      disabled={isEditorLocked}
                     />
                   </Form.Item>
                   {isAddendumMode && (
@@ -1342,7 +1380,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                     form={form}
                     pathologists={allUsers}
                     defaultSigners={defaultSigners}
-                    isLocked={isFormLocked}
+                    isLocked={isEditorLocked}
                     namePath={SIGNERS_PATH}
                     settings={{ require_all_pathologists_sign: false }}
                   />
@@ -1420,9 +1458,10 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         finalizing={submitting}
         initialSlideQuality={caseData?.slide_quality ?? null}
         initialStainQuality={caseData?.stain_quality ?? null}
-        initialIsCasePending={caseData?.is_pending ?? false}
+        initialIsCasePending={isConsultEditorLocked ? false : (caseData?.is_pending ?? false)}
         onClose={() => setSlideQualityModalOpen(false)}
         onConfirm={handleFinalize}
+        onConfirmAndOutLab={handleOutLabConsult}
       />
 
       {/* Case Already Signed Off popup */}

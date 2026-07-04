@@ -262,39 +262,39 @@ const GeneralTab = () => {
 
           <Form.Item
             name="lab_name_th"
-            label="ชื่อห้องปฏิบัติการ (TH)"
-            rules={[{ required: true, message: "กรุณากรอกชื่อภาษาไทย" }]}
+            label="Laboratory Name (TH)"
+            rules={[{ required: true, message: "Please enter the Thai name" }]}
           >
-            <Input placeholder="เช่น ศูนย์พยาธิวิทยากายวิภาค" />
+            <Input placeholder="e.g. Anatomical Pathology Center" />
           </Form.Item>
 
           <Form.Item
             name="lab_name_en"
             label="Laboratory Name (EN)"
-            rules={[{ required: true, message: "กรุณากรอกชื่อภาษาอังกฤษ" }]}
+            rules={[{ required: true, message: "Please enter the English name" }]}
           >
-            <Input placeholder="เช่น Pathology Diagnostic Center" />
+            <Input placeholder="e.g. Pathology Diagnostic Center" />
           </Form.Item>
 
           <Form.Item
             name="lab_short_name_en"
-            label="ชื่อย่อ (Short Name EN)"
+            label="Short Name (EN)"
           >
-            <Input placeholder="เช่น PDC-LAB" />
+            <Input placeholder="e.g. PDC-LAB" />
           </Form.Item>
 
-          <Form.Item name="lab_address" label="ที่อยู่ห้องปฏิบัติการ">
-            <TextArea rows={3} placeholder="เลขที่ตั้งห้องปฏิบัติการ..." />
+          <Form.Item name="lab_address" label="Laboratory Address">
+            <TextArea rows={3} placeholder="Laboratory address..." />
           </Form.Item>
 
           <Form.Item
             name="login_announcement"
-            label="ข้อความแจ้งข่าวหน้า Login"
-            extra="แสดงเป็น banner บนหน้า Login — เว้นว่างไว้ถ้าไม่ต้องการแสดง"
+            label="Login Page Announcement"
+            extra="Shown as a banner on the Login page — leave blank if not needed"
           >
             <TextArea
               rows={3}
-              placeholder={"เช่น ย้ายมาระบบใหม่แล้ว ใช้ Username เดิม Password = Username\nกรุณาเปลี่ยนรหัสผ่านอย่างน้อย 8 ตัวอักษร"}
+              placeholder={"e.g. Migrated to the new system. Use the same Username, Password = Username\nPlease change your password to at least 8 characters"}
             />
           </Form.Item>
 

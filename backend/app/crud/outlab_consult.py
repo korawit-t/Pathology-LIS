@@ -48,6 +48,10 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
                 from app.models.surgical_case import SurgicalCase
                 sc = db.query(SurgicalCase.consult_report_out_at).filter(SurgicalCase.id == item.case_id).first()
                 report_out_at = sc.consult_report_out_at if sc else None
+            elif item.case_type == "nongyne":
+                from app.models.nongyne_cyto_case import NongyneCytologyCase
+                nc = db.query(NongyneCytologyCase.consult_report_out_at).filter(NongyneCytologyCase.id == item.case_id).first()
+                report_out_at = nc.consult_report_out_at if nc else None
 
             detail = OutlabConsultRunDetail(
                 run_id=db_run.id,
@@ -87,12 +91,50 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
         raise e
 
 def get_consult_runs(db: Session, skip: int = 0, limit: int = 50):
-    return (
+    runs = (
         db.query(OutlabConsultRun)
         .options(selectinload(OutlabConsultRun.details))
         .order_by(OutlabConsultRun.id.desc())
         .offset(skip).limit(limit).all()
     )
+    _attach_live_case_consult_status(db, runs)
+    return runs
+
+
+def _attach_live_case_consult_status(db: Session, runs: list["OutlabConsultRun"]):
+    """Attach each detail's underlying case's live consult_status (not a stored
+    column) so the UI can show this specific case's own progress instead of
+    the shipment run's overall status — a run can bundle multiple cases, and
+    one case finishing doesn't mean the whole shipment came back."""
+    ids_by_type: dict[str, set[int]] = {"surgical": set(), "gyne": set(), "nongyne": set()}
+    for run in runs:
+        for detail in run.details:
+            if detail.case_type in ids_by_type:
+                ids_by_type[detail.case_type].add(detail.case_id)
+
+    status_by_type: dict[str, dict[int, str]] = {}
+    if ids_by_type["surgical"]:
+        from app.models.surgical_case import SurgicalCase
+        rows = db.query(SurgicalCase.id, SurgicalCase.consult_status).filter(
+            SurgicalCase.id.in_(ids_by_type["surgical"])
+        ).all()
+        status_by_type["surgical"] = {r.id: r.consult_status for r in rows}
+    if ids_by_type["gyne"]:
+        from app.models.gyne_cyto_case import GyneCytologyCase
+        rows = db.query(GyneCytologyCase.id, GyneCytologyCase.consult_status).filter(
+            GyneCytologyCase.id.in_(ids_by_type["gyne"])
+        ).all()
+        status_by_type["gyne"] = {r.id: r.consult_status for r in rows}
+    if ids_by_type["nongyne"]:
+        from app.models.nongyne_cyto_case import NongyneCytologyCase
+        rows = db.query(NongyneCytologyCase.id, NongyneCytologyCase.consult_status).filter(
+            NongyneCytologyCase.id.in_(ids_by_type["nongyne"])
+        ).all()
+        status_by_type["nongyne"] = {r.id: r.consult_status for r in rows}
+
+    for run in runs:
+        for detail in run.details:
+            detail.case_consult_status = status_by_type.get(detail.case_type, {}).get(detail.case_id)
 
 def receive_consult_run(db: Session, run_id: int, user_id: int):
     db_run = db.query(OutlabConsultRun).filter(OutlabConsultRun.id == run_id).first()

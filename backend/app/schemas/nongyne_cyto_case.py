@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime, date
 from typing import Optional, List
 
@@ -83,6 +83,7 @@ class NongyneCytologyCaseCreate(NongyneCytologyBase):
     is_rose: bool = False
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
+    num_slides: Optional[int] = Field(default=None, ge=1)
     # registrar_id จะถูกใส่ที่ CRUD/Route จาก current_user
 
 
@@ -117,6 +118,10 @@ class NongyneCytologyCaseUpdate(BaseModel):
     out_lab_result_pdf_path: Optional[str] = None
     consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
+    consult_reason: Optional[str] = None
+    consult_report_out_at: Optional[datetime] = None
+    consult_pdf_received_at: Optional[datetime] = None
+    pending_reason: Optional[str] = None
 
     # Cell Block
     is_cell_block: Optional[bool] = None
@@ -139,11 +144,15 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     is_screened: bool = False
     is_reported: bool = False
     is_pending: bool = False
+    pending_reason: Optional[str] = None
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
     consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
+    consult_reason: Optional[str] = None
+    consult_report_out_at: Optional[datetime] = None
+    consult_pdf_received_at: Optional[datetime] = None
 
     # Cell Block
     is_cell_block: bool = False
@@ -176,6 +185,10 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
 
     slide_quality: Optional[str] = None
     stain_quality: Optional[str] = None
+
+    # Computed: current number of NongyneCytologyStain rows for this case
+    # (only populated on the single-case fetch, see get_nongyne_case)
+    slide_count: Optional[int] = None
 
     # Computed: whether a cyto-histo correlation exists for this case
     has_correlation: Optional[bool] = None

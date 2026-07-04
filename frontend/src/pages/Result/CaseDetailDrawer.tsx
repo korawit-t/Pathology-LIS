@@ -203,7 +203,7 @@ const CaseDetailDrawer: React.FC<CaseDetailDrawerProps> = ({ caseId, accessionNo
           <Space direction="vertical" style={{ width: "100%" }}>
             <Descriptions bordered size="small" column={1}>
               <Descriptions.Item label="Consult Status">
-                <Tag color={caseData.consult_status === "completed" ? "green" : "orange"}>
+                <Tag color={caseData.consult_status === "received" ? "green" : "orange"}>
                   {caseData.consult_status?.toUpperCase() || "—"}
                 </Tag>
               </Descriptions.Item>

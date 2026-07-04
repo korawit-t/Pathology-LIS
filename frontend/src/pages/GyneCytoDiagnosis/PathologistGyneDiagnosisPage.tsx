@@ -68,7 +68,11 @@ interface PathologistGyneDiagnosisPageProps {
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 type BadgeStatus = "success" | "processing" | "error" | "default" | "warning";
-type GyneSigner = { user_id: number; role: string; signed_at?: string | null };
+type GyneSigner = {
+  user_id: number;
+  role: "primary" | "cytotechnologist" | "co-sign pathologist" | "co-sign cytotechnologist";
+  signed_at?: string | null;
+};
 const CASE_STATUS_CONFIG: Record<
   string,
   { color: BadgeStatus; label: string }
@@ -575,7 +579,7 @@ const PathologistGyneDiagnosisPage: React.FC<
 
   const isPrimary = useMemo(() => {
     if (!diagnosis || !currentUser) return true;
-    const primary = diagnosis.signers?.find((s) => s.role === "pathologist");
+    const primary = diagnosis.signers?.find((s) => s.role === "primary");
     return primary?.user_id === currentUser.id;
   }, [diagnosis, currentUser]);
 
@@ -592,7 +596,7 @@ const PathologistGyneDiagnosisPage: React.FC<
 
   const isPrimarySigned = useMemo(() => {
     if (!diagnosis?.signers) return false;
-    const patho = diagnosis.signers.find((s) => s.role === "pathologist");
+    const patho = diagnosis.signers.find((s) => s.role === "primary");
     const cyto = diagnosis.signers.find((s) => s.role === "cytotechnologist");
     if (patho) return !!patho.signed_at;
     if (cyto) return !!cyto.signed_at;

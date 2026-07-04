@@ -8,7 +8,6 @@ import {
   ExperimentOutlined,
   ClockCircleOutlined,
   MedicineBoxOutlined,
-  DownloadOutlined,
   TeamOutlined,
   StarOutlined,
   ScissorOutlined,
@@ -25,7 +24,6 @@ import { StatPanel as CytologyStatPanel } from "./CytologyStatPage";
 import TATDashboard from "./TATDashboard";
 import CancerRegistryPage from "./CancerRegistryPage";
 import TumorRegistryPage from "./TumorRegistryPage";
-import ExportPanel from "./ExportPanel";
 import LabTechStatPage from "./LabTechStatPage";
 import SlideQualityStatPage from "./SlideQualityStatPage";
 import CytoHistoCorrelationReport from "./CytoHistoCorrelationReport";
@@ -55,7 +53,7 @@ const ReportAnalyticsHub: React.FC = () => {
         items={[
           {
             key: "surgical",
-            label: <span><ScissorOutlined style={{ marginRight: 6 }} />Surgical</span>,
+            label: <span><ScissorOutlined style={{ marginRight: 6 }} />Surgical Pathology</span>,
             children: (
               <Tabs
                 size="middle"
@@ -152,6 +150,11 @@ const ReportAnalyticsHub: React.FC = () => {
                     children: <SlideQualityStatPage />,
                   },
                   {
+                    key: "cyto-histo",
+                    label: <span><LinkOutlined style={{ marginRight: 6 }} />Cyto-Histo Correlation</span>,
+                    children: <CytoHistoCorrelationReport />,
+                  },
+                  {
                     key: "cancer-registry",
                     label: <span><MedicineBoxOutlined style={{ marginRight: 6 }} />Cancer Registry</span>,
                     children: <CancerRegistryPage />,
@@ -161,27 +164,27 @@ const ReportAnalyticsHub: React.FC = () => {
                     label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Tumor Registry</span>,
                     children: <TumorRegistryPage />,
                   }] : []),
-                  {
-                    key: "cyto-histo",
-                    label: <span><LinkOutlined style={{ marginRight: 6 }} />Cyto-Histo Correlation</span>,
-                    children: <CytoHistoCorrelationReport />,
-                  },
                 ]}
               />
             ),
           },
           {
-            key: "workload",
-            label: <span><FormOutlined style={{ marginRight: 6 }} />Workload</span>,
+            key: "staff-productivity",
+            label: <span><TeamOutlined style={{ marginRight: 6 }} />Staff Productivity</span>,
             children: (
               <Tabs
                 size="middle"
-                defaultActiveKey="registration"
+                defaultActiveKey="overview"
                 style={INNER_STYLE}
                 items={[
                   {
+                    key: "overview",
+                    label: <span><BarChartOutlined style={{ marginRight: 6 }} />Overview</span>,
+                    children: <LabTechStatPage />,
+                  },
+                  {
                     key: "registration",
-                    label: <span><TeamOutlined style={{ marginRight: 6 }} />Registration by Staff</span>,
+                    label: <span><FormOutlined style={{ marginRight: 6 }} />Registration</span>,
                     children: <StaffRegistrationPage />,
                   },
                   {
@@ -191,41 +194,18 @@ const ReportAnalyticsHub: React.FC = () => {
                   },
                   {
                     key: "histo",
-                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Histo</span>,
+                    label: <span><ExperimentOutlined style={{ marginRight: 6 }} />Histotechnology</span>,
                     children: <HistoPage />,
                   },
                   {
                     key: "storage",
-                    label: <span><InboxOutlined style={{ marginRight: 6 }} />Storage</span>,
+                    label: <span><InboxOutlined style={{ marginRight: 6 }} />Storage / Filing</span>,
                     children: <StorageWorkloadPage />,
                   },
                   {
                     key: "outlab",
-                    label: <span><SendOutlined style={{ marginRight: 6 }} />Outlab</span>,
+                    label: <span><SendOutlined style={{ marginRight: 6 }} />Outlab Send-out</span>,
                     children: <OutlabWorkloadPage />,
-                  },
-                ]}
-              />
-            ),
-          },
-          {
-            key: "tools",
-            label: <span><DownloadOutlined style={{ marginRight: 6 }} />Tools</span>,
-            children: (
-              <Tabs
-                size="middle"
-                defaultActiveKey="lab-tech"
-                style={INNER_STYLE}
-                items={[
-                  {
-                    key: "lab-tech",
-                    label: <span><TeamOutlined style={{ marginRight: 6 }} />Lab Tech Stats</span>,
-                    children: <LabTechStatPage />,
-                  },
-                  {
-                    key: "export",
-                    label: <span><DownloadOutlined style={{ marginRight: 6 }} />Export</span>,
-                    children: <ExportPanel />,
                   },
                 ]}
               />

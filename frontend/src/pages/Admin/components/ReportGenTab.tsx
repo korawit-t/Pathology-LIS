@@ -102,8 +102,8 @@ const ReportGenTab: React.FC = () => {
               allowClear
               placeholder={
                 profiles.length === 0
-                  ? "ยังไม่มี AI Profile — ตั้งค่าที่ AI Configuration"
-                  : "เลือก AI Profile (optional)"
+                  ? "No AI Profile yet — configure it under AI Configuration"
+                  : "Select AI Profile (optional)"
               }
               disabled={profiles.length === 0}
               options={profileOptions}
@@ -118,13 +118,13 @@ const ReportGenTab: React.FC = () => {
         <Space style={{ marginBottom: 8 }}>
           <RobotOutlined style={{ color: "#8c8c8c" }} />
           <Text strong style={{ fontSize: "15px" }}>System Prompt</Text>
-          <Tooltip title="ถ้าว่างจะใช้ default prompt ที่ built-in ไว้ — กรอกเพื่อ override เช่น เพิ่ม instruction เฉพาะของโรงพยาบาล ปรับ format หรือเพิ่มตัวอย่าง">
+          <Tooltip title="If left blank, the built-in default prompt is used — fill in to override, e.g. to add hospital-specific instructions, adjust the format, or add examples">
             <InfoCircleOutlined style={{ color: "#8c8c8c" }} />
           </Tooltip>
         </Space>
         <div>
           <Text type="secondary" style={{ fontSize: "13px" }}>
-            เว้นว่างเพื่อใช้ default report generation prompt — กรอกเพื่อ override พฤติกรรม AI สำหรับ feature นี้โดยเฉพาะ
+            Leave blank to use the default report generation prompt — fill in to override the AI's behavior specifically for this feature
           </Text>
         </div>
         <Form.Item name="report_gen_system_prompt" style={{ marginTop: 12, marginBottom: 0 }}>

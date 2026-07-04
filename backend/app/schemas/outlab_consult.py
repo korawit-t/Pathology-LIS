@@ -31,6 +31,11 @@ class OutlabConsultRunDetailResponse(BaseModel):
     block_returned_at: Optional[datetime] = None
     block_returned_by_id: Optional[int] = None
 
+    # Live status of the underlying case (not a stored column — attached at
+    # query time in get_consult_runs) so the UI can show this specific case's
+    # own progress instead of the shipment run's overall "sent"/"received" status.
+    case_consult_status: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

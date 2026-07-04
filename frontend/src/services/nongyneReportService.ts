@@ -86,11 +86,15 @@ const NongyneReportService = {
     signers?: { user_id: number; role: string; signed_at?: string | null }[],
     is_pending?: boolean,
     pending_reason?: string,
+    is_out_lab_consult?: boolean,
+    consult_reason?: string,
   ): Promise<unknown> => {
     const res = await api.post(`/nongyne-cyto-reports/${caseId}/publish`, {
       signers,
       is_pending: is_pending ?? false,
       pending_reason: pending_reason ?? null,
+      is_out_lab_consult,
+      consult_reason,
     });
     return res.data;
   },

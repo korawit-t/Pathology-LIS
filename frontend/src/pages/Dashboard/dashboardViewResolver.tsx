@@ -293,7 +293,7 @@ export const resolveDashboardView = (props: Props) => {
   if (!view || currentView === "dashboard") {
     return (
       <Suspense fallback={<Spin fullscreen size="large" />}>
-        <DashboardHome user={user} onNavigate={onNavigate} />
+        <DashboardHome user={user} onNavigate={onNavigate} onSelectCase={onOpenReport} />
       </Suspense>
     );
   }

@@ -34,6 +34,7 @@ import {
   CheckCircleOutlined,
   FileAddOutlined,
   FilePdfOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -73,6 +74,7 @@ import type { SurgicalReport } from "../../../types/surgicalReport";
 import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
 import type { WsiFile } from "../../../types/system";
+import { getConsultLockState } from "../utils/consultLockState";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -105,6 +107,9 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [popupReceivedAt, setPopupReceivedAt] = useState<Dayjs>(dayjs());
   const [popupUploading, setPopupUploading] = useState(false);
   const consultPdfPopupShownRef = useRef(false);
+  const [consultPdfBlobUrl, setConsultPdfBlobUrl] = useState<string | null>(null);
+  const [consultPdfPreviewLoading, setConsultPdfPreviewLoading] = useState(false);
+  const [consultPdfDeleting, setConsultPdfDeleting] = useState(false);
 
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
@@ -257,44 +262,71 @@ const handleOpenFinalizeModal = async () => {
     setSurgicalCase,
   } = useSurgicalReport(caseId, user, form);
 
-  // Locks the diagnosis text editor until the consult report is finalized.
-  // Stays true even after PDF is uploaded — editor unlocks only once the case is published (isLocked).
-  const isConsultEditorLocked =
-    !!surgicalCase?.is_out_lab_consult &&
-    surgicalCase?.consult_status === "processing";
+  const { isConsultEditorLocked, isConsultFinalizeLocked, isEditorLocked, isFinalizeLocked } =
+    getConsultLockState({
+      isLocked,
+      isAddendumMode,
+      isAwaitingApproval,
+      isOutLabConsult: !!surgicalCase?.is_out_lab_consult,
+      consultStatus: surgicalCase?.consult_status,
+      consultPdfPath: surgicalCase?.consult_pdf_path,
+    });
 
-  // Locks Save Draft + Finalize buttons until the PDF is uploaded.
-  // Once PDF is set, buttons re-enable so the user can finalize with the prepended PDF.
-  const isConsultFinalizeLocked =
-    !!surgicalCase?.is_out_lab_consult &&
-    surgicalCase?.consult_status === "processing" &&
-    !surgicalCase?.consult_pdf_path;
-
-  const isEditorLocked   = (isLocked && !isAddendumMode) || isConsultEditorLocked;
-  const isFinalizeLocked = (isLocked && !isAddendumMode) || isConsultFinalizeLocked;
-
-  // Auto-open consult PDF popup once when case loads with returned-but-no-pdf state
+  // Auto-open consult PDF popup once per case-load whenever a consult round is active —
+  // regardless of whether the PDF is already uploaded (e.g. by lab staff before the
+  // pathologist opened the case). The popup itself switches between an upload view and
+  // a preview/sign-off view depending on whether consult_pdf_path is set.
   useEffect(() => {
     if (
       surgicalCase &&
+      surgicalCase.is_out_lab_consult &&
       surgicalCase.consult_status === "processing" &&
-      !surgicalCase.consult_pdf_path &&
       !consultPdfPopupShownRef.current
     ) {
       consultPdfPopupShownRef.current = true;
       setConsultPdfPopupOpen(true);
     }
-  }, [surgicalCase?.id, surgicalCase?.consult_status, surgicalCase?.consult_pdf_path]);
+  }, [surgicalCase?.id, surgicalCase?.is_out_lab_consult, surgicalCase?.consult_status]);
 
-  // Handle signed-out case entry: always show popup so user sees report history
+  // Load the consult PDF inline as soon as the popup opens in the
+  // "already uploaded" state — no extra click needed to preview it.
+  useEffect(() => {
+    let activeUrl: string | null = null;
+    if (consultPdfPopupOpen && surgicalCase?.consult_pdf_path && caseId) {
+      setConsultPdfPreviewLoading(true);
+      SurgicalCaseService.getConsultPdfBlob(Number(caseId))
+        .then((blob) => {
+          activeUrl = URL.createObjectURL(blob);
+          setConsultPdfBlobUrl(activeUrl);
+        })
+        .catch(() => message.error("ไม่สามารถโหลด Consult PDF ได้"))
+        .finally(() => setConsultPdfPreviewLoading(false));
+    } else {
+      setConsultPdfBlobUrl(null);
+    }
+    return () => {
+      if (activeUrl) URL.revokeObjectURL(activeUrl);
+    };
+  }, [consultPdfPopupOpen, surgicalCase?.consult_pdf_path, caseId]);
+
+  // Handle signed-out case entry: always show popup so user sees report history.
+  // Skipped while a consult round is actively pending (upload or re-sign-off) so
+  // that popup doesn't cover the Consult PDF popup underneath it.
   useEffect(() => {
     const isSignedOut =
       surgicalCase?.status === "signed out" || surgicalCase?.status === "published";
-    if (surgicalCase && isSignedOut && !completedCasePopupShownRef.current) {
+    const hasActiveConsult =
+      !!surgicalCase?.is_out_lab_consult && surgicalCase?.consult_status === "processing";
+    if (surgicalCase && isSignedOut && !hasActiveConsult && !completedCasePopupShownRef.current) {
       completedCasePopupShownRef.current = true;
       setCompletedCasePopupOpen(true);
     }
-  }, [surgicalCase?.id, surgicalCase?.status]);
+  }, [
+    surgicalCase?.id,
+    surgicalCase?.status,
+    surgicalCase?.is_out_lab_consult,
+    surgicalCase?.consult_status,
+  ]);
 
   // Fetch report history when popup opens OR history drawer opens
   useEffect(() => {
@@ -350,7 +382,8 @@ const handleOpenFinalizeModal = async () => {
         popupReceivedAt.toISOString(),
       );
       message.success("Consult PDF uploaded successfully");
-      setConsultPdfPopupOpen(false);
+      // Keep the popup open — it switches to Preview/Sign Off once
+      // surgicalCase.consult_pdf_path comes back truthy from refresh().
       setPopupUploadFile(null);
       refresh();
     } catch {
@@ -358,6 +391,35 @@ const handleOpenFinalizeModal = async () => {
     } finally {
       setPopupUploading(false);
     }
+  };
+
+  const handleSignOffFromConsultPopup = () => {
+    setConsultPdfPopupOpen(false);
+    handleOpenFinalizeModal();
+  };
+
+  const handleDeleteConsultPdf = () => {
+    if (!caseId) return;
+    Modal.confirm({
+      title: "Delete Consult PDF",
+      icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
+      content: "Remove the uploaded consult PDF? You'll need to upload a new one before signing off.",
+      okText: "Delete",
+      okType: "danger",
+      cancelText: "Cancel",
+      onOk: async () => {
+        setConsultPdfDeleting(true);
+        try {
+          await SurgicalCaseService.deleteConsultPdf(Number(caseId));
+          message.success("Consult PDF deleted");
+          refresh();
+        } catch {
+          message.error("Failed to delete Consult PDF");
+        } finally {
+          setConsultPdfDeleting(false);
+        }
+      },
+    });
   };
 
   // ── Unified save (used by toolbar, auto-save, and keyboard shortcut) ──
@@ -793,6 +855,11 @@ const handleOpenFinalizeModal = async () => {
               description="Slides have been dispatched to an external lab. Upload the consult PDF to enable sign-off."
               type="warning"
               showIcon
+              action={
+                <Button size="small" onClick={() => setConsultPdfPopupOpen(true)}>
+                  Upload PDF
+                </Button>
+              }
             />
           </div>
         )}
@@ -803,6 +870,11 @@ const handleOpenFinalizeModal = async () => {
               description="The diagnosis editor is locked. Click Sign Off to complete the consult report with the uploaded PDF."
               type="info"
               showIcon
+              action={
+                <Button size="small" onClick={() => setConsultPdfPopupOpen(true)}>
+                  View / Sign Off
+                </Button>
+              }
             />
           </div>
         )}
@@ -1122,66 +1194,127 @@ const handleOpenFinalizeModal = async () => {
         }
         onCancel={() => setConsultPdfPopupOpen(false)}
         footer={null}
-        width={520}
+        width={surgicalCase?.consult_pdf_path ? 720 : 520}
         maskClosable={false}
       >
-        <Alert
-          type="info"
-          showIcon
-          message="This case has been sent for external consultation. Please upload the consult report PDF."
-          style={{ marginBottom: 16 }}
-        />
-        <div>
-          <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
-            Report Received Date / Time:
-          </Typography.Text>
-          <DatePicker
-            showTime={{ format: "HH:mm" }}
-            format="DD/MM/YYYY HH:mm"
-            value={popupReceivedAt}
-            onChange={(d) => d && setPopupReceivedAt(d)}
-            style={{ width: "100%", marginBottom: 12 }}
-          />
-        </div>
-        <Upload.Dragger
-          accept="application/pdf"
-          maxCount={1}
-          beforeUpload={(file) => {
-            if (file.size > 10 * 1024 * 1024) {
-              message.error("File must be under 10 MB");
-              return Upload.LIST_IGNORE;
-            }
-            setPopupUploadFile(file);
-            return false;
-          }}
-          onRemove={() => setPopupUploadFile(null)}
-          style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
-        >
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined style={{ color: "#722ed1" }} />
-          </p>
-          <p className="ant-upload-text" style={{ color: "#722ed1" }}>
-            Click or drag PDF to upload
-          </p>
-          <p className="ant-upload-hint" style={{ fontSize: 11 }}>
-            Max 10 MB · PDF only
-          </p>
-        </Upload.Dragger>
-        {popupUploadFile && (
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            onClick={handlePopupUpload}
-            loading={popupUploading}
-            style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
-            block
-          >
-            Upload Report PDF
-          </Button>
+        {!surgicalCase?.consult_pdf_path ? (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              message="This case has been sent for external consultation. Please upload the consult report PDF."
+              style={{ marginBottom: 16 }}
+            />
+            <div>
+              <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
+                Report Received Date / Time:
+              </Typography.Text>
+              <DatePicker
+                showTime={{ format: "HH:mm" }}
+                format="DD/MM/YYYY HH:mm"
+                value={popupReceivedAt}
+                onChange={(d) => d && setPopupReceivedAt(d)}
+                style={{ width: "100%", marginBottom: 12 }}
+              />
+            </div>
+            <Upload.Dragger
+              accept="application/pdf"
+              maxCount={1}
+              beforeUpload={(file) => {
+                if (file.size > 10 * 1024 * 1024) {
+                  message.error("File must be under 10 MB");
+                  return Upload.LIST_IGNORE;
+                }
+                setPopupUploadFile(file);
+                return false;
+              }}
+              onRemove={() => setPopupUploadFile(null)}
+              style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
+            >
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined style={{ color: "#722ed1" }} />
+              </p>
+              <p className="ant-upload-text" style={{ color: "#722ed1" }}>
+                Click or drag PDF to upload
+              </p>
+              <p className="ant-upload-hint" style={{ fontSize: 11 }}>
+                Max 10 MB · PDF only
+              </p>
+            </Upload.Dragger>
+            {popupUploadFile && (
+              <Button
+                type="primary"
+                icon={<UploadOutlined />}
+                onClick={handlePopupUpload}
+                loading={popupUploading}
+                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
+                block
+              >
+                Upload Report PDF
+              </Button>
+            )}
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
+              PDF will appear as the first page of the printed report.
+            </Typography.Text>
+          </>
+        ) : (
+          <>
+            <Alert
+              type="success"
+              showIcon
+              message="Consult report PDF received."
+              description="Review it below, then Sign Off to complete this consult round."
+              style={{ marginBottom: 12 }}
+            />
+            <div
+              style={{
+                height: 420,
+                background: "#f5f5f5",
+                borderRadius: 8,
+                border: "1px solid #d9d9d9",
+                overflow: "hidden",
+                marginBottom: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {consultPdfPreviewLoading ? (
+                <Spin tip="Loading PDF..." />
+              ) : consultPdfBlobUrl ? (
+                <iframe
+                  src={`${consultPdfBlobUrl}#toolbar=1&navpanes=0`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: "none" }}
+                  title="Consult PDF Preview"
+                />
+              ) : (
+                <Typography.Text type="secondary">Preview unavailable</Typography.Text>
+              )}
+            </div>
+            <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Button
+                type="primary"
+                onClick={handleSignOffFromConsultPopup}
+                disabled={isConsultFinalizeLocked}
+                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1" }}
+                block
+              >
+                Sign Off
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={handleDeleteConsultPdf}
+                loading={consultPdfDeleting}
+                block
+              >
+                Delete PDF
+              </Button>
+            </Space>
+          </>
         )}
-        <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
-          PDF will appear as the first page of the printed report.
-        </Typography.Text>
       </Modal>
 
       {/* Case Already Signed Off popup */}
@@ -1212,6 +1345,15 @@ const handleOpenFinalizeModal = async () => {
                 HN: {surgicalCase?.patient?.hn || surgicalCase?.hn || "—"}
               </div>
             </div>
+
+            {surgicalCase?.is_out_lab_consult && surgicalCase?.consult_status === "pending" && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Pending Out-Lab Consult Dispatch"
+                description="This case was flagged for Out-Lab Consult but hasn't been sent to an external lab yet. Go to Out-Lab Consult → Send to Consult to dispatch it."
+              />
+            )}
 
             <div style={{ textAlign: "center" }}>
               <CheckCircleOutlined style={{ fontSize: 36, color: "#52c41a", marginBottom: 6 }} />
@@ -1331,8 +1473,13 @@ const handleOpenFinalizeModal = async () => {
           stain_quality: surgicalCase?.stain_quality || undefined,
           tissue_quality: surgicalCase?.tissue_quality || undefined,
           slide_quality: surgicalCase?.slide_quality || undefined,
-          is_pending:
-            form.getFieldValue("is_pending") ?? !!surgicalCase?.is_pending,
+          // Force the "provisional" toggle off when resolving a consult round —
+          // the form field itself still holds the stale `true` set when the case
+          // was originally dispatched to consult, so a plain `??` fallback here
+          // would never kick in (the field is already non-nullish).
+          is_pending: isConsultEditorLocked
+            ? false
+            : form.getFieldValue("is_pending") ?? !!surgicalCase?.is_pending,
           pending_reason:
             form.getFieldValue("pending_reason") ||
             surgicalCase?.pending_reason ||

@@ -1,6 +1,6 @@
 import os
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from app.utils.file_handler import validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from app.schemas.nongyne_cyto_case import (
     NongyneCaseCancelRequest,
 )
 from app.crud import nongyne_cyto_case as crud
+from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.dependencies.auth import get_current_user
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -63,6 +64,7 @@ def read_cases(
     stain_status: Optional[str] = Query(None),
     is_screened: Optional[bool] = Query(None),
     is_pending: Optional[bool] = Query(None),
+    is_express: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
@@ -88,6 +90,7 @@ def read_cases(
         date_from=datetime.combine(date_from, time.min) if date_from else None,
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         stain_status=stain_status,
+        is_express=is_express,
     )
 
 
@@ -326,3 +329,53 @@ def delete_request_file(
     db.delete(req_file)
     db.commit()
     return None
+
+
+# --- 📂 Consult PDF Endpoints ---
+
+@router.post("/{case_id}/consult-pdf", response_model=None)
+async def upload_consult_pdf(
+    case_id: int,
+    file: UploadFile = File(...),
+    received_at: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    save_consult_pdf(db, case, "nongyne", file, received_at)
+
+    return {"message": "Uploaded successfully"}
+
+
+@router.delete("/{case_id}/consult-pdf")
+def delete_consult_pdf(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    clear_consult_pdf(db, case)
+    return {"message": "Consult PDF removed successfully"}
+
+
+@router.get("/{case_id}/consult-pdf")
+def download_consult_pdf(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=case.consult_pdf_path,
+        filename=os.path.basename(case.consult_pdf_path),
+        media_type="application/pdf",
+    )

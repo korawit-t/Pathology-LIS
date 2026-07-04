@@ -65,6 +65,7 @@ class NongyneCytologyCase(Base):
     screened_at = Column(DateTime, nullable=True)
     is_reported = Column(Boolean, default=False)
     is_pending = Column(Boolean, default=False)
+    pending_reason = Column(Text, nullable=True)
     report_at = Column(DateTime, nullable=True)
     is_express = Column(Boolean, default=False, index=True)
     is_rose = Column(Boolean, default=False, index=True)
@@ -73,6 +74,9 @@ class NongyneCytologyCase(Base):
     out_lab_result_pdf_path = Column(String, nullable=True)
     consult_status = Column(String, nullable=True, index=True)
     consult_pdf_path = Column(String, nullable=True)
+    consult_reason = Column(Text, nullable=True)
+    consult_report_out_at = Column(DateTime, nullable=True)
+    consult_pdf_received_at = Column(DateTime, nullable=True)
     is_slide_released = Column(Boolean, default=False, index=True)
 
     # --- Cell Block Preparation ---
@@ -120,3 +124,11 @@ class NongyneCytologyCase(Base):
 
     def __repr__(self):
         return f"<NongyneCytologyCase(accession_no='{self.accession_no}', status='{self.status}')>"
+
+    @property
+    def slide_count(self):
+        # Only computed when `stains` was eager-loaded (see get_nongyne_case) —
+        # avoids an N+1 lazy-load on list endpoints that don't need this.
+        if "stains" in self.__dict__:
+            return len(self.stains)
+        return None

@@ -109,7 +109,7 @@ class HOSxPAdapter(HisAdapterBase):
                 LEFT JOIN patient_type ON patient.patient_type_id = patient_type.patient_type_id
                 LEFT JOIN doctor ON lab_head.doctor_code = doctor.code
                 LEFT JOIN pttype ON vn_stat.pttype = pttype.pttype
-                INNER JOIN kskdepartment ON lab_head.order_department = kskdepartment.depcode
+                LEFT JOIN kskdepartment ON lab_head.order_department = kskdepartment.depcode
             WHERE
                 {where_clause}
             ORDER BY

@@ -114,14 +114,20 @@ def get_gyne_cases(
     hospital_id: int = None,
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
+    has_out_lab_result: bool = None,
     consult_status: str = None,
+    exclude_consult_status: str = None,
     is_reported: bool = None,
     date_from: datetime = None,
     date_to: datetime = None,
     review_reason: str = None,
     is_reviewed: bool = None,
+    is_express: bool = None,
 ):
     query = db.query(GyneCytologyCase).join(Patient)
+
+    if is_express is not None:
+        query = query.filter(GyneCytologyCase.is_express == is_express)
 
     # 🚩 กรองตามคนรับผิดชอบเคส (Pathologist OR Cytotechnologist)
     if assigned_user_id:
@@ -201,8 +207,22 @@ def get_gyne_cases(
     if is_out_lab is not None:
         query = query.filter(GyneCytologyCase.is_out_lab == is_out_lab)
 
+    if has_out_lab_result is not None:
+        if has_out_lab_result:
+            query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.isnot(None))
+        else:
+            query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.is_(None))
+
     if consult_status:
         query = query.filter(GyneCytologyCase.consult_status == consult_status)
+
+    if exclude_consult_status:
+        query = query.filter(
+            or_(
+                GyneCytologyCase.consult_status.is_(None),
+                GyneCytologyCase.consult_status != exclude_consult_status,
+            )
+        )
 
     if is_reported is not None:
         query = query.filter(GyneCytologyCase.is_reported == is_reported)
@@ -591,6 +611,87 @@ def get_gyne_summary_table(
         {"period": k, **v}
         for k, v in sorted(months.items())
     ]
+
+
+_SUMMARY_TABLE_METRICS = {
+    "conventional", "liquid_based", "unsatisfactory", "lsil",
+    "hsil_major_discordant", "hsil_minor_discordant", "total",
+}
+
+
+def get_gyne_summary_table_cases(
+    db: Session, start_date, end_date, metric: str,
+    pathologist_id: int = None, cytotechnologist_id: int = None,
+) -> list[dict]:
+    """List the cases behind one cell of get_gyne_summary_table (drill-down)."""
+    from app.models.gyne_diagnosis import GyneDiagnosis, GyneDiagnosisCategory
+    from app.models.patient import Patient
+    from sqlalchemy import and_
+    from sqlalchemy.orm import joinedload
+
+    if metric not in _SUMMARY_TABLE_METRICS:
+        return []
+
+    q = (
+        db.query(GyneCytologyCase, GyneDiagnosisCategory)
+        .outerjoin(
+            GyneDiagnosis,
+            and_(GyneDiagnosis.case_id == GyneCytologyCase.id, GyneDiagnosis.is_current.is_(True)),
+        )
+        .outerjoin(GyneDiagnosisCategory, GyneDiagnosisCategory.id == GyneDiagnosis.category_2_id)
+        .options(joinedload(GyneCytologyCase.patient).joinedload(Patient.title))
+        .filter(
+            func.date(GyneCytologyCase.registered_at) >= start_date,
+            func.date(GyneCytologyCase.registered_at) <= end_date,
+        )
+    )
+    if pathologist_id:
+        q = q.filter(GyneCytologyCase.pathologist_id == pathologist_id)
+    if cytotechnologist_id:
+        q = q.filter(GyneCytologyCase.cytotechnologist_id == cytotechnologist_id)
+
+    results = []
+    for case, cat in q.all():
+        specimen = (case.specimen_type or "").lower()
+        code = cat.code if cat else None
+
+        is_conv = "conventional" in specimen
+        is_liq = "liquid" in specimen or "lbc" in specimen
+        is_unsat = case.is_satisfied_specimen is False
+        is_lsil = code in _LSIL_CODES
+        is_hsil_plus = code in _HSIL_OR_ABOVE_CODES
+
+        matched = {
+            "conventional": is_conv,
+            "liquid_based": is_liq,
+            "unsatisfactory": is_unsat,
+            "lsil": is_lsil,
+            "hsil_major_discordant": is_hsil_plus and case.discrepancy_level == "major",
+            "hsil_minor_discordant": is_hsil_plus and case.discrepancy_level == "minor",
+            "total": True,
+        }[metric]
+        if not matched:
+            continue
+
+        patient = case.patient
+        results.append({
+            "id": case.id,
+            "accession_no": case.accession_no,
+            "hn": case.hn,
+            "patient_title": patient.title.title if patient and patient.title else None,
+            "patient_name": patient.name if patient else None,
+            "patient_ln": patient.ln if patient else None,
+            "specimen_type": case.specimen_type,
+            "registered_at": case.registered_at,
+            "is_satisfied_specimen": case.is_satisfied_specimen,
+            "category_code": code,
+            "category_text": cat.text if cat else None,
+            "discrepancy_level": case.discrepancy_level,
+            "review_result": case.review_result,
+        })
+
+    results.sort(key=lambda r: r["registered_at"] or "", reverse=True)
+    return results
 
 
 def get_gyne_slide_quality_stats(db: Session, start_date, end_date):

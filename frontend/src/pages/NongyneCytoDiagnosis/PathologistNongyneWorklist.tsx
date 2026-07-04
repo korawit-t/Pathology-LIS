@@ -29,6 +29,7 @@ import type { User } from "../../types/user";
 import type { SystemSetting } from "../../types/system";
 import AccessionTag from "../../components/AccessionTag";
 import { calculateTATProgress } from "../../utils/tatUtils";
+import { renderConsultBadge } from "../../utils/consultBadge";
 
 interface PathologistNongyneWorklistProps {
   onSelectCase: (id: number, type: "nongyne") => void;
@@ -86,6 +87,9 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         params.is_reported = false;
       } else if (activeTab === "pending") {
         params.is_pending = true;
+      } else if (activeTab === "express") {
+        params.assigned_to_me = true;
+        params.is_express = true;
       }
       // "all" → no extra params
       if (searchText.trim()) params.search = searchText.trim();
@@ -247,6 +251,7 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
                 Correlated
               </Tag>
             )}
+            {renderConsultBadge(record)}
           </div>
         );
       },
@@ -276,6 +281,7 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
             { label: "My New Cases", value: "my_cases" },
             { label: "Pending", value: "pending" },
             { label: "Sign Required", value: "co_sign" },
+            { label: "Express", value: "express" },
             { label: "All", value: "all" },
           ]}
           value={activeTab}

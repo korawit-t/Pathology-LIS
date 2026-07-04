@@ -37,11 +37,22 @@ def process_gyne_report_approval(
         ).first()
 
         if not signer:
-            # Create if not exists (Auto-assign signer if approver wasn't in the list)
+            # Create if not exists (Auto-assign signer if approver wasn't in the list).
+            # Role must reflect the approver's actual position, not always "primary" —
+            # cytotechnologists are allowed to approve/sign out on their own (see
+            # CAN_APPROVE_GYNE_CYTO), and the report template labels role=="primary"
+            # as "Pathologist", so mislabeling here would misrepresent who signed.
+            approver_roles = current_user.roles or []
+            if "pathologist" in approver_roles or "senior_pathologist" in approver_roles:
+                signer_role = "primary"
+            elif "cytotechnologist" in approver_roles:
+                signer_role = "cytotechnologist"
+            else:
+                signer_role = "primary"
             signer = GyneReportSigner(
-                report_id=report_id, 
-                user_id=current_user.id, 
-                role="primary", 
+                report_id=report_id,
+                user_id=current_user.id,
+                role=signer_role,
                 assigned_at=now
             )
             db.add(signer)

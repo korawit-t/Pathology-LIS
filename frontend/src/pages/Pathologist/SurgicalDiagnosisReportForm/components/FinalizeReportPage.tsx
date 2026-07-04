@@ -11,6 +11,7 @@ import {
   Input,
   Radio,
   Tooltip,
+  Popover,
   message,
   Spin,
   Typography,
@@ -21,6 +22,7 @@ import {
 import {
   FilePdfOutlined,
   InfoCircleOutlined,
+  QuestionCircleOutlined,
   CheckSquareOutlined,
   ExperimentOutlined,
   LockOutlined,
@@ -226,6 +228,33 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
           <Space size={8}>
             <SafetyCertificateOutlined style={{ color: "#52c41a", fontSize: 16 }} />
             <span style={{ fontSize: 16, fontWeight: 600 }}>Sign Off Report</span>
+            <Popover
+              title="Out-Lab Consult Workflow"
+              trigger="click"
+              zIndex={1200}
+              content={
+                <ol style={{ maxWidth: 320, paddingLeft: 18, margin: 0, fontSize: 12 }}>
+                  <li style={{ marginBottom: 6 }}>
+                    Click <strong>Out-Lab Consult</strong> here to sign off and flag the case — it's only
+                    flagged at this point, not sent anywhere yet.
+                  </li>
+                  <li style={{ marginBottom: 6 }}>
+                    Go to <strong>Out-Lab Consult → Send to Consult</strong> to actually dispatch the case
+                    to an external lab.
+                  </li>
+                  <li style={{ marginBottom: 6 }}>
+                    When the result comes back, upload the consult PDF from the popup on the diagnosis
+                    page (or lab staff can upload it via Case Tracking).
+                  </li>
+                  <li>
+                    Preview the PDF, then click <strong>Sign Off</strong> to finalize this round — the
+                    pending flag clears automatically.
+                  </li>
+                </ol>
+              }
+            >
+              <QuestionCircleOutlined style={{ color: "#8c8c8c", cursor: "help", fontSize: 15 }} />
+            </Popover>
           </Space>
           {accessionNo && <Tag color="blue" style={{ fontSize: 14 }}>{accessionNo}</Tag>}
 

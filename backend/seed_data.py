@@ -828,6 +828,70 @@ def seed_specimen_templates(db: Session):
     print("✅ Specimen Templates Seeding Completed.")
 
 
+def seed_cytology_specimen_templates(db: Session):
+    """
+    Default Specimen Types for Gyne + Non-Gyne Cytology registration.
+    default_slide_count / requires_slide_count only matter for nongyne_cyto
+    today (drives auto-created NongyneCytologyStain rows at registration —
+    see create_nongyne_case). Adjust freely from Admin > Cytology Specimen
+    Type Manager; this is just a sane starting point.
+    """
+    gyne_names = [
+        "Conventional",
+        "Liquid Based (LBC)",
+    ]
+
+    # Ordered (dict/list order = seed sort_order): Fluid + FNA are the most
+    # commonly used Non-Gyne types, kept at the top.
+    # name -> (default_slide_count, requires_slide_count, requires_volume)
+    nongyne_specs = {
+        "Fluid": (2, False, True),  # received volume matters for adequacy — warn staff to enter it
+        "FNA": (2, True, False),  # slide count varies per case (number of passes) — warn staff to enter it
+        "Urine": (2, False, False),
+        "Sputum": (2, False, False),
+        "CSF": (1, False, False),
+        "Brushing": (2, False, False),
+        "Washing": (2, False, False),
+        "Other": (1, False, False),
+    }
+
+    print(f"🌱 Seeding {len(gyne_names)} Gyne Cytology Specimen Types...")
+    for sort_order, name in enumerate(gyne_names):
+        exists = (
+            db.query(SpecimenTemplate)
+            .filter(SpecimenTemplate.name == name, SpecimenTemplate.category == "gyne_cyto")
+            .first()
+        )
+        if not exists:
+            db.add(SpecimenTemplate(name=name, category="gyne_cyto", sort_order=sort_order))
+            print(f"   [+] Added (Gyne): {name}")
+
+    print(f"🌱 Seeding {len(nongyne_specs)} Non-Gyne Cytology Specimen Types...")
+    for sort_order, (name, (default_slide_count, requires_slide_count, requires_volume)) in enumerate(
+        nongyne_specs.items()
+    ):
+        exists = (
+            db.query(SpecimenTemplate)
+            .filter(SpecimenTemplate.name == name, SpecimenTemplate.category == "nongyne_cyto")
+            .first()
+        )
+        if not exists:
+            db.add(
+                SpecimenTemplate(
+                    name=name,
+                    category="nongyne_cyto",
+                    default_slide_count=default_slide_count,
+                    requires_slide_count=requires_slide_count,
+                    requires_volume=requires_volume,
+                    sort_order=sort_order,
+                )
+            )
+            print(f"   [+] Added (Non-Gyne): {name}")
+
+    db.commit()
+    print("✅ Cytology Specimen Templates Seeding Completed.")
+
+
 def seed_gross_templates(db: Session):
     admin = db.query(User).filter(User.username == "admin").first()
     admin_id = admin.id if admin else None
@@ -2537,6 +2601,7 @@ if __name__ == "__main__":
         seed_diagnostic_templates(db)
         seed_nongyne_diagnostic_templates(db)
         seed_specimen_templates(db)
+        seed_cytology_specimen_templates(db)
 
         # 4. Gyne Cytology Master Data
         seed_gyne_specimen_adequacy(db)

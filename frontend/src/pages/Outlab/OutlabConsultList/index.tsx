@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Table, Tag, Input, Space, Button, Typography, message, Modal, Select,
-  Popconfirm, Tabs, Badge, Segmented, Tooltip,
+  Popconfirm, Tabs, Badge, Segmented, Tooltip, Upload, DatePicker,
 } from "antd";
 import {
   SendOutlined, UnorderedListOutlined, CheckCircleOutlined, DeleteOutlined,
   ReloadOutlined, ClockCircleOutlined, InboxOutlined, SearchOutlined,
-  GlobalOutlined, EditOutlined,
+  GlobalOutlined, EditOutlined, UploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 
 import PageContainer from "../../../components/Layout/PageContainer";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
@@ -251,7 +252,7 @@ const SendTab: React.FC<{ onSent: () => void }> = ({ onSent }) => {
             options={[
               { label: "Pending", value: "pending" },
               { label: "Processing", value: "processing" },
-              { label: "Completed", value: "completed" },
+              { label: "Received", value: "received" },
             ]}
             value={consultStatus}
             onChange={(v) => { setConsultStatus(v as string); setPage(1); }}
@@ -386,6 +387,12 @@ const ReportTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigge
   const sentCount = runs.filter((r) => r.status === "sent").length;
   const receivedCount = runs.filter((r) => r.status === "received").length;
 
+  // A run bundles multiple cases — this is a hint, not an auto-flip: every
+  // case's own result being in doesn't itself mark the physical shipment
+  // received, but it's worth surfacing so staff know to go confirm it.
+  const allResultsIn = (r: OutlabConsultRunResponse) =>
+    r.details.length > 0 && r.details.every((d) => d.case_consult_status === "received");
+
   const columns: ColumnsType<OutlabConsultRunResponse> = [
     {
       title: "Run No.",
@@ -411,40 +418,49 @@ const ReportTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigge
       render: (_, r) => <Tag color="purple">{r.details.length}</Tag>,
     },
     {
-      title: "Status",
+      title: "Run Status",
       dataIndex: "status",
-      width: 180,
+      width: 200,
       render: (v, r) => {
         if (v === "received") {
           return (
             <Space direction="vertical" size={0}>
-              <Tag color="success" icon={<CheckCircleOutlined />}>Report Received</Tag>
+              <Tag color="success" icon={<CheckCircleOutlined />}>Run Received</Tag>
               {r.received_at && (
                 <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(r.received_at).format("DD MMM YYYY HH:mm")}</Text>
               )}
             </Space>
           );
         }
-        return <Tag color="processing" icon={<ClockCircleOutlined />}>Awaiting Report</Tag>;
+        return (
+          <Space direction="vertical" size={2}>
+            <Tag color="processing" icon={<ClockCircleOutlined />}>Awaiting Return</Tag>
+            {allResultsIn(r) && (
+              <Tag color="gold">All results in — ready to confirm</Tag>
+            )}
+          </Space>
+        );
       },
     },
     {
       title: "Actions",
       key: "action",
-      width: 180,
+      width: 190,
       render: (_, r) => (
         <Space>
           {r.status === "sent" && (
             <Popconfirm
-              title="Confirm report received?"
-              description="This marks the consult report as returned."
+              title="Confirm run received?"
+              description="Marks this shipment run as received back from the lab — does not upload any report PDF."
               onConfirm={() => handleReceive(r.id)}
               okText="Confirm"
               cancelText="Cancel"
             >
-              <Button type="primary" size="small" icon={<CheckCircleOutlined />}>
-                Receive Report
-              </Button>
+              <Badge dot={allResultsIn(r)} offset={[-6, 4]}>
+                <Button type="primary" size="small" icon={<CheckCircleOutlined />}>
+                  Mark Run Received
+                </Button>
+              </Badge>
             </Popconfirm>
           )}
           {r.status === "sent" && (
@@ -468,10 +484,10 @@ const ReportTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigge
     <>
       <div style={{ marginBottom: 12, display: "flex", gap: 12, alignItems: "center" }}>
         <Tag color="processing" style={{ padding: "4px 12px", fontSize: 13 }}>
-          <ClockCircleOutlined /> Awaiting report: {sentCount} run(s)
+          <ClockCircleOutlined /> Awaiting return: {sentCount} run(s)
         </Tag>
         <Tag color="success" style={{ padding: "4px 12px", fontSize: 13 }}>
-          <CheckCircleOutlined /> Received: {receivedCount} run(s)
+          <CheckCircleOutlined /> Run received: {receivedCount} run(s)
         </Tag>
         <Button icon={<ReloadOutlined />} onClick={fetchRuns} loading={loading} style={{ marginLeft: "auto" }}>
           Refresh
@@ -722,6 +738,10 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
   const [editingRunId, setEditingRunId] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [savingRunId, setSavingRunId] = useState<number | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<FlatCase | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadReceivedAt, setUploadReceivedAt] = useState<Dayjs>(dayjs());
+  const [uploading, setUploading] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
@@ -760,6 +780,29 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       message.error("Failed to save tracking number");
     } finally {
       setSavingRunId(null);
+    }
+  };
+
+  const handleUploadConsultPdf = async () => {
+    if (!uploadFile || !uploadTarget) return;
+    setUploading(true);
+    try {
+      if (uploadTarget.case_type === "nongyne") {
+        await NongyneCytologyCaseService.uploadConsultPdf(uploadTarget.case_id, uploadFile, uploadReceivedAt.toISOString());
+      } else {
+        await SurgicalCaseService.uploadConsultPdf(uploadTarget.case_id, uploadFile, uploadReceivedAt.toISOString());
+      }
+      // consult_status only advances to "received" when the pathologist signs
+      // off — this upload alone never does that, so Result Status will still
+      // show "Awaiting Result" right after this succeeds. That's expected.
+      message.success("Consult PDF uploaded — awaiting pathologist sign-off");
+      setUploadTarget(null);
+      setUploadFile(null);
+      fetchRuns();
+    } catch {
+      message.error("Failed to upload Consult PDF");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -884,13 +927,13 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       },
     },
     {
-      title: "Report Status",
+      title: "Run Status",
       key: "report_status",
       width: 180,
       render: (_, d) =>
         d.run_status === "received" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Tag color="success" icon={<CheckCircleOutlined />}>Report Received</Tag>
+            <Tag color="success" icon={<CheckCircleOutlined />}>Run Received</Tag>
             {d.report_out_at && (
               <Text type="secondary" style={{ fontSize: 11 }}>
                 {dayjs(d.report_out_at).format("DD MMM YYYY HH:mm")}
@@ -898,32 +941,68 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
             )}
           </div>
         ) : (
-          <Tag color="processing" icon={<ClockCircleOutlined />}>Awaiting Report</Tag>
+          <Tag color="processing" icon={<ClockCircleOutlined />}>Awaiting Return</Tag>
         ),
+    },
+    {
+      title: "Result Status",
+      key: "case_consult_status",
+      width: 160,
+      render: (_, d) => {
+        // Live status of this specific case — a run can bundle several cases,
+        // so one case's result being in doesn't mean the whole shipment (Run
+        // Status, above) has physically come back yet.
+        if (d.case_consult_status === "received") {
+          return <Tag color="success" icon={<CheckCircleOutlined />}>Result Received</Tag>;
+        }
+        if (d.case_consult_status === "processing") {
+          return <Tag color="blue" icon={<ClockCircleOutlined />}>Awaiting Result</Tag>;
+        }
+        if (!d.case_consult_status) {
+          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        }
+        return <Tag icon={<ClockCircleOutlined />}>{d.case_consult_status}</Tag>;
+      },
     },
     {
       title: "",
       key: "action",
-      width: 150,
-      render: (_, d) =>
-        d.run_status === "sent" ? (
-          <Popconfirm
-            title="Confirm report received?"
-            description="This marks the entire consult run as completed."
-            onConfirm={() => handleReceive(d.run_id)}
-            okText="Confirm"
-            cancelText="Cancel"
-          >
+      width: 220,
+      render: (_, d) => (
+        <Space direction="vertical" size={4}>
+          {(d.case_type === "surgical" || d.case_type === "nongyne") && (
             <Button
-              type="primary"
               size="small"
-              icon={<CheckCircleOutlined />}
-              loading={receivingRunIds.has(d.run_id)}
+              icon={<UploadOutlined />}
+              onClick={() => {
+                setUploadTarget(d);
+                setUploadFile(null);
+                setUploadReceivedAt(dayjs());
+              }}
             >
-              Receive Report
+              Upload PDF
             </Button>
-          </Popconfirm>
-        ) : null,
+          )}
+          {d.run_status === "sent" && (
+            <Popconfirm
+              title="Confirm run received?"
+              description="Marks this shipment run as received back from the lab — does not upload any report PDF."
+              onConfirm={() => handleReceive(d.run_id)}
+              okText="Confirm"
+              cancelText="Cancel"
+            >
+              <Button
+                type="primary"
+                size="small"
+                icon={<CheckCircleOutlined />}
+                loading={receivingRunIds.has(d.run_id)}
+              >
+                Mark Run Received
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -961,6 +1040,54 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
         rowClassName={(d) => (d.run_status === "received" ? "consult-row-received" : "")}
         locale={{ emptyText: "No consult cases found" }}
       />
+
+      <Modal
+        title={`Upload Consult PDF — ${uploadTarget?.accession_no ?? ""}`}
+        open={!!uploadTarget}
+        onCancel={() => setUploadTarget(null)}
+        footer={null}
+        width={480}
+      >
+        <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
+          Report Received Date / Time:
+        </Typography.Text>
+        <DatePicker
+          showTime={{ format: "HH:mm" }}
+          format="DD/MM/YYYY HH:mm"
+          value={uploadReceivedAt}
+          onChange={(d) => d && setUploadReceivedAt(d)}
+          style={{ width: "100%", marginBottom: 12 }}
+        />
+        <Upload.Dragger
+          accept="application/pdf"
+          maxCount={1}
+          beforeUpload={(file) => {
+            if (file.size > 10 * 1024 * 1024) {
+              message.error("File must be under 10 MB");
+              return Upload.LIST_IGNORE;
+            }
+            setUploadFile(file);
+            return false;
+          }}
+          onRemove={() => setUploadFile(null)}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">Click or drag PDF to upload</p>
+          <p className="ant-upload-hint" style={{ fontSize: 11 }}>Max 10 MB · PDF only</p>
+        </Upload.Dragger>
+        {uploadFile && (
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={handleUploadConsultPdf}
+            loading={uploading}
+            block
+            style={{ marginTop: 12 }}
+          >
+            Upload Report PDF
+          </Button>
+        )}
+      </Modal>
     </>
   );
 };

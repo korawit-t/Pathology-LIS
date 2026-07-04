@@ -33,6 +33,7 @@ const NongyneCytologyCaseService = {
     stain_status?: string;
     is_screened?: boolean;
     is_pending?: boolean;
+    is_express?: boolean;
   }): Promise<NongyneCytologyListResponse> => {
     const res = await api.get<NongyneCytologyListResponse>("/nongyne-cytology", {
       params,
@@ -120,6 +121,27 @@ const NongyneCytologyCaseService = {
 
   downloadRequestFileBlob: async (fileId: number): Promise<ArrayBuffer> => {
     const response = await api.get(`/nongyne-cytology/request-files/${fileId}`, { responseType: "arraybuffer" });
+    return response.data;
+  },
+
+  uploadConsultPdf: async (caseId: number, file: File, receivedAt?: string): Promise<{ message: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (receivedAt) formData.append("received_at", receivedAt);
+    const res = await api.post(`/nongyne-cytology/${caseId}/consult-pdf`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  deleteConsultPdf: async (caseId: number): Promise<void> => {
+    await api.delete(`/nongyne-cytology/${caseId}/consult-pdf`);
+  },
+
+  getConsultPdfBlob: async (caseId: number): Promise<Blob> => {
+    const response = await api.get(`/nongyne-cytology/${caseId}/consult-pdf`, {
+      responseType: "blob",
+    });
     return response.data;
   },
 

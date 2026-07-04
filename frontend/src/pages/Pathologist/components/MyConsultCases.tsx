@@ -15,18 +15,21 @@ const { Text } = Typography;
 
 const CONSULT_STATUS_OPTIONS = [
   { label: "Active", value: "active" },
-  { label: "Completed", value: "completed" },
+  { label: "Received", value: "received" },
 ];
 
 const CONSULT_STATUS_QUERY: Record<string, string> = {
   active: "pending,processing",
-  completed: "completed",
+  received: "received",
 };
 
+// Backend only ever produces "pending" | "processing" | "received" — there is
+// no "completed" status. (Was previously keyed on "completed", which never
+// matched, so this tab and tag always rendered empty/default.)
 const CONSULT_TAG: Record<string, { color: string; icon: React.ReactNode }> = {
   pending:    { color: "warning",    icon: <ClockCircleOutlined /> },
   processing: { color: "processing", icon: <SyncOutlined /> },
-  completed:  { color: "success",    icon: <CheckCircleOutlined /> },
+  received:   { color: "success",    icon: <CheckCircleOutlined /> },
 };
 
 interface Props {

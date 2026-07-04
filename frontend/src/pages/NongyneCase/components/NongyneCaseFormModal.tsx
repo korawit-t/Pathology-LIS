@@ -31,6 +31,7 @@ import NongyneCaseFormFields from "./NongyneCaseFormModal.fields";
 import type { HisPatientResult } from "../../../services/hisService";
 import TitleService from "../../../services/titleService";
 import SpecimenTemplateService from "../../../services/specimenTemplateService";
+import type { SpecimenTemplate } from "../../../services/specimenTemplateService";
 
 import NongyneCytologyCaseService from "../../../services/nongyneCytoCaseService";
 import type { RequestFile } from "../../../types/surgical";
@@ -58,16 +59,24 @@ interface NongyneCaseFormModalProps {
   onRefresh?: () => void;
 }
 
-const DEFAULT_SPECIMEN_TYPES = [
+const DEFAULT_SPECIMEN_TYPES: SpecimenTemplate[] = [
   "Fluid",
+  "FNA",
   "Urine",
   "Sputum",
   "CSF",
-  "FNA",
   "Brushing",
   "Washing",
   "Other",
-];
+].map((name, index) => ({
+  id: 0,
+  name,
+  category: "nongyne_cyto",
+  default_slide_count: 1,
+  requires_slide_count: false,
+  requires_volume: false,
+  sort_order: index,
+}));
 
 const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
   open,
@@ -97,7 +106,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [cytotechnologists, setCytotechnologists] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [specimenTypes, setSpecimenTypes] = useState<string[]>(
+  const [specimenTypes, setSpecimenTypes] = useState<SpecimenTemplate[]>(
     DEFAULT_SPECIMEN_TYPES,
   );
 
@@ -131,8 +140,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
         setPathologists(pathologists);
         setCytotechnologists(cytos);
         setTitles(titles);
-        if (specimenTypes.length)
-          setSpecimenTypes(specimenTypes.map((s) => s.name));
+        if (specimenTypes.length) setSpecimenTypes(specimenTypes);
       } catch (err) {
         message.error("Failed to load reference data");
       }
@@ -363,7 +371,38 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     },
   };
 
+  // For specimen types configured with requires_slide_count /
+  // requires_volume, warn (but don't block) when the corresponding field was
+  // left blank — resolves true if it's fine to proceed, false if the user
+  // backed out to go fill it in.
+  const confirmRegistrationWarnings = (values: any): Promise<boolean> => {
+    if (editingId) return Promise.resolve(true);
+    const match = specimenTypes.find((s) => s.name === values.specimen_type);
+    if (!match) return Promise.resolve(true);
+
+    const missing: string[] = [];
+    if (match.requires_slide_count && !values.num_slides) {
+      missing.push("Number of Slides");
+    }
+    if (match.requires_volume && !values.received_volume_ml) {
+      missing.push("Received Volume (ml)");
+    }
+    if (missing.length === 0) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      Modal.confirm({
+        title: "Some Fields Not Specified",
+        content: `"${values.specimen_type}" usually needs: ${missing.join(", ")}. Continue with the default anyway?`,
+        okText: "Continue",
+        cancelText: "Go Back",
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  };
+
   const handleSubmit = async (values: any) => {
+    if (!(await confirmRegistrationWarnings(values))) return;
     setLoading(true);
     try {
       const formattedValues = {
@@ -402,6 +441,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     } catch {
       return;
     }
+    if (!(await confirmRegistrationWarnings(values))) return;
     setLoading(true);
     try {
       const formattedValues = {

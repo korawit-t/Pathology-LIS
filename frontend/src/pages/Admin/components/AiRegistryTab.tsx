@@ -78,23 +78,23 @@ const AiRegistryTab: React.FC = () => {
     <div>
       <Title level={5} style={{ marginBottom: 4 }}>Tumor Registry</Title>
       <Text type="secondary" style={{ fontSize: 13 }}>
-        เปิดใช้งาน module สำหรับบันทึกและรายงานข้อมูล tumor registry (ICD-O coding, staging)
+        Enables the module for recording and reporting tumor registry data (ICD-O coding, staging)
       </Text>
       <Divider style={{ margin: "16px 0 0 0" }} />
 
       <SettingRow
-        title="เปิดใช้งาน Tumor Registry"
-        description="เมื่อปิด ระบบจะซ่อน module tumor registry ทั้งหมด รวมถึงปุ่มกรอก ICD-O ใน surgical case"
+        title="Enable Tumor Registry"
+        description="When off, the system hides the entire tumor registry module, including the ICD-O entry button in surgical cases"
         icon={<ExperimentOutlined style={{ color: "#f5222d" }} />}
       >
         <Form.Item name="tumor_registry_enabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-          <Switch checkedChildren="เปิด" unCheckedChildren="ปิด" />
+          <Switch checkedChildren="On" unCheckedChildren="Off" />
         </Form.Item>
       </SettingRow>
 
       <SettingRow
-        title="AI Profile สำหรับ ICD-O Coding"
-        description="เลือก LLM profile ที่จะใช้ suggest topography/morphology code จาก diagnosis text — ตั้งค่า profiles ได้ที่ AI Configuration"
+        title="AI Profile for ICD-O Coding"
+        description="Select the LLM profile used to suggest topography/morphology codes from diagnosis text — configure profiles under AI Configuration"
         icon={<RobotOutlined style={{ color: "#722ed1" }} />}
       >
         <Spin spinning={loadingProfiles}>
@@ -104,8 +104,8 @@ const AiRegistryTab: React.FC = () => {
               allowClear
               placeholder={
                 profiles.length === 0
-                  ? "ยังไม่มี AI Profile — ตั้งค่าที่ AI Configuration"
-                  : "เลือก AI Profile (optional)"
+                  ? "No AI Profile yet — configure it under AI Configuration"
+                  : "Select AI Profile (optional)"
               }
               disabled={profiles.length === 0}
               options={profileOptions}
@@ -116,12 +116,12 @@ const AiRegistryTab: React.FC = () => {
       </SettingRow>
 
       <SettingRow
-        title="แสดง ICD-O ใน Report"
-        description="เพิ่ม section ICD-O Coding ท้าย Pathological Diagnosis ใน PDF report — default ปิด เพราะเป็น administrative data ไม่ใช่ clinical content"
+        title="Show ICD-O in Report"
+        description="Adds an ICD-O Coding section after the Pathological Diagnosis in the PDF report — default off since it's administrative data, not clinical content"
         icon={<ExperimentOutlined style={{ color: "#1890ff" }} />}
       >
         <Form.Item name="show_icd_o_in_report" valuePropName="checked" style={{ marginBottom: 0 }}>
-          <Switch checkedChildren="แสดง" unCheckedChildren="ซ่อน" />
+          <Switch checkedChildren="Show" unCheckedChildren="Hide" />
         </Form.Item>
       </SettingRow>
 
@@ -130,13 +130,13 @@ const AiRegistryTab: React.FC = () => {
         <Space style={{ marginBottom: 8 }}>
           <RobotOutlined style={{ color: "#8c8c8c" }} />
           <Text strong style={{ fontSize: "15px" }}>System Prompt</Text>
-          <Tooltip title="ถ้าว่างจะใช้ default prompt ที่ built-in ไว้ — กรอกเพื่อ override เช่น ปรับภาษา เพิ่มตัวอย่าง หรือระบุ convention เฉพาะของโรงพยาบาล">
+          <Tooltip title="If left blank, the built-in default prompt is used — fill in to override, e.g. to adjust language, add examples, or specify a hospital-specific convention">
             <InfoCircleOutlined style={{ color: "#8c8c8c" }} />
           </Tooltip>
         </Space>
         <div>
           <Text type="secondary" style={{ fontSize: "13px" }}>
-            เว้นว่างเพื่อใช้ default ICD-O coding prompt — กรอกเพื่อ override พฤติกรรม AI สำหรับ feature นี้โดยเฉพาะ
+            Leave blank to use the default ICD-O coding prompt — fill in to override the AI's behavior specifically for this feature
           </Text>
         </div>
         <Form.Item name="tumor_registry_system_prompt" style={{ marginTop: 12, marginBottom: 0 }}>

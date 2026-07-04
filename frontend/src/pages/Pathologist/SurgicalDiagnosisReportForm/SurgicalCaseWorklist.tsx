@@ -24,6 +24,7 @@ import {
 import { CASE_STATUS } from "../../../constants/lab.constants";
 import { calculateTATProgress } from "../../../utils/tatUtils";
 import { useTheme } from "../../../contexts/ThemeContext";
+import { renderConsultBadge } from "../../../utils/consultBadge";
 import type { SystemSetting } from "../../../types/system";
 
 dayjs.extend(relativeTime);
@@ -47,6 +48,10 @@ export interface WorklistRow {
   hn?: string;
   patient?: { title?: { title?: string }; name?: string; ln?: string };
   case_type?: string;
+  is_out_lab_consult?: boolean;
+  consult_status?: string;
+  consult_pdf_path?: string;
+  has_ihc?: boolean;
 }
 
 interface SurgicalCaseWorklistProps {
@@ -65,6 +70,7 @@ interface SurgicalCaseWorklistProps {
   slideSentCount?: number;
   pendingCount?: number;
   coSignCount?: number;
+  expressCount?: number;
 }
 
 const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
@@ -83,6 +89,7 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
   slideSentCount,
   pendingCount,
   coSignCount,
+  expressCount,
 }) => {
   const { isDarkMode } = useTheme();
 
@@ -120,6 +127,13 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
             <Tooltip title="Frozen Section">
               <Tag color="cyan" style={{ margin: 0, padding: "0 4px", fontSize: "10px", fontWeight: "bold" }}>
                 ❄ FS
+              </Tag>
+            </Tooltip>
+          )}
+          {record.has_ihc && (
+            <Tooltip title="This case has had IHC ordered on at least one block">
+              <Tag color="magenta" style={{ margin: 0, padding: "0 4px", fontSize: "10px", fontWeight: "bold" }}>
+                IHC
               </Tag>
             </Tooltip>
           )}
@@ -291,12 +305,17 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       key: "status",
       align: "center",
       render: (status, record) => {
+        const consultTag = renderConsultBadge(record);
+
         // 🚩 ถ้าเป็น Co-Sign Mode ให้เน้น Status ของ Sign-off
         if (isCoSignMode) {
           return (
-            <Tag color="orange" icon={<HistoryOutlined />}>
-              PENDING CO-SIGN
-            </Tag>
+            <Space direction="vertical" size={4}>
+              <Tag color="orange" icon={<HistoryOutlined />}>
+                PENDING CO-SIGN
+              </Tag>
+              {consultTag}
+            </Space>
           );
         }
 
@@ -304,13 +323,28 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
         const isSignedOut = s === "COMPLETED" || s === "PUBLISHED" || s === "SIGNED OUT";
         if (isSignedOut) {
           return (
-            <Tag color="green" icon={!record.is_pending ? <LockOutlined /> : undefined}>
-              {s === "SIGNED OUT" ? "SIGNED" : s}
-            </Tag>
+            <Space direction="vertical" size={4}>
+              <Tag color="green" icon={!record.is_pending ? <LockOutlined /> : undefined}>
+                {s === "SIGNED OUT" ? "SIGNED" : s}
+              </Tag>
+              {consultTag}
+            </Space>
           );
         }
-        if (s === "DRAFT") return <Tag color="warning">DRAFT</Tag>;
-        return <Tag color="blue">{s}</Tag>;
+        if (s === "DRAFT") {
+          return (
+            <Space direction="vertical" size={4}>
+              <Tag color="warning">DRAFT</Tag>
+              {consultTag}
+            </Space>
+          );
+        }
+        return (
+          <Space direction="vertical" size={4}>
+            <Tag color="blue">{s}</Tag>
+            {consultTag}
+          </Space>
+        );
       },
     },
     // เพิ่มคอลัมน์ "Pathologist" เฉพาะหน้า Co-Sign เพื่อดูว่าใครส่งมา
@@ -381,6 +415,18 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
                   </span>
                 ),
                 value: "CO_SIGNER",
+              },
+              {
+                label: (
+                  <span>
+                    <FireFilled style={{ marginRight: 4, color: "#f5222d" }} />
+                    Express
+                    {expressCount !== undefined && expressCount > 0 && (
+                      <Badge count={expressCount} size="small" style={{ marginLeft: 6, backgroundColor: "#f5222d" }} />
+                    )}
+                  </span>
+                ),
+                value: "EXPRESS",
               },
               { label: "All", value: "ALL" },
             ]}

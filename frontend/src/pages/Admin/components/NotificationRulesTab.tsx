@@ -156,7 +156,7 @@ const NotificationRulesTab: React.FC = () => {
               value={row.message_template ?? ""}
               onChange={(e) => updateRow(row.event_key, { message_template: e.target.value })}
               style={{ fontFamily: "monospace", fontSize: 12 }}
-              placeholder="พิมพ์ข้อความ หรือกดตัวแปรด้านล่างเพื่อแทรก"
+              placeholder="Type a message, or click a variable below to insert it"
             />
             <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
               {vars.map((v) => (

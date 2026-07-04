@@ -133,13 +133,12 @@ const OutlabTestQueuePage: React.FC = () => {
     try {
       const res = await GyneCytologyCaseService.getAll({
         is_out_lab: true,
+        has_out_lab_result: false,
         skip: (p - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
         search: s || undefined,
       });
-      // filter cases that don't have result yet
-      const pending = res.items.filter((c) => !c.out_lab_result_pdf_path);
-      setPendingCases(pending);
+      setPendingCases(res.items);
       setPendingTotal(res.total);
       setPendingPage(p);
     } catch (err) { logger.error(err); }
@@ -151,12 +150,12 @@ const OutlabTestQueuePage: React.FC = () => {
     try {
       const res = await GyneCytologyCaseService.getAll({
         is_out_lab: true,
+        has_out_lab_result: true,
         skip: (p - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
         search: s || undefined,
       });
-      const uploaded = res.items.filter((c) => !!c.out_lab_result_pdf_path);
-      setUploadedCases(uploaded);
+      setUploadedCases(res.items);
       setUploadedTotal(res.total);
       setUploadedPage(p);
     } catch (err) { logger.error(err); }

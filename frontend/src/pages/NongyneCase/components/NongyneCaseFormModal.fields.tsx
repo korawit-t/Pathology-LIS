@@ -2,6 +2,7 @@ import React from "react";
 import {
   Form,
   Input,
+  InputNumber,
   Select,
   DatePicker,
   Row,
@@ -11,6 +12,7 @@ import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
 import type { MedicalScheme } from "../../../types/medicalScheme";
 import type { User } from "../../../types/user";
+import type { SpecimenTemplate } from "../../../services/specimenTemplateService";
 
 const { Option } = Select;
 
@@ -21,7 +23,7 @@ interface NongyneCaseFormFieldsProps {
   staffs: {
     pathologists: User[];
     cytotechnologists: User[];
-    specimenTypes: string[];
+    specimenTypes: SpecimenTemplate[];
   };
   editingId: number | null;
 }
@@ -30,6 +32,7 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
   departments,
   schemes,
   staffs,
+  editingId,
 }) => {
   const { pathologists, cytotechnologists, specimenTypes } = staffs;
 
@@ -65,9 +68,9 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
         </Col>
       </Row>
 
-      {/* Row: Department / Collection Date / Express / Specimen Type / Collection Site */}
+      {/* Row: Department / Collection Date / Specimen Type / Collection Site / Number of Slides */}
       <Row gutter={16}>
-        <Col span={6}>
+        <Col span={5}>
           <Form.Item name="department_id" label="Department">
             <Select
               placeholder="Select department"
@@ -82,7 +85,7 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
             </Select>
           </Form.Item>
         </Col>
-        <Col span={8}>
+        <Col span={7}>
           <Form.Item name="collect_at" label="Collection Date/Time">
             <DatePicker
               showTime
@@ -91,21 +94,35 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
             />
           </Form.Item>
         </Col>
-        <Col span={5}>
+        <Col span={4}>
           <Form.Item
             name="specimen_type"
             label="Specimen Type"
             rules={[{ required: true }]}
           >
             <Select
-              options={specimenTypes.map((t) => ({ value: t, label: t }))}
+              options={specimenTypes.map((t) => ({
+                value: t.name,
+                label: t.name,
+              }))}
             />
           </Form.Item>
         </Col>
-        <Col span={5}>
+        <Col span={4}>
           <Form.Item name="collection_site" label="Collection Site">
             <Input placeholder="e.g. Right lobe, Ascitic fluid" />
           </Form.Item>
+        </Col>
+        <Col span={4}>
+          {editingId ? (
+            <Form.Item name="slide_count" label="Number of Slides">
+              <InputNumber disabled style={{ width: "100%" }} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="num_slides" label="Number of Slides">
+              <InputNumber min={1} placeholder="Default" style={{ width: "100%" }} />
+            </Form.Item>
+          )}
         </Col>
       </Row>
 

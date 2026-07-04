@@ -158,7 +158,7 @@ const StickerTab: React.FC = () => {
       const blob = await SystemSettingService.testPrintSticker();
       executePrint(blob);
     } catch {
-      message.error("ไม่สามารถพิมพ์ทดสอบได้");
+      message.error("Failed to print test sticker");
     } finally {
       setPrinting(false);
     }
@@ -183,30 +183,30 @@ const StickerTab: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          message="ตั้งค่าขนาดสติกเกอร์และตัวอักษรให้ตรงกับเครื่องพิมพ์"
-          description="ขนาดตัวอักษรเป็นค่าที่ 2.0×2.0 cm — หากเปลี่ยนขนาด sticker ตัวอักษรจะ scale ตาม"
+          message="Set the sticker and font size to match your printer"
+          description="Font sizes are set at a 2.0×2.0 cm baseline — if you change the sticker size, the fonts will scale accordingly"
           style={{ marginBottom: 24 }}
         />
 
         {/* Size */}
         <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8, marginBottom: 16 }}>
           <Title level={5} style={{ padding: "16px 0 0", marginBottom: 0, fontSize: 13 }}>Sticker Size</Title>
-          <SettingRow title="Width" description="ความกว้าง (cm)">
+          <SettingRow title="Width" description="Width (cm)">
             <Form.Item name="sticker_width_cm" noStyle>
               <InputNumber min={1.0} max={10.0} step={0.1} precision={1} addonAfter="cm" style={{ width: 120 }} />
             </Form.Item>
           </SettingRow>
-          <SettingRow title="Height" description="ความสูง (cm)">
+          <SettingRow title="Height" description="Height (cm)">
             <Form.Item name="sticker_height_cm" noStyle>
               <InputNumber min={1.0} max={10.0} step={0.1} precision={1} addonAfter="cm" style={{ width: 120 }} />
             </Form.Item>
           </SettingRow>
-          <SettingRow title="Orientation" description="แนวการพิมพ์ — Portrait (แนวตั้ง) / Landscape (แนวนอน)">
+          <SettingRow title="Orientation" description="Print orientation — Portrait / Landscape">
             <Form.Item name="sticker_orientation" noStyle>
               <Segmented
                 options={[
-                  { label: "Portrait (แนวตั้ง)", value: "portrait" },
-                  { label: "Landscape (แนวนอน)", value: "landscape" },
+                  { label: "Portrait", value: "portrait" },
+                  { label: "Landscape", value: "landscape" },
                 ]}
               />
             </Form.Item>
@@ -216,19 +216,19 @@ const StickerTab: React.FC = () => {
         {/* Font sizes */}
         <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8, marginBottom: 16 }}>
           <Title level={5} style={{ padding: "16px 0 0", marginBottom: 0, fontSize: 13 }}>Font Sizes (at 2.0 cm baseline)</Title>
-          <SettingRow title="Accession No." description="เลข Accession — Row 1">
+          <SettingRow title="Accession No." description="Accession number — Row 1">
             <FontInput name="sticker_font_accession" />
           </SettingRow>
-          <SettingRow title="Block Code" description="รหัส Block — Row 2 (bold)">
+          <SettingRow title="Block Code" description="Block code — Row 2 (bold)">
             <FontInput name="sticker_font_block" />
           </SettingRow>
-          <SettingRow title="Date" description="วันที่ — Row 2 ต่อท้าย Block code (same line)">
+          <SettingRow title="Date" description="Date — appended after Block code on Row 2 (same line)">
             <FontInput name="sticker_font_date" />
           </SettingRow>
-          <SettingRow title="Stain Type" description="ประเภทการย้อม — Row 3">
+          <SettingRow title="Stain Type" description="Stain type — Row 3">
             <FontInput name="sticker_font_stain" />
           </SettingRow>
-          <SettingRow title="Hospital Code" description="รหัสโรงพยาบาล — Row 4">
+          <SettingRow title="Hospital Code" description="Hospital code — Row 4">
             <FontInput name="sticker_font_hospital" />
           </SettingRow>
         </div>
@@ -236,7 +236,7 @@ const StickerTab: React.FC = () => {
         {/* Layout */}
         <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8, marginBottom: 16 }}>
           <Title level={5} style={{ padding: "16px 0 0", marginBottom: 0, fontSize: 13 }}>Layout</Title>
-          <SettingRow title="Top Margin" description="ระยะห่างจากขอบบน — เพิ่มถ้าข้อความล้นขอบ">
+          <SettingRow title="Top Margin" description="Distance from the top edge — increase if text overflows the edge">
             <Form.Item name="sticker_margin_top_cm" noStyle>
               <InputNumber min={0} max={1.0} step={0.05} precision={2} suffix="cm" style={{ width: 120 }} />
             </Form.Item>
@@ -246,17 +246,17 @@ const StickerTab: React.FC = () => {
         {/* QR Code */}
         <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
           <Title level={5} style={{ padding: "16px 0 0", marginBottom: 0, fontSize: 13 }}>QR Code</Title>
-          <SettingRow title="Scale" description="ขนาด QR code — 1.0 = ปกติ, <1 เล็กลง, >1 ใหญ่ขึ้น">
+          <SettingRow title="Scale" description="QR code size — 1.0 = normal, <1 smaller, >1 larger">
             <Form.Item name="sticker_qr_scale" noStyle>
               <InputNumber min={0.3} max={2.0} step={0.1} precision={1} style={{ width: 120 }} />
             </Form.Item>
           </SettingRow>
-          <SettingRow title="X Offset" description="เลื่อนซ้าย/ขวา — ค่าลบ = ซ้าย, ค่าบวก = ขวา">
+          <SettingRow title="X Offset" description="Shift left/right — negative = left, positive = right">
             <Form.Item name="sticker_qr_offset_x_cm" noStyle>
               <InputNumber min={-1.0} max={1.0} step={0.05} precision={2} suffix="cm" style={{ width: 120 }} />
             </Form.Item>
           </SettingRow>
-          <SettingRow title="Y Offset" description="เลื่อนขึ้น/ลง — ค่าบวก = ขึ้น, ค่าลบ = ลง">
+          <SettingRow title="Y Offset" description="Shift up/down — positive = up, negative = down">
             <Form.Item name="sticker_qr_offset_y_cm" noStyle>
               <InputNumber min={-1.0} max={1.0} step={0.05} precision={2} suffix="cm" style={{ width: 120 }} />
             </Form.Item>

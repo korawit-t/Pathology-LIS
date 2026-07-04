@@ -6,6 +6,7 @@ import mimetypes
 from datetime import datetime, date, time
 from app.utils.time import local_now
 from app.utils.file_handler import validate_and_sanitize
+from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 
 logger = logging.getLogger(__name__)
 from typing import List, Optional, Any
@@ -350,6 +351,7 @@ def read_cases(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     is_pending: Optional[bool] = Query(None),
+    is_express: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
     return crud_case.get_cases(
@@ -368,6 +370,7 @@ def read_cases(
         date_from=datetime.combine(date_from, time.min) if date_from else None,
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         is_pending=is_pending,
+        is_express=is_express,
     )
 
 
@@ -1101,9 +1104,6 @@ def delete_request_file(
 
 # --- 📂 Consult PDF Endpoints ---
 
-UPLOAD_CONSULT_DIR = os.path.join(os.getcwd(), "uploads", "consults")
-os.makedirs(UPLOAD_CONSULT_DIR, exist_ok=True)
-
 @router.post("/{case_id}/consult-pdf", response_model=None)
 async def upload_consult_pdf(
     case_id: int,
@@ -1116,26 +1116,7 @@ async def upload_consult_pdf(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Validate magic bytes (%PDF) and enforce 20 MB cap
-    data, ext = validate_and_sanitize(file, allowed="pdf")
-
-    if case.consult_pdf_path and os.path.exists(case.consult_pdf_path):
-        os.remove(case.consult_pdf_path)
-
-    unique_filename = f"consult_{case_id}_{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(UPLOAD_CONSULT_DIR, unique_filename)
-
-    try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Save failed: {e}")
-
-    case.consult_pdf_path = file_path
-    case.consult_pdf_received_at = (
-        datetime.fromisoformat(received_at) if received_at else local_now()
-    )
-    db.commit()
+    save_consult_pdf(db, case, "surgical", file, received_at)
 
     return {"message": "Uploaded successfully"}
 
@@ -1148,12 +1129,8 @@ def delete_consult_pdf(
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    
-    if case.consult_pdf_path and os.path.exists(case.consult_pdf_path):
-        os.remove(case.consult_pdf_path)
-    
-    case.consult_pdf_path = None
-    db.commit()
+
+    clear_consult_pdf(db, case)
     return {"message": "Consult PDF removed successfully"}
 
 @router.get("/{case_id}/consult-pdf")

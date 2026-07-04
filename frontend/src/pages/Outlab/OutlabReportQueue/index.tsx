@@ -130,7 +130,7 @@ const OutlabReportQueuePage: React.FC = () => {
   const fetchPending = useCallback(async (p = 1, s = "") => {
     setLoadingPending(true);
     try {
-      const res = await GyneCytologyCaseService.getAll({ is_out_lab_consult: true, is_reported: false, skip: (p - 1) * PAGE_SIZE, limit: PAGE_SIZE, search: s || undefined });
+      const res = await GyneCytologyCaseService.getAll({ is_out_lab_consult: true, exclude_consult_status: "received", skip: (p - 1) * PAGE_SIZE, limit: PAGE_SIZE, search: s || undefined });
       setPendingCases(res.items);
       setPendingTotal(res.total);
       setPendingPage(p);
@@ -244,7 +244,7 @@ const OutlabReportQueuePage: React.FC = () => {
       title={
         <Title level={3} style={{ margin: 0, display: "flex", alignItems: "center" }}>
           <CloudUploadOutlined style={{ marginRight: 12, color: "#595959" }} />
-          Outlab Consult Report Upload
+          Gyne Outlab Consult Report Upload
         </Title>
       }
     >

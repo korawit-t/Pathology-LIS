@@ -62,6 +62,7 @@ const PathologistPage: React.FC<{
     slideSentTotal,
     pendingTotal,
     coSignTotal,
+    expressTotal,
     loading,
     setSearchText,
     systemSettings,
@@ -138,6 +139,7 @@ const renderWorklist = (
       slideSentCount={slideSentTotal}
       pendingCount={pendingTotal}
       coSignCount={coSignTotal}
+      expressCount={expressTotal}
     />
   );
 

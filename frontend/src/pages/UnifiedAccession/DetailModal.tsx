@@ -186,7 +186,7 @@ const DetailModal: React.FC<DetailModalProps> = ({
                         dataIndex: "status",
                         width: 140,
                         render: (s: string) => {
-                          if (caseData?.is_out_lab_consult && caseData?.consult_status !== "completed") {
+                          if (caseData?.is_out_lab_consult && caseData?.consult_status !== "received") {
                             return <Tag color="purple">Sent to Consult</Tag>;
                           }
                           return <Tag color={s === "completed" ? "green" : "blue"}>{s}</Tag>;
@@ -370,7 +370,8 @@ const DetailModal: React.FC<DetailModalProps> = ({
             dataIndex: "status",
             width: 110,
             render: (v: string) => (
-              <Tag color={v === "completed" ? "green" : v === "processing" ? "blue" : "orange"}>
+              // v is OutlabConsultRun.status — only ever "sent" | "received"
+              <Tag color={v === "received" ? "green" : "orange"}>
                 {v?.toUpperCase() || "—"}
               </Tag>
             ),

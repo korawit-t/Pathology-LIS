@@ -215,17 +215,6 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
             </Tooltip>
           )}
 
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            onClick={onSave}
-            loading={loading}
-            disabled={isLocked}
-            style={!isLocked ? buttonStyles.save : {}}
-          >
-            Save Draft
-          </Button>
-
           {hasReport && (
             <Button
               icon={<FileTextOutlined />}
@@ -240,6 +229,17 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
               Preview
             </Button>
           )}
+
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={onSave}
+            loading={loading}
+            disabled={isLocked}
+            style={!isLocked ? buttonStyles.save : {}}
+          >
+            Save Draft
+          </Button>
 
           <Button
             type="primary"

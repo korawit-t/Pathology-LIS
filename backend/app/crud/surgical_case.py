@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_, and_, exists, select
 from fastapi import HTTPException, status
 from datetime import datetime
@@ -8,6 +8,8 @@ from app.models.surgical_case import SurgicalCase
 
 logger = logging.getLogger(__name__)
 from app.models.surgical_specimen import SurgicalSpecimen
+from app.models.surgical_block import SurgicalBlock
+from app.models.surgical_block_stain import SurgicalBlockStain
 from app.schemas.surgical_case import SurgicalCaseCreate, SurgicalCaseUpdate
 from app.models.patient import Patient
 from app.models.surgical_diagnosis import SurgicalDiagnosis
@@ -105,12 +107,16 @@ def get_cases(
     date_from: datetime = None,
     date_to: datetime = None,
     is_pending: bool = None,
+    is_express: bool = None,
 ):
     query = db.query(SurgicalCase).join(Patient)
 
     # 1. กรองตาม Pathologist
     if pathologist_id is not None:
         query = query.filter(SurgicalCase.pathologist_id == pathologist_id)
+
+    if is_express is not None:
+        query = query.filter(SurgicalCase.is_express == is_express)
 
     # 2. Status filter — when is_pending=True, OR with the is_pending flag
     status_conds = []
@@ -175,15 +181,27 @@ def get_cases(
 
     items = (
         query.options(
-            selectinload(SurgicalCase.specimens).selectinload(
-                SurgicalSpecimen.blocks
-            )  # 🚩 โหลด Blocks ที่ซ้อนใน Specimens ออกมาด้วย
+            selectinload(SurgicalCase.specimens)
+            .selectinload(SurgicalSpecimen.blocks)  # 🚩 โหลด Blocks ที่ซ้อนใน Specimens ออกมาด้วย
+            .selectinload(SurgicalBlock.stains)
+            .joinedload(SurgicalBlockStain.test)
         )
         .order_by(SurgicalCase.accession_no.asc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+
+    # Flag cases that have ever had an IHC stain ordered on any block — not a
+    # stored column, computed from the already-eager-loaded specimens/blocks
+    # so this stays a single query set, not one query per case.
+    for case in items:
+        case.has_ihc = any(
+            stain.test and stain.test.category == "IHC"
+            for spec in case.specimens
+            for block in spec.blocks
+            for stain in block.stains
+        )
 
     return {"items": items, "total": total}
 

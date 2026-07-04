@@ -72,9 +72,10 @@ def get_registered_queue_stains(db: Session):
     )
 
 
-def auto_create_default_stain(db: Session, case_id: int):
+def auto_create_default_stain(db: Session, case_id: int, count: int = 1):
     """
-    สร้างสไลด์ใบแรกโดยดึง Stain จาก Master Data อัตโนมัติ (ใช้ System Code ถ้ามี)
+    สร้างสไลด์โดยดึง Stain จาก Master Data อัตโนมัติ (ใช้ System Code ถ้ามี)
+    count = จำนวนสไลด์ที่จะสร้าง (slide_no วิ่งจาก 1..count)
     """
     # 🚩 ค้นหาด้วยคำว่า PAP_ROUTINE เหมือนใน Gyne ไปก่อน หาก Non-Gyne มีค่าตั้งต้นเฉพาะให้เพิ่มที่นี่
     pap_test = (
@@ -84,18 +85,22 @@ def auto_create_default_stain(db: Session, case_id: int):
     )
 
     if not pap_test:
-        return None
+        return []
 
-    db_obj = NongyneCytologyStain(
-        case_id=case_id,
-        test_id=pap_test.id,
-        slide_no=1,
-        status="pending",
-    )
-    db.add(db_obj)
+    db_objs = [
+        NongyneCytologyStain(
+            case_id=case_id,
+            test_id=pap_test.id,
+            slide_no=slide_no,
+            status="pending",
+        )
+        for slide_no in range(1, count + 1)
+    ]
+    db.add_all(db_objs)
     db.commit()
-    db.refresh(db_obj)
-    return db_obj
+    for db_obj in db_objs:
+        db.refresh(db_obj)
+    return db_objs
 
 
 def create_stain_run(

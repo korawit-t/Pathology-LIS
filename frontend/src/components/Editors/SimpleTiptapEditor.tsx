@@ -1,4 +1,4 @@
-import React, { useEffect, useImperativeHandle, forwardRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { useEditor, EditorContent, Extension } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -98,6 +98,15 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
 
     const { isDarkMode } = useTheme();
 
+    // Tracks the HTML this editor itself last emitted via onChange, so the
+    // value-sync effect below can tell "form echoed my own edit back" apart
+    // from "value changed externally" — without that distinction, every
+    // keystroke round-trips through Form.Item and forces a full
+    // editor.getHTML() + destructive setContent() on each character typed,
+    // which is what made typing feel laggy (especially with several
+    // instances mounted at once, one per specimen).
+    const lastEmittedHtml = useRef<string | null>(value ?? null);
+
     // 🚩 3. กำหนดสีตามโหมด
     const themeColors = {
       border: isDarkMode ? "#434343" : "#d9d9d9",
@@ -138,7 +147,9 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
         },
       },
       onUpdate: ({ editor }: { editor: Editor }) => {
-        onChange?.(editor.getHTML());
+        const html = editor.getHTML();
+        lastEmittedHtml.current = html;
+        onChange?.(html);
       },
     });
 
@@ -160,12 +171,17 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
     }, [disabled, editor]);
 
     useEffect(() => {
-      if (!editor) return;
+      if (!editor || value === undefined) return;
+      // Skip if this is just the form echoing back what we ourselves typed —
+      // avoids calling the (expensive) editor.getHTML() and resetting the
+      // document / cursor position on every keystroke.
+      if (value === lastEmittedHtml.current) return;
       const isSameContent = editor.getHTML() === value;
-      if (value !== undefined && !isSameContent) {
+      if (!isSameContent) {
         // 🚩 สำคัญ: ต้องลบเงื่อนไข editor.getText() === '' ออกด้วย
         editor.commands.setContent(value, { emitUpdate: false });
       }
+      lastEmittedHtml.current = value;
     }, [value, editor]);
 
     if (!editor) return null;
