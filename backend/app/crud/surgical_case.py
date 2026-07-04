@@ -108,6 +108,7 @@ def get_cases(
     date_to: datetime = None,
     is_pending: bool = None,
     is_express: bool = None,
+    exclude_signed: bool = None,
 ):
     query = db.query(SurgicalCase).join(Patient)
 
@@ -117,6 +118,11 @@ def get_cases(
 
     if is_express is not None:
         query = query.filter(SurgicalCase.is_express == is_express)
+
+    if exclude_signed:
+        query = query.filter(
+            ~SurgicalCase.status.in_(["signed out", "addendum signed"])
+        )
 
     # 2. Status filter — when is_pending=True, OR with the is_pending flag
     status_conds = []

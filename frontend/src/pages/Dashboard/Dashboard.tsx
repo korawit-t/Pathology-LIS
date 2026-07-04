@@ -311,6 +311,7 @@ const Dashboard: React.FC = () => {
               }
             },
             defaultTab: pathologistDefaultTab,
+            onActiveTabChange: setPathologistDefaultTab,
             onOpenReport: (id, type) => {
               setSelectedSpecimenId(id);
               setPreviousView(currentView);
@@ -352,10 +353,8 @@ const Dashboard: React.FC = () => {
                 setCurrentView(previousView === "gyne-qc-review" ? "gyne-qc-review" : "gyne-cyto-work-list");
                 setPreviousView(null);
               } else if (currentView === "pathologist-gyne-diagnosis") {
-                setPathologistDefaultTab("gyne");
                 setCurrentView("pathologist-page");
               } else if (currentView === "pathologist-nongyne-diagnosis") {
-                setPathologistDefaultTab("nongyne");
                 setCurrentView("pathologist-page");
               } else if (currentView === "nongyne-cyto-diagnosis-entry") {
                 setCurrentView("nongyne-cyto-work-list");
@@ -364,7 +363,6 @@ const Dashboard: React.FC = () => {
               } else if (currentView === "gyne-cyto-stains") {
                 setCurrentView("gyne-cyto-work-list");
               } else {
-                setPathologistDefaultTab("surgical");
                 setCurrentView("pathologist-page");
               }
             },

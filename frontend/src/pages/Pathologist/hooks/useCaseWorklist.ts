@@ -58,7 +58,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
         PathologistService.getMyWorklist(userId, 0, 1, "", CASE_STATUS.SLIDE_SENT),
         PathologistService.getMyWorklist(userId, 0, 1, "", undefined, true),
         SurgicalReportService.getPendingCosignWorklist(1, 1, ""),
-        PathologistService.getMyWorklist(userId, 0, 1, "", undefined, undefined, true),
+        PathologistService.getMyWorklist(userId, 0, 1, "", undefined, undefined, true, true),
       ]);
       setSlideSentTotal(slideSentRes.total || 0);
       setPendingTotal(pendingRes.total || 0);
@@ -134,6 +134,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           searchText,
           statusParam,
           currentStatus === CASE_STATUS.PENDING_DIAGNOSIS ? true : undefined,
+          currentStatus === "EXPRESS" ? true : undefined,
           currentStatus === "EXPRESS" ? true : undefined,
         );
       }

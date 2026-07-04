@@ -352,6 +352,7 @@ def read_cases(
     date_to: Optional[date] = Query(None),
     is_pending: Optional[bool] = Query(None),
     is_express: Optional[bool] = Query(None),
+    exclude_signed: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
     return crud_case.get_cases(
@@ -371,6 +372,7 @@ def read_cases(
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         is_pending=is_pending,
         is_express=is_express,
+        exclude_signed=exclude_signed,
     )
 
 

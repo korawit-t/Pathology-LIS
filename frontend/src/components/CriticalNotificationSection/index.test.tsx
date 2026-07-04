@@ -56,7 +56,7 @@ describe("CriticalNotificationSection", () => {
   it("renders the section header", async () => {
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() => expect(mockGetByCaseId).toHaveBeenCalled());
-    expect(screen.getByText("บันทึกการแจ้งผลวิกฤต")).toBeInTheDocument();
+    expect(screen.getByText("Critical & Malignancy Notifications")).toBeInTheDocument();
   });
 
   it("calls getByCaseId with correct caseId and caseType on mount", async () => {

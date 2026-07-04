@@ -101,6 +101,7 @@ interface Props {
   isSidebarCollapsed?: boolean;
   isSideLayout?: boolean;
   defaultTab?: string;
+  onActiveTabChange?: (tab: string) => void;
 }
 
 // 2. สร้าง Config Mapping ครั้งเดียว (ไม่ต้องใช้ Switch-Case ยาวๆ)

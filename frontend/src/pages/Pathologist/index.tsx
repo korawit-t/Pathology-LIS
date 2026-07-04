@@ -46,9 +46,15 @@ const PathologistPage: React.FC<{
   user: User;
   onSelectCase: (id: number, type?: "surgical" | "gyne" | "nongyne") => void;
   defaultTab?: string;
-}> = ({ user, onSelectCase, defaultTab }) => {
+  onActiveTabChange?: (tab: string) => void;
+}> = ({ user, onSelectCase, defaultTab, onActiveTabChange }) => {
   const { isDarkMode } = useTheme();
   const [activeTab, setActiveTab] = useState(defaultTab || "surgical");
+
+  const handleTabChange = (key: string) => {
+    setActiveTab(key);
+    onActiveTabChange?.(key);
+  };
   const [readyStainCount, setReadyStainCount] = useState(0);
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
   const [pendingConsultCount, setPendingConsultCount] = useState(0);
@@ -339,7 +345,7 @@ const renderWorklist = (
     >
       <Tabs
         activeKey={activeTab}
-        onChange={setActiveTab}
+        onChange={handleTabChange}
         items={tabItems}
         type="line"
         size="large"
