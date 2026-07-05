@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from typing import Literal, Optional, List
 from datetime import datetime
 
 
@@ -71,6 +71,72 @@ class NongyneIHCResultResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ── IHC Marker Extra Fields (admin-configured, additive to the primary option) ─
+
+class IHCMarkerExtraFieldOptionCreate(BaseModel):
+    option_label: str
+    option_value: str
+    display_order: int = 0
+
+class IHCMarkerExtraFieldOptionUpdate(BaseModel):
+    option_label: Optional[str] = None
+    option_value: Optional[str] = None
+    display_order: Optional[int] = None
+
+class IHCMarkerExtraFieldOptionResponse(BaseModel):
+    id: int
+    field_id: int
+    option_label: str
+    option_value: str
+    display_order: int
+    model_config = ConfigDict(from_attributes=True)
+
+class IHCMarkerExtraFieldCreate(BaseModel):
+    ap_test_id: int
+    field_key: str
+    label: str
+    field_type: Literal["select", "numeric", "text"]
+    numeric_unit: Optional[str] = None
+    display_order: int = 0
+
+class IHCMarkerExtraFieldUpdate(BaseModel):
+    field_key: Optional[str] = None
+    label: Optional[str] = None
+    field_type: Optional[Literal["select", "numeric", "text"]] = None
+    numeric_unit: Optional[str] = None
+    display_order: Optional[int] = None
+
+class IHCMarkerExtraFieldResponse(BaseModel):
+    id: int
+    ap_test_id: int
+    field_key: str
+    label: str
+    field_type: str
+    numeric_unit: Optional[str]
+    display_order: int
+    options: List[IHCMarkerExtraFieldOptionResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── IHC Result Extra Values (pathologist-entered, one per marker extra field) ──
+
+class IHCResultExtraValueUpsert(BaseModel):
+    surgical_specimen_id: int
+    field_id: int
+    value: Optional[str] = None
+
+class IHCResultExtraValueResponse(BaseModel):
+    id: int
+    ihc_result_id: int
+    field_id: int
+    value: Optional[str]
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class IHCMarkerExtraFieldWithValue(IHCMarkerExtraFieldResponse):
+    value: Optional[str] = None
+
+
 # ── Composite: marker + its options + saved result ────────────────────────────
 
 class IHCMarkerWithResult(BaseModel):
@@ -78,6 +144,7 @@ class IHCMarkerWithResult(BaseModel):
     marker_name: str
     options: List[IHCMarkerOptionResponse]
     result: Optional[IHCResultResponse] = None
+    extra_fields: List[IHCMarkerExtraFieldWithValue] = []
     model_config = ConfigDict(from_attributes=True)
 
 class NongyneIHCMarkerWithResult(BaseModel):

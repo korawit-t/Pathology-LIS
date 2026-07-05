@@ -56,6 +56,9 @@ from .audit_log import AuditLog
 from .cyto_approval_log import CytoReportAuditLog
 from .ihc_marker_option import IHCMarkerOption
 from .ihc_result import IHCResult
+from .ihc_marker_extra_field import IHCMarkerExtraField
+from .ihc_marker_extra_field_option import IHCMarkerExtraFieldOption
+from .ihc_result_extra_value import IHCResultExtraValue
 from .nongyne_ihc_result import NongyneIHCResult
 from .nongyne_cyto_histo_correlation import NongyneCytoHistoCorrelation
 from .surgical_case_correlation import SurgicalCaseCorrelation

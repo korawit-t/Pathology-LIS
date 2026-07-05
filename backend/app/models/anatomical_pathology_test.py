@@ -30,3 +30,4 @@ class AnatomicalPathologyTest(Base):
     outlab = relationship("ExternalLab", foreign_keys=[outlab_id])
     specimens = relationship("SurgicalSpecimenAPTest", back_populates="ap_test")
     ihc_options = relationship("IHCMarkerOption", back_populates="ap_test", cascade="all, delete-orphan", order_by="IHCMarkerOption.display_order")
+    ihc_extra_fields = relationship("IHCMarkerExtraField", back_populates="ap_test", cascade="all, delete-orphan", order_by="IHCMarkerExtraField.display_order")

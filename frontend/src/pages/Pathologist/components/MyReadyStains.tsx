@@ -176,7 +176,7 @@ const MyReadyStains: React.FC<Props> = ({ onSelectCase, pathologistId }) => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [pathologistId]);
 
   const handleMarkReviewed = async (record: CaseGroup) => {
     const stainedIds = record.stains
@@ -198,6 +198,7 @@ const MyReadyStains: React.FC<Props> = ({ onSelectCase, pathologistId }) => {
       fetchData();
     } catch {
       message.error("Failed to update stain status");
+      fetchData();
     } finally {
       setReviewingIds((prev) => {
         const next = new Set(prev);
@@ -234,7 +235,7 @@ const MyReadyStains: React.FC<Props> = ({ onSelectCase, pathologistId }) => {
         [record.patient_name, record.patient_ln].filter(Boolean).join(" ") || "-",
     },
     {
-      title: "Status Summary",
+      title: "Status",
       key: "summary",
       width: 320,
       render: (_: unknown, record: CaseGroup) => (

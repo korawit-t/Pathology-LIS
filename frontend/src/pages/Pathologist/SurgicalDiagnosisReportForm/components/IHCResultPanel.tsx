@@ -75,6 +75,19 @@ function generateIHCHtml(
         const unit = opt?.numeric_unit ?? "";
         parts.push(`${result.numeric_value}${unit}`);
       }
+      [...item.extra_fields]
+        .sort((a, b) => a.display_order - b.display_order)
+        .forEach((ef) => {
+          if (!ef.value) return;
+          if (ef.field_type === "select") {
+            const opt = ef.options.find((o) => o.option_value === ef.value);
+            parts.push(opt ? opt.option_label : ef.value!);
+          } else if (ef.field_type === "numeric") {
+            parts.push(`${ef.value}${ef.numeric_unit ?? ""}`);
+          } else {
+            parts.push(ef.value!);
+          }
+        });
       if (result.note) parts.push(`(${result.note})`);
       return parts.length
         ? { marker: item.marker_name, value: parts.join(", ") }
@@ -106,6 +119,10 @@ interface SortableMarkerRowProps {
   saving: boolean;
   onOptionClick: (apTestId: number, value: string) => void;
   onNumericChange: (apTestId: number, value: number | null) => void;
+  extraSaving: Record<string, boolean>;
+  onExtraFieldOptionClick: (apTestId: number, fieldId: number, value: string) => void;
+  onExtraFieldNumericChange: (apTestId: number, fieldId: number, value: number | null) => void;
+  onExtraFieldTextChange: (apTestId: number, fieldId: number, value: string) => void;
 }
 
 const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
@@ -114,6 +131,10 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
   saving,
   onOptionClick,
   onNumericChange,
+  extraSaving,
+  onExtraFieldOptionClick,
+  onExtraFieldNumericChange,
+  onExtraFieldTextChange,
 }) => {
   const {
     attributes,
@@ -197,6 +218,64 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
       )}
 
       {saving && <Spin size="small" />}
+
+      {[...item.extra_fields]
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((ef) => {
+          const key = `${item.ap_test_id}-${ef.id}`;
+          return (
+            <React.Fragment key={ef.id}>
+              <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+                {ef.label}:
+              </Text>
+              {ef.field_type === "select" && (
+                <Space size={4} wrap>
+                  {ef.options.map((opt) => {
+                    const isSelected = ef.value === opt.option_value;
+                    return (
+                      <Tag
+                        key={opt.option_value}
+                        color={isSelected ? "geekblue" : "default"}
+                        style={{
+                          cursor: isLocked ? "default" : "pointer",
+                          fontWeight: isSelected ? 600 : 400,
+                          borderStyle: isSelected ? "solid" : "dashed",
+                          userSelect: "none",
+                        }}
+                        onClick={() => {
+                          if (!isLocked) onExtraFieldOptionClick(item.ap_test_id, ef.id, opt.option_value);
+                        }}
+                      >
+                        {opt.option_label}
+                      </Tag>
+                    );
+                  })}
+                </Space>
+              )}
+              {ef.field_type === "numeric" && (
+                <InputNumber
+                  size="small"
+                  defaultValue={ef.value != null ? Number(ef.value) : undefined}
+                  placeholder={ef.numeric_unit ?? "value"}
+                  suffix={ef.numeric_unit ?? ""}
+                  style={{ width: 130 }}
+                  onChange={(v) => onExtraFieldNumericChange(item.ap_test_id, ef.id, v)}
+                  disabled={isLocked}
+                />
+              )}
+              {ef.field_type === "text" && (
+                <Input
+                  size="small"
+                  defaultValue={ef.value ?? ""}
+                  style={{ width: 160 }}
+                  onChange={(e) => onExtraFieldTextChange(item.ap_test_id, ef.id, e.target.value)}
+                  disabled={isLocked}
+                />
+              )}
+              {extraSaving[key] && <Spin size="small" />}
+            </React.Fragment>
+          );
+        })}
     </div>
   );
 };
@@ -212,9 +291,11 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
   const [panel, setPanel] = useState<IHCMarkerWithResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<number, boolean>>({});
+  const [extraSaving, setExtraSaving] = useState<Record<string, boolean>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsForm] = Form.useForm();
   const numericTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const extraFieldTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveOrderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentPrefix = user?.preferences?.ihc_text_prefix ?? DEFAULT_PREFIX;
@@ -328,6 +409,58 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
     clearTimeout(numericTimers.current[apTestId]);
     numericTimers.current[apTestId] = setTimeout(() => {
       save(apTestId, { numeric_value: value });
+    }, 600);
+  };
+
+  const saveExtraValue = async (apTestId: number, fieldId: number, value: string | null) => {
+    const key = `${apTestId}-${fieldId}`;
+    setExtraSaving((s) => ({ ...s, [key]: true }));
+    try {
+      await IHCService.upsertExtraValue({
+        surgical_specimen_id: specimenId,
+        field_id: fieldId,
+        value,
+      });
+      setPanel((prev) =>
+        prev.map((item) =>
+          item.ap_test_id === apTestId
+            ? {
+                ...item,
+                extra_fields: item.extra_fields.map((ef) =>
+                  ef.id === fieldId ? { ...ef, value } : ef
+                ),
+              }
+            : item
+        )
+      );
+    } catch {
+      message.error("Failed to save IHC extra field value");
+    } finally {
+      setExtraSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const handleExtraFieldOptionClick = (apTestId: number, fieldId: number, value: string) => {
+    const ef = panel
+      .find((p) => p.ap_test_id === apTestId)
+      ?.extra_fields.find((f) => f.id === fieldId);
+    const newValue = ef?.value === value ? null : value;
+    saveExtraValue(apTestId, fieldId, newValue);
+  };
+
+  const handleExtraFieldNumericChange = (apTestId: number, fieldId: number, value: number | null) => {
+    const key = `${apTestId}-${fieldId}`;
+    clearTimeout(extraFieldTimers.current[key]);
+    extraFieldTimers.current[key] = setTimeout(() => {
+      saveExtraValue(apTestId, fieldId, value != null ? String(value) : null);
+    }, 600);
+  };
+
+  const handleExtraFieldTextChange = (apTestId: number, fieldId: number, value: string) => {
+    const key = `${apTestId}-${fieldId}`;
+    clearTimeout(extraFieldTimers.current[key]);
+    extraFieldTimers.current[key] = setTimeout(() => {
+      saveExtraValue(apTestId, fieldId, value || null);
     }, 600);
   };
 
@@ -499,6 +632,10 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
                 saving={!!saving[item.ap_test_id]}
                 onOptionClick={handleOptionClick}
                 onNumericChange={handleNumericChange}
+                extraSaving={extraSaving}
+                onExtraFieldOptionClick={handleExtraFieldOptionClick}
+                onExtraFieldNumericChange={handleExtraFieldNumericChange}
+                onExtraFieldTextChange={handleExtraFieldTextChange}
               />
             ))}
           </div>

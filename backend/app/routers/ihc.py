@@ -18,6 +18,14 @@ from app.schemas.ihc import (
     NongyneIHCResultUpsert,
     NongyneIHCResultResponse,
     NongyneIHCMarkerWithResult,
+    IHCMarkerExtraFieldCreate,
+    IHCMarkerExtraFieldUpdate,
+    IHCMarkerExtraFieldResponse,
+    IHCMarkerExtraFieldOptionCreate,
+    IHCMarkerExtraFieldOptionUpdate,
+    IHCMarkerExtraFieldOptionResponse,
+    IHCResultExtraValueUpsert,
+    IHCResultExtraValueResponse,
 )
 import app.crud.ihc as ihc_crud
 import app.crud.nongyne_ihc as nongyne_ihc_crud
@@ -58,6 +66,55 @@ def delete_option(option_id: int, db: Session = Depends(get_db)):
     return None
 
 
+# ── Admin: marker extra fields ─────────────────────────────────────────────────
+
+@router.get("/markers/{ap_test_id}/extra-fields", response_model=List[IHCMarkerExtraFieldResponse], dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def list_extra_fields(ap_test_id: int, db: Session = Depends(get_db)):
+    return ihc_crud.get_extra_fields_by_marker(db, ap_test_id)
+
+
+@router.post("/markers/{ap_test_id}/extra-fields", response_model=IHCMarkerExtraFieldResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def create_extra_field(ap_test_id: int, payload: IHCMarkerExtraFieldCreate, db: Session = Depends(get_db)):
+    if payload.ap_test_id != ap_test_id:
+        raise HTTPException(status_code=400, detail="ap_test_id mismatch")
+    return ihc_crud.create_extra_field(db, payload)
+
+
+@router.patch("/extra-fields/{field_id}", response_model=IHCMarkerExtraFieldResponse, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def update_extra_field(field_id: int, payload: IHCMarkerExtraFieldUpdate, db: Session = Depends(get_db)):
+    obj = ihc_crud.update_extra_field(db, field_id, payload)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Extra field not found")
+    return obj
+
+
+@router.delete("/extra-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def delete_extra_field(field_id: int, db: Session = Depends(get_db)):
+    if not ihc_crud.delete_extra_field(db, field_id):
+        raise HTTPException(status_code=404, detail="Extra field not found")
+    return None
+
+
+@router.post("/extra-fields/{field_id}/options", response_model=IHCMarkerExtraFieldOptionResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def create_extra_field_option(field_id: int, payload: IHCMarkerExtraFieldOptionCreate, db: Session = Depends(get_db)):
+    return ihc_crud.create_extra_field_option(db, field_id, payload)
+
+
+@router.patch("/extra-field-options/{option_id}", response_model=IHCMarkerExtraFieldOptionResponse, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def update_extra_field_option(option_id: int, payload: IHCMarkerExtraFieldOptionUpdate, db: Session = Depends(get_db)):
+    obj = ihc_crud.update_extra_field_option(db, option_id, payload)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Extra field option not found")
+    return obj
+
+
+@router.delete("/extra-field-options/{option_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(CAN_MANAGE_SETTINGS)])
+def delete_extra_field_option(option_id: int, db: Session = Depends(get_db)):
+    if not ihc_crud.delete_extra_field_option(db, option_id):
+        raise HTTPException(status_code=404, detail="Extra field option not found")
+    return None
+
+
 # ── Pathologist: results ──────────────────────────────────────────────────────
 
 @router.get("/specimens/{specimen_id}/panel", response_model=List[IHCMarkerWithResult], dependencies=[Depends(CAN_WRITE_REPORT)])
@@ -75,6 +132,11 @@ def delete_result(result_id: int, db: Session = Depends(get_db)):
     if not ihc_crud.delete_result(db, result_id):
         raise HTTPException(status_code=404, detail="Result not found")
     return None
+
+
+@router.put("/result-extra-values", response_model=Optional[IHCResultExtraValueResponse], dependencies=[Depends(CAN_WRITE_REPORT)])
+def upsert_result_extra_value(payload: IHCResultExtraValueUpsert, db: Session = Depends(get_db)):
+    return ihc_crud.upsert_extra_value(db, payload)
 
 
 # ── Non-Gyne IHC (case-level) ─────────────────────────────────────────────────

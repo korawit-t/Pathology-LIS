@@ -15,8 +15,13 @@ import {
   Divider,
   Tabs,
   Badge,
+  Row,
+  Col,
+  Typography,
 } from "antd";
 import { ExperimentOutlined, PlusOutlined } from "@ant-design/icons";
+
+const { Text } = Typography;
 import AnatomicalPathologyTestService from "../services/anatomicalTestService";
 import ExternalLabService from "../services/externalLabService";
 import { IHCService } from "../services/ihcService";
@@ -40,6 +45,24 @@ const AnatomicalPathologyTestPage = () => {
   const [ihcOptionsLoading, setIhcOptionsLoading] = useState(false);
   const [ihcAddForm] = Form.useForm();
   const [ihcAddVisible, setIhcAddVisible] = useState(false);
+  const [ihcEditingOptionId, setIhcEditingOptionId] = useState(null);
+
+  const [ihcExtraFields, setIhcExtraFields] = useState([]);
+  const [ihcExtraFieldsLoading, setIhcExtraFieldsLoading] = useState(false);
+  const [ihcExtraFieldAddForm] = Form.useForm();
+  const [ihcExtraFieldAddVisible, setIhcExtraFieldAddVisible] = useState(false);
+  const [ihcEditingFieldId, setIhcEditingFieldId] = useState(null);
+  const [ihcExtraFieldOptionsFieldId, setIhcExtraFieldOptionsFieldId] = useState(null);
+  const [ihcExtraFieldOptionAddForm] = Form.useForm();
+  const [ihcExtraFieldOptionAddVisible, setIhcExtraFieldOptionAddVisible] = useState(false);
+  const [ihcEditingFieldOptionId, setIhcEditingFieldOptionId] = useState(null);
+
+  // Preview-only state (left column of the IHC Options modal) — lets admins see
+  // exactly what pathologists will click on, without persisting anywhere.
+  const [previewSelected, setPreviewSelected] = useState(null);
+  const [previewNumeric, setPreviewNumeric] = useState(null);
+  const [previewExtraValues, setPreviewExtraValues] = useState({});
+
   const [activeTab, setActiveTab] = useState("All");
   const [searchText, setSearchText] = useState("");
 
@@ -131,7 +154,15 @@ const AnatomicalPathologyTestPage = () => {
     setIhcOptionsLoading(true);
     setIhcOptionsOpen(true);
     setIhcAddVisible(false);
+    setIhcEditingOptionId(null);
     ihcAddForm.resetFields();
+    setIhcExtraFieldAddVisible(false);
+    setIhcEditingFieldId(null);
+    ihcExtraFieldAddForm.resetFields();
+    setIhcExtraFieldOptionsFieldId(null);
+    setPreviewSelected(null);
+    setPreviewNumeric(null);
+    setPreviewExtraValues({});
     try {
       const opts = await IHCService.getOptions(record.id);
       setIhcOptions(opts);
@@ -140,19 +171,36 @@ const AnatomicalPathologyTestPage = () => {
     } finally {
       setIhcOptionsLoading(false);
     }
+    await loadIhcExtraFields(record.id);
+  };
+
+  const openEditIHCOption = (opt) => {
+    setIhcEditingOptionId(opt.id);
+    ihcAddForm.setFieldsValue(opt);
+    setIhcAddVisible(true);
+  };
+
+  const closeIHCOptionForm = () => {
+    setIhcAddVisible(false);
+    setIhcEditingOptionId(null);
+    ihcAddForm.resetFields();
   };
 
   const handleIHCAddOption = async () => {
     try {
       const values = await ihcAddForm.validateFields();
-      await IHCService.createOption(ihcTestId, { ...values, ap_test_id: ihcTestId, display_order: ihcOptions.length });
-      message.success("เพิ่ม option สำเร็จ");
-      ihcAddForm.resetFields();
-      setIhcAddVisible(false);
+      if (ihcEditingOptionId) {
+        await IHCService.updateOption(ihcEditingOptionId, values);
+        message.success("Option updated successfully");
+      } else {
+        await IHCService.createOption(ihcTestId, { ...values, ap_test_id: ihcTestId, display_order: ihcOptions.length });
+        message.success("เพิ่ม option สำเร็จ");
+      }
+      closeIHCOptionForm();
       const opts = await IHCService.getOptions(ihcTestId);
       setIhcOptions(opts);
     } catch {
-      message.error("เพิ่ม option ไม่สำเร็จ");
+      message.error(ihcEditingOptionId ? "Failed to update option" : "เพิ่ม option ไม่สำเร็จ");
     }
   };
 
@@ -164,6 +212,106 @@ const AnatomicalPathologyTestPage = () => {
       setIhcOptions(opts);
     } catch {
       message.error("ลบ option ไม่สำเร็จ");
+    }
+  };
+
+  // ── IHC Extra Fields (additive fields beyond the primary option, e.g. Intensity) ──
+
+  const loadIhcExtraFields = async (apTestId) => {
+    setIhcExtraFieldsLoading(true);
+    try {
+      const fields = await IHCService.getExtraFields(apTestId);
+      setIhcExtraFields(fields);
+    } catch {
+      message.error("โหลด Extra Fields ไม่สำเร็จ");
+    } finally {
+      setIhcExtraFieldsLoading(false);
+    }
+  };
+
+  const openEditExtraField = (field) => {
+    setIhcEditingFieldId(field.id);
+    ihcExtraFieldAddForm.setFieldsValue(field);
+    setIhcExtraFieldAddVisible(true);
+  };
+
+  const closeExtraFieldForm = () => {
+    setIhcExtraFieldAddVisible(false);
+    setIhcEditingFieldId(null);
+    ihcExtraFieldAddForm.resetFields();
+  };
+
+  const handleIHCAddExtraField = async () => {
+    try {
+      const values = await ihcExtraFieldAddForm.validateFields();
+      if (ihcEditingFieldId) {
+        await IHCService.updateExtraField(ihcEditingFieldId, values);
+        message.success("Extra Field updated successfully");
+      } else {
+        await IHCService.createExtraField(ihcTestId, {
+          ...values,
+          ap_test_id: ihcTestId,
+          display_order: ihcExtraFields.length,
+        });
+        message.success("เพิ่ม Extra Field สำเร็จ");
+      }
+      closeExtraFieldForm();
+      loadIhcExtraFields(ihcTestId);
+    } catch {
+      message.error(ihcEditingFieldId ? "Failed to update Extra Field" : "เพิ่ม Extra Field ไม่สำเร็จ");
+    }
+  };
+
+  const handleIHCDeleteExtraField = async (fieldId) => {
+    try {
+      await IHCService.deleteExtraField(fieldId);
+      message.success("ลบ Extra Field สำเร็จ");
+      loadIhcExtraFields(ihcTestId);
+    } catch {
+      message.error("ลบ Extra Field ไม่สำเร็จ");
+    }
+  };
+
+  const openEditExtraFieldOption = (opt) => {
+    setIhcEditingFieldOptionId(opt.id);
+    ihcExtraFieldOptionAddForm.setFieldsValue(opt);
+    setIhcExtraFieldOptionAddVisible(true);
+  };
+
+  const closeExtraFieldOptionForm = () => {
+    setIhcExtraFieldOptionAddVisible(false);
+    setIhcEditingFieldOptionId(null);
+    ihcExtraFieldOptionAddForm.resetFields();
+  };
+
+  const handleAddExtraFieldOption = async () => {
+    try {
+      const values = await ihcExtraFieldOptionAddForm.validateFields();
+      if (ihcEditingFieldOptionId) {
+        await IHCService.updateExtraFieldOption(ihcEditingFieldOptionId, values);
+        message.success("Option updated successfully");
+      } else {
+        const field = ihcExtraFields.find((f) => f.id === ihcExtraFieldOptionsFieldId);
+        await IHCService.createExtraFieldOption(ihcExtraFieldOptionsFieldId, {
+          ...values,
+          display_order: field?.options?.length ?? 0,
+        });
+        message.success("เพิ่ม Option สำเร็จ");
+      }
+      closeExtraFieldOptionForm();
+      loadIhcExtraFields(ihcTestId);
+    } catch {
+      message.error(ihcEditingFieldOptionId ? "Failed to update option" : "เพิ่ม Option ไม่สำเร็จ");
+    }
+  };
+
+  const handleDeleteExtraFieldOption = async (optionId) => {
+    try {
+      await IHCService.deleteExtraFieldOption(optionId);
+      message.success("ลบ Option สำเร็จ");
+      loadIhcExtraFields(ihcTestId);
+    } catch {
+      message.error("ลบ Option ไม่สำเร็จ");
     }
   };
 
@@ -224,7 +372,7 @@ const AnatomicalPathologyTestPage = () => {
       render: (_, record) => (
         <Space>
           <Button type="primary" size="small" onClick={() => openEditModal(record)}>
-            แก้ไข
+            Edit
           </Button>
           {record.category === "IHC" && (
             <Button
@@ -301,9 +449,11 @@ const AnatomicalPathologyTestPage = () => {
         open={ihcOptionsOpen}
         onCancel={() => setIhcOptionsOpen(false)}
         footer={null}
-        width={640}
+        width={1040}
         destroyOnHidden
       >
+        <Row gutter={24}>
+          <Col span={15}>
         <Table
           size="small"
           loading={ihcOptionsLoading}
@@ -318,11 +468,14 @@ const AnatomicalPathologyTestPage = () => {
             { title: "Order", dataIndex: "display_order", width: 60 },
             {
               title: "",
-              width: 60,
+              width: 120,
               render: (_, opt) => (
-                <Popconfirm title="ลบ option นี้?" onConfirm={() => handleIHCDeleteOption(opt.id)}>
-                  <Button danger size="small">ลบ</Button>
-                </Popconfirm>
+                <Space>
+                  <Button size="small" onClick={() => openEditIHCOption(opt)}>Edit</Button>
+                  <Popconfirm title="ลบ option นี้?" onConfirm={() => handleIHCDeleteOption(opt.id)}>
+                    <Button danger size="small">ลบ</Button>
+                  </Popconfirm>
+                </Space>
               ),
             },
           ]}
@@ -365,15 +518,294 @@ const AnatomicalPathologyTestPage = () => {
               </Form.Item>
             </Space>
             <Space style={{ marginTop: 12 }}>
-              <Button type="primary" htmlType="submit" size="small">บันทึก</Button>
-              <Button size="small" onClick={() => { setIhcAddVisible(false); ihcAddForm.resetFields(); }}>ยกเลิก</Button>
+              <Button type="primary" htmlType="submit" size="small">
+                {ihcEditingOptionId ? "Save Changes" : "บันทึก"}
+              </Button>
+              <Button size="small" onClick={closeIHCOptionForm}>ยกเลิก</Button>
+            </Space>
+          </Form>
+        )}
+
+        <Divider>Extra Fields</Divider>
+        <p style={{ color: "#8c8c8c", fontSize: 12, marginTop: -8 }}>
+          Fields independent of the option above, e.g. an "Intensity" pick (0/1+/2+/3+) separate from Positive/Negative
+        </p>
+
+        <Table
+          size="small"
+          loading={ihcExtraFieldsLoading}
+          dataSource={ihcExtraFields}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            { title: "Label", dataIndex: "label", width: 140 },
+            { title: "Key", dataIndex: "field_key", width: 100 },
+            { title: "Type", dataIndex: "field_type", width: 90 },
+            { title: "Unit", dataIndex: "numeric_unit", width: 70, render: (v) => v ?? "-" },
+            { title: "Order", dataIndex: "display_order", width: 60 },
+            {
+              title: "",
+              width: 220,
+              render: (_, field) => (
+                <Space>
+                  {field.field_type === "select" && (
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setIhcExtraFieldOptionsFieldId(field.id);
+                        setIhcExtraFieldOptionAddVisible(false);
+                        setIhcEditingFieldOptionId(null);
+                        ihcExtraFieldOptionAddForm.resetFields();
+                      }}
+                    >
+                      Options ({field.options?.length ?? 0})
+                    </Button>
+                  )}
+                  <Button size="small" onClick={() => openEditExtraField(field)}>Edit</Button>
+                  <Popconfirm title="ลบ Extra Field นี้?" onConfirm={() => handleIHCDeleteExtraField(field.id)}>
+                    <Button danger size="small">ลบ</Button>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
+
+        <Divider />
+
+        {!ihcExtraFieldAddVisible ? (
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setIhcExtraFieldAddVisible(true)}
+            block
+          >
+            เพิ่ม Extra Field
+          </Button>
+        ) : (
+          <Form form={ihcExtraFieldAddForm} layout="vertical" onFinish={handleIHCAddExtraField}>
+            <Space style={{ width: "100%" }} align="start" wrap>
+              <Form.Item name="label" label="Label" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                <Input placeholder="e.g. Intensity" style={{ width: 140 }} />
+              </Form.Item>
+              <Form.Item name="field_key" label="Key" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                <Input placeholder="e.g. intensity" style={{ width: 120 }} />
+              </Form.Item>
+              <Form.Item name="field_type" label="Type" rules={[{ required: true }]} initialValue="select" style={{ marginBottom: 0 }}>
+                <Select
+                  style={{ width: 110 }}
+                  options={[
+                    { value: "select", label: "Select" },
+                    { value: "numeric", label: "Numeric" },
+                    { value: "text", label: "Text" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="numeric_unit" label="Unit" style={{ marginBottom: 0 }}>
+                <Input placeholder="e.g. %" style={{ width: 80 }} />
+              </Form.Item>
+            </Space>
+            <Space style={{ marginTop: 12 }}>
+              <Button type="primary" htmlType="submit" size="small">
+                {ihcEditingFieldId ? "Save Changes" : "บันทึก"}
+              </Button>
+              <Button size="small" onClick={closeExtraFieldForm}>ยกเลิก</Button>
+            </Space>
+          </Form>
+        )}
+          </Col>
+
+          <Col span={9}>
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                background: "#fafafa",
+                border: "1px solid #f0f0f0",
+                borderRadius: 8,
+                padding: 16,
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Preview — what pathologists will see
+              </Text>
+
+              <div style={{ marginTop: 12 }}>
+                <Text strong style={{ fontSize: 13 }}>{ihcTestName}</Text>
+
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  {ihcOptions.map((opt) => {
+                    const isSelected = previewSelected === opt.option_value;
+                    return (
+                      <Tag
+                        key={opt.id}
+                        color={isSelected ? "purple" : "default"}
+                        style={{
+                          cursor: "pointer",
+                          fontWeight: isSelected ? 600 : 400,
+                          borderStyle: isSelected ? "solid" : "dashed",
+                          userSelect: "none",
+                        }}
+                        onClick={() =>
+                          setPreviewSelected((prev) => (prev === opt.option_value ? null : opt.option_value))
+                        }
+                      >
+                        {opt.option_label}
+                      </Tag>
+                    );
+                  })}
+                  {(() => {
+                    const selectedOpt = ihcOptions.find((o) => o.option_value === previewSelected);
+                    return selectedOpt?.has_numeric ? (
+                      <InputNumber
+                        size="small"
+                        placeholder={selectedOpt.numeric_unit || "value"}
+                        suffix={selectedOpt.numeric_unit || ""}
+                        style={{ width: 120 }}
+                        value={previewNumeric}
+                        onChange={setPreviewNumeric}
+                      />
+                    ) : null;
+                  })()}
+                </div>
+
+                {ihcExtraFields.map((field) => (
+                  <div key={field.id} style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{field.label}:</Text>
+                    {field.field_type === "select" &&
+                      field.options?.map((opt) => {
+                        const isSelected = previewExtraValues[field.id] === opt.option_value;
+                        return (
+                          <Tag
+                            key={opt.id}
+                            color={isSelected ? "geekblue" : "default"}
+                            style={{
+                              cursor: "pointer",
+                              fontWeight: isSelected ? 600 : 400,
+                              borderStyle: isSelected ? "solid" : "dashed",
+                              userSelect: "none",
+                            }}
+                            onClick={() =>
+                              setPreviewExtraValues((prev) => ({
+                                ...prev,
+                                [field.id]: prev[field.id] === opt.option_value ? null : opt.option_value,
+                              }))
+                            }
+                          >
+                            {opt.option_label}
+                          </Tag>
+                        );
+                      })}
+                    {field.field_type === "numeric" && (
+                      <InputNumber
+                        size="small"
+                        placeholder={field.numeric_unit || "value"}
+                        suffix={field.numeric_unit || ""}
+                        style={{ width: 120 }}
+                        value={previewExtraValues[field.id] ?? undefined}
+                        onChange={(v) => setPreviewExtraValues((prev) => ({ ...prev, [field.id]: v }))}
+                      />
+                    )}
+                    {field.field_type === "text" && (
+                      <Input
+                        size="small"
+                        style={{ width: 160 }}
+                        value={previewExtraValues[field.id] ?? ""}
+                        onChange={(e) =>
+                          setPreviewExtraValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                        }
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {ihcOptions.length === 0 && ihcExtraFields.length === 0 && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Add options or extra fields on the left to preview them here.
+                  </Text>
+                )}
+              </div>
+            </div>
+          </Col>
+        </Row>
+      </Modal>
+
+      {/* IHC Extra Field Options Modal (nested — manages options for a single "select"-type extra field) */}
+      <Modal
+        title={
+          <Space>
+            <ExperimentOutlined style={{ color: "#722ed1" }} />
+            <span>
+              Extra Field Options — {ihcExtraFields.find((f) => f.id === ihcExtraFieldOptionsFieldId)?.label}
+            </span>
+          </Space>
+        }
+        open={ihcExtraFieldOptionsFieldId != null}
+        onCancel={() => {
+          setIhcExtraFieldOptionsFieldId(null);
+          closeExtraFieldOptionForm();
+        }}
+        footer={null}
+        width={520}
+        destroyOnHidden
+      >
+        <Table
+          size="small"
+          dataSource={ihcExtraFields.find((f) => f.id === ihcExtraFieldOptionsFieldId)?.options ?? []}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            { title: "Label", dataIndex: "option_label", width: 180 },
+            { title: "Value", dataIndex: "option_value", width: 140 },
+            { title: "Order", dataIndex: "display_order", width: 60 },
+            {
+              title: "",
+              width: 120,
+              render: (_, opt) => (
+                <Space>
+                  <Button size="small" onClick={() => openEditExtraFieldOption(opt)}>Edit</Button>
+                  <Popconfirm title="ลบ option นี้?" onConfirm={() => handleDeleteExtraFieldOption(opt.id)}>
+                    <Button danger size="small">ลบ</Button>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
+
+        <Divider />
+
+        {!ihcExtraFieldOptionAddVisible ? (
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setIhcExtraFieldOptionAddVisible(true)}
+            block
+          >
+            เพิ่ม Option
+          </Button>
+        ) : (
+          <Form form={ihcExtraFieldOptionAddForm} layout="vertical" onFinish={handleAddExtraFieldOption}>
+            <Space style={{ width: "100%" }} align="start">
+              <Form.Item name="option_label" label="Label" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                <Input placeholder="e.g. 3+ (Strong)" style={{ width: 160 }} />
+              </Form.Item>
+              <Form.Item name="option_value" label="Value" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                <Input placeholder="e.g. 3+" style={{ width: 120 }} />
+              </Form.Item>
+            </Space>
+            <Space style={{ marginTop: 12 }}>
+              <Button type="primary" htmlType="submit" size="small">
+                {ihcEditingFieldOptionId ? "Save Changes" : "บันทึก"}
+              </Button>
+              <Button size="small" onClick={closeExtraFieldOptionForm}>ยกเลิก</Button>
             </Space>
           </Form>
         )}
       </Modal>
 
       <Modal
-        title={editingId ? "แก้ไขรายการตรวจ" : "เพิ่มรายการตรวจ"}
+        title={editingId ? "Edit Test Item" : "เพิ่มรายการตรวจ"}
         open={isModalOpen}
         onOk={handleSubmit}
         onCancel={() => setIsModalOpen(false)}
