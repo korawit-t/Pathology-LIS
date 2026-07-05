@@ -186,7 +186,9 @@ def get_report(db: Session, report_id: int):
     return db.query(SurgicalReport).filter(SurgicalReport.id == report_id).first()
 
 
-def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSaveDraft):
+def finalize_and_snapshot_orchestrator(
+    db: Session, case_id: int, data: BulkSaveDraft, current_user_id: int
+):
     try:
         db_case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
         is_consult_dispatched = bool(
@@ -260,7 +262,6 @@ def finalize_and_snapshot_orchestrator(db: Session, case_id: int, data: BulkSave
             current_order_no = max_order or 1
 
         now = local_now()
-        current_user_id = data.signed_by_id
 
         report = (
             db.query(SurgicalReport)

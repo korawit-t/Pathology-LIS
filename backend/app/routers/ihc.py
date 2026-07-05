@@ -361,7 +361,7 @@ def get_ihc_case_list(
             }
         label = _label_for(r.selected_option, r.ap_test_id, surg_option_map)
         if r.numeric_value is not None:
-            label = f"{label} ({r.numeric_value:g})"
+            label = f"{label} ({r.numeric_value})"
         surg_specimen_map[key]["ihc"][r.marker_name] = label
         if r.marker_name not in surg_columns_seen:
             surg_columns_seen.add(r.marker_name)

@@ -162,7 +162,7 @@ class TestBulkSaveDraftOrchestrator:
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
 
         round1 = build_bulk_save_payload(case.id, specimen.id, path1.id)
-        finalize_and_snapshot_orchestrator(db, case.id, round1)
+        finalize_and_snapshot_orchestrator(db, case.id, round1, path1.id)
 
         round2 = build_bulk_save_payload(case.id, specimen.id, path1.id)
         bulk_save_draft_orchestrator(db, round2)

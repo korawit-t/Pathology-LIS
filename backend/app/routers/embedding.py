@@ -13,6 +13,7 @@ from app.schemas.embedding import (
     EmbeddingRunCreate
 )
 from app.dependencies.auth import get_current_user
+from app.models.user import User
 
 router = APIRouter(
     prefix="/embedding",
@@ -30,9 +31,14 @@ def read_embedding_runs(
     return crud.get_embedding_runs(db, skip=skip, limit=limit)
 
 @router.post("/runs", response_model=EmbeddingRunResponse)
-def start_new_run(payload: EmbeddingRunCreate, db: Session = Depends(get_db)):
+def start_new_run(
+    payload: EmbeddingRunCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """สร้างรอบการหล่อบล็อกใหม่ และ Gen Run No. อัตโนมัติ"""
-    return crud.create_embedding_run(db, user_id=payload.user_id)
+    # 🔒 ผู้ทำรายการต้องมาจาก JWT เสมอ ห้ามเชื่อค่า user_id จาก client
+    return crud.create_embedding_run(db, user_id=current_user.id)
 
 @router.post("/scan", response_model=EmbeddingDetailResponse)
 def scan_block_to_run(payload: ScanBlockRequest, db: Session = Depends(get_db)):

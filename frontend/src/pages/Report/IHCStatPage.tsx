@@ -17,6 +17,7 @@ import {
 } from "antd";
 import { SearchOutlined, ReloadOutlined, TableOutlined, BarChartOutlined, DownloadOutlined } from "@ant-design/icons";
 import { exportToCsv } from "../../utils/exportCsv";
+import { sanitizeHtml } from "../../utils/sanitize";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
@@ -234,7 +235,7 @@ const CaseListTable: React.FC<{
         v ? (
           <div
             style={{ fontSize: 12, lineHeight: 1.5 }}
-            dangerouslySetInnerHTML={{ __html: v }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(v) }}
           />
         ) : (
           <Text type="secondary">—</Text>

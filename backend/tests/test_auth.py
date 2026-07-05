@@ -55,6 +55,50 @@ class TestLogout:
         assert cookie_value == ""
 
 
+class TestRefreshRotationAndReuseDetection:
+    """Regression tests for a fix to app/routers/auth.py's /auth/refresh and
+    /auth/logout: refresh tokens previously carried no jti and were never
+    revoked on rotation or logout, so a stolen refresh token stayed valid
+    for its full TTL (up to REFRESH_TOKEN_EXPIRE_DAYS) even after the
+    legitimate user rotated past it or logged out."""
+
+    def test_refresh_rotates_both_tokens(self, client, admin_user):
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+        old_refresh = client.cookies.get("refresh_token")
+
+        r = client.post("/auth/refresh")
+
+        assert r.status_code == 200
+        assert client.cookies.get("refresh_token") != old_refresh
+
+    def test_reusing_a_rotated_refresh_token_is_rejected(self, client, admin_user):
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+        old_refresh = client.cookies.get("refresh_token")
+
+        first = client.post("/auth/refresh")
+        assert first.status_code == 200
+
+        # Replay the pre-rotation refresh token explicitly (the client's own
+        # cookie jar now holds the new one, so override it for this call).
+        replay = client.post("/auth/refresh", cookies={"refresh_token": old_refresh})
+
+        assert replay.status_code == 401
+
+    def test_logout_revokes_refresh_token_too(self, client, admin_user):
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+        refresh_token = client.cookies.get("refresh_token")
+
+        logout_resp = client.post("/auth/logout")
+        assert logout_resp.status_code == 200
+
+        replay = client.post("/auth/refresh", cookies={"refresh_token": refresh_token})
+
+        assert replay.status_code == 401
+
+
 class TestProtectedRoutes:
     def test_unauthenticated_request_returns_401(self, client):
         r = client.get("/surgical-cases/")

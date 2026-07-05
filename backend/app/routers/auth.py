@@ -90,7 +90,12 @@ def login_for_access_token(
             detail=f"Account locked. Try again in {remaining} minute(s).",
         )
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # 🔒 Always run verify_password (against the real hash, or a fixed dummy
+    # hash when the user doesn't exist) so a nonexistent-username attempt
+    # takes the same time as a wrong-password attempt for a real account —
+    # otherwise the response timing leaks whether the username exists.
+    password_ok = verify_password(form_data.password, user.hashed_password if user else None)
+    if not user or not password_ok:
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= MAX_FAILED_LOGINS:
@@ -117,7 +122,7 @@ def login_for_access_token(
     user.locked_until = None
 
     access_token, _jti, _exp = create_access_token(subject=user.username, uid=user.id)
-    refresh_token = create_refresh_token(subject=user.username)
+    refresh_token, _refresh_jti, _refresh_exp = create_refresh_token(subject=user.username)
 
     db.add(AuditLog(
         user_id=user.id,
@@ -180,11 +185,19 @@ def refresh_access_token(
         decoded = jwt.decode(rt, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = decoded.get("sub")
         token_type: str = decoded.get("type")
+        old_jti: Optional[str] = decoded.get("jti")
+        old_exp_ts = decoded.get("exp")
         if username is None or token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
     except JWTError:
         _clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail="Refresh token expired or invalid")
+
+    # Reuse detection: this exact refresh token was already rotated away by an
+    # earlier call — replaying it now (e.g. an exfiltrated copy) is rejected.
+    if old_jti and db.query(RevokedToken).filter(RevokedToken.jti == old_jti).first():
+        _clear_auth_cookies(response)
+        raise HTTPException(status_code=401, detail="Refresh token already used")
 
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.status:
@@ -192,7 +205,12 @@ def refresh_access_token(
 
     # Rotate: issue both new access and new refresh tokens
     new_access_token, _jti, _exp = create_access_token(subject=user.username, uid=user.id)
-    new_refresh_token = create_refresh_token(subject=user.username)
+    new_refresh_token, _new_refresh_jti, _new_refresh_exp = create_refresh_token(subject=user.username)
+
+    # Revoke the just-used refresh token so it cannot be replayed.
+    if old_jti and old_exp_ts:
+        db.merge(RevokedToken(jti=old_jti, expires_at=datetime.fromtimestamp(old_exp_ts, tz=timezone.utc)))
+        db.commit()
 
     _set_auth_cookies(response, new_access_token, new_refresh_token)
 
@@ -204,15 +222,20 @@ def refresh_access_token(
 def logout(
     response: Response,
     access_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
     uid = current_user_id.get()
     ip = current_ip.get()
 
-    # Revoke the current access token so it cannot be reused after logout.
-    if access_token:
+    # Revoke the current access AND refresh tokens so neither can be reused
+    # after logout (previously only the access token was revoked, leaving the
+    # refresh token valid to mint fresh access tokens for up to its full TTL).
+    for token in (access_token, refresh_token):
+        if not token:
+            continue
         try:
-            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             jti = payload.get("jti")
             exp_ts = payload.get("exp")
             if jti and exp_ts:

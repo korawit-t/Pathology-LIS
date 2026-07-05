@@ -17,7 +17,7 @@ from app.schemas.gyne_cyto_case import (
 )
 from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
@@ -289,7 +289,7 @@ def get_gyne_tat_stats(
 
 
 @router.get("/{case_id}", response_model=GyneCytologyCaseResponse)
-def read_case(case_id: int, db: Session = Depends(get_db)):
+def read_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ไม่พบข้อมูลเคส")
@@ -298,7 +298,10 @@ def read_case(case_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{case_id}", response_model=GyneCytologyCaseResponse)  # 🚩 ปรับชื่อ Schema
 def update_case_info(
-    case_id: int, case_in: GyneCytologyCaseUpdate, db: Session = Depends(get_db)
+    case_id: int,
+    case_in: GyneCytologyCaseUpdate,
+    db: Session = Depends(get_db),
+    _: Any = Depends(get_current_user),
 ):
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
@@ -308,7 +311,7 @@ def update_case_info(
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(case_id: int, db: Session = Depends(get_db)):
+def delete_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
     success = crud.delete_gyne_case(db=db, case_id=case_id)
     if not success:
         raise HTTPException(
@@ -342,6 +345,7 @@ async def upload_request_file(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     # Validate magic bytes, enforce 30 MB cap, strip EXIF for images
     data, ext = validate_and_sanitize(file, allowed="mixed")
@@ -376,6 +380,8 @@ def download_request_file(
     req_file = db.query(GyneCytoRequestFile).filter(GyneCytoRequestFile.id == file_id).first()
     if not req_file:
         raise HTTPException(status_code=404, detail="File not found")
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == req_file.case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     if not os.path.exists(req_file.file_path):
         raise HTTPException(status_code=404, detail="Physical file not found on server")
     return FileResponse(path=req_file.file_path, filename=req_file.file_name, media_type=req_file.file_type)
@@ -390,6 +396,8 @@ def delete_request_file(
     req_file = db.query(GyneCytoRequestFile).filter(GyneCytoRequestFile.id == file_id).first()
     if not req_file:
         raise HTTPException(status_code=404, detail="File not found")
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == req_file.case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     if os.path.exists(req_file.file_path):
         os.remove(req_file.file_path)
     db.delete(req_file)
@@ -463,6 +471,7 @@ async def upload_consult_pdf(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     save_consult_pdf(db, case, "gyne", file, received_at)
 
@@ -478,6 +487,7 @@ def delete_consult_pdf(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     clear_consult_pdf(db, case)
     return {"message": "Consult PDF removed successfully"}
@@ -492,6 +502,7 @@ def download_consult_pdf(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
         raise HTTPException(status_code=404, detail="File not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     return FileResponse(
         path=case.consult_pdf_path,

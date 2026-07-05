@@ -18,23 +18,40 @@ _DZI_TILE_SIZE = 254
 _DZI_OVERLAP = 1
 
 
-def _open_slide(file_path: str):
+def _open_slide(db: Session, file_path: str):
+    from app.crud.wsi_setting import get_wsi_settings
+
+    settings = get_wsi_settings(db)
+    root = settings.wsi_root_path
+    if not root or not os.path.isdir(root):
+        raise HTTPException(400, "WSI root path not configured in System Settings")
+
+    # 🔒 path-traversal protection: requested file must resolve to somewhere
+    # inside the configured WSI root, mirroring app/routers/storage.py.
+    root_dir = pathlib.Path(root).resolve()
+    requested = pathlib.Path(file_path).resolve()
+    try:
+        requested.relative_to(root_dir)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not requested.exists():
+        raise HTTPException(404, f"File not found: {file_path}")
+
     try:
         import openslide
     except ImportError:
         raise HTTPException(500, "openslide-python not installed")
-    if not os.path.exists(file_path):
-        raise HTTPException(404, f"File not found: {file_path}")
     try:
-        return openslide.open_slide(file_path)
+        return openslide.open_slide(str(requested))
     except Exception as e:
         raise HTTPException(400, f"Cannot open slide: {e}")
 
 
-@router.get("/info")
-def get_wsi_info(path: str = Query(...)):
+@router.get("/info", dependencies=[Depends(CAN_VIEW_WSI)])
+def get_wsi_info(path: str = Query(...), db: Session = Depends(get_db)):
+    slide = _open_slide(db, path)
     import openslide
-    slide = _open_slide(path)
     return {
         "format": slide.properties.get("openslide.vendor", "unknown"),
         "dimensions": slide.dimensions,
@@ -46,9 +63,9 @@ def get_wsi_info(path: str = Query(...)):
     }
 
 
-@router.get("/thumbnail")
-def get_thumbnail(path: str = Query(...), size: int = Query(512, ge=64, le=2048)):
-    slide = _open_slide(path)
+@router.get("/thumbnail", dependencies=[Depends(CAN_VIEW_WSI)])
+def get_thumbnail(path: str = Query(...), size: int = Query(512, ge=64, le=2048), db: Session = Depends(get_db)):
+    slide = _open_slide(db, path)
     thumb = slide.get_thumbnail((size, size))
     buf = io.BytesIO()
     thumb.convert("RGB").save(buf, format="JPEG", quality=85)
@@ -56,10 +73,10 @@ def get_thumbnail(path: str = Query(...), size: int = Query(512, ge=64, le=2048)
     return StreamingResponse(buf, media_type="image/jpeg")
 
 
-@router.get("/dzi-info")
-def get_dzi_info(path: str = Query(...)):
+@router.get("/dzi-info", dependencies=[Depends(CAN_VIEW_WSI)])
+def get_dzi_info(path: str = Query(...), db: Session = Depends(get_db)):
     from openslide.deepzoom import DeepZoomGenerator
-    slide = _open_slide(path)
+    slide = _open_slide(db, path)
     dz = DeepZoomGenerator(slide, tile_size=_DZI_TILE_SIZE, overlap=_DZI_OVERLAP)
     w, h = dz.level_dimensions[-1]
     return {
@@ -134,10 +151,10 @@ def get_case_slides(case_id: int, db: Session = Depends(get_db)):
     return get_case_confirmed_slides(db, case_id)
 
 
-@router.get("/dzi-tile/{level}/{col}/{row}")
-def get_dzi_tile(level: int, col: int, row: int, path: str = Query(...)):
+@router.get("/dzi-tile/{level}/{col}/{row}", dependencies=[Depends(CAN_VIEW_WSI)])
+def get_dzi_tile(level: int, col: int, row: int, path: str = Query(...), db: Session = Depends(get_db)):
     from openslide.deepzoom import DeepZoomGenerator
-    slide = _open_slide(path)
+    slide = _open_slide(db, path)
     dz = DeepZoomGenerator(slide, tile_size=_DZI_TILE_SIZE, overlap=_DZI_OVERLAP)
     if level < 0 or level >= dz.level_count:
         raise HTTPException(400, f"Level {level} out of range (0–{dz.level_count - 1})")

@@ -49,7 +49,7 @@ from app.schemas.surgical_case import (
     HospitalBillingResponse,
 )
 from app.crud import surgical_case as crud_case
-from app.dependencies.auth import get_current_user, RoleChecker, check_password_status
+from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access
 from app.models.user import User
 
 router = APIRouter(
@@ -1026,6 +1026,7 @@ async def upload_request_file(
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     # Validate magic bytes, enforce 30 MB cap, strip EXIF for images
     data, ext = validate_and_sanitize(file, allowed="mixed")
@@ -1065,7 +1066,10 @@ def download_request_file(
     req_file = db.query(SurgicalRequestFile).filter(SurgicalRequestFile.id == file_id).first()
     if not req_file:
          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-         
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == req_file.case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     if not os.path.exists(req_file.file_path):
          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Physical file not found on server")
 
@@ -1087,9 +1091,10 @@ def delete_request_file(
     req_file = db.query(SurgicalRequestFile).filter(SurgicalRequestFile.id == file_id).first()
     if not req_file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    
-    # Check permissions conceptually if needed
-    
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == req_file.case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     # Delete physical file
     if os.path.exists(req_file.file_path):
         try:
@@ -1117,6 +1122,7 @@ async def upload_consult_pdf(
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     save_consult_pdf(db, case, "surgical", file, received_at)
 
@@ -1131,6 +1137,7 @@ def delete_consult_pdf(
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
 
     clear_consult_pdf(db, case)
     return {"message": "Consult PDF removed successfully"}
@@ -1144,10 +1151,11 @@ def download_consult_pdf(
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case or not case.consult_pdf_path:
         raise HTTPException(status_code=404, detail="File not found")
-    
+    assert_hospital_scoped_access(current_user, case.hospital_id)
+
     if not os.path.exists(case.consult_pdf_path):
         raise HTTPException(status_code=404, detail="Physical file missing")
-        
+
     return FileResponse(
         path=case.consult_pdf_path,
         filename=os.path.basename(case.consult_pdf_path),

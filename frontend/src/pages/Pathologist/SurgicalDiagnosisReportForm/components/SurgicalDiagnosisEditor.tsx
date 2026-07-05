@@ -25,6 +25,7 @@ import {
   EyeOutlined,
 } from "@ant-design/icons";
 import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
+import { sanitizeHtml } from "../../../../utils/sanitize";
 import MicroscopicImageGallery from "./MicroscopicImageGallery";
 import DiagnosticTemplateSystem from "../../SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import IHCResultPanel from "./IHCResultPanel";
@@ -398,7 +399,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
             {specimen.gross_description?.trim() ? (
               <div
                 style={{ fontSize: 13, lineHeight: 1.75, color: "#262626" }}
-                dangerouslySetInnerHTML={{ __html: specimen.gross_description }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(specimen.gross_description) }}
               />
             ) : (
               <Text type="secondary" style={{ fontStyle: "italic", fontSize: 13 }}>

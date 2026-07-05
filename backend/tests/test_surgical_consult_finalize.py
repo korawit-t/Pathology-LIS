@@ -42,7 +42,7 @@ class TestRoundOneFinalize:
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
 
         payload = _build_payload(case.id, specimen.id, path1.id)
-        report = finalize_and_snapshot_orchestrator(db, case.id, payload)
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
 
         assert report.status == ReportStatus.PUBLISHED
         db.refresh(case)
@@ -64,7 +64,7 @@ class TestConsultRoundTrip:
             is_pending=True,
             pending_reason="Out-Lab Consult — awaiting results",
         )
-        report1 = finalize_and_snapshot_orchestrator(db, case.id, round1_payload)
+        report1 = finalize_and_snapshot_orchestrator(db, case.id, round1_payload, path1.id)
         assert report1.status == ReportStatus.PUBLISHED
 
         db.refresh(case)
@@ -98,7 +98,7 @@ class TestConsultRoundTrip:
             is_pending=False,
             pending_reason=None,
         )
-        report2 = finalize_and_snapshot_orchestrator(db, case.id, round2_payload)  # must not raise
+        report2 = finalize_and_snapshot_orchestrator(db, case.id, round2_payload, path2.id)  # must not raise
 
         assert report2.status == ReportStatus.PUBLISHED
         assert report2.id != report1.id

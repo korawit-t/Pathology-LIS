@@ -38,7 +38,7 @@ class TestFinalizeRequireAllPathologistsSign:
             case.id, specimen.id, path1.id,
             pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
         )
-        report = finalize_and_snapshot_orchestrator(db, case.id, payload)
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
 
         assert report.status == ReportStatus.DRAFT
         db.refresh(case)
@@ -54,13 +54,13 @@ class TestFinalizeRequireAllPathologistsSign:
             case.id, specimen.id, path1.id,
             pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
         )
-        finalize_and_snapshot_orchestrator(db, case.id, payload1)
+        finalize_and_snapshot_orchestrator(db, case.id, payload1, path1.id)
 
         payload2 = build_bulk_save_payload(
             case.id, specimen.id, path2.id,
             pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
         )
-        report2 = finalize_and_snapshot_orchestrator(db, case.id, payload2)
+        report2 = finalize_and_snapshot_orchestrator(db, case.id, payload2, path2.id)
 
         assert report2.status == ReportStatus.PUBLISHED
         db.refresh(case)
@@ -76,7 +76,7 @@ class TestFinalizeRequireAllPathologistsSign:
             case.id, specimen.id, path1.id,
             pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
         )
-        report = finalize_and_snapshot_orchestrator(db, case.id, payload)
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
 
         assert report.status == ReportStatus.DRAFT
 
@@ -87,7 +87,7 @@ class TestFinalizeRequireAllPathologistsSign:
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
 
         payload = build_bulk_save_payload(case.id, specimen.id, path1.id)
-        report = finalize_and_snapshot_orchestrator(db, case.id, payload)
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
 
         assert report.status == ReportStatus.PENDING_APPROVAL
         db.refresh(case)
@@ -100,8 +100,8 @@ class TestFinalizeOtherBranches:
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
 
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         signers = db.query(ReportSigner).filter(ReportSigner.user_id == path1.id).all()
         orders = sorted({s.diagnosis_order for s in signers})
@@ -116,7 +116,7 @@ class TestFinalizeOtherBranches:
             case.id, specimen.id, path1.id,
             stain_quality="good", tissue_quality="fair", slide_quality="poor",
         )
-        finalize_and_snapshot_orchestrator(db, case.id, payload)
+        finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
 
         db.refresh(case)
         assert case.stain_quality == "good"
@@ -127,7 +127,7 @@ class TestFinalizeOtherBranches:
         path1, _ = two_pathologists
         payload = build_bulk_save_payload(999999, 1, path1.id)
         with pytest.raises(Exception):
-            finalize_and_snapshot_orchestrator(db, 999999, payload)
+            finalize_and_snapshot_orchestrator(db, 999999, payload, path1.id)
         assert db.query(SurgicalReport).filter(SurgicalReport.case_id == 999999).first() is None
 
 
@@ -139,7 +139,7 @@ class TestCreateFinalReportSnapshot:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         # A prior finalize already created a report; call again with no report_id
         # to exercise the "insert vs update" fallback query directly.
@@ -153,7 +153,7 @@ class TestCreateFinalReportSnapshot:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         stale_image = SurgicalReportImage(report_id=report.id, image_url="/stale.jpg")
         db.add(stale_image)
@@ -173,7 +173,7 @@ class TestCreateFinalReportSnapshot:
         db.add(older)
         db.commit()
 
-        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
         newer_id = report.id
 
         result = create_final_report_snapshot(db, case_id=case.id)
@@ -193,6 +193,7 @@ class TestGetPendingCosignWorklist:
                 case.id, specimen.id, path1.id,
                 pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
             ),
+            path1.id,
         )
 
         worklist = get_pending_cosign_worklist(db, user_id=path1.id)
@@ -209,6 +210,7 @@ class TestGetPendingCosignWorklist:
                 case.id, specimen.id, path1.id,
                 pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
             ),
+            path1.id,
         )
 
         worklist = get_pending_cosign_worklist(db, user_id=path2.id)
@@ -222,9 +224,11 @@ class TestGetPendingCosignWorklist:
         pathologists = [{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}]
         finalize_and_snapshot_orchestrator(
             db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id, pathologists=pathologists),
+            path1.id,
         )
         finalize_and_snapshot_orchestrator(
             db, case.id, build_bulk_save_payload(case.id, specimen.id, path2.id, pathologists=pathologists),
+            path2.id,
         )
 
         worklist = get_pending_cosign_worklist(db, user_id=path2.id)
@@ -241,6 +245,7 @@ class TestGetPendingCosignWorklist:
                 case.id, specimen.id, path1.id,
                 pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
             ),
+            path1.id,
         )
         report.status = ReportStatus.CANCELLED
         db.commit()
@@ -259,6 +264,7 @@ class TestGetPendingCosignWorklist:
                 case.id, specimen.id, path1.id,
                 pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
             ),
+            path1.id,
         )
 
         match = get_pending_cosign_worklist(db, user_id=path2.id, search=case.accession_no)
@@ -272,7 +278,7 @@ class TestGetAllReportsPaginated:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case1, spec1 = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case1.id, build_bulk_save_payload(case1.id, spec1.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case1.id, build_bulk_save_payload(case1.id, spec1.id, path1.id), path1.id)
 
         result = get_all_reports_paginated(db, status_filter="published")
         assert result["total"] >= 1
@@ -288,8 +294,8 @@ class TestGetAllReportsPaginated:
         hosp_b = make_hospital(db)
         case_a, spec_a = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a)
         case_b, spec_b = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b)
-        finalize_and_snapshot_orchestrator(db, case_a.id, build_bulk_save_payload(case_a.id, spec_a.id, path1.id))
-        finalize_and_snapshot_orchestrator(db, case_b.id, build_bulk_save_payload(case_b.id, spec_b.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case_a.id, build_bulk_save_payload(case_a.id, spec_a.id, path1.id), path1.id)
+        finalize_and_snapshot_orchestrator(db, case_b.id, build_bulk_save_payload(case_b.id, spec_b.id, path1.id), path1.id)
 
         result = get_all_reports_paginated(db, hospital_id=hosp_a.id)
         assert all(r.hospital_id == hosp_a.id for r in result["items"])
@@ -300,7 +306,7 @@ class TestGetAllReportsPaginated:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
         report.is_print = True
         db.commit()
 
@@ -312,7 +318,7 @@ class TestGetAllReportsPaginated:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         result = get_all_reports_paginated(db, search="status:published")
         assert all(r.status == "published" for r in result["items"])
@@ -322,7 +328,7 @@ class TestGetAllReportsPaginated:
         path1, _ = two_pathologists
         for _ in range(3):
             case, specimen = make_signable_case(db, registrar_id=registrar.id)
-            finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+            finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         page1 = get_all_reports_paginated(db, page=1, size=1, status_filter="published")
         page2 = get_all_reports_paginated(db, page=2, size=1, status_filter="published")
@@ -337,7 +343,7 @@ class TestGetReportsPaginatedPerCase:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         published = get_reports_paginated(db, case_id=case.id, search="status:published")
         assert published["total"] == 1
@@ -351,7 +357,7 @@ class TestGetReportsPaginatedPerCase:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         result = get_reports_paginated(db, case_id=case.id, search="status:draft")
         assert result["total"] == 1  # the published report is still returned
@@ -363,7 +369,7 @@ class TestGetReportsPaginatedPerCase:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         match = get_reports_paginated(db, case_id=case.id, search=path1.full_name)
         assert match["total"] == 1
@@ -376,7 +382,7 @@ class TestGetReportsByCase:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        report = finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         reports = get_reports_by_case(db, case.id)
         assert report.id in [r.id for r in reports]

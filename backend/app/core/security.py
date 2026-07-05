@@ -39,10 +39,16 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
 # 2. ตั้งค่า Password Hashing ด้วย Argon2
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
+# 🔒 Fixed dummy hash used when no real hash exists (e.g. login attempt for a
+# nonexistent username). Verifying against this keeps the Argon2 computation
+# on the same code path either way, so response time doesn't leak whether the
+# username exists (timing oracle for user enumeration).
+_DUMMY_HASH = pwd_context.hash("not-a-real-password-used-only-for-timing-safety")
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+
+def verify_password(plain_password: str, hashed_password: Union[str, None]) -> bool:
     """เช็คว่ารหัสผ่านที่กรอกมา ตรงกับ Hash ใน Database หรือไม่"""
-    return pwd_context.verify(plain_password, hashed_password)
+    return pwd_context.verify(plain_password, hashed_password or _DUMMY_HASH)
 
 
 def get_password_hash(password: str) -> str:
@@ -73,16 +79,21 @@ def create_access_token(
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 3))
 
 
-def create_refresh_token(subject: Union[str, Any]) -> str:
-    """สร้าง Refresh Token ที่มีอายุการใช้งานนานกว่า Access Token"""
+def create_refresh_token(subject: Union[str, Any]) -> tuple[str, str, datetime]:
+    """สร้าง Refresh Token ที่มีอายุการใช้งานนานกว่า Access Token — returns
+    (token, jti, expires_at). The jti lets the refresh endpoint revoke this
+    specific token on rotation/logout and detect reuse of an already-rotated
+    token."""
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    jti = str(uuid.uuid4())
     to_encode = {
         "sub": str(subject),
         "exp": expire,
-        "type": "refresh",
-    }  # ใส่ type เพื่อกันการสลับใช้
+        "type": "refresh",  # ใส่ type เพื่อกันการสลับใช้
+        "jti": jti,
+    }
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, jti, expire
 
 
 def verify_refresh_token(token: str) -> str:

@@ -74,6 +74,32 @@ class RoleChecker:
         return user
 
 
+# Roles representing an external, single-hospital viewer (a referring
+# clinician or a hospital-side account) as opposed to internal lab staff
+# (pathologist, cytotechnologist, lab_manager, admin, register, etc.) who
+# work across every hospital the lab serves. Internal staff must NOT be
+# hospital-scoped — one lab commonly processes cases for many hospitals, and
+# scoping them would break that workflow. External roles must only ever see
+# their own hospital's cases/files, matching what CAN_ACCESS_PATIENT's
+# search-public/hospital-cases endpoints already enforce.
+#
+# Used by: app/routers/storage.py (raw PHI image directories) and the
+# request-files/consult-pdf endpoints in surgical_case.py, gyne_cyto_case.py,
+# nongyne_cyto_case.py. Import this constant rather than redefining it, so
+# the external-role list can't silently drift out of sync between call sites.
+EXTERNAL_ROLES = {"clinician", "hospital"}
+
+
+def assert_hospital_scoped_access(current_user: User, resource_hospital_id: Optional[int]):
+    """Raise 403 if an external-role user is accessing a resource that isn't
+    their own hospital's. No-op for internal lab staff (any role not in
+    EXTERNAL_ROLES), who are allowed to access any hospital's resources."""
+    user_roles = set(current_user.roles or [])
+    if user_roles & EXTERNAL_ROLES:
+        if resource_hospital_id is None or current_user.hospital_id != resource_hospital_id:
+            raise HTTPException(status_code=403, detail="Access denied.")
+
+
 def check_password_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

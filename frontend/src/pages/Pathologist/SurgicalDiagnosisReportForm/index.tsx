@@ -119,6 +119,8 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [completedReports, setCompletedReports] = useState<SurgicalReport[]>([]);
   const [completedReportsLoading, setCompletedReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<number | null>(null);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
 const handleOpenFinalizeModal = async () => {
     await handleSave();
@@ -350,7 +352,31 @@ const handleOpenFinalizeModal = async () => {
       })
       .catch(() => {})
       .finally(() => setCompletedReportsLoading(false));
-  }, [completedCasePopupOpen, isHistoryOpen, surgicalCase?.id]);
+  }, [completedCasePopupOpen, isHistoryOpen, surgicalCase?.id, historyRefreshKey]);
+
+  const handleDeleteDraftReport = (reportId: number) => {
+    Modal.confirm({
+      title: "Delete Draft Report",
+      icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
+      content: "This draft report will be permanently deleted. Continue?",
+      okText: "Delete",
+      okType: "danger",
+      cancelText: "Cancel",
+      onOk: async () => {
+        setDeletingReportId(reportId);
+        try {
+          await SurgicalReportService.deleteReport(reportId);
+          message.success("Draft report deleted");
+          if (selectedReportId === reportId) setSelectedReportId(null);
+          setHistoryRefreshKey((k) => k + 1);
+        } catch {
+          message.error("Failed to delete draft report");
+        } finally {
+          setDeletingReportId(null);
+        }
+      },
+    });
+  };
 
   // Fetch PDF when selected report changes
   useEffect(() => {
@@ -1322,13 +1348,13 @@ const handleOpenFinalizeModal = async () => {
         open={completedCasePopupOpen}
         onCancel={() => setCompletedCasePopupOpen(false)}
         footer={null}
-        width={1100}
+        width={1300}
         centered
         closable
         style={{ top: 20 }}
       >
         <Row gutter={24}>
-          <Col span={9} style={{ borderRight: "1px solid #f0f0f0", paddingRight: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+          <Col span={10} style={{ borderRight: "1px solid #f0f0f0", paddingRight: 24, display: "flex", flexDirection: "column", gap: 12 }}>
             {/* Patient / case header */}
             <div style={{ background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 8, padding: "10px 14px" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
@@ -1407,6 +1433,19 @@ const handleOpenFinalizeModal = async () => {
                   ),
                 },
                 {
+                  title: "Status",
+                  dataIndex: "status",
+                  width: 90,
+                  render: (s: string) => (
+                    <Tag
+                      color={s === "published" ? "green" : s === "pending_approval" ? "orange" : "default"}
+                      style={{ margin: 0 }}
+                    >
+                      {s?.replace(/_/g, " ").toUpperCase()}
+                    </Tag>
+                  ),
+                },
+                {
                   title: "Pathologist",
                   dataIndex: "pathologist_name",
                   ellipsis: true,
@@ -1423,10 +1462,29 @@ const handleOpenFinalizeModal = async () => {
                       ? dayjs(v || record.created_at).format("DD/MM/YY HH:mm")
                       : "-",
                 },
+                {
+                  title: "",
+                  key: "actions",
+                  width: 36,
+                  render: (_: unknown, record) =>
+                    record.status === "draft" ? (
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        loading={deletingReportId === record.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDraftReport(record.id);
+                        }}
+                      />
+                    ) : null,
+                },
               ]}
             />
           </Col>
-          <Col span={15}>
+          <Col span={14}>
             <div
               style={{
                 height: "70vh",

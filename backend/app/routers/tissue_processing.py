@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.schemas import tissue_processing as schemas
 from app.crud import tissue_processing as crud
 from app.dependencies.auth import get_current_user
+from app.models.user import User
 
 router = APIRouter(
     prefix="/tissue-processing",
@@ -116,6 +117,7 @@ def update_run_status(
     run_id: int,
     status_update: schemas.TissueProcessingRunUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     อัปเดตสถานะ (Processing Out) และอัปเดตสถานะ Blocks อัตโนมัติ
@@ -126,11 +128,12 @@ def update_run_status(
         raise HTTPException(status_code=404, detail="ไม่พบรายการที่ต้องการอัปเดต")
 
     # ปรับปรุงการส่ง Parameter ให้ครบตาม Schema ใหม่
+    # 🔒 ผู้ทำรายการต้องมาจาก JWT เสมอ ห้ามเชื่อค่า completed_by_id จาก client
     updated_run = crud.update_run_status(
         db=db,
         run_id=run_id,
         status=status_update.status,
-        user_id=status_update.completed_by_id,
+        user_id=current_user.id,
         block_out_total=status_update.block_out_total,
         # ✅ อย่าลืมส่งตัวนี้ (ถ้าคุณปรับ CRUD ให้รับ confirmed_block_ids แล้ว)
         confirmed_block_ids=status_update.confirmed_block_ids,

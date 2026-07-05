@@ -31,7 +31,7 @@ export interface IHCResultUpsert {
   surgical_specimen_id: number;
   ap_test_id: number;
   selected_option?: string | null;
-  numeric_value?: number | null;
+  numeric_value?: string | null; // free text — supports ranges like "31-40"
   note?: string | null;
 }
 
@@ -40,7 +40,7 @@ export interface IHCResultResponse {
   surgical_specimen_id: number;
   ap_test_id: number;
   selected_option?: string | null;
-  numeric_value?: number | null;
+  numeric_value?: string | null;
   note?: string | null;
   updated_at: string;
 }

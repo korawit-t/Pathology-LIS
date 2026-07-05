@@ -150,7 +150,7 @@ class TestGenerateIhcText:
         ))
         result = IHCResultResponse(
             id=1, surgical_specimen_id=1, ap_test_id=1,
-            selected_option="pos", numeric_value=40.0, note="Focal", updated_at=datetime.now(timezone.utc),
+            selected_option="pos", numeric_value="40", note="Focal", updated_at=datetime.now(timezone.utc),
         )
         panel = [{"ap_test_id": 1, "marker_name": "Ki67", "options": [option], "result": result}]
 
@@ -158,6 +158,26 @@ class TestGenerateIhcText:
 
         assert "Ki67: Positive, 40%, (Focal)" in text
         assert text.startswith("Immunohistochemical staining reveals:")
+
+    def test_numeric_value_supports_a_percentage_range(self, db):
+        """Regression: numeric_value must stay free text, not a float, so pathologists
+        can enter ranges like "31-40" (a common way to report % positive cells) —
+        this used to be silently truncated to "31" by a numeric-only input."""
+        from app.schemas.ihc import IHCResultResponse
+        from datetime import datetime, timezone
+
+        option = create_option(db, IHCMarkerOptionCreate(
+            ap_test_id=2, option_label="Positive", option_value="pos", numeric_unit="%",
+        ))
+        result = IHCResultResponse(
+            id=2, surgical_specimen_id=1, ap_test_id=2,
+            selected_option="pos", numeric_value="31-40", note=None, updated_at=datetime.now(timezone.utc),
+        )
+        panel = [{"ap_test_id": 2, "marker_name": "ER", "options": [option], "result": result}]
+
+        text = generate_ihc_text(panel)
+
+        assert "ER: Positive, 31-40%" in text
 
 
 class TestIHCMarkerExtraFields:
@@ -326,14 +346,14 @@ class TestIHCMarkerExtraFields:
             option_label="Strong (3+)", option_value="3+",
         ))
         upsert_result(db, IHCResultUpsert(
-            surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id, selected_option="positive", numeric_value=95,
+            surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id, selected_option="positive", numeric_value="91-100",
         ))
         upsert_extra_value(db, IHCResultExtraValueUpsert(surgical_specimen_id=specimen.id, field_id=field.id, value="3+"))
 
         panel = get_ihc_panel_for_specimen(db, specimen.id)
         text = generate_ihc_text(panel)
 
-        assert "ER: Positive, 95%, Strong (3+)" in text
+        assert "ER: Positive, 91-100%, Strong (3+)" in text
 
 
 class TestIHCExtraFieldsRouter:
@@ -374,7 +394,7 @@ class TestIHCExtraFieldsRouter:
         # Pathologist fills in the primary pick + percentage + the extra intensity field
         primary_res = pathologist_client.put(
             "/ihc/results",
-            json={"surgical_specimen_id": specimen.id, "ap_test_id": ihc_test.id, "selected_option": "positive", "numeric_value": 95},
+            json={"surgical_specimen_id": specimen.id, "ap_test_id": ihc_test.id, "selected_option": "positive", "numeric_value": "91-100"},
         )
         assert primary_res.status_code == 200, primary_res.text
 

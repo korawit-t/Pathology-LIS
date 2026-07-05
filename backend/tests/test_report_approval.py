@@ -47,7 +47,7 @@ def _pending_surgical_report(db, registrar_id, pathologist_id):
     make_system_setting(db, require_all_pathologists_sign=False, enable_approve_system=True)
     case, specimen = make_signable_case(db, registrar_id=registrar_id)
     report = finalize_and_snapshot_orchestrator(
-        db, case.id, build_bulk_save_payload(case.id, specimen.id, pathologist_id)
+        db, case.id, build_bulk_save_payload(case.id, specimen.id, pathologist_id), pathologist_id
     )
     db.refresh(case)
     return case, report

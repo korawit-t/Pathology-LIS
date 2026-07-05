@@ -139,6 +139,11 @@ def clinician_user(db):
 
 
 @pytest.fixture
+def lab_manager_user(db):
+    return _make_user(db, f"labmgr_{uuid.uuid4().hex[:6]}", "LabMgrPass1!", ["lab_manager"])
+
+
+@pytest.fixture
 def inactive_user(db):
     return _make_user(db, f"inact_{uuid.uuid4().hex[:6]}", "InactPass1!", ["register"], status=False)
 
@@ -176,4 +181,10 @@ def pathologist_client(client, pathologist_user):
 @pytest.fixture
 def clinician_client(client, clinician_user):
     user, pwd = clinician_user
+    return _login(client, user.username, pwd)
+
+
+@pytest.fixture
+def lab_manager_client(client, lab_manager_user):
+    user, pwd = lab_manager_user
     return _login(client, user.username, pwd)

@@ -3,7 +3,6 @@ import {
   Button,
   Form,
   Input,
-  InputNumber,
   Popover,
   Radio,
   Space,
@@ -118,10 +117,9 @@ interface SortableMarkerRowProps {
   isLocked: boolean;
   saving: boolean;
   onOptionClick: (apTestId: number, value: string) => void;
-  onNumericChange: (apTestId: number, value: number | null) => void;
+  onNumericChange: (apTestId: number, value: string) => void;
   extraSaving: Record<string, boolean>;
   onExtraFieldOptionClick: (apTestId: number, fieldId: number, value: string) => void;
-  onExtraFieldNumericChange: (apTestId: number, fieldId: number, value: number | null) => void;
   onExtraFieldTextChange: (apTestId: number, fieldId: number, value: string) => void;
 }
 
@@ -133,7 +131,6 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
   onNumericChange,
   extraSaving,
   onExtraFieldOptionClick,
-  onExtraFieldNumericChange,
   onExtraFieldTextChange,
 }) => {
   const {
@@ -206,13 +203,13 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
       </Space>
 
       {showNumeric && (
-        <InputNumber
+        <Input
           size="small"
-          defaultValue={numericValue ?? undefined}
-          placeholder={selectedOpt?.numeric_unit ?? "value"}
+          defaultValue={numericValue ?? ""}
+          placeholder={selectedOpt?.numeric_unit ? `e.g. 31-40${selectedOpt.numeric_unit}` : "value"}
           suffix={selectedOpt?.numeric_unit ?? ""}
           style={{ width: 130 }}
-          onChange={(v) => onNumericChange(item.ap_test_id, v)}
+          onChange={(e) => onNumericChange(item.ap_test_id, e.target.value)}
           disabled={isLocked}
         />
       )}
@@ -253,13 +250,13 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
                 </Space>
               )}
               {ef.field_type === "numeric" && (
-                <InputNumber
+                <Input
                   size="small"
-                  defaultValue={ef.value != null ? Number(ef.value) : undefined}
-                  placeholder={ef.numeric_unit ?? "value"}
+                  defaultValue={ef.value ?? ""}
+                  placeholder={ef.numeric_unit ? `e.g. 31-40${ef.numeric_unit}` : "value"}
                   suffix={ef.numeric_unit ?? ""}
                   style={{ width: 130 }}
-                  onChange={(v) => onExtraFieldNumericChange(item.ap_test_id, ef.id, v)}
+                  onChange={(e) => onExtraFieldTextChange(item.ap_test_id, ef.id, e.target.value)}
                   disabled={isLocked}
                 />
               )}
@@ -405,10 +402,10 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
     save(apTestId, { selected_option: newValue });
   };
 
-  const handleNumericChange = (apTestId: number, value: number | null) => {
+  const handleNumericChange = (apTestId: number, value: string) => {
     clearTimeout(numericTimers.current[apTestId]);
     numericTimers.current[apTestId] = setTimeout(() => {
-      save(apTestId, { numeric_value: value });
+      save(apTestId, { numeric_value: value || null });
     }, 600);
   };
 
@@ -446,14 +443,6 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
       ?.extra_fields.find((f) => f.id === fieldId);
     const newValue = ef?.value === value ? null : value;
     saveExtraValue(apTestId, fieldId, newValue);
-  };
-
-  const handleExtraFieldNumericChange = (apTestId: number, fieldId: number, value: number | null) => {
-    const key = `${apTestId}-${fieldId}`;
-    clearTimeout(extraFieldTimers.current[key]);
-    extraFieldTimers.current[key] = setTimeout(() => {
-      saveExtraValue(apTestId, fieldId, value != null ? String(value) : null);
-    }, 600);
   };
 
   const handleExtraFieldTextChange = (apTestId: number, fieldId: number, value: string) => {
@@ -634,7 +623,6 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
                 onNumericChange={handleNumericChange}
                 extraSaving={extraSaving}
                 onExtraFieldOptionClick={handleExtraFieldOptionClick}
-                onExtraFieldNumericChange={handleExtraFieldNumericChange}
                 onExtraFieldTextChange={handleExtraFieldTextChange}
               />
             ))}

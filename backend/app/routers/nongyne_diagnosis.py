@@ -9,6 +9,7 @@ from app.crud import nongyne_diagnosis as crud
 from app.schemas import nongyne_diagnosis as schemas
 from app.dependencies.auth import get_current_user
 from app.crud.system_setting import get_settings as get_system_settings
+from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_MANAGE_SETTINGS
 
 router = APIRouter(
     prefix="/nongyne-diagnosis",
@@ -25,7 +26,11 @@ def read_diagnoses_by_case(
     """
     return crud.get_diagnoses_by_case(db, case_id=case_id)
 
-@router.post("", response_model=schemas.NongyneDiagnosisResponse)
+@router.post(
+    "",
+    response_model=schemas.NongyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT)],
+)
 def create_nongyne_diagnosis(
     payload: schemas.NongyneDiagnosisCreate,
     db: Session = Depends(get_db)
@@ -35,7 +40,11 @@ def create_nongyne_diagnosis(
     """
     return crud.create_nongyne_diagnosis(db, obj_in=payload)
 
-@router.put("/{diag_id}", response_model=schemas.NongyneDiagnosisResponse)
+@router.put(
+    "/{diag_id}",
+    response_model=schemas.NongyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT)],
+)
 def update_nongyne_diagnosis(
     diag_id: int,
     payload: schemas.NongyneDiagnosisUpdate,
@@ -47,10 +56,14 @@ def update_nongyne_diagnosis(
     db_obj = crud.get_nongyne_diagnosis_by_id(db, diag_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Diagnosis not found")
-        
+
     return crud.update_nongyne_diagnosis(db, db_obj=db_obj, obj_in=payload)
 
-@router.post("/{diag_id}/revise", response_model=schemas.NongyneDiagnosisResponse)
+@router.post(
+    "/{diag_id}/revise",
+    response_model=schemas.NongyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT)],
+)
 def revise_nongyne_diagnosis(
     diag_id: int,
     payload: schemas.NongyneDiagnosisRevise,
@@ -64,7 +77,11 @@ def revise_nongyne_diagnosis(
         raise HTTPException(status_code=404, detail="Original Diagnosis not found")
     return new_diag
 
-@router.delete("/{diag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{diag_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(CAN_MANAGE_SETTINGS)],
+)
 def delete_nongyne_diagnosis(
     diag_id: int, db: Session = Depends(get_db)
 ):

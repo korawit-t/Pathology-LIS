@@ -140,11 +140,11 @@ const AnatomicalPathologyTestPage = () => {
   const handleDelete = async (id) => {
     try {
       await AnatomicalPathologyTestService.deleteTest(id);
-      message.success("ลบสำเร็จ");
+      message.success("Deleted successfully");
       loadData();
     } catch (err) {
       console.error(err);
-      message.error("ลบไม่สำเร็จ");
+      message.error("Failed to delete");
     }
   };
 
@@ -207,11 +207,11 @@ const AnatomicalPathologyTestPage = () => {
   const handleIHCDeleteOption = async (optionId) => {
     try {
       await IHCService.deleteOption(optionId);
-      message.success("ลบ option สำเร็จ");
+      message.success("Option deleted successfully");
       const opts = await IHCService.getOptions(ihcTestId);
       setIhcOptions(opts);
     } catch {
-      message.error("ลบ option ไม่สำเร็จ");
+      message.error("Failed to delete option");
     }
   };
 
@@ -265,10 +265,10 @@ const AnatomicalPathologyTestPage = () => {
   const handleIHCDeleteExtraField = async (fieldId) => {
     try {
       await IHCService.deleteExtraField(fieldId);
-      message.success("ลบ Extra Field สำเร็จ");
+      message.success("Extra Field deleted successfully");
       loadIhcExtraFields(ihcTestId);
     } catch {
-      message.error("ลบ Extra Field ไม่สำเร็จ");
+      message.error("Failed to delete Extra Field");
     }
   };
 
@@ -308,10 +308,10 @@ const AnatomicalPathologyTestPage = () => {
   const handleDeleteExtraFieldOption = async (optionId) => {
     try {
       await IHCService.deleteExtraFieldOption(optionId);
-      message.success("ลบ Option สำเร็จ");
+      message.success("Option deleted successfully");
       loadIhcExtraFields(ihcTestId);
     } catch {
-      message.error("ลบ Option ไม่สำเร็จ");
+      message.error("Failed to delete option");
     }
   };
 
@@ -383,8 +383,8 @@ const AnatomicalPathologyTestPage = () => {
               Options
             </Button>
           )}
-          <Popconfirm title="ยืนยันการลบ?" onConfirm={() => handleDelete(record.id)}>
-            <Button danger size="small">ลบ</Button>
+          <Popconfirm title="Confirm delete?" onConfirm={() => handleDelete(record.id)}>
+            <Button danger size="small">Delete</Button>
           </Popconfirm>
         </Space>
       ),
@@ -472,8 +472,8 @@ const AnatomicalPathologyTestPage = () => {
               render: (_, opt) => (
                 <Space>
                   <Button size="small" onClick={() => openEditIHCOption(opt)}>Edit</Button>
-                  <Popconfirm title="ลบ option นี้?" onConfirm={() => handleIHCDeleteOption(opt.id)}>
-                    <Button danger size="small">ลบ</Button>
+                  <Popconfirm title="Delete this option?" onConfirm={() => handleIHCDeleteOption(opt.id)}>
+                    <Button danger size="small">Delete</Button>
                   </Popconfirm>
                 </Space>
               ),
@@ -562,8 +562,8 @@ const AnatomicalPathologyTestPage = () => {
                     </Button>
                   )}
                   <Button size="small" onClick={() => openEditExtraField(field)}>Edit</Button>
-                  <Popconfirm title="ลบ Extra Field นี้?" onConfirm={() => handleIHCDeleteExtraField(field.id)}>
-                    <Button danger size="small">ลบ</Button>
+                  <Popconfirm title="Delete this Extra Field?" onConfirm={() => handleIHCDeleteExtraField(field.id)}>
+                    <Button danger size="small">Delete</Button>
                   </Popconfirm>
                 </Space>
               ),
@@ -657,13 +657,13 @@ const AnatomicalPathologyTestPage = () => {
                   {(() => {
                     const selectedOpt = ihcOptions.find((o) => o.option_value === previewSelected);
                     return selectedOpt?.has_numeric ? (
-                      <InputNumber
+                      <Input
                         size="small"
-                        placeholder={selectedOpt.numeric_unit || "value"}
+                        placeholder={selectedOpt.numeric_unit ? `e.g. 31-40${selectedOpt.numeric_unit}` : "value"}
                         suffix={selectedOpt.numeric_unit || ""}
                         style={{ width: 120 }}
-                        value={previewNumeric}
-                        onChange={setPreviewNumeric}
+                        value={previewNumeric ?? ""}
+                        onChange={(e) => setPreviewNumeric(e.target.value)}
                       />
                     ) : null;
                   })()}
@@ -697,13 +697,15 @@ const AnatomicalPathologyTestPage = () => {
                         );
                       })}
                     {field.field_type === "numeric" && (
-                      <InputNumber
+                      <Input
                         size="small"
-                        placeholder={field.numeric_unit || "value"}
+                        placeholder={field.numeric_unit ? `e.g. 31-40${field.numeric_unit}` : "value"}
                         suffix={field.numeric_unit || ""}
                         style={{ width: 120 }}
-                        value={previewExtraValues[field.id] ?? undefined}
-                        onChange={(v) => setPreviewExtraValues((prev) => ({ ...prev, [field.id]: v }))}
+                        value={previewExtraValues[field.id] ?? ""}
+                        onChange={(e) =>
+                          setPreviewExtraValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                        }
                       />
                     )}
                     {field.field_type === "text" && (
@@ -764,8 +766,8 @@ const AnatomicalPathologyTestPage = () => {
               render: (_, opt) => (
                 <Space>
                   <Button size="small" onClick={() => openEditExtraFieldOption(opt)}>Edit</Button>
-                  <Popconfirm title="ลบ option นี้?" onConfirm={() => handleDeleteExtraFieldOption(opt.id)}>
-                    <Button danger size="small">ลบ</Button>
+                  <Popconfirm title="Delete this option?" onConfirm={() => handleDeleteExtraFieldOption(opt.id)}>
+                    <Button danger size="small">Delete</Button>
                   </Popconfirm>
                 </Space>
               ),

@@ -22,7 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, EXTERNAL_ROLES
 from app.models.user import User
 
 
@@ -33,7 +33,7 @@ PUBLIC_ASSETS_DIR = (STORAGE_DIR / "system").resolve()
 # Raw diagnostic image directories — external roles must not access them directly.
 # Internal lab staff (pathologist, cytotechnologist, gross, etc.) may access all dirs.
 _PHI_IMAGE_DIRS = {"gross_images", "microscopic_images", "gyne_images", "nongyne_images", "consults"}
-_EXTERNAL_ROLES = {"clinician", "hospital"}
+_EXTERNAL_ROLES = EXTERNAL_ROLES  # see app/dependencies/auth.py — shared across all hospital-scoping checks
 
 router = APIRouter(prefix="/storage", tags=["Storage"])
 

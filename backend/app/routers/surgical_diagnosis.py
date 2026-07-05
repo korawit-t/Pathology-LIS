@@ -12,6 +12,7 @@ from app.schemas.surgical_diagnosis import (
     SurgicalDiagnosisResponse,
 )
 from app.crud import surgical_diagnosis as crud
+from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.dependencies.auth import get_current_user, RoleChecker
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
@@ -155,20 +156,21 @@ def save_bulk_draft(
         )
 
 
-@router.post("/{case_id}/finalize")  # เปลี่ยนเป็น POST เพราะมีการสร้าง Snapshot
+@router.post(
+    "/{case_id}/finalize",  # เปลี่ยนเป็น POST เพราะมีการสร้าง Snapshot
+    dependencies=[Depends(CAN_WRITE_REPORT)],
+)
 def finalize_case_endpoint(
     case_id: int,
     data: BulkSaveDraft,  # ใช้ Schema เดียวกับ Save Draft เพื่อรับข้อมูลล่าสุดก่อนปิดเคส
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # ตรวจสอบว่ามีคนเซ็นส่งมาไหม ถ้าไม่มีให้ใช้ current_user
-    if not data.signed_by_id:
-        data.signed_by_id = current_user.id
-
     try:
-        # 🚩 เรียกใช้ Orchestrator ตัวใหม่ที่เราแก้กัน
-        report_snapshot = crud.finalize_and_snapshot_orchestrator(db, case_id, data)
+        # 🔒 ผู้เซ็นชื่อต้องมาจากผู้ใช้ที่ยืนยันตัวตนแล้วเท่านั้น ห้ามเชื่อค่าจาก client
+        report_snapshot = finalize_and_snapshot_orchestrator(
+            db, case_id, data, current_user.id
+        )
 
         if not report_snapshot:
             raise HTTPException(

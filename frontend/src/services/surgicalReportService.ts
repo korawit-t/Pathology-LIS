@@ -187,6 +187,12 @@ const SurgicalReportService = {
     return response.data;
   },
 
+  // Delete a report — backend only allows this while it's still in "draft" status
+  deleteReport: async (reportId: number): Promise<unknown> => {
+    const response = await api.delete(`/surgical-reports/${reportId}`);
+    return response.data;
+  },
+
   getBarcodePdf: async (reportIds: number[]): Promise<Blob> => {
     const response = await api.post(
       `/surgical-reports/barcode-pdf`,

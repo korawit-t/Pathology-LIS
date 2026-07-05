@@ -86,11 +86,18 @@ def update_existing_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # 🔒 ป้องกัน lab_manager แก้ไข/เปลี่ยนรหัสผ่านของ account admin
-    if "admin" in (target_user.roles or []) and "admin" not in current_user.roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only an admin can modify an admin account.",
-        )
+    # หรือเลื่อนสิทธิ์ตัวเอง/คนอื่นให้เป็น admin
+    if "admin" not in current_user.roles:
+        if "admin" in (target_user.roles or []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an admin can modify an admin account.",
+            )
+        if data.roles is not None and "admin" in data.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an admin can grant the admin role.",
+            )
 
     updated = update_user(db, user_id, data)
     if not updated:

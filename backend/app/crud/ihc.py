@@ -308,7 +308,7 @@ def generate_ihc_text(panel: list) -> str:
                 if opt.numeric_unit:
                     unit = opt.numeric_unit
                     break
-            parts.append(f"{result.numeric_value:g}{unit}")
+            parts.append(f"{result.numeric_value}{unit}")
         for ef in sorted(item.get("extra_fields", []), key=lambda f: f["display_order"]):
             value = ef.get("value")
             if not value:

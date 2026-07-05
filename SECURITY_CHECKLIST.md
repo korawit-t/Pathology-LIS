@@ -6,6 +6,12 @@ This checklist is opinionated for a system handling **PHI (Protected Health Info
 
 ---
 
+## Known Open Findings
+
+Tracked in `SECURITY_FINDINGS.md`, which is intentionally **not committed** to the public repo (see `.gitignore`) — a row-by-row list of exact file:line + exploit description for a still-open vulnerability is a roadmap for attacking real hospital deployments running this LIS straight off GitHub. That file holds *only* currently-open items; once a finding is fixed it's removed from there and gets its full writeup in `SECURITY.md`'s Changelog instead, so there's exactly one place to look depending on whether you want "what's still broken" (private) or "what's already been fixed" (public).
+
+---
+
 ## 0. Foundations (do these first)
 
 - [ ] Define a **data classification policy**: what is PHI, what is internal, what is public. Tag every database column and API field accordingly.
@@ -14,6 +20,7 @@ This checklist is opinionated for a system handling **PHI (Protected Health Info
 - [ ] Keep a **risk register** with owner, severity, mitigation, and review date.
 - [ ] Establish a **security contact / responsible disclosure** policy in `SECURITY.md` for the open-source repo (e.g., `security@yourdomain` and a PGP key).
 - [ ] Decide what is open source vs. private. Keep deployment configs, secrets, customer-specific HOSxP mappings, and signed builds out of the public repo.
+- [ ] Explicitly decide and document the **deployment topology**: LAN-only, VPN-only remote access, or direct internet-facing — the required controls differ a lot between them (MFA, TLS-everywhere, ClamAV, and network segmentation move from "nice to have" to "mandatory" once anyone outside the hospital LAN can reach the app). Revisit this decision, and re-run this whole checklist, whenever it changes.
 
 ---
 
@@ -96,6 +103,7 @@ This checklist is opinionated for a system handling **PHI (Protected Health Info
 ## 6. HOSxP / HIS Integration
 
 - [ ] Treat the HOSxP link as an **untrusted external system** even if it's on the same LAN.
+- [ ] If the LIS host stays on the same LAN as HOSxP (typical for this project) but is also made reachable from the internet, the LIS host itself becomes a bridge into that LAN — a compromise of the LIS is now a compromise of a box that sits next to HOSxP, PACS, and lab instruments, not just of the app. See §9's internet-facing sub-checklist before exposing it.
 - [ ] Use a dedicated, least-privilege HOSxP user; rotate its credentials.
 - [ ] All inbound HOSxP messages (HL7, web service, MySQL/MSSQL bridge — whatever you use) go through a **validation layer** before touching the LIS DB.
 - [ ] Log every inbound and outbound HOSxP message with a correlation ID, but redact PHI in lower log levels.
@@ -147,6 +155,13 @@ This checklist is opinionated for a system handling **PHI (Protected Health Info
 - [ ] Reverse proxy (NGINX, Caddy, Traefik) terminates TLS; backend listens only on localhost or the internal network.
 - [ ] Block all egress from the LIS host except known destinations (HOSxP, mail relay, NTP, package mirrors).
 - [ ] Internal network segmentation: LIS, HIS, PACS, lab instruments on separate VLANs with firewall rules between them.
+
+**If the LIS needs to be reachable from outside the hospital LAN** (remote pathologist access, multi-site, etc.) while the server itself stays on the same LAN as HOSxP:
+
+- [ ] Prefer **VPN-only access** (WireGuard/OpenVPN) over direct public exposure — users connect to the hospital VPN first, then reach the LIS exactly as if on-site. This avoids exposing PHI-handling infrastructure to the public internet at all.
+- [ ] If direct web exposure is required instead of VPN: put the reverse proxy in a **DMZ/separate VLAN** from the LIS+HOSxP LAN, not just behind a public IP on the same segment — the reverse proxy is the only thing internet-facing, and it forwards to the LIS over a narrow, firewalled path.
+- [ ] Firewall rule from the LIS host to HOSxP must stay narrow (single port, single direction) regardless of exposure model — don't let "LIS is reachable from the internet" quietly become "the whole LAN segment including HOSxP is one step away from the internet."
+- [ ] Never port-forward the FastAPI/Postgres ports directly; only the reverse proxy's 443 should face the internet.
 
 ---
 

@@ -39,6 +39,7 @@ build/
 
 # --- Internal / Sensitive Docs (ห้ามขึ้น public repo) ---
 SECURITY_AUDIT.md
+SECURITY_FINDINGS.md
 TODO.md
 
 # --- Project Specific (Pathology LIS) ---

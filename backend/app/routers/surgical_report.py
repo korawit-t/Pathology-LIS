@@ -30,7 +30,7 @@ from app.schemas.surgical_report import (
 from app.dependencies.auth import get_current_user, RoleChecker
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
-from app.models.surgical_report import SurgicalReport
+from app.models.surgical_report import SurgicalReport, ReportStatus
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
 from app.crud.report_archive import get_surgical_archive
 from app.schemas.archive import ArchivePage
@@ -200,14 +200,17 @@ def read_pending_cosign_worklist(
     dependencies=[Depends(CAN_WRITE_REPORT)],  # คงเรื่อง Security ไว้
 )
 def finalize_and_snapshot_endpoint(
-    case_id: int, data: BulkSaveDraft, db: Session = Depends(get_db)
+    case_id: int,
+    data: BulkSaveDraft,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     บันทึก Draft ล่าสุดและสร้าง Snapshot รายงานทันที (Atomic Transaction)
     """
     try:
         # เรียก Orchestrator ที่เราทำไว้
-        report = finalize_and_snapshot_orchestrator(db, case_id, data)
+        report = finalize_and_snapshot_orchestrator(db, case_id, data, current_user.id)
         if not report:
             raise HTTPException(
                 status_code=400, detail="ไม่สามารถสร้างรายงานได้ กรุณาตรวจสอบข้อมูลการวินิจฉัย"
@@ -470,6 +473,24 @@ def read_report_by_id(report_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Report not found"
         )
     return report
+
+
+@router.delete("/{report_id}", dependencies=[Depends(CAN_WRITE_REPORT)])
+def delete_report(report_id: int, db: Session = Depends(get_db)):
+    """
+    ลบรายงานที่ยังเป็นสถานะ draft เท่านั้น (เช่น draft addendum ที่ยังไม่ต้องการทำต่อ)
+    """
+    report = get_report(db, report_id=report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report.status != ReportStatus.DRAFT.value:
+        raise HTTPException(
+            status_code=400, detail="Only draft reports can be deleted"
+        )
+    db.delete(report)
+    db.commit()
+    return {"message": "Draft report deleted successfully"}
+
 
 @router.patch("/{report_id}/print-status", dependencies=[Depends(CAN_READ_REPORT)])
 def update_print_status(report_id: int, payload: dict, db: Session = Depends(get_db)):

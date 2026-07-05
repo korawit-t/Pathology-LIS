@@ -253,7 +253,7 @@ class TestPrepareReportData:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         data = prepare_report_data(db, case.id)
 
@@ -280,7 +280,7 @@ class TestPrepareReportData:
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id))
+        finalize_and_snapshot_orchestrator(db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id)
 
         data = prepare_report_data(db, case.id)
 

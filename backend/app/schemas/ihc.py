@@ -37,7 +37,7 @@ class IHCResultUpsert(BaseModel):
     surgical_specimen_id: int
     ap_test_id: int
     selected_option: Optional[str] = None
-    numeric_value: Optional[float] = None
+    numeric_value: Optional[str] = None  # free text — supports ranges like "31-40"
     note: Optional[str] = None
 
 class IHCResultResponse(BaseModel):
@@ -45,7 +45,7 @@ class IHCResultResponse(BaseModel):
     surgical_specimen_id: int
     ap_test_id: int
     selected_option: Optional[str]
-    numeric_value: Optional[float]
+    numeric_value: Optional[str]
     note: Optional[str]
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

@@ -11,6 +11,7 @@ from app.schemas.gyne_diagnosis import (
 )
 from app.crud import gyne_diagnosis as crud
 from app.dependencies.auth import get_current_user
+from app.core.roles import CAN_WRITE_GYNE_CYTO_REPORT
 
 router = APIRouter(
     prefix="/gyne-diagnosis",
@@ -40,12 +41,20 @@ def get_diagnosis_categories(
 
 # --- Diagnosis Endpoints ---
 
-@router.post("", response_model=GyneDiagnosisResponse)
+@router.post(
+    "",
+    response_model=GyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
+)
 def create_diagnosis(diag_in: GyneDiagnosisCreate, db: Session = Depends(get_db)):
     return crud.create_initial_diagnosis(db=db, diag_in=diag_in)
 
 
-@router.put("/{diag_id}", response_model=GyneDiagnosisResponse)
+@router.put(
+    "/{diag_id}",
+    response_model=GyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
+)
 def update_existing_diagnosis(
     diag_id: int, diag_in: GyneDiagnosisUpdate, db: Session = Depends(get_db)
 ):
@@ -66,7 +75,11 @@ def read_diagnosis_history(case_id: int, db: Session = Depends(get_db)):
     return crud.get_diagnosis_history(db, case_id=case_id)
 
 
-@router.put("/{diag_id}/revise", response_model=GyneDiagnosisResponse)
+@router.put(
+    "/{diag_id}/revise",
+    response_model=GyneDiagnosisResponse,
+    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
+)
 def revise_existing_diagnosis(
     diag_id: int, diag_in: GyneDiagnosisUpdate, db: Session = Depends(get_db)
 ):
