@@ -274,12 +274,6 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         roles: PAGE_PERMISSIONS["outlab-consult-list"],
       },
       {
-        key: "outlab-report-queue",
-        label: "Gyne Outlab Consult Report Upload",
-        view: "outlab-report-queue",
-        roles: PAGE_PERMISSIONS["outlab-report-queue"],
-      },
-      {
         key: "outlab-test-queue",
         label: "Outlab Test Queue",
         view: "outlab-test-queue",

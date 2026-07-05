@@ -1,7 +1,5 @@
 import io
-import os
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.db.database import get_db
@@ -197,18 +195,6 @@ def get_report_pdf(report_id: int, db: Session = Depends(get_db)):
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-
-    # Outlab case: serve uploaded PDF directly
-    from app.models.gyne_cyto_case import GyneCytologyCase
-    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == report.case_id).first()
-    if case and case.outlab_report_pdf_path:
-        if not os.path.exists(case.outlab_report_pdf_path):
-            raise HTTPException(status_code=404, detail="Outlab report file not found on server.")
-        return FileResponse(
-            path=case.outlab_report_pdf_path,
-            filename=f"{report.accession_no}_outlab.pdf",
-            media_type="application/pdf",
-        )
 
     from app.crud.gyne_cyto_report import get_gyne_report_pdf
     pdf_blob = get_gyne_report_pdf(db, case_id=report.case_id, is_preview=False, report_id=report_id)

@@ -35,6 +35,10 @@ class OutlabConsultRunDetailResponse(BaseModel):
     # query time in get_consult_runs) so the UI can show this specific case's
     # own progress instead of the shipment run's overall "sent"/"received" status.
     case_consult_status: Optional[str] = None
+    # Whether the underlying case already has a consult_pdf_path uploaded
+    # (also attached at query time) — lets the UI offer "View PDF" instead of
+    # only "Upload PDF" once a report has come back for this case.
+    consult_pdf_uploaded: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

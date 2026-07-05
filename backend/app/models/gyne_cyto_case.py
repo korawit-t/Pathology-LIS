@@ -77,7 +77,6 @@ class GyneCytologyCase(Base):
     consult_reason = Column(Text, nullable=True)
     consult_report_out_at = Column(DateTime, nullable=True)
     consult_pdf_received_at = Column(DateTime, nullable=True)
-    outlab_report_pdf_path = Column(String, nullable=True)
     is_slide_released = Column(Boolean, default=False, index=True)
 
     # --- Pathologist Review (10% QC) ---

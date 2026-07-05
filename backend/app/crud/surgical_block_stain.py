@@ -46,6 +46,12 @@ def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
         case.status = "pending immuno"
     elif "Histochem" in categories:
         case.status = "pending special stains"
+    elif case.status in ("pending immuno", "pending special stains"):
+        # No pending IHC/Histochem stains remain — clear the flag. Without
+        # this, deleting the last one left the case stuck showing a pending
+        # state forever (this function otherwise only ever sets the flag,
+        # never clears it).
+        case.status = "stained"
 
 
 def create_stain(db: Session, obj_in: StainCreate):

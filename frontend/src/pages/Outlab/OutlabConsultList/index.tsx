@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Table, Tag, Input, Space, Button, Typography, message, Modal, Select,
   Popconfirm, Tabs, Badge, Segmented, Tooltip, Upload, DatePicker,
@@ -6,13 +6,14 @@ import {
 import {
   SendOutlined, UnorderedListOutlined, CheckCircleOutlined, DeleteOutlined,
   ReloadOutlined, ClockCircleOutlined, InboxOutlined, SearchOutlined,
-  GlobalOutlined, EditOutlined, UploadOutlined,
+  GlobalOutlined, EditOutlined, UploadOutlined, FilePdfOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 
 import PageContainer from "../../../components/Layout/PageContainer";
+import ReportPreviewModal from "../../../components/ReportPreviewModal";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
 import NongyneCytologyCaseService from "../../../services/nongyneCytoCaseService";
@@ -742,6 +743,13 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadReceivedAt, setUploadReceivedAt] = useState<Dayjs>(dayjs());
   const [uploading, setUploading] = useState(false);
+  const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [previewFilename, setPreviewFilename] = useState<string | undefined>();
+  const pdfUrlRef = useRef<string | null>(null);
+
+  useEffect(() => () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current); }, []);
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
@@ -805,6 +813,30 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       message.error("Failed to upload Consult PDF");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleViewPdf = async (d: FlatCase) => {
+    setViewLoadingId(d.id);
+    try {
+      let blob: Blob;
+      if (d.case_type === "nongyne") {
+        blob = await NongyneCytologyCaseService.getConsultPdfBlob(d.case_id);
+      } else if (d.case_type === "gyne") {
+        blob = await GyneCytologyCaseService.getConsultPdfBlob(d.case_id);
+      } else {
+        blob = await SurgicalCaseService.getConsultPdfBlob(d.case_id);
+      }
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      pdfUrlRef.current = url;
+      setPdfUrl(url);
+      setPreviewFilename(`${d.accession_no ?? d.case_id}_consult.pdf`);
+      setPreviewOpen(true);
+    } catch {
+      message.error("Failed to load Consult PDF");
+    } finally {
+      setViewLoadingId(null);
     }
   };
 
@@ -972,6 +1004,18 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       width: 220,
       render: (_, d) => (
         <Space direction="vertical" size={4}>
+          {d.consult_pdf_uploaded && (
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              icon={<FilePdfOutlined />}
+              loading={viewLoadingId === d.id}
+              onClick={() => handleViewPdf(d)}
+            >
+              View PDF
+            </Button>
+          )}
           {(d.case_type === "surgical" || d.case_type === "nongyne" || d.case_type === "gyne") && (
             <Button
               size="small"
@@ -982,7 +1026,7 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
                 setUploadReceivedAt(dayjs());
               }}
             >
-              Upload PDF
+              {d.consult_pdf_uploaded ? "Re-upload" : "Upload PDF"}
             </Button>
           )}
           {d.run_status === "sent" && (
@@ -1090,6 +1134,13 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
           </Button>
         )}
       </Modal>
+
+      <ReportPreviewModal
+        open={previewOpen}
+        pdfUrl={pdfUrl}
+        onCancel={() => setPreviewOpen(false)}
+        filename={previewFilename}
+      />
     </>
   );
 };

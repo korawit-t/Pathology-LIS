@@ -71,7 +71,6 @@ const PathologistNongyneDiagnosisPage = lazy(
 const OutlabManagement = lazy(() => import("../Outlab"));
 const OutlabStainRunList = lazy(() => import("../Outlab/OutlabStainRun/OutlabStainRunList"));
 const OutlabConsultList = lazy(() => import("../Outlab/OutlabConsultList"));
-const OutlabReportQueue = lazy(() => import("../Outlab/OutlabReportQueue"));
 const OutlabTestQueue = lazy(() => import("../Outlab/OutlabTestQueue"));
 const BlockStorageManager = lazy(() => import("../BlockStorage"));
 const SlideStorageManager = lazy(() => import("../SlideStorage"));
@@ -264,10 +263,6 @@ const VIEW_CONFIG: Record<
   "outlab-consult-list": {
     pageKey: "outlab-consult-list" as PageKey,
     component: OutlabConsultList,
-  },
-  "outlab-report-queue": {
-    pageKey: "outlab-report-queue" as PageKey,
-    component: OutlabReportQueue,
   },
   "outlab-test-queue": {
     pageKey: "outlab-test-queue" as PageKey,

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(curl * | *)",
+      "Bash(git clean *)",
+      "Bash(git checkout -- *)",
+      "Bash(docker system prune*)"
+    ]
+  }
+}

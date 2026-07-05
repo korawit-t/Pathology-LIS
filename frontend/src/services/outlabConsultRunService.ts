@@ -30,6 +30,9 @@ export interface OutlabConsultRunDetailResponse {
   // Live consult_status of the underlying case (not the run's own status) —
   // lets the UI show this specific case's own progress within a multi-case run.
   case_consult_status?: string;
+  // Whether the underlying case already has a consult PDF uploaded — lets
+  // the UI offer "View PDF" instead of only "Upload PDF".
+  consult_pdf_uploaded?: boolean;
 }
 
 export interface OutlabConsultRunResponse {

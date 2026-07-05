@@ -59,7 +59,6 @@ export interface GyneCytologyCase {
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;
   consult_report_out_at?: string | null;
-  outlab_report_pdf_path: string | null;
 
   created_at: string;
   updated_at: string;
@@ -119,7 +118,6 @@ export interface GyneCytologyCaseUpdate extends Partial<GyneCytologyCaseCreate> 
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;
   consult_report_out_at?: string | null;
-  outlab_report_pdf_path?: string | null;
   slide_quality?: string;
   stain_quality?: string;
 }

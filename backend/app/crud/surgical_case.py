@@ -68,7 +68,7 @@ def create_case_with_specimens(
             for spec_in in case_in.specimens:
                 # สร้างชิ้นเนื้อโดยเชื่อม FK กลับมาที่ id ของ Case
                 db_specimen = SurgicalSpecimen(
-                    **spec_in.model_dump(), case_id=db_case.id
+                    **spec_in.model_dump(exclude={"surgical_case_id"}), case_id=db_case.id
                 )
                 db.add(db_specimen)
 

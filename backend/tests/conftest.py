@@ -143,6 +143,14 @@ def inactive_user(db):
     return _make_user(db, f"inact_{uuid.uuid4().hex[:6]}", "InactPass1!", ["register"], status=False)
 
 
+@pytest.fixture
+def two_pathologists(db):
+    """Two distinct pathologist users, e.g. for co-sign / two-round consult tests."""
+    path1, _ = _make_user(db, f"path1_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
+    path2, _ = _make_user(db, f"path2_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
+    return path1, path2
+
+
 # ---------------------------------------------------------------------------
 # Pre-authenticated clients
 # ---------------------------------------------------------------------------

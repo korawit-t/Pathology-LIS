@@ -126,7 +126,6 @@ class GyneCytologyCaseUpdate(BaseModel):
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
-    outlab_report_pdf_path: Optional[str] = None
 
     medical_scheme_id: Optional[int] = None
     slide_quality: Optional[str] = None
@@ -150,7 +149,6 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
-    outlab_report_pdf_path: Optional[str] = None
 
     # QC Review
     needs_review: bool = False

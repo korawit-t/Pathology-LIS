@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { sanitizeHtml } from "../../utils/sanitize";
 import {
   Form,
@@ -65,6 +65,7 @@ import ReportPreviewModal from "../../components/ReportPreviewModal";
 import GynePathologistDiagnosisManager from "../GyneCytoDiagnosis/components/GynePathologistDiagnosisManager";
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
+import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import NongyneIHCResultPanel from "./components/NongyneIHCResultPanel";
 import NongyneCytologyImageCaptureModal from "./components/NongyneCytologyImageCaptureModal";
 import logger from "../../utils/logger";
@@ -293,6 +294,13 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         );
         setActiveReportId((active as any)?.id ?? null);
       })
+      .catch((e) => logger.error(e));
+  }, [caseId]);
+
+  const refetchCaseData = useCallback(() => {
+    if (!caseId) return;
+    NongyneCytologyCaseService.getById(Number(caseId))
+      .then(setCaseData)
       .catch((e) => logger.error(e));
   }, [caseId]);
 
@@ -808,6 +816,20 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
           gap: 16,
         }}
       >
+        {/* ── Out-Lab Consult PDF ───────────────────────────────────────── */}
+        {caseData?.is_out_lab_consult && (
+          <ConsultPdfPanel
+            caseId={Number(caseId)}
+            isOutLabConsult={!!caseData?.is_out_lab_consult}
+            consultPdfPath={caseData?.consult_pdf_path}
+            consultStatus={caseData?.consult_status}
+            onUpload={NongyneCytologyCaseService.uploadConsultPdf}
+            onDelete={NongyneCytologyCaseService.deleteConsultPdf}
+            onGetBlob={NongyneCytologyCaseService.getConsultPdfBlob}
+            onRefresh={refetchCaseData}
+          />
+        )}
+
         {/* ── Finalized read-only view ── */}
         {diagnosis && isFinalized && !isAddendumMode && diagnosis.diagnosis && (
           <StyledCard styles={{ body: { padding: "20px 24px" } }}>

@@ -48,6 +48,7 @@ import PageContainer from "../../components/Layout/PageContainer";
 import GynePathologistDiagnosisManager from "./components/GynePathologistDiagnosisManager";
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
+import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import type { SurgicalCase } from "../../types/surgical";
 import logger from "../../utils/logger";
@@ -822,6 +823,22 @@ const PathologistGyneDiagnosisPage: React.FC<
       {caseData && <GyneClinicalInfoCard caseData={caseData} />}
 
       <div style={{ padding: "0 24px 32px" }}>
+        {/* ── Out-Lab Consult PDF ───────────────────────────────────────── */}
+        {caseData?.is_out_lab_consult && (
+          <div style={{ marginBottom: 16 }}>
+            <ConsultPdfPanel
+              caseId={Number(caseId)}
+              isOutLabConsult={!!caseData?.is_out_lab_consult}
+              consultPdfPath={caseData?.consult_pdf_path}
+              consultStatus={caseData?.consult_status}
+              onUpload={GyneCytologyCaseService.uploadConsultPdf}
+              onDelete={GyneCytologyCaseService.deleteConsultPdf}
+              onGetBlob={GyneCytologyCaseService.getConsultPdfBlob}
+              onRefresh={fetchCaseData}
+            />
+          </div>
+        )}
+
         {/* ── QC Review Banner + Discordance Banner ────────────────────── */}
         <GyneQCReviewSection
           caseData={caseData}

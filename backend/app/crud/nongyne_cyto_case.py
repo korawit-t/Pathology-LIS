@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import func, or_, cast, and_
+from sqlalchemy import func, or_, cast, and_, literal
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
@@ -121,6 +121,7 @@ def get_nongyne_cases(
     status: str = None,
     assigned_user_id: int = None,
     signer_id: int = None,
+    exclude_signed_by: int = None,
     hospital_id: int = None,
     medical_scheme_id: int = None,
     is_out_lab_consult: bool = None,
@@ -155,6 +156,19 @@ def get_nongyne_cases(
             NongyneDiagnosis.is_current.is_(True),
             cast(NongyneDiagnosis.signers, JSONB).contains([{"user_id": signer_id}]),
         )
+
+    if exclude_signed_by:
+        signed_case_ids = (
+            db.query(NongyneDiagnosis.case_id)
+            .filter(
+                NongyneDiagnosis.is_current.is_(True),
+                func.jsonb_path_exists(
+                    cast(NongyneDiagnosis.signers, JSONB),
+                    literal(f'$[*] ? (@.user_id == {int(exclude_signed_by)} && @.signed_at != null)')
+                )
+            )
+        )
+        query = query.filter(~NongyneCytologyCase.id.in_(signed_case_ids))
 
     if status and status.upper() != "ALL":
         if status.lower() == "screened":

@@ -174,6 +174,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
         const nonGyneRaw = await NongyneCytologyCaseService.getAll({
           assigned_to_me: true,
           is_reported: false,
+          exclude_signed_by: userId,
           limit: pageSize,
           search: searchText,
         });

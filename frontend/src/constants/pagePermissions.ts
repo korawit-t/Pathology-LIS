@@ -39,7 +39,6 @@ export type PageKey =
   | "outlab-run-list"
   | "outlab-consult-list"
   | "outlab-consult-run-list"
-  | "outlab-report-queue"
   | "outlab-test-queue"
   | "billing-management"
   | "hospital-billing"
@@ -139,7 +138,6 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "outlab-run-list": ["histo", "lab_manager", "admin"],
   "outlab-consult-list": ["admin", "lab_manager", "pathologist", "histo"],
   "outlab-consult-run-list": ["admin", "lab_manager", "pathologist", "histo"],
-  "outlab-report-queue": ["admin", "lab_manager", "cytotechnologist", "register"],
   "outlab-test-queue": ["admin", "lab_manager", "cytotechnologist", "register"],
   "billing-management": ["admin", "lab_manager"],
   "hospital-billing": ["admin", "lab_manager"],

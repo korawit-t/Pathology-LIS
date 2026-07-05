@@ -508,7 +508,7 @@ def process_nongyne_report_approval(
                 db_case.report_at = now
 
     elif action in ["REJECT", "REQUEST_CHANGES"]:
-        db_report.status = NongyneReportStatus.PENDING_APPROVAL
+        db_report.status = NongyneReportStatus.DRAFT
 
         if db_report.case_id is not None:
             db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_report.case_id).first()

@@ -106,10 +106,12 @@ def get_consult_runs(db: Session, skip: int = 0, limit: int = 50):
 
 
 def _attach_live_case_consult_status(db: Session, runs: list["OutlabConsultRun"]):
-    """Attach each detail's underlying case's live consult_status (not a stored
-    column) so the UI can show this specific case's own progress instead of
-    the shipment run's overall status — a run can bundle multiple cases, and
-    one case finishing doesn't mean the whole shipment came back."""
+    """Attach each detail's underlying case's live consult_status and
+    consult-pdf-uploaded flag (neither is a stored column on the detail
+    itself) so the UI can show this specific case's own progress — and
+    whether there's already a PDF to view — instead of just the shipment
+    run's overall status. A run can bundle multiple cases, and one case
+    finishing doesn't mean the whole shipment came back."""
     ids_by_type: dict[str, set[int]] = {"surgical": set(), "gyne": set(), "nongyne": set()}
     for run in runs:
         for detail in run.details:
@@ -117,28 +119,33 @@ def _attach_live_case_consult_status(db: Session, runs: list["OutlabConsultRun"]
                 ids_by_type[detail.case_type].add(detail.case_id)
 
     status_by_type: dict[str, dict[int, str]] = {}
+    pdf_by_type: dict[str, dict[int, bool]] = {}
     if ids_by_type["surgical"]:
         from app.models.surgical_case import SurgicalCase
-        rows = db.query(SurgicalCase.id, SurgicalCase.consult_status).filter(
+        rows = db.query(SurgicalCase.id, SurgicalCase.consult_status, SurgicalCase.consult_pdf_path).filter(
             SurgicalCase.id.in_(ids_by_type["surgical"])
         ).all()
         status_by_type["surgical"] = {r.id: r.consult_status for r in rows}
+        pdf_by_type["surgical"] = {r.id: r.consult_pdf_path is not None for r in rows}
     if ids_by_type["gyne"]:
         from app.models.gyne_cyto_case import GyneCytologyCase
-        rows = db.query(GyneCytologyCase.id, GyneCytologyCase.consult_status).filter(
+        rows = db.query(GyneCytologyCase.id, GyneCytologyCase.consult_status, GyneCytologyCase.consult_pdf_path).filter(
             GyneCytologyCase.id.in_(ids_by_type["gyne"])
         ).all()
         status_by_type["gyne"] = {r.id: r.consult_status for r in rows}
+        pdf_by_type["gyne"] = {r.id: r.consult_pdf_path is not None for r in rows}
     if ids_by_type["nongyne"]:
         from app.models.nongyne_cyto_case import NongyneCytologyCase
-        rows = db.query(NongyneCytologyCase.id, NongyneCytologyCase.consult_status).filter(
+        rows = db.query(NongyneCytologyCase.id, NongyneCytologyCase.consult_status, NongyneCytologyCase.consult_pdf_path).filter(
             NongyneCytologyCase.id.in_(ids_by_type["nongyne"])
         ).all()
         status_by_type["nongyne"] = {r.id: r.consult_status for r in rows}
+        pdf_by_type["nongyne"] = {r.id: r.consult_pdf_path is not None for r in rows}
 
     for run in runs:
         for detail in run.details:
             detail.case_consult_status = status_by_type.get(detail.case_type, {}).get(detail.case_id)
+            detail.consult_pdf_uploaded = pdf_by_type.get(detail.case_type, {}).get(detail.case_id, False)
 
 def receive_consult_run(db: Session, run_id: int, user_id: int):
     db_run = db.query(OutlabConsultRun).filter(OutlabConsultRun.id == run_id).first()

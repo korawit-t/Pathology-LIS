@@ -190,22 +190,6 @@ const GyneCytologyCaseService = {
     return response.data;
   },
 
-  uploadOutlabReport: async (caseId: number, file: File): Promise<GyneCytologyCase> => {
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await api.post<GyneCytologyCase>(
-      `/gyne-cytology/${caseId}/outlab-report`,
-      fd,
-      { headers: { "Content-Type": "multipart/form-data" } },
-    );
-    return res.data;
-  },
-
-  downloadOutlabReport: async (caseId: number): Promise<Blob> => {
-    const res = await api.get(`/gyne-cytology/${caseId}/outlab-report`, { responseType: "blob" });
-    return res.data;
-  },
-
   uploadOutlabTestResult: async (caseId: number, file: File): Promise<GyneCytologyCase> => {
     const fd = new FormData();
     fd.append("file", file);

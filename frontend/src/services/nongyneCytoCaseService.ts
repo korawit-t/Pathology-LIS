@@ -23,6 +23,8 @@ const NongyneCytologyCaseService = {
     hospital_id?: number;
     medical_scheme_id?: number;
     assigned_to_me?: boolean;
+    signer_id?: number;
+    exclude_signed_by?: number;
     is_out_lab_consult?: boolean;
     consult_status?: string;
     is_reported?: boolean;

@@ -46,20 +46,24 @@ def update_stain(db: Session, stain_id: int, obj_in: GyneStainUpdate):
 def auto_create_default_stain(db: Session, case_id: int):
     """
     สร้างสไลด์ใบแรกโดยอ้างอิงจาก System Settings (Source of Truth)
+    ถ้าไม่ได้ตั้งค่าไว้ จะ fallback ไปหา PAP_ROUTINE จาก system_code
     """
     setting = db.query(SystemSetting).first()
 
-    # ดึง ID จาก Setting ถ้าไม่มีจริงๆ ค่อยหา Fallback จาก Category
     test_id = None
     if setting and setting.default_gyne_test_id:
         test_id = setting.default_gyne_test_id
     else:
-        fallback = (
+        pap_test = (
             db.query(AnatomicalPathologyTest)
-            .filter(AnatomicalPathologyTest.category == "Cytology")
+            .filter(AnatomicalPathologyTest.system_code == "PAP_ROUTINE")
             .first()
         )
-        test_id = fallback.id if fallback else None
+        test_id = pap_test.id if pap_test else None
+
+    # ป้องกันกรณีหาไม่เจอ (เผื่อลืม Seed ข้อมูล) ให้ทำ Error Handling เล็กน้อย
+    if test_id is None:
+        return None
 
     db_obj = GyneCytologyStain(
         case_id=case_id, test_id=test_id, slide_no=1, status="pending"
@@ -103,35 +107,6 @@ def get_registered_queue_stains(db: Session):
         .order_by(GyneCytologyStain.created_at.asc())
         .all()
     )
-
-
-def auto_create_default_stain(db: Session, case_id: int):
-    """
-    สร้างสไลด์ใบแรกโดยดึง PAP Stain จาก Master Data อัตโนมัติ (ใช้ System Code)
-    """
-    # 🚩 ค้นหาด้วย System Code แทนชื่อ สะอาดและแม่นยำกว่ามาก
-    pap_test = (
-        db.query(AnatomicalPathologyTest)
-        .filter(AnatomicalPathologyTest.system_code == "PAP_ROUTINE")
-        .first()
-    )
-
-    # ป้องกันกรณีหาไม่เจอ (เผื่อลืม Seed ข้อมูล) ให้ทำ Error Handling เล็กน้อย
-    if not pap_test:
-        # อาจจะ fallback ไปค้นหาด้วยชื่อ หรือ raise error ตามความเหมาะสม
-        # ในที่นี้ถ้าไม่เจอ จะยังไม่สร้างเพื่อป้องกัน Foreign Key Error
-        return None
-
-    db_obj = GyneCytologyStain(
-        case_id=case_id,
-        test_id=pap_test.id,
-        slide_no=1,
-        status="pending",
-    )
-    db.add(db_obj)
-    db.commit()
-    db.refresh(db_obj)
-    return db_obj
 
 
 def create_stain_run(

@@ -117,3 +117,22 @@ class TestGetConsultRunsLiveStatus:
         assert detail.case_consult_status == "received"
         # The run's own status is untouched by the case-level change.
         assert matching.status == "sent"
+
+    def test_consult_pdf_uploaded_reflects_consult_pdf_path_presence(self, db, admin_user, surgical_case):
+        user, _ = admin_user
+        run = _create_run_for(db, user.id, surgical_case)
+
+        runs = get_consult_runs(db, skip=0, limit=500)
+        matching = next(r for r in runs if r.id == run.id)
+        detail = next(d for d in matching.details if d.case_id == surgical_case.id)
+        assert detail.consult_pdf_uploaded is False
+
+        db.query(SurgicalCase).filter(SurgicalCase.id == surgical_case.id).update(
+            {"consult_pdf_path": "/tmp/fake-consult.pdf"}
+        )
+        db.commit()
+
+        runs = get_consult_runs(db, skip=0, limit=500)
+        matching = next(r for r in runs if r.id == run.id)
+        detail = next(d for d in matching.details if d.case_id == surgical_case.id)
+        assert detail.consult_pdf_uploaded is True

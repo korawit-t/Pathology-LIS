@@ -21,41 +21,22 @@ existing test before this file):
     conflicting with a freshly-flushed report row in the same transaction).
 """
 
-import uuid
 import pytest
 
 from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.crud.outlab_consult import create_consult_run
-from app.schemas.surgical_bulk import BulkSaveDraft, DiagnosisEntry
 from app.schemas.outlab_consult import OutlabConsultRunCreate, CaseSelection
 from app.models.surgical_report import ReportStatus
 
-from tests.factories import make_signable_case
-from tests.conftest import _make_user
-
-
-@pytest.fixture
-def two_pathologists(db):
-    path1, _ = _make_user(db, f"path1_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
-    path2, _ = _make_user(db, f"path2_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
-    return path1, path2
-
-
-def _build_payload(case_id, specimen_id, pathologist_id, **overrides):
-    fields = dict(
-        case_id=case_id,
-        diagnosis_mode="individual",
-        gross_descriptions={},
-        diagnoses={specimen_id: DiagnosisEntry(diagnosis="Test diagnosis", microscopic_description="Test micro.")},
-        pathologists=[{"user_id": pathologist_id, "role": "primary"}],
-        signed_by_id=pathologist_id,
-    )
-    fields.update(overrides)
-    return BulkSaveDraft(**fields)
+from tests.factories import make_signable_case, build_bulk_save_payload as _build_payload, clear_system_settings
 
 
 class TestRoundOneFinalize:
     def test_publishes_report_and_signs_out_case(self, db, admin_user, two_pathologists):
+        # This test assumes the default (no approval gate) — don't let a
+        # SystemSetting row left over from another test file (e.g.
+        # enable_approve_system=True) route this straight to PENDING_APPROVAL.
+        clear_system_settings(db)
         registrar, _ = admin_user
         path1, _ = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
@@ -70,6 +51,7 @@ class TestRoundOneFinalize:
 
 class TestConsultRoundTrip:
     def test_flag_dispatch_upload_and_second_finalize(self, db, admin_user, two_pathologists):
+        clear_system_settings(db)
         registrar, _ = admin_user
         path1, path2 = two_pathologists
         case, specimen = make_signable_case(db, registrar_id=registrar.id)

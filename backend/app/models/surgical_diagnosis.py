@@ -17,7 +17,6 @@ Key design principles:
   integrity and traceability back to individual specimens.
 """
 
-import enum
 from sqlalchemy import (
     Column,
     Integer,
@@ -35,27 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.database import Base
-
-
-# --- Enum defining the semantic level of the diagnosis ---
-class DiagnosisLevel(enum.Enum):
-    """
-    DiagnosisLevel defines the semantic scope of a diagnosis entry.
-
-    SPECIMEN:
-        - Diagnosis applies to a single surgical specimen
-        - surgical_specimen_id must be set
-        - linked_specimen_ids should be NULL
-
-    CASE:
-        - Diagnosis applies to the entire surgical case
-        - surgical_specimen_id must be NULL
-        - linked_specimen_ids contains the list of specimen IDs
-          included in this integrated diagnosis
-    """
-
-    SPECIMEN = "SPECIMEN"
-    CASE = "CASE"
+from app.enums.surgical_diagnosis_enums import DiagnosisLevel
 
 
 # --- Main Surgical Diagnosis table ---
