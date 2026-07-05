@@ -28,6 +28,7 @@ const baseProps = {
   onEdit: vi.fn(),
   total: 0,
   current: 1,
+  pageSize: 20,
   onChangePage: vi.fn(),
   hospitals: [],
   onFilterChange: vi.fn(),
@@ -62,7 +63,7 @@ describe("GyneCytoTable", () => {
     expect(screen.queryByText("Post-Menopause")).not.toBeInTheDocument();
   });
 
-  it("shows ปรึกษาภายนอก tag when is_out_lab_consult is true", () => {
+  it("shows External Consult tag when is_out_lab_consult is true", () => {
     render(
       <GyneCytoTable
         {...baseProps}
@@ -70,10 +71,10 @@ describe("GyneCytoTable", () => {
         total={1}
       />,
     );
-    expect(screen.getByText("ปรึกษาภายนอก")).toBeInTheDocument();
+    expect(screen.getByText("External Consult")).toBeInTheDocument();
   });
 
-  it("shows ส่งตรวจภายนอก tag when is_out_lab is true", () => {
+  it("shows Sent Out tag when is_out_lab is true", () => {
     render(
       <GyneCytoTable
         {...baseProps}
@@ -81,7 +82,7 @@ describe("GyneCytoTable", () => {
         total={1}
       />,
     );
-    expect(screen.getByText("ส่งตรวจภายนอก")).toBeInTheDocument();
+    expect(screen.getByText("Sent Out")).toBeInTheDocument();
   });
 
   it("shows PDF button only when status is reported and onViewPdf is provided", () => {
@@ -126,6 +127,26 @@ describe("GyneCytoTable", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^printer$/i }));
     expect(onPrint).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+  });
+
+  it("renders all rows of a server-fetched page beyond page 1 (regression: pageSize must match backend page size)", () => {
+    // Simulates the hook's real pagination shape: 20 records per backend page,
+    // total 90, viewing page 3. If the Table's pagination.pageSize doesn't
+    // match the 20-item page it was given, AntD re-slices this already-paginated
+    // array and renders "No data" instead of the rows.
+    const page3Cases = Array.from({ length: 20 }, (_, i) =>
+      makeCase({ id: i + 41, accession_no: `G26-000${i + 41}`, hn: `HN${i + 41}` }),
+    );
+    render(
+      <GyneCytoTable
+        {...baseProps}
+        dataSource={page3Cases}
+        total={90}
+        current={3}
+        pageSize={20}
+      />,
+    );
+    expect(screen.getAllByTestId("accession-tag")).toHaveLength(20);
   });
 
   it("shows dash when LMP is null", () => {

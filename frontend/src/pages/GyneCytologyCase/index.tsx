@@ -22,6 +22,7 @@ const GyneCytologyManager: React.FC = () => {
     total,
     currentPage,
     setCurrentPage,
+    pageSize,
     loading,
     setSearchText,
     searchText,
@@ -100,6 +101,7 @@ const GyneCytologyManager: React.FC = () => {
         dataSource={cases}
         total={total}
         current={currentPage}
+        pageSize={pageSize}
         loading={loading}
         onChangePage={(page) => setCurrentPage(page)}
         onEdit={(record: GyneCytologyCase) => setModalState({ open: true, id: record.id })}

@@ -27,6 +27,7 @@ interface GyneCytoTableProps {
   onViewPdf?: (caseId: number) => void;
   total: number;
   current: number;
+  pageSize: number;
   onChangePage: (page: number) => void;
   hospitals: { id: number; name: string }[];
   departments?: { id: number; name: string }[];
@@ -41,6 +42,7 @@ const GyneCytoTable: React.FC<GyneCytoTableProps> = ({
   loading,
   total,
   current,
+  pageSize,
   onChangePage,
   onEdit,
   onPrint,
@@ -125,15 +127,15 @@ const GyneCytoTable: React.FC<GyneCytoTableProps> = ({
       dataIndex: "specimen_type",
       width: 170,
       render: (type: string, record: GyneCytologyCase) => (
-        <Space size={4}>
+        <Space size={4} wrap>
           <Tag icon={<ExperimentOutlined />} color={type?.includes("Liquid") ? "blue" : "cyan"}>
             {type || "N/A"}
           </Tag>
           {record.is_out_lab_consult && (
-            <Tag color="volcano" style={{ fontSize: 11, padding: "0 5px" }}>ปรึกษาภายนอก</Tag>
+            <Tag color="volcano" style={{ fontSize: 11, padding: "0 5px" }}>External Consult</Tag>
           )}
           {record.is_out_lab && (
-            <Tag color="geekblue" style={{ fontSize: 11, padding: "0 5px" }}>ส่งตรวจภายนอก</Tag>
+            <Tag color="geekblue" style={{ fontSize: 11, padding: "0 5px" }}>Sent Out</Tag>
           )}
         </Space>
       ),
@@ -258,6 +260,7 @@ const GyneCytoTable: React.FC<GyneCytoTableProps> = ({
       pagination={{
         total,
         current,
+        pageSize,
         onChange: onChangePage,
         showSizeChanger: false,
         showTotal: (t) => `Total ${t} cases`,

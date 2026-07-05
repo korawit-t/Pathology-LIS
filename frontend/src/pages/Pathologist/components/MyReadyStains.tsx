@@ -43,6 +43,7 @@ interface CaseGroup {
   patient_ln?: string;
   case_status: string;
   stains: AdditionalStain[];
+  ihc_interpreted: boolean | null;
 }
 
 interface Props {
@@ -101,7 +102,7 @@ const StatusSummaryRow: React.FC<{ stains: AdditionalStain[] }> = ({ stains }) =
     <Space size={4} wrap>
       {allStained && (
         <Tag color="success" icon={<CheckCircleFilled />}>
-          ย้อมครบแล้ว
+          All Stained
         </Tag>
       )}
       {order
@@ -239,6 +240,25 @@ const MyReadyStains: React.FC<Props> = ({ onSelectCase, pathologistId }) => {
       render: (_: unknown, record: CaseGroup) => (
         <StatusSummaryRow stains={record.stains} />
       ),
+    },
+    {
+      title: "Interpreted",
+      key: "ihc_interpreted",
+      width: 130,
+      render: (_: unknown, record: CaseGroup) => {
+        if (record.ihc_interpreted === null) {
+          return <Text type="secondary">-</Text>;
+        }
+        return record.ihc_interpreted ? (
+          <Tag color="success" icon={<CheckCircleFilled />}>
+            Interpreted
+          </Tag>
+        ) : (
+          <Tag color="default" icon={<ExperimentOutlined style={{ color: "#722ed1" }} />}>
+            Not Interpreted
+          </Tag>
+        );
+      },
     },
     {
       title: "Stains",

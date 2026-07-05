@@ -114,11 +114,9 @@ const PathologistPage: React.FC<{
       })
       .then((res) => {
         const cases = res.data as ReadyStainCase[];
-        const readyCount = cases.reduce(
-          (sum: number, c: ReadyStainCase) =>
-            sum + c.stains.filter((s) => s.status === "stained").length,
-          0,
-        );
+        const readyCount = cases.filter((c) =>
+          c.stains.some((s) => s.status !== "completed"),
+        ).length;
         setReadyStainCount(readyCount);
       })
       .catch(() => {});

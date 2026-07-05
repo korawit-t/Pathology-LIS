@@ -16,6 +16,7 @@ import ReportPreviewModal from "../../components/ReportPreviewModal";
 import { useSurgicalData } from "../SurgicalCase/hooks/useSurgicalData";
 import { useGyneCytoData } from "../GyneCytologyCase/hooks/useGyneCytoData";
 import { useNongyneData } from "../NongyneCase/hooks/useNongyneData";
+import { useUnifiedCaseData } from "./hooks/useUnifiedCaseData";
 import SurgicalTable from "../SurgicalCase/components/SurgicalTable";
 import GyneCytoTable from "../GyneCytologyCase/components/GyneCytoTable";
 import NongyneTable from "../NongyneCase/components/NongyneTable";
@@ -46,7 +47,7 @@ import HolidayService from "../../services/holidayService";
 import GyneCytoCaseService from "../../services/gyneCytoCaseService";
 import NongyneCytoCaseService from "../../services/nongyneCytoCaseService";
 
-import { buildUnifiedRows } from "./buildUnifiedRows";
+import { mapUnifiedItem } from "./mapUnifiedItem";
 import { UnifiedRow, OutlabStainRun } from "./types";
 import AllTabContent from "./AllTabContent";
 import OutlabTabContent from "./OutlabTabContent";
@@ -68,7 +69,7 @@ const UnifiedAccession: React.FC = () => {
 
   const {
     cases: gyneCases, total: gyneTotal, currentPage: gynePage,
-    setCurrentPage: setGynePage, loading: gyneLoading,
+    setCurrentPage: setGynePage, pageSize: gynePageSize, loading: gyneLoading,
     setSearchText: setGyneSearch, setStatusFilter: setGyneStatus,
     setHospitalFilter: setGyneHosp, setSchemeFilter: setGyneScheme,
     setDateFrom: setGyneDateFrom, setDateTo: setGyneDateTo, reload: reloadGyne,
@@ -81,6 +82,13 @@ const UnifiedAccession: React.FC = () => {
     setHospitalFilter: setNgHosp, setSchemeFilter: setNgScheme,
     setDateFrom: setNgDateFrom, setDateTo: setNgDateTo, reload: reloadNg,
   } = useNongyneData();
+
+  const {
+    items: unifiedItems, total: unifiedTotal, currentPage: unifiedPage,
+    setCurrentPage: setUnifiedPage, pageSize: unifiedPageSize, loading: unifiedLoading,
+    setSearchText: setUnifiedSearch, setDateFrom: setUnifiedDateFrom,
+    setDateTo: setUnifiedDateTo, reload: reloadUnified,
+  } = useUnifiedCaseData();
 
   // ---- Lookups ----
   const [hospitals, setHospitals] = useState<{ id: number; name: string }[]>([]);
@@ -101,29 +109,44 @@ const UnifiedAccession: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!ihcOrderedAccessions.size || !surgCases.length) return;
-    const specimensByAccession: Record<string, number[]> = {};
-    for (const c of surgCases) {
-      if (ihcOrderedAccessions.has(c.accession_no)) {
-        specimensByAccession[c.accession_no] = (c.specimens ?? []).map((s) => s.id);
-      }
+    // Scoped to the surgical-type rows of the *currently visible* unified
+    // page (not whichever page the Surgical tab happens to have loaded) —
+    // otherwise the IHC badge on the All tab reflects an unrelated tab's state.
+    const pageSurgIds = unifiedItems
+      .filter((i) => i.case_type === "surgical" && ihcOrderedAccessions.has(i.accession_no))
+      .map((i) => i.id);
+    if (!ihcOrderedAccessions.size || !pageSurgIds.length) {
+      setIhcAccessions(new Set());
+      return;
     }
-    const allSpecimenIds = Object.values(specimensByAccession).flat();
-    if (!allSpecimenIds.length) return;
-    Promise.all(allSpecimenIds.map((id) => IHCService.getPanel(id).catch(() => []))).then((panels) => {
-      const specimenPanels: Record<number, typeof panels[0]> = {};
-      allSpecimenIds.forEach((id, i) => { specimenPanels[id] = panels[i]; });
-      const pendingSet = new Set<string>();
-      for (const [accNo, specIds] of Object.entries(specimensByAccession)) {
-        const allInterpreted = specIds.every((id) => {
-          const panel = specimenPanels[id] ?? [];
-          return panel.length > 0 && panel.every((item: IHCMarkerWithResult) => item.result?.selected_option != null);
-        });
-        if (!allInterpreted) pendingSet.add(accNo);
+    let cancelled = false;
+    Promise.all(pageSurgIds.map((id) => SurgicalCaseService.getCaseById(id).catch(() => null))).then((cases) => {
+      const specimensByAccession: Record<string, number[]> = {};
+      for (const c of cases) {
+        if (c) specimensByAccession[c.accession_no] = (c.specimens ?? []).map((s: { id: number }) => s.id);
       }
-      setIhcAccessions(pendingSet);
+      const allSpecimenIds = Object.values(specimensByAccession).flat();
+      if (!allSpecimenIds.length) {
+        if (!cancelled) setIhcAccessions(new Set());
+        return;
+      }
+      Promise.all(allSpecimenIds.map((id) => IHCService.getPanel(id).catch(() => []))).then((panels) => {
+        if (cancelled) return;
+        const specimenPanels: Record<number, typeof panels[0]> = {};
+        allSpecimenIds.forEach((id, i) => { specimenPanels[id] = panels[i]; });
+        const pendingSet = new Set<string>();
+        for (const [accNo, specIds] of Object.entries(specimensByAccession)) {
+          const allInterpreted = specIds.every((id) => {
+            const panel = specimenPanels[id] ?? [];
+            return panel.length > 0 && panel.every((item: IHCMarkerWithResult) => item.result?.selected_option != null);
+          });
+          if (!allInterpreted) pendingSet.add(accNo);
+        }
+        setIhcAccessions(pendingSet);
+      });
     });
-  }, [ihcOrderedAccessions, surgCases]);
+    return () => { cancelled = true; };
+  }, [ihcOrderedAccessions, unifiedItems]);
 
   useEffect(() => {
     HospitalService.getHospitals().then(setHospitals);
@@ -137,6 +160,7 @@ const UnifiedAccession: React.FC = () => {
     setSurgDateFrom(DEFAULT_DATE_FROM); setSurgDateTo(DEFAULT_DATE_TO);
     setGyneDateFrom(DEFAULT_DATE_FROM); setGyneDateTo(DEFAULT_DATE_TO);
     setNgDateFrom(DEFAULT_DATE_FROM); setNgDateTo(DEFAULT_DATE_TO);
+    setUnifiedDateFrom(DEFAULT_DATE_FROM); setUnifiedDateTo(DEFAULT_DATE_TO);
   }, []);
 
   // ---- Search (All tab) ----
@@ -144,15 +168,17 @@ const UnifiedAccession: React.FC = () => {
 
   useEffect(() => {
     const q = searchText.trim();
-    setSurgSearch(q); setGyneSearch(q); setNgSearch(q);
+    setSurgSearch(q); setGyneSearch(q); setNgSearch(q); setUnifiedSearch(q);
     if (q) {
       setSurgDateFrom(undefined); setSurgDateTo(undefined);
       setGyneDateFrom(undefined); setGyneDateTo(undefined);
       setNgDateFrom(undefined); setNgDateTo(undefined);
+      setUnifiedDateFrom(undefined); setUnifiedDateTo(undefined);
     } else {
       setSurgDateFrom(DEFAULT_DATE_FROM); setSurgDateTo(DEFAULT_DATE_TO);
       setGyneDateFrom(DEFAULT_DATE_FROM); setGyneDateTo(DEFAULT_DATE_TO);
       setNgDateFrom(DEFAULT_DATE_FROM); setNgDateTo(DEFAULT_DATE_TO);
+      setUnifiedDateFrom(DEFAULT_DATE_FROM); setUnifiedDateTo(DEFAULT_DATE_TO);
     }
   }, [searchText]);
 
@@ -416,8 +442,8 @@ const UnifiedAccession: React.FC = () => {
 
   // ---- Unified rows ----
   const allRows = useMemo(
-    () => buildUnifiedRows(surgCases, gyneCases, ngCases, ihcAccessions),
-    [surgCases, gyneCases, ngCases, ihcAccessions],
+    () => unifiedItems.map((item) => mapUnifiedItem(item, ihcAccessions.has(item.accession_no))),
+    [unifiedItems, ihcAccessions],
   );
 
   // ---- Header ----
@@ -453,7 +479,7 @@ const UnifiedAccession: React.FC = () => {
       children: (
         <AllTabContent
           rows={allRows}
-          loading={surgLoading || gyneLoading || ngLoading}
+          loading={unifiedLoading}
           searchText={searchText}
           onSearchChange={setSearchText}
           onRowClick={openDetailModal}
@@ -462,6 +488,10 @@ const UnifiedAccession: React.FC = () => {
           printLoadingKey={printLoadingKey}
           settings={settings}
           holidays={holidays}
+          total={unifiedTotal}
+          current={unifiedPage}
+          pageSize={unifiedPageSize}
+          onPageChange={setUnifiedPage}
         />
       ),
     },
@@ -516,6 +546,7 @@ const UnifiedAccession: React.FC = () => {
             dataSource={gyneCases}
             total={gyneTotal}
             current={gynePage}
+            pageSize={gynePageSize}
             loading={gyneLoading}
             onChangePage={(p) => setGynePage(p)}
             onEdit={(r) => setGyneModal({ open: true, id: r.id })}
@@ -631,9 +662,10 @@ const UnifiedAccession: React.FC = () => {
       <SurgicalCaseFormModal
         open={surgModal.open}
         editingId={surgModal.id}
-        onCancel={() => { setSurgModal({ open: false, id: null }); reloadSurg(); }}
+        onCancel={() => { setSurgModal({ open: false, id: null }); reloadSurg(); reloadUnified(); }}
         onSuccess={(savedData) => {
           reloadSurg();
+          reloadUnified();
           setSurgModal({ open: false, id: null });
           if (savedData?.id) setSurgPrint({ open: true, data: savedData });
         }}
@@ -648,9 +680,10 @@ const UnifiedAccession: React.FC = () => {
       <GyneCytoFormModal
         open={gyneModal.open}
         editingId={gyneModal.id}
-        onCancel={() => { setGyneModal({ open: false, id: null }); reloadGyne(); }}
+        onCancel={() => { setGyneModal({ open: false, id: null }); reloadGyne(); reloadUnified(); }}
         onSuccess={(savedData) => {
           reloadGyne();
+          reloadUnified();
           setGyneModal({ open: false, id: null });
           if (savedData?.id) setGynePrint({ open: true, data: savedData });
         }}
@@ -665,9 +698,10 @@ const UnifiedAccession: React.FC = () => {
       <NongyneCaseFormModal
         open={ngModal.open}
         editingId={ngModal.id}
-        onCancel={() => { setNgModal({ open: false, id: null }); reloadNg(); }}
+        onCancel={() => { setNgModal({ open: false, id: null }); reloadNg(); reloadUnified(); }}
         onSuccess={(savedData) => {
           reloadNg();
+          reloadUnified();
           setNgModal({ open: false, id: null });
           if (savedData?.id) setNgPrint({ open: true, data: savedData });
         }}

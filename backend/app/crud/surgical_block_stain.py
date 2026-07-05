@@ -266,6 +266,7 @@ def get_additional_stains_by_case(db: Session, pathologist_id: int = None):
     with every status so pathologist can track: pending → sent (outlab) → stained → completed.
     """
     from app.models.anatomical_pathology_test import AnatomicalPathologyTest
+    from app.models.ihc_result import IHCResult
 
     q = (
         db.query(SurgicalBlockStain)
@@ -291,6 +292,23 @@ def get_additional_stains_by_case(db: Session, pathologist_id: int = None):
         q = q.filter(SurgicalCase.pathologist_id == pathologist_id)
     items = q.order_by(SurgicalCase.accession_no.desc(), SurgicalBlock.id.asc()).all()
 
+    specimen_ids = {
+        stain.block.specimen.id
+        for stain in items
+        if stain.block and stain.block.specimen
+    }
+    interpreted_pairs: set = set()
+    if specimen_ids:
+        interpreted_pairs = {
+            (r.surgical_specimen_id, r.ap_test_id)
+            for r in db.query(IHCResult.surgical_specimen_id, IHCResult.ap_test_id)
+            .filter(
+                IHCResult.surgical_specimen_id.in_(specimen_ids),
+                IHCResult.selected_option.isnot(None),
+            )
+            .all()
+        }
+
     case_map: dict = {}
     for stain in items:
         block = stain.block
@@ -306,6 +324,8 @@ def get_additional_stains_by_case(db: Session, pathologist_id: int = None):
                 "patient_ln": case.patient.ln if case.patient else None,
                 "case_status": case.status,
                 "stains": [],
+                "_ihc_total": 0,
+                "_ihc_done": 0,
             }
         case_map[cid]["stains"].append({
             "stain_id": stain.id,
@@ -315,8 +335,18 @@ def get_additional_stains_by_case(db: Session, pathologist_id: int = None):
             "status": stain.status,
             "is_external": stain.test.is_external if stain.test else False,
         })
+        if stain.test and stain.test.category == "IHC":
+            case_map[cid]["_ihc_total"] += 1
+            if (block.specimen.id, stain.test_id) in interpreted_pairs:
+                case_map[cid]["_ihc_done"] += 1
 
-    return list(case_map.values())
+    result = []
+    for c in case_map.values():
+        total = c.pop("_ihc_total")
+        done = c.pop("_ihc_done")
+        c["ihc_interpreted"] = None if total == 0 else (done == total)
+        result.append(c)
+    return result
 
 
 def get_staining_runs(db: Session, skip: int = 0, limit: int = 100):

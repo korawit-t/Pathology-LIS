@@ -38,6 +38,10 @@ interface AllTabContentProps {
   printLoadingKey: string | null;
   settings: SystemSetting | null;
   holidays: string[];
+  total: number;
+  current: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
 }
 
 const AllTabContent: React.FC<AllTabContentProps> = ({
@@ -51,6 +55,10 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
   printLoadingKey,
   settings,
   holidays,
+  total,
+  current,
+  pageSize,
+  onPageChange,
 }) => {
   const columns = [
     {
@@ -251,7 +259,10 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
         scroll={{ x: 1880, y: "calc(100vh - 360px)" }}
         sticky
         pagination={{
-          pageSize: 20,
+          total,
+          current,
+          pageSize,
+          onChange: onPageChange,
           showTotal: (t) => `Total ${t} cases`,
           hideOnSinglePage: true,
         }}

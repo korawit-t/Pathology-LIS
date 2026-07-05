@@ -13,12 +13,15 @@ from app.crud.surgical_block_stain import (
     receive_outlab_run,
     receive_outlab_run_details,
     delete_outlab_run,
+    get_additional_stains_by_case,
     _recompute_outlab_run_status,
 )
 from app.schemas.surgical_block_stain import StainCreate, StainUpdate, OutlabRunCreate
+from app.schemas.ihc import IHCResultUpsert
+from app.crud.ihc import upsert_result
 from app.models.surgical_block_stain import SurgicalBlockStain, SurgicalOutlabRun, SurgicalOutlabRunDetail
 
-from tests.factories import make_signable_case, make_block, make_anatomical_pathology_test
+from tests.factories import make_signable_case, make_block, make_block_stain, make_anatomical_pathology_test
 
 
 class TestCreateStainCaseStatusUpdate:
@@ -202,3 +205,51 @@ class TestRecomputeOutlabRunStatus:
         run = FakeRun()
         _recompute_outlab_run_status(run)
         assert run.status == "sent"
+
+
+class TestGetAdditionalStainsByCaseIHCInterpreted:
+    def test_case_with_no_ihc_stains_is_not_applicable(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        histo_test = make_anatomical_pathology_test(db, category="Histochem", name="PAS")
+        make_block_stain(db, block.id, test_id=histo_test.id, status="stained")
+
+        groups = get_additional_stains_by_case(db)
+
+        group = next(g for g in groups if g["case_id"] == case.id)
+        assert group["ihc_interpreted"] is None
+
+    def test_case_with_all_ihc_markers_selected_is_true(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        ihc_test = make_anatomical_pathology_test(db, category="IHC", name="CK7")
+        make_block_stain(db, block.id, test_id=ihc_test.id, status="stained")
+
+        upsert_result(db, IHCResultUpsert(
+            surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id, selected_option="positive",
+        ))
+
+        groups = get_additional_stains_by_case(db)
+
+        group = next(g for g in groups if g["case_id"] == case.id)
+        assert group["ihc_interpreted"] is True
+
+    def test_case_with_some_ihc_markers_unselected_is_false(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        ck7_test = make_anatomical_pathology_test(db, category="IHC", name="CK7")
+        ck20_test = make_anatomical_pathology_test(db, category="IHC", name="CK20")
+        make_block_stain(db, block.id, test_id=ck7_test.id, status="stained")
+        make_block_stain(db, block.id, test_id=ck20_test.id, status="stained")
+
+        upsert_result(db, IHCResultUpsert(
+            surgical_specimen_id=specimen.id, ap_test_id=ck7_test.id, selected_option="positive",
+        ))
+
+        groups = get_additional_stains_by_case(db)
+
+        group = next(g for g in groups if g["case_id"] == case.id)
+        assert group["ihc_interpreted"] is False
