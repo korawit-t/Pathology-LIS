@@ -174,6 +174,77 @@ describe("AnatomicalPathologyTestPage", () => {
     expect(mockCreateTest).not.toHaveBeenCalled();
   });
 
+  it("filters rows by category tab, and All shows everything again", async () => {
+    mockGetAllTests.mockResolvedValue({
+      data: [
+        makeTestItem({ id: 1, name: "ER", category: "IHC" }),
+        makeTestItem({ id: 2, name: "Gross Exam", code: "SP1", category: "Surgical Pathology" }),
+      ],
+    });
+    render(<AnatomicalPathologyTestPage />);
+    await screen.findByText("ER");
+    expect(screen.getByText("Gross Exam")).toBeInTheDocument();
+
+    // "Surgical Pathology" also appears as a table cell value (the row's
+    // category column), so the tab click must be scoped to the tablist.
+    const tablist = screen.getByRole("tablist");
+    fireEvent.click(within(tablist).getByText("Surgical Pathology"));
+
+    expect(screen.getByText("Gross Exam")).toBeInTheDocument();
+    expect(screen.queryByText("ER")).not.toBeInTheDocument();
+
+    fireEvent.click(within(tablist).getByText("All"));
+
+    expect(screen.getByText("ER")).toBeInTheDocument();
+    expect(screen.getByText("Gross Exam")).toBeInTheDocument();
+  });
+
+  it("clears outlab_id on submit when is_external is toggled off", async () => {
+    // handleSubmit: `if (!values.is_external) values.outlab_id = null;`
+    mockGetAllTests.mockResolvedValue({
+      data: [makeTestItem({ id: 1, is_external: true, outlab: { id: 5, name: "RefLab" } })],
+    });
+    mockUpdateTest.mockResolvedValue({});
+    render(<AnatomicalPathologyTestPage />);
+    await screen.findByText("ER");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await findDialogByTitle("Edit Test Item");
+
+    fireEvent.click(within(dialog).getByRole("switch"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "OK" }));
+
+    await waitFor(() =>
+      expect(mockUpdateTest).toHaveBeenCalledWith(1, expect.objectContaining({ outlab_id: null })),
+    );
+  });
+
+  it("clears specimen_complexity on submit when category changes away from Surgical Pathology", async () => {
+    // handleSubmit: `if (values.category !== "Surgical Pathology") values.specimen_complexity = null;`
+    mockGetAllTests.mockResolvedValue({
+      data: [makeTestItem({ id: 1, category: "Surgical Pathology", specimen_complexity: "large" })],
+    });
+    mockUpdateTest.mockResolvedValue({});
+    render(<AnatomicalPathologyTestPage />);
+    await screen.findByText("ER");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await findDialogByTitle("Edit Test Item");
+    within(dialog).getByText("ขนาด Specimen"); // field visible while category is still Surgical Pathology
+
+    const categorySelect = dialog.querySelectorAll(".ant-select")[0];
+    fireEvent.mouseDown(categorySelect);
+    fireEvent.click(await screen.findByTitle("Immunohistochemistry (IHC)"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "OK" }));
+
+    await waitFor(() =>
+      expect(mockUpdateTest).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ category: "IHC", specimen_complexity: null }),
+      ),
+    );
+  });
+
   describe("IHC Options modal", () => {
     it("loads options and extra fields when Options is clicked on an IHC row", async () => {
       IHCService.getOptions.mockResolvedValue([makeIHCOption()]);
@@ -186,8 +257,13 @@ describe("AnatomicalPathologyTestPage", () => {
       const dialog = await findDialogByTitle(/IHC Options — ER/);
       expect(IHCService.getOptions).toHaveBeenCalledWith(1);
       expect(IHCService.getExtraFields).toHaveBeenCalledWith(1);
-      expect(within(dialog).getAllByText("Positive").length).toBeGreaterThan(0); // table row + preview tag
-      expect(within(dialog).getByText("Intensity:")).toBeInTheDocument();
+      // findDialogByTitle resolves as soon as the title renders, which
+      // happens synchronously on open — before the async getOptions/
+      // getExtraFields calls resolve. Data-dependent content needs an
+      // async find (it retries) rather than a sync get, or this flakes
+      // depending on microtask timing.
+      expect((await within(dialog).findAllByText("Positive")).length).toBeGreaterThan(0); // table row + preview tag
+      expect(await within(dialog).findByText("Intensity:")).toBeInTheDocument();
     });
 
     it("adds a new primary option", async () => {
@@ -210,6 +286,11 @@ describe("AnatomicalPathologyTestPage", () => {
       );
     });
 
+    // Longer per-test timeout: this specific test has intermittently
+    // exceeded the 5000ms default under full-suite CPU contention (Vitest
+    // worker/jsdom resource contention at 30+ files) — always passes
+    // instantly (3/3 clean runs) in isolation, so this is a slow-environment
+    // allowance, not a correctness fix.
     it("edits an existing primary option (calls updateOption, not createOption)", async () => {
       IHCService.getOptions.mockResolvedValue([makeIHCOption()]);
       IHCService.updateOption.mockResolvedValue({});
@@ -218,7 +299,10 @@ describe("AnatomicalPathologyTestPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
 
-      fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }));
+      // Regression: the Edit button only exists once ihcOptions has loaded
+      // (async, after the dialog itself opens) — findByRole retries until
+      // it's actually there instead of racing a sync getByRole against it.
+      fireEvent.click(await within(dialog).findByRole("button", { name: "Edit" }));
       const labelInput = within(dialog).getByDisplayValue("Positive");
       fireEvent.change(labelInput, { target: { value: "Positive (strong)" } });
       fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
@@ -230,7 +314,7 @@ describe("AnatomicalPathologyTestPage", () => {
         ),
       );
       expect(IHCService.createOption).not.toHaveBeenCalled();
-    });
+    }, 15000);
 
     it("deletes a primary option after confirming", async () => {
       IHCService.getOptions.mockResolvedValue([makeIHCOption()]);
@@ -240,7 +324,7 @@ describe("AnatomicalPathologyTestPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
 
-      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+      fireEvent.click(await within(dialog).findByRole("button", { name: "Delete" }));
       fireEvent.click(await screen.findByRole("button", { name: /confirm|ok|yes/i }));
 
       await waitFor(() => expect(IHCService.deleteOption).toHaveBeenCalledWith(1));
@@ -273,7 +357,7 @@ describe("AnatomicalPathologyTestPage", () => {
       await screen.findByText("ER");
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
-      within(dialog).getByText("Intensity");
+      await within(dialog).findByText("Intensity");
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }));
       const labelInput = within(dialog).getByDisplayValue("Intensity");
@@ -296,7 +380,7 @@ describe("AnatomicalPathologyTestPage", () => {
       await screen.findByText("ER");
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
-      within(dialog).getByText("Intensity");
+      await within(dialog).findByText("Intensity");
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
       fireEvent.click(await screen.findByRole("button", { name: /confirm|ok|yes/i }));
@@ -313,7 +397,7 @@ describe("AnatomicalPathologyTestPage", () => {
         fireEvent.click(screen.getByRole("button", { name: /Options/ }));
         const ihcDialog = await findDialogByTitle(/IHC Options/);
 
-        fireEvent.click(within(ihcDialog).getByRole("button", { name: /Options \(0\)/ }));
+        fireEvent.click(await within(ihcDialog).findByRole("button", { name: /Options \(0\)/ }));
         const nestedDialog = await findDialogByTitle(/Extra Field Options/);
 
         fireEvent.click(within(nestedDialog).getByText("เพิ่ม Option"));
@@ -339,7 +423,7 @@ describe("AnatomicalPathologyTestPage", () => {
         fireEvent.click(screen.getByRole("button", { name: /Options/ }));
         const ihcDialog = await findDialogByTitle(/IHC Options/);
 
-        fireEvent.click(within(ihcDialog).getByRole("button", { name: /Options \(1\)/ }));
+        fireEvent.click(await within(ihcDialog).findByRole("button", { name: /Options \(1\)/ }));
         const nestedDialog = await findDialogByTitle(/Extra Field Options/);
 
         fireEvent.click(within(nestedDialog).getByRole("button", { name: "Edit" }));
@@ -366,7 +450,7 @@ describe("AnatomicalPathologyTestPage", () => {
         fireEvent.click(screen.getByRole("button", { name: /Options/ }));
         const ihcDialog = await findDialogByTitle(/IHC Options/);
 
-        fireEvent.click(within(ihcDialog).getByRole("button", { name: /Options \(1\)/ }));
+        fireEvent.click(await within(ihcDialog).findByRole("button", { name: /Options \(1\)/ }));
         const nestedDialog = await findDialogByTitle(/Extra Field Options/);
 
         fireEvent.click(within(nestedDialog).getByRole("button", { name: "Delete" }));
@@ -384,7 +468,7 @@ describe("AnatomicalPathologyTestPage", () => {
       await screen.findByText("ER");
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
-      const [, previewTag] = within(dialog).getAllByText("Positive");
+      const [, previewTag] = await within(dialog).findAllByText("Positive");
 
       fireEvent.click(previewTag);
 

@@ -18,6 +18,7 @@ import {
   Tooltip,
   Spin,
   Checkbox,
+  Segmented,
 } from "antd";
 import {
   ExperimentOutlined,
@@ -377,7 +378,7 @@ export const PendingQueueTab = ({ onSent }) => {
 
 // ─── Tab 2: Tracking / Return ──────────────────────────────────────────────────
 
-export const TrackingTab = ({ refreshTrigger }) => {
+export const TrackingTab = ({ refreshTrigger, onReceived }) => {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
@@ -416,7 +417,7 @@ export const TrackingTab = ({ refreshTrigger }) => {
       await SurgicalBlockStainService.receiveOutlabRunDetails(runId, ids);
       message.success(`Recorded return of ${ids.length} slide(s)`);
       setSelectedDetailIds((prev) => ({ ...prev, [runId]: new Set() }));
-      fetchRuns();
+      onReceived ? onReceived() : fetchRuns();
     } catch {
       message.error("Failed to record selected slide returns");
     }
@@ -768,7 +769,7 @@ export const TrackingTab = ({ refreshTrigger }) => {
 
 // ─── Tab 3: By Case ───────────────────────────────────────────────────────────
 
-export const CaseViewTab = ({ refreshTrigger }) => {
+export const CaseViewTab = ({ refreshTrigger, onReceived }) => {
   const [runs, setRuns] = useState([]);
   const [caseMap, setCaseMap] = useState({});
   const [loading, setLoading] = useState(false);
@@ -776,6 +777,7 @@ export const CaseViewTab = ({ refreshTrigger }) => {
   const [historyBlock, setHistoryBlock] = useState(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [receiving, setReceiving] = useState(false);
+  const [filterReceived, setFilterReceived] = useState("unreceived"); // "all" | "unreceived" | "received"
 
   const fetchRuns = async () => {
     setLoading(true);
@@ -839,7 +841,7 @@ export const CaseViewTab = ({ refreshTrigger }) => {
         message.error("Failed to record selected slide returns");
       }
       setSelectedRowKeys([]);
-      fetchRuns();
+      onReceived ? onReceived() : fetchRuns();
     } finally {
       setReceiving(false);
     }
@@ -868,34 +870,29 @@ export const CaseViewTab = ({ refreshTrigger }) => {
     }; })
   );
 
+  const unreceivedCount = allItems.filter((item) => !item.received_at).length;
+  const receivedCount = allItems.length - unreceivedCount;
+
+  const byReceived = allItems.filter((item) => {
+    if (filterReceived === "unreceived") return !item.received_at;
+    if (filterReceived === "received") return !!item.received_at;
+    return true;
+  });
+
   const q = search.trim().toLowerCase();
   const filtered = q
-    ? allItems.filter((item) =>
+    ? byReceived.filter((item) =>
         item.accession_no.toLowerCase().includes(q) ||
         item.hn.toLowerCase().includes(q) ||
         item.patient_name.toLowerCase().includes(q)
       )
-    : allItems;
+    : byReceived;
 
   const sorted = [...filtered].sort(
     (a, b) =>
       a.accession_no.localeCompare(b.accession_no) ||
       a.block_code.localeCompare(b.block_code)
   );
-
-  // rowSpan grouping by accession_no
-  const rowSpanMap = {};
-  sorted.forEach((item, idx) => {
-    if (idx === 0 || item.accession_no !== sorted[idx - 1].accession_no) {
-      let count = 1;
-      while (idx + count < sorted.length && sorted[idx + count].accession_no === item.accession_no) {
-        count++;
-      }
-      rowSpanMap[idx] = count;
-    } else {
-      rowSpanMap[idx] = 0;
-    }
-  });
 
   const columns = [
     {
@@ -904,7 +901,6 @@ export const CaseViewTab = ({ refreshTrigger }) => {
       key: "accession_no",
       width: 140,
       fixed: "left",
-      onCell: (_, idx) => ({ rowSpan: rowSpanMap[idx] ?? 1 }),
       render: (text) => <Text strong style={{ color: "#1890ff" }}>{text}</Text>,
     },
     {
@@ -912,7 +908,6 @@ export const CaseViewTab = ({ refreshTrigger }) => {
       dataIndex: "hn",
       key: "hn",
       width: 100,
-      onCell: (_, idx) => ({ rowSpan: rowSpanMap[idx] ?? 1 }),
       render: (text) => <Text>{text}</Text>,
     },
     {
@@ -920,7 +915,6 @@ export const CaseViewTab = ({ refreshTrigger }) => {
       dataIndex: "patient_name",
       key: "patient_name",
       width: 180,
-      onCell: (_, idx) => ({ rowSpan: rowSpanMap[idx] ?? 1 }),
       render: (text) => <Text>{text}</Text>,
     },
     {
@@ -1025,7 +1019,18 @@ export const CaseViewTab = ({ refreshTrigger }) => {
   return (
     <>
       <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Text type="secondary">{sorted.length} stain item(s) total</Text>
+        <Space>
+          <Segmented
+            value={filterReceived}
+            onChange={setFilterReceived}
+            options={[
+              { label: `All (${allItems.length})`, value: "all" },
+              { label: `Unreceived (${unreceivedCount})`, value: "unreceived" },
+              { label: `Received (${receivedCount})`, value: "received" },
+            ]}
+          />
+          <Text type="secondary">{sorted.length} stain item(s)</Text>
+        </Space>
         <Space>
           <Button
             type="primary"
@@ -1059,7 +1064,7 @@ export const CaseViewTab = ({ refreshTrigger }) => {
           onChange: setSelectedRowKeys,
           getCheckboxProps: (record) => ({ disabled: !!record.received_at }),
         }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
         rowClassName={(record) => record.received_at ? "outlab-row-received" : ""}
         locale={{ emptyText: "No outlab stain items found" }}
         scroll={{ x: "max-content", y: "calc(100vh - 340px)" }}
@@ -1709,6 +1714,10 @@ const OutlabManagement = () => {
     setActiveTab("tracking");
   };
 
+  const handleReceived = () => {
+    setSentTrigger((n) => n + 1);
+  };
+
   const items = [
     {
       key: "queue",
@@ -1726,7 +1735,7 @@ const OutlabManagement = () => {
           <UnorderedListOutlined /> Tracking / Receive
         </span>
       ),
-      children: <TrackingTab refreshTrigger={sentTrigger} />,
+      children: <TrackingTab refreshTrigger={sentTrigger} onReceived={handleReceived} />,
     },
     {
       key: "by-case",
@@ -1735,7 +1744,7 @@ const OutlabManagement = () => {
           <FileSearchOutlined /> By Case
         </span>
       ),
-      children: <CaseViewTab refreshTrigger={sentTrigger} />,
+      children: <CaseViewTab refreshTrigger={sentTrigger} onReceived={handleReceived} />,
     },
     {
       key: "hosxp-key",
