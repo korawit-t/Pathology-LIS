@@ -61,3 +61,31 @@ class TestUpdateUserAdminGuard:
 
         assert response.status_code == 200
         assert "admin" in response.json()["roles"]
+
+
+class TestUpdateMyPassword:
+    """Regression coverage for a fix requiring the caller's current password
+    on PUT /users/me/password: previously any authenticated caller could set
+    a new password knowing only a valid session (e.g. a hijacked cookie),
+    without ever proving they knew the account's actual password."""
+
+    def test_wrong_current_password_is_rejected(self, pathologist_client):
+        response = pathologist_client.put(
+            "/users/me/password",
+            json={"current_password": "WrongPass1!", "new_password": "BrandNewPass1!"},
+        )
+        assert response.status_code == 401
+
+    def test_correct_current_password_succeeds(self, pathologist_client):
+        response = pathologist_client.put(
+            "/users/me/password",
+            json={"current_password": "PathPass1!", "new_password": "BrandNewPass1!"},
+        )
+        assert response.status_code == 204
+
+    def test_missing_current_password_is_rejected(self, pathologist_client):
+        response = pathologist_client.put(
+            "/users/me/password",
+            json={"new_password": "BrandNewPass1!"},
+        )
+        assert response.status_code == 422

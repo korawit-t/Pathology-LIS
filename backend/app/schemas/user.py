@@ -50,6 +50,10 @@ class UserResponse(UserBase):
 
 
 class PasswordUpdate(BaseModel):
+    # 🔒 SECURITY: verified against the caller's own hash before the change
+    # is applied, so a hijacked session (stolen cookie, unlocked device)
+    # can't silently take over the account by setting a new password.
+    current_password: str
     # 🔒 SECURITY: enforce a minimum length server-side. The frontend also
     # validates this, but the server is the source of truth. Bump higher
     # (12+) if you can tolerate the UX cost.

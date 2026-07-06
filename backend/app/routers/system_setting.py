@@ -263,8 +263,10 @@ def set_report_template(payload: ReportTemplateSet, slug: str = "master", db: Se
     """Set the active report template for one report type."""
     if payload.report_type not in REPORT_TYPE_DEFAULTS:
         raise HTTPException(status_code=400, detail="Invalid report_type")
-    template_path = TEMPLATES_DIR / payload.template_name
-    if not template_path.exists():
+    template_path = (TEMPLATES_DIR / payload.template_name).resolve()
+    if not template_path.is_relative_to(TEMPLATES_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid template name")
+    if not template_path.exists() or not payload.template_name.startswith(REPORT_TYPE_PREFIXES[payload.report_type]):
         raise HTTPException(status_code=404, detail="Template file not found")
     update_data = SystemSettingUpdate(**{f"{payload.report_type}_report_template": payload.template_name})
     return crud.update_settings(db, update_data, hospital_slug=slug)

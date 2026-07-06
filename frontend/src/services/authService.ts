@@ -13,8 +13,11 @@ const AuthService = {
     });
   },
 
-  changePassword: (newPassword: string) => {
-    return api.put("/users/me/password", { new_password: newPassword });
+  changePassword: (currentPassword: string, newPassword: string) => {
+    return api.put("/users/me/password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
   },
 
   logout: () => api.post("/auth/logout").catch(() => {}),

@@ -50,7 +50,7 @@ const ForceChangePassword: React.FC = () => {
     try {
       // 🚩 ตรวจสอบว่ามี AuthService.changePassword จริงๆ หรือเปล่า
       // (ระวังเรื่องการส่งค่า payload.new_password)
-      await AuthService.changePassword(values.new_password);
+      await AuthService.changePassword(values.current_password, values.new_password);
 
       message.success({
         content: "Password updated successfully! Redirecting to login...",
@@ -90,6 +90,20 @@ const ForceChangePassword: React.FC = () => {
           requiredMark={false}
           size="large"
         >
+          <Form.Item
+            name="current_password"
+            label={<Text strong>Current Password</Text>}
+            rules={[
+              { required: true, message: "Please enter your current password!" },
+            ]}
+            hasFeedback
+          >
+            <Input.Password
+              prefix={<LockOutlined style={{ color: "rgba(0,0,0,0.25)" }} />}
+              placeholder="Enter current password"
+            />
+          </Form.Item>
+
           <Form.Item
             name="new_password"
             label={<Text strong>New Password</Text>}

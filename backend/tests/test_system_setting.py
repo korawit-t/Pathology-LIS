@@ -221,17 +221,12 @@ class TestSetReportTemplateRouter:
         assert r.status_code == 200
         assert r.json()["surgical_report_template"] == "surgical_report_template.html"
 
-    def test_SECURITY_accepts_path_traversal_unlike_its_preview_sibling(self, admin_client, db):
-        """Documents the open finding in SECURITY_FINDINGS.md: unlike
-        preview_report_template (which resolves and checks containment
-        within TEMPLATES_DIR), this endpoint only checks `.exists()` on the
-        raw joined path. A `../` sequence that resolves to any real file
-        elsewhere on disk (here, backend/main.py, 3 levels above
-        app/templates/reports/) is accepted and persisted as the "active"
-        template reference. Not exploitable for a direct file-read via this
-        endpoint alone (it only stores the string), but it's the same
-        traversal input the preview endpoint correctly rejects with 400 —
-        so this is the regression to re-run once the fix lands."""
+    def test_rejects_path_traversal_like_its_preview_sibling(self, admin_client, db):
+        """Regression test: this endpoint now resolves and checks containment
+        within TEMPLATES_DIR, matching preview_report_template. A `../`
+        sequence that resolves to a real file elsewhere on disk (here,
+        backend/main.py, 3 levels above app/templates/reports/) must be
+        rejected rather than persisted as the "active" template reference."""
         clear_system_settings(db)
 
         r = admin_client.patch(
@@ -239,8 +234,7 @@ class TestSetReportTemplateRouter:
             json={"report_type": "surgical", "template_name": "../../../main.py"},
         )
 
-        assert r.status_code == 200
-        assert r.json()["surgical_report_template"] == "../../../main.py"
+        assert r.status_code == 400
 
 
 class TestDeleteSettingsRouter:

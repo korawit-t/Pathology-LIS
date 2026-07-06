@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -12,6 +12,7 @@ from app.dependencies.auth import get_current_user, RoleChecker, check_password_
 from app.models.user import User
 from app.core.roles import CAN_MANAGE_USERS
 from app.core.security import verify_password
+from app.routers.auth import limiter
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -132,7 +133,9 @@ def delete_existing_user(
 
 
 @router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
 def update_my_password(
+    request: Request,
     data: PasswordUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),  # ยืนยันตัวตนจาก Token
@@ -142,11 +145,16 @@ def update_my_password(
 
     🔒 SECURITY: rejects no-op changes so a user can't "change" a temporary
     password to itself and silently clear the is_temporary_password flag.
-    Note: this endpoint does NOT verify the current password — that is
-    acceptable for the force-change flow (the user just authenticated) but
-    a follow-up improvement is to require the current password for normal
-    user-initiated changes.
+    Also requires the caller's current password, so a hijacked session
+    (stolen cookie, unlocked device) can't take over the account by
+    silently setting a new password.
     """
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect.",
+        )
+
     from app.models.system_setting import SystemSetting
     settings = db.query(SystemSetting).first()
     min_length = (settings.password_min_length or 8) if settings else 8
