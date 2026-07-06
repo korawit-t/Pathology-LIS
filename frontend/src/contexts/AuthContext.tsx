@@ -10,7 +10,8 @@ import { useNavigate } from "react-router-dom";
 import { User } from "../types/user";
 import { LoginResponse } from "../types/auth";
 import { UserRole } from "../constants/roles.constants";
-import api, { setTokens, clearTokens, API_BASE_URL } from "../services/httpClient";
+import api, { API_BASE_URL } from "../services/httpClient";
+import { clearLocalSession } from "../services/authSession";
 import axios from "axios";
 import { getHomeRoute } from "../utils/hasRole";
 import SystemSettingService from "../services/systemSettingService";
@@ -56,26 +57,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const savedUser = localStorage.getItem("user");
       const savedRoles = localStorage.getItem("roles");
-      const savedRefreshToken = localStorage.getItem("refresh_token");
 
-      if (savedUser && savedRefreshToken) {
+      if (savedUser) {
         try {
-          const res = await axios.post(
-            `${API_BASE_URL}/auth/refresh`,
-            { refresh_token: savedRefreshToken },
-            { withCredentials: true },
-          );
-          const newAccess = res.data.access_token;
-          const newRefresh = res.data.refresh_token ?? savedRefreshToken;
-          if (newAccess) setTokens(newAccess, newRefresh);
+          // No token to send — the refresh cookie (if any) travels automatically.
+          await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
 
           const parsedUser = JSON.parse(savedUser);
           const parsedRoles = savedRoles ? JSON.parse(savedRoles) : [];
           setUser({ ...parsedUser, roles: parsedRoles as UserRole[] });
         } catch {
-          localStorage.removeItem("user");
-          localStorage.removeItem("roles");
-          localStorage.removeItem("refresh_token");
+          clearLocalSession();
         }
       }
       setLoading(false);
@@ -85,9 +77,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleLoginSuccess = useCallback(
     (data: LoginResponse) => {
-      if (data.access_token && data.refresh_token) {
-        setTokens(data.access_token, data.refresh_token);
-      }
       localStorage.setItem("roles", JSON.stringify(data.roles));
 
       const userWithRoles: User = {
@@ -116,10 +105,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const logout = useCallback(() => {
     api.post("/auth/logout").catch(() => {});
-    clearTokens();
     const lastSlug = localStorage.getItem("last_hospital_slug") || "master";
-    localStorage.removeItem("user");
-    localStorage.removeItem("roles");
+    clearLocalSession();
     localStorage.setItem("last_hospital_slug", lastSlug);
     setUser(null);
     setIdleWarning(false);

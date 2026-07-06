@@ -26,6 +26,14 @@ class TestLogin:
         # httpOnly cookies are in the cookie jar, not the response body
         assert "access_token" in r.cookies
 
+    def test_login_response_body_does_not_leak_tokens(self, client, admin_user):
+        user, pwd = admin_user
+        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
+        assert r.status_code == 200
+        body = r.json()
+        assert "access_token" not in body
+        assert "refresh_token" not in body
+
     def test_login_wrong_password_returns_401(self, client, admin_user):
         user, _ = admin_user
         r = client.post("/auth/login", data={"username": user.username, "password": "WrongPass!"})
@@ -71,6 +79,9 @@ class TestRefreshRotationAndReuseDetection:
 
         assert r.status_code == 200
         assert client.cookies.get("refresh_token") != old_refresh
+        body = r.json()
+        assert "access_token" not in body
+        assert "refresh_token" not in body
 
     def test_reusing_a_rotated_refresh_token_is_rejected(self, client, admin_user):
         user, pwd = admin_user

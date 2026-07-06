@@ -1,27 +1,8 @@
 import axios from "axios";
 import qs from "qs";
+import { clearLocalSession } from "./authSession";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-// In-memory token store (cleared on page refresh — user must re-login)
-let accessToken: string | null = null;
-let refreshToken: string | null = null;
-
-export function setTokens(access: string, refresh: string) {
-  accessToken = access;
-  refreshToken = refresh;
-  localStorage.setItem("refresh_token", refresh);
-}
-
-export function clearTokens() {
-  accessToken = null;
-  refreshToken = null;
-  localStorage.removeItem("refresh_token");
-}
-
-export function getAccessToken() {
-  return accessToken;
-}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -40,14 +21,6 @@ const processQueue = (error: unknown) => {
   });
   failedQueue = [];
 };
-
-// Attach Bearer token to every request
-api.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return config;
-});
 
 api.interceptors.response.use(
   (response) => response,
@@ -75,25 +48,16 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const res = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          { refresh_token: refreshToken },
-          { withCredentials: true },
-        );
-        const newAccess = res.data.access_token;
-        const newRefresh = res.data.refresh_token;
-        if (newAccess) setTokens(newAccess, newRefresh ?? refreshToken!);
+        await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
 
         processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        clearTokens();
         try {
           await axios.post(`${API_BASE_URL}/auth/logout`, {}, { withCredentials: true });
         } catch {}
-        localStorage.removeItem("user");
-        localStorage.removeItem("roles");
+        clearLocalSession();
         window.location.reload();
         return Promise.reject(refreshError);
       } finally {

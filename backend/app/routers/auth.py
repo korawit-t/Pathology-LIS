@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import Optional
-from pydantic import BaseModel
 from jose import jwt, JWTError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -56,10 +55,6 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 def _clear_auth_cookies(response: Response):
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: Optional[str] = None
 
 
 # --- Login ---
@@ -147,8 +142,6 @@ def login_for_access_token(
 
     return {
         "token_type": "bearer",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "roles": user.roles,
         "user": {
             "id": user.id,
@@ -173,11 +166,9 @@ def refresh_access_token(
     request: Request,
     response: Response,
     refresh_token_cookie: Optional[str] = Cookie(default=None, alias="refresh_token"),
-    payload: Optional[RefreshRequest] = None,
     db: Session = Depends(get_db),
 ):
-    # Accept refresh token from cookie (preferred) or request body (fallback)
-    rt = refresh_token_cookie or (payload.refresh_token if payload else None)
+    rt = refresh_token_cookie
     if not rt:
         raise HTTPException(status_code=401, detail="Refresh token required")
 
@@ -214,7 +205,7 @@ def refresh_access_token(
 
     _set_auth_cookies(response, new_access_token, new_refresh_token)
 
-    return {"token_type": "bearer", "access_token": new_access_token, "refresh_token": new_refresh_token}
+    return {"token_type": "bearer"}
 
 
 # --- Logout ---
@@ -255,42 +246,3 @@ def logout(
     db.commit()
     _clear_auth_cookies(response)
     return {"message": "Logged out"}
-
-
-# --- get_current_user (used only from auth.py for Swagger UI compat) ---
-from fastapi.security import OAuth2PasswordBearer
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
-
-
-def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
-):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    user = db.query(User).filter(User.username == username).first()
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-def verify_token(token: str, expected_type: str = "access"):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        token_type: str = payload.get("type")
-        if token_type != expected_type:
-            return None
-        return payload
-    except JWTError:
-        return None

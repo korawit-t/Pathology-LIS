@@ -63,6 +63,12 @@ See [TERMS_OF_USE.md](./TERMS_OF_USE.md) for the full liability disclaimer.
 
 ## Changelog
 
+### 2026-07-06
+
+| Severity | Category | Component | Fix |
+|----------|----------|-----------|-----|
+| High | Broken Session Management / Token Exposure | `backend/app/routers/auth.py`, `frontend/src/services/httpClient.tsx`, `frontend/src/contexts/AuthContext.tsx` | `/auth/login` and `/auth/refresh` already set the access and refresh tokens as `httponly` cookies, but also returned both tokens in the JSON response body — the frontend read that body and persisted the refresh token to `localStorage` (and kept the access token in a JS-readable variable), so a single XSS anywhere in the SPA could exfiltrate the refresh token. Both endpoints now omit the token fields from the response body entirely; the frontend no longer reads or stores any token in JS and relies solely on the httpOnly cookies (sent automatically via `withCredentials`) for both the initial request and the silent-refresh-on-401 flow. Also removed the now-unused `RefreshRequest` body fallback on `/auth/refresh` and consolidated three divergent client-side logout code paths (including one that called `localStorage.clear()` without ever hitting the logout endpoint) into a single shared cleanup path. |
+
 ### 2026-07-05
 
 Fixed the three Critical findings from `SECURITY_CHECKLIST.md`'s "Known Open Findings" audit:

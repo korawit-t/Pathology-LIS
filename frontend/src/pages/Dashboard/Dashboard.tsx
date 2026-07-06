@@ -31,6 +31,7 @@ import "./Dashboard.css";
 import UserService from "../../services/userService";
 import type { User } from "../../types/user";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useAuth } from "../../contexts/AuthContext";
 import logger from "../../utils/logger";
 import SystemSettingService from "../../services/systemSettingService";
 
@@ -39,6 +40,7 @@ const { Title, Text } = Typography;
 
 const Dashboard: React.FC = () => {
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { logout } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [layoutMode, setLayoutMode] = useState<"side" | "top">(
     (localStorage.getItem("layoutMode") as "side" | "top") || "top",
@@ -68,7 +70,6 @@ const Dashboard: React.FC = () => {
         }
       } catch (error) {
         logger.error("Auth Error:", error);
-        localStorage.removeItem("token");
         const lastSlug = localStorage.getItem("last_hospital_slug") || "master";
         navigate(lastSlug === "master" ? "/login" : `/${lastSlug}`);
       }
@@ -80,13 +81,6 @@ const Dashboard: React.FC = () => {
       .catch(() => {});
   }, [navigate]);
 
-  const handleLogout = () => {
-    const lastSlug = localStorage.getItem("last_hospital_slug") || "master";
-    localStorage.clear();
-    // Re-save the slug since clear wiped it out
-    localStorage.setItem("last_hospital_slug", lastSlug);
-    navigate(lastSlug === "master" ? "/login" : `/${lastSlug}`);
-  };
 
   const toggleLayoutMode = async () => {
     const newMode = layoutMode === "side" ? "top" : "side";
@@ -280,7 +274,7 @@ const Dashboard: React.FC = () => {
               icon={<LogoutOutlined />}
               danger
               type="text"
-              onClick={handleLogout}
+              onClick={logout}
               className="logout-button"
             />
           </Space>
