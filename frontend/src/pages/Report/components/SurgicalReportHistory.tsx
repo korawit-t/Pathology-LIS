@@ -44,7 +44,7 @@ const SurgicalReportHistory: React.FC<Props> = ({ hospital_id }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hospital_id]);
 
   useEffect(() => { fetchData(1, undefined); }, [fetchData]);
 

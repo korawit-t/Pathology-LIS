@@ -46,10 +46,10 @@ const PositionManager = () => {
   const handleSubmit = async (values) => {
     try {
       if (editingId) {
-        await updatePosition(editingId, values);
+        await PositionService.updatePosition(editingId, values);
         message.success("แก้ไขตำแหน่งสำเร็จ");
       } else {
-        await createPosition(values);
+        await PositionService.createPosition(values);
         message.success("เพิ่มตำแหน่งสำเร็จ");
       }
 
@@ -65,7 +65,7 @@ const PositionManager = () => {
   // 3. Handle Delete
   const handleDelete = async (id) => {
     try {
-      await deletePosition(id);
+      await PositionService.deletePosition(id);
       message.success("ลบสำเร็จ");
       fetchPositions();
     } catch {

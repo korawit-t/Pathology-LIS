@@ -1,8 +1,16 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
 from app.db.database import Base
+
+
+user_hospitals = Table(
+    "user_hospitals",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("hospital_id", Integer, ForeignKey("hospitals.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class User(Base):
@@ -19,13 +27,16 @@ class User(Base):
 
     # Foreign Keys
     position_id = Column(Integer, ForeignKey("positions.id"), nullable=True)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=True)
 
     # Relationships
     # ✅ เทคนิค: ใส่ชื่อ Class เป็น String "Position"
     # SQLAlchemy จะไปตามหา Class นั้นให้เอง แม้อยู่คนละไฟล์
     position = relationship("Position")
-    hospital = relationship("Hospital")
+    hospitals = relationship("Hospital", secondary=user_hospitals, backref="users")
+
+    @property
+    def hospital_ids(self):
+        return [h.id for h in self.hospitals]
 
     # Relationships กลับไปยัง SurgicalCase
     # 1. เคสที่คนนี้เป็นคนลงทะเบียน (Registerer)

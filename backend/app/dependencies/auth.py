@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Set
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -74,30 +74,40 @@ class RoleChecker:
         return user
 
 
-# Roles representing an external, single-hospital viewer (a referring
-# clinician or a hospital-side account) as opposed to internal lab staff
-# (pathologist, cytotechnologist, lab_manager, admin, register, etc.) who
-# work across every hospital the lab serves. Internal staff must NOT be
-# hospital-scoped — one lab commonly processes cases for many hospitals, and
-# scoping them would break that workflow. External roles must only ever see
-# their own hospital's cases/files, matching what CAN_ACCESS_PATIENT's
+# Roles representing an external viewer (a referring clinician or a
+# hospital-side account, scoped to one or more assigned hospitals via
+# User.hospitals) as opposed to internal lab staff (pathologist,
+# cytotechnologist, lab_manager, admin, register, etc.) who work across every
+# hospital the lab serves. Internal staff must NOT be hospital-scoped — one
+# lab commonly processes cases for many hospitals, and scoping them would
+# break that workflow. External roles must only ever see cases/files from
+# hospitals explicitly assigned to them, matching what CAN_ACCESS_PATIENT's
 # search-public/hospital-cases endpoints already enforce.
 #
-# Used by: app/routers/storage.py (raw PHI image directories) and the
-# request-files/consult-pdf endpoints in surgical_case.py, gyne_cyto_case.py,
-# nongyne_cyto_case.py. Import this constant rather than redefining it, so
-# the external-role list can't silently drift out of sync between call sites.
+# Used by: app/routers/storage.py (raw PHI image directories, role-based
+# block) and the request-files/consult-pdf endpoints in surgical_case.py,
+# gyne_cyto_case.py, nongyne_cyto_case.py (via assert_hospital_scoped_access).
+# Import this constant rather than redefining it, so the external-role list
+# can't silently drift out of sync between call sites.
 EXTERNAL_ROLES = {"clinician", "hospital"}
 
 
-def assert_hospital_scoped_access(current_user: User, resource_hospital_id: Optional[int]):
-    """Raise 403 if an external-role user is accessing a resource that isn't
-    their own hospital's. No-op for internal lab staff (any role not in
-    EXTERNAL_ROLES), who are allowed to access any hospital's resources."""
+def get_scoped_hospital_ids(current_user: User) -> Optional[Set[int]]:
+    """None => unrestricted (internal staff). Otherwise the exact set of
+    hospital ids this external-role user may access (possibly empty)."""
     user_roles = set(current_user.roles or [])
-    if user_roles & EXTERNAL_ROLES:
-        if resource_hospital_id is None or current_user.hospital_id != resource_hospital_id:
-            raise HTTPException(status_code=403, detail="Access denied.")
+    if not (user_roles & EXTERNAL_ROLES):
+        return None
+    return {h.id for h in current_user.hospitals}
+
+
+def assert_hospital_scoped_access(current_user: User, resource_hospital_id: Optional[int]):
+    """Raise 403 if an external-role user is accessing a resource outside
+    their assigned hospitals. No-op for internal lab staff (any role not in
+    EXTERNAL_ROLES), who are allowed to access any hospital's resources."""
+    allowed = get_scoped_hospital_ids(current_user)
+    if allowed is not None and (resource_hospital_id is None or resource_hospital_id not in allowed):
+        raise HTTPException(status_code=403, detail="Access denied.")
 
 
 def check_password_status(

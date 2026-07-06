@@ -23,7 +23,7 @@ from app.schemas.nongyne_cyto_report import (
     NongyneCytoReportPagination,
     NongyneReportSignerCreate,
 )
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, get_scoped_hospital_ids
 from app.models.user import User
 from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_REPORT
@@ -66,8 +66,16 @@ def read_nongyne_archive(
     hospital_id: Optional[int] = Query(None),
     clinician: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return get_nongyne_archive(db, page=page, size=size, search=search, hospital_id=hospital_id, clinician=clinician)
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        hospital_ids = [hospital_id] if hospital_id is not None else list(allowed_hospital_ids)
+    else:
+        hospital_ids = [hospital_id] if hospital_id is not None else None
+    return get_nongyne_archive(db, page=page, size=size, search=search, hospital_ids=hospital_ids, clinician=clinician)
 
 
 @router.post(

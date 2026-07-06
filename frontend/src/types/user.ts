@@ -34,13 +34,13 @@ export interface User extends BaseEntity {
   status: boolean;
 
   // Foreign Keys (ID)
-  hospital_id?: number;
-  hospital_name?: string;  // eager-loaded from login response
+  hospital_ids: number[];
+  hospital_names?: string[];  // eager-loaded from login response
   position_id?: number;
   position_name?: string;  // eager-loaded from login response
 
   // 🚩 Nested Relationships (จาก relationship ใน SQLAlchemy)
-  hospital?: Hospital;
+  hospitals?: Hospital[];
   position?: Position;
 
   // Preferences & Timestamps

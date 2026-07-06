@@ -53,7 +53,7 @@ const { Text, Title } = Typography;
 
 // ─── Tab 1: Pending Queue (Send) ──────────────────────────────────────────────
 
-const PendingQueueTab = ({ onSent }) => {
+export const PendingQueueTab = ({ onSent }) => {
   const { user } = useAuth();
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -333,7 +333,7 @@ const PendingQueueTab = ({ onSent }) => {
         width={560}
       >
         <Space direction="vertical" style={{ width: "100%", marginBottom: 16, padding: 12, background: "#e6f7ff", borderRadius: 8, border: "1px solid #91d5ff" }}>
-          <Text><strong>Operator:</strong> {user?.first_name} {user?.last_name}</Text>
+          <Text><strong>Operator:</strong> {user?.full_name}</Text>
           <Text><strong>Date / Time:</strong> {dayjs().format("DD/MM/YYYY HH:mm")}</Text>
         </Space>
 
@@ -377,7 +377,7 @@ const PendingQueueTab = ({ onSent }) => {
 
 // ─── Tab 2: Tracking / Return ──────────────────────────────────────────────────
 
-const TrackingTab = ({ refreshTrigger }) => {
+export const TrackingTab = ({ refreshTrigger }) => {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
@@ -768,12 +768,14 @@ const TrackingTab = ({ refreshTrigger }) => {
 
 // ─── Tab 3: By Case ───────────────────────────────────────────────────────────
 
-const CaseViewTab = ({ refreshTrigger }) => {
+export const CaseViewTab = ({ refreshTrigger }) => {
   const [runs, setRuns] = useState([]);
   const [caseMap, setCaseMap] = useState({});
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [historyBlock, setHistoryBlock] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [receiving, setReceiving] = useState(false);
 
   const fetchRuns = async () => {
     setLoading(true);
@@ -810,11 +812,45 @@ const CaseViewTab = ({ refreshTrigger }) => {
 
   useEffect(() => { fetchRuns(); }, [refreshTrigger]);
 
+  const handleReceiveSelected = async () => {
+    if (selectedRowKeys.length === 0) return;
+    const byRun = {};
+    allItems.forEach((item) => {
+      if (selectedRowKeys.includes(item.key) && !item.received_at) {
+        (byRun[item.run_id] ??= []).push(item.key);
+      }
+    });
+    const runIds = Object.keys(byRun);
+    if (runIds.length === 0) return;
+
+    setReceiving(true);
+    try {
+      const results = await Promise.allSettled(
+        runIds.map((runId) =>
+          SurgicalBlockStainService.receiveOutlabRunDetails(Number(runId), byRun[runId])
+        )
+      );
+      const failedRuns = runIds.filter((_, i) => results[i].status === "rejected");
+      if (failedRuns.length === 0) {
+        message.success(`Recorded return of ${selectedRowKeys.length} slide(s)`);
+      } else if (failedRuns.length < runIds.length) {
+        message.warning(`Some slides recorded, but failed for run(s): ${failedRuns.join(", ")}`);
+      } else {
+        message.error("Failed to record selected slide returns");
+      }
+      setSelectedRowKeys([]);
+      fetchRuns();
+    } finally {
+      setReceiving(false);
+    }
+  };
+
   const allItems = runs.flatMap((run) =>
     (run.details || []).map((d) => {
       const caseInfo = caseMap[d.accession_no] || {};
       return {
       key: d.id,
+      run_id: run.id,
       accession_no: d.accession_no || "-",
       hn: caseInfo.hn || d.hn || "-",
       patient_name: caseInfo.patient_name || d.patient_name || "-",
@@ -991,6 +1027,14 @@ const CaseViewTab = ({ refreshTrigger }) => {
       <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Text type="secondary">{sorted.length} stain item(s) total</Text>
         <Space>
+          <Button
+            type="primary"
+            disabled={selectedRowKeys.length === 0}
+            loading={receiving}
+            onClick={handleReceiveSelected}
+          >
+            Receive selected ({selectedRowKeys.length})
+          </Button>
           <Input.Search
             placeholder="Search by Accession No., HN, or Patient name"
             allowClear
@@ -1010,6 +1054,11 @@ const CaseViewTab = ({ refreshTrigger }) => {
         dataSource={sorted}
         rowKey="key"
         loading={loading}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: setSelectedRowKeys,
+          getCheckboxProps: (record) => ({ disabled: !!record.received_at }),
+        }}
         pagination={{ pageSize: 20, showSizeChanger: true }}
         rowClassName={(record) => record.received_at ? "outlab-row-received" : ""}
         locale={{ emptyText: "No outlab stain items found" }}
@@ -1032,7 +1081,7 @@ const CaseViewTab = ({ refreshTrigger }) => {
 
 // ─── Tab 4: HosXP Key ─────────────────────────────────────────────────────────
 
-const HosxpKeyTab = ({ refreshTrigger }) => {
+export const HosxpKeyTab = ({ refreshTrigger }) => {
   const [runs, setRuns] = useState([]);
   const [caseMap, setCaseMap] = useState({});
   const [appointmentMap, setAppointmentMap] = useState({}); // hn -> appointments[]
@@ -1354,9 +1403,15 @@ const HosxpKeyTab = ({ refreshTrigger }) => {
 
 // ─── Tab 5: Today's Patients ──────────────────────────────────────────────────
 
-const TodayPatientsTab = ({ refreshTrigger }) => {
+export const TodayPatientsTab = ({ refreshTrigger }) => {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
+  // Controlled expand state: defaultExpandAllRows only applies against the
+  // Table's *initial* dataSource, which is empty here since rows load async —
+  // so real rows always rendered collapsed. Re-seeding this from every fresh
+  // fetch keeps rows expanded by default while still letting the user
+  // manually collapse one via the row's own expand toggle if they want.
+  const [expandedKeys, setExpandedKeys] = useState([]);
   const today = dayjs().format("YYYY-MM-DD");
 
   const fetchData = async () => {
@@ -1428,6 +1483,7 @@ const TodayPatientsTab = ({ refreshTrigger }) => {
 
       result.sort((a, b) => a.earliest_time.localeCompare(b.earliest_time));
       setRows(result);
+      setExpandedKeys(result.map((r) => r.key));
     } catch {
       message.error("Failed to load today's patients");
     } finally {
@@ -1579,6 +1635,8 @@ const TodayPatientsTab = ({ refreshTrigger }) => {
             : "";
         }}
         expandable={{
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => setExpandedKeys(keys),
           expandedRowRender: (record) => (
             <Table
               size="small"
@@ -1629,7 +1687,6 @@ const TodayPatientsTab = ({ refreshTrigger }) => {
             />
           ),
           rowExpandable: () => true,
-          defaultExpandAllRows: true,
         }}
         locale={{ emptyText: loading ? " " : "No patients with today's appointments found" }}
       />

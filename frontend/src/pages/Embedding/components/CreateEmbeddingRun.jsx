@@ -148,7 +148,7 @@ const CreateEmbeddingRun = ({ onBack }) => {
     0,
   );
   const selectedCountInModal = selectedRowKeys.filter(
-    (key) => typeof key === "number" || !key.toString().startsWith("spec-"),
+    (key) => typeof key === "number" || !key.toString().startsWith("case-"),
   ).length;
 
   return (

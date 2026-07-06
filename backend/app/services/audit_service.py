@@ -60,8 +60,12 @@ def _changed_columns(obj) -> tuple[dict, dict]:
     """Return (old_values, new_values) dicts for columns that changed."""
     old, new = {}, {}
     state = inspect(obj)
+    column_keys = {col.key for col in state.mapper.column_attrs}
     for attr in state.attrs:
-        if attr.key in EXCLUDE_COLUMNS:
+        # Only plain columns are diffed here — relationships (e.g. User.hospitals)
+        # hold ORM objects that aren't JSON-serialisable and aren't meaningful
+        # as a raw before/after value anyway.
+        if attr.key not in column_keys or attr.key in EXCLUDE_COLUMNS:
             continue
         hist = attr.load_history()
         if not hist.has_changes():

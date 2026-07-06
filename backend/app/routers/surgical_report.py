@@ -27,7 +27,7 @@ from app.schemas.surgical_report import (
     SurgicalStatResponse,
     LabTechStatResponse,
 )
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.models.surgical_report import SurgicalReport, ReportStatus
@@ -260,8 +260,16 @@ def read_surgical_archive(
     hospital_id: Optional[int] = Query(None),
     clinician: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return get_surgical_archive(db, page=page, size=size, search=search, hospital_id=hospital_id, clinician=clinician)
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        hospital_ids = [hospital_id] if hospital_id is not None else list(allowed_hospital_ids)
+    else:
+        hospital_ids = [hospital_id] if hospital_id is not None else None
+    return get_surgical_archive(db, page=page, size=size, search=search, hospital_ids=hospital_ids, clinician=clinician)
 
 
 # 2. ดึงรายการรายงานทั้งหมดของ Case นั้นๆ (History)

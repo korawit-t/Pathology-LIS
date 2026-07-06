@@ -74,7 +74,7 @@ def login_for_access_token(
     from sqlalchemy.orm import joinedload
     user = (
         db.query(User)
-        .options(joinedload(User.position), joinedload(User.hospital))
+        .options(joinedload(User.position), joinedload(User.hospitals))
         .filter(User.username == form_data.username)
         .first()
     )
@@ -158,8 +158,8 @@ def login_for_access_token(
             "is_temporary_password": user.is_temporary_password,
             "is_password_expired": is_password_expired,
             "preferences": user.preferences,
-            "hospital_id": user.hospital_id,
-            "hospital_name": user.hospital.name if user.hospital else None,
+            "hospital_ids": [h.id for h in user.hospitals],
+            "hospital_names": [h.name for h in user.hospitals],
             "position_id": user.position_id,
             "position_name": position_name,
         },

@@ -217,8 +217,16 @@ const UserManager: React.FC = () => {
     },
     {
       title: "Hospital",
-      dataIndex: "hospital_id",
-      render: (id: number) => hospitals.find((h) => h.id === id)?.name || "-",
+      dataIndex: "hospital_ids",
+      render: (ids: number[]) => (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+          {ids && ids.length > 0
+            ? ids.map((id) => (
+                <Tag key={id}>{hospitals.find((h) => h.id === id)?.name || "-"}</Tag>
+              ))
+            : "-"}
+        </div>
+      ),
     },
     {
       title: "Position",
@@ -344,11 +352,10 @@ const UserManager: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="hospital_id"
-                label="Hospital"
-                rules={[{ required: true }]}
+                name="hospital_ids"
+                label="Hospital(s)"
               >
-                <Select placeholder="Select Hospital">
+                <Select mode="multiple" placeholder="Select Hospital(s)" allowClear>
                   {hospitals.map((h) => (
                     <Select.Option key={h.id} value={h.id}>
                       {h.name}

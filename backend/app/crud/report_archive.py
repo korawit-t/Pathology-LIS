@@ -3,21 +3,21 @@
 # interpolated directly. Each text() call below is marked # nosec B608.
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional
+from typing import List, Optional
 
 
-def _params(search: Optional[str], hospital_id: Optional[int], clinician: Optional[str]):
+def _params(search: Optional[str], hospital_ids: Optional[List[int]], clinician: Optional[str]):
     p = {}
     if search:
         p["pat"] = f"%{search}%"
     if clinician:
         p["clinician"] = f"%{clinician}%"
-    if hospital_id is not None:
-        p["hospital_id"] = hospital_id
+    if hospital_ids is not None:
+        p["hospital_ids"] = list(hospital_ids)
     return p
 
 
-def _case_where(search, hospital_id, clinician, ca="c", pa="p"):
+def _case_where(search, hospital_ids, clinician, ca="c", pa="p"):
     """WHERE for case-table queries (ca = case alias, pa = patient alias)."""
     conds = []
     if search:
@@ -27,12 +27,12 @@ def _case_where(search, hospital_id, clinician, ca="c", pa="p"):
         )
     if clinician:
         conds.append(f"{ca}.clinician_name ILIKE :clinician")
-    if hospital_id is not None:
-        conds.append(f"{ca}.hospital_id = :hospital_id")
+    if hospital_ids is not None:
+        conds.append(f"{ca}.hospital_id = ANY(:hospital_ids)")
     return ("WHERE " + " AND ".join(conds)) if conds else ""
 
 
-def _legacy_where(search, hospital_id, clinician):
+def _legacy_where(search, hospital_ids, clinician):
     """WHERE for legacy flat-report tables."""
     conds = []
     if search:
@@ -42,8 +42,8 @@ def _legacy_where(search, hospital_id, clinician):
         )
     if clinician:
         conds.append("clinician_name ILIKE :clinician")
-    if hospital_id is not None:
-        conds.append("hospital_id = :hospital_id")
+    if hospital_ids is not None:
+        conds.append("hospital_id = ANY(:hospital_ids)")
     return ("WHERE " + " AND ".join(conds)) if conds else ""
 
 
@@ -52,15 +52,15 @@ def get_surgical_archive(
     page: int = 1,
     size: int = 20,
     search: Optional[str] = None,
-    hospital_id: Optional[int] = None,
+    hospital_ids: Optional[List[int]] = None,
     clinician: Optional[str] = None,
 ):
-    params = _params(search, hospital_id, clinician)
+    params = _params(search, hospital_ids, clinician)
     params["limit"] = size
     params["offset"] = (page - 1) * size
 
-    cw = _case_where(search, hospital_id, clinician)
-    lw = _legacy_where(search, hospital_id, clinician)
+    cw = _case_where(search, hospital_ids, clinician)
+    lw = _legacy_where(search, hospital_ids, clinician)
 
     count_sql = text(f"""
         SELECT COUNT(*) FROM (
@@ -147,15 +147,15 @@ def get_gyne_archive(
     page: int = 1,
     size: int = 20,
     search: Optional[str] = None,
-    hospital_id: Optional[int] = None,
+    hospital_ids: Optional[List[int]] = None,
     clinician: Optional[str] = None,
 ):
-    params = _params(search, hospital_id, clinician)
+    params = _params(search, hospital_ids, clinician)
     params["limit"] = size
     params["offset"] = (page - 1) * size
 
-    cw = _case_where(search, hospital_id, clinician)
-    lw = _legacy_where(search, hospital_id, clinician)
+    cw = _case_where(search, hospital_ids, clinician)
+    lw = _legacy_where(search, hospital_ids, clinician)
 
     count_sql = text(f"""
         SELECT COUNT(*) FROM (
@@ -240,15 +240,15 @@ def get_nongyne_archive(
     page: int = 1,
     size: int = 20,
     search: Optional[str] = None,
-    hospital_id: Optional[int] = None,
+    hospital_ids: Optional[List[int]] = None,
     clinician: Optional[str] = None,
 ):
-    params = _params(search, hospital_id, clinician)
+    params = _params(search, hospital_ids, clinician)
     params["limit"] = size
     params["offset"] = (page - 1) * size
 
-    cw = _case_where(search, hospital_id, clinician)
-    lw = _legacy_where(search, hospital_id, clinician)
+    cw = _case_where(search, hospital_ids, clinician)
+    lw = _legacy_where(search, hospital_ids, clinician)
 
     count_sql = text(f"""
         SELECT COUNT(*) FROM (

@@ -4,6 +4,7 @@ from datetime import datetime
 from app.utils.time import local_now
 
 from app.models.user import User
+from app.models.organization import Hospital
 from app.schemas.user import UserCreate, UserUpdate
 
 from app.core.security import get_password_hash
@@ -36,12 +37,17 @@ def create_user(db: Session, data: UserCreate):
     # เพื่อให้ค่าที่เราจะใส่ข้างล่าง (True) เป็นค่าเดียวที่ถูกส่งไป
     user_data.pop("is_temporary_password", None)
 
+    # hospital_ids is a relationship, not a plain column — set separately below
+    hospital_ids = user_data.pop("hospital_ids", [])
+
     # 4. สร้าง User Object
     new_user = User(
         **user_data,
         hashed_password=get_password_hash(plain_password),
         is_temporary_password=True  # ยืนยันให้เป็น True เสมอที่นี่
     )
+    if hospital_ids:
+        new_user.hospitals = db.query(Hospital).filter(Hospital.id.in_(hospital_ids)).all()
 
     db.add(new_user)
     db.commit()
@@ -64,6 +70,11 @@ def update_user(db: Session, user_id: int, data: UserUpdate):
         setattr(user, "hashed_password", get_password_hash(plain_password))
         # 🚩 ถ้า Admin เป็นคนเปลี่ยนรหัสให้ ให้บังคับเปลี่ยนรหัสใหม่เสมอ (เซตกลับเป็น True)
         user.is_temporary_password = True
+
+    # hospital_ids is a relationship, not a plain column — set separately
+    if "hospital_ids" in update_data:
+        hospital_ids = update_data.pop("hospital_ids") or []
+        user.hospitals = db.query(Hospital).filter(Hospital.id.in_(hospital_ids)).all()
 
     # อัปเดตข้อมูลอื่นๆ ที่เหลือ
     for key, value in update_data.items():

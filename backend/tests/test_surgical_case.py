@@ -224,7 +224,7 @@ class TestListHospitalCases:
         live_case.status = "grossed"
         db.commit()
 
-        result = list_hospital_cases(db, page=1, size=1000, hospital_id=hospital.id)
+        result = list_hospital_cases(db, page=1, size=1000, hospital_ids=[hospital.id])
 
         live_entry = next(i for i in result["items"] if i["case_id"] == live_case.id)
         assert live_entry["status"] == "grossed"
@@ -238,7 +238,7 @@ class TestListHospitalCases:
         case.status = "grossed"
         db.commit()
 
-        result = list_hospital_cases(db, page=1, size=1000, hospital_id=hospital.id, status_filter="grossed")
+        result = list_hospital_cases(db, page=1, size=1000, hospital_ids=[hospital.id], status_filter="grossed")
 
         assert any(i["case_id"] == case.id for i in result["items"])
         assert all(i["status"] != "published" for i in result["items"])

@@ -43,10 +43,10 @@ class TestSurgicalArchive:
         case_a, _ = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a)
         case_b, _ = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        result = get_surgical_archive(db, hospital_id=hosp_a.id, search=case_a.accession_no)
+        result = get_surgical_archive(db, hospital_ids=[hosp_a.id], search=case_a.accession_no)
         assert any(r["id"] == case_a.id for r in result["items"])
 
-        result_b_search_for_a = get_surgical_archive(db, hospital_id=hosp_b.id, search=case_a.accession_no)
+        result_b_search_for_a = get_surgical_archive(db, hospital_ids=[hosp_b.id], search=case_a.accession_no)
         assert not any(r["id"] == case_a.id for r in result_b_search_for_a["items"])
 
     def test_legacy_report_included_with_legacy_source(self, db):

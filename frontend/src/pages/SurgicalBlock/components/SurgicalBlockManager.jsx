@@ -209,7 +209,13 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
              form.setFieldsValue(record);
              setIsModalOpen(true);
           }} size="small" />
-          <Popconfirm title="ลบข้อมูล?" onConfirm={() => handleDelete(record.id)}>
+          <Popconfirm
+            title="ลบข้อมูล?"
+            onConfirm={(e) => {
+              e?.stopPropagation();
+              handleDelete(record.id);
+            }}
+          >
             <Button icon={<DeleteOutlined />} danger size="small" onClick={(e) => e.stopPropagation()} />
           </Popconfirm>
         </Space>

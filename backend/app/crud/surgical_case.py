@@ -316,7 +316,7 @@ def search_public_cases_with_latest_report(
     page: int = 1,
     size: int = 10,
     search: str = None,
-    hospital_id: int = None,
+    hospital_ids: list = None,
 ):
     # 1. Subquery หา ID รายงานล่าสุด (เหมือนเดิม)
     latest_report_ids = (
@@ -343,8 +343,8 @@ def search_public_cases_with_latest_report(
     # 3. Join Patient เพื่อให้ค้นหาชื่อและดึงข้อมูลชื่อมาแสดงได้ชัวร์ๆ
     query = query.join(SurgicalCase.patient)
 
-    if hospital_id:
-        query = query.filter(SurgicalCase.hospital_id == hospital_id)
+    if hospital_ids is not None:
+        query = query.filter(SurgicalCase.hospital_id.in_(hospital_ids))
 
     if search:
         s = f"%{search}%"
@@ -402,7 +402,7 @@ def list_hospital_cases(
     page: int = 1,
     size: int = 20,
     search: str = None,
-    hospital_id: int = None,
+    hospital_ids: list = None,
     status_filter: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -433,8 +433,8 @@ def list_hospital_cases(
             .join(SurgicalCase.patient)
             .filter(SurgicalCase.id.notin_(published_case_ids))
         )
-        if hospital_id:
-            q = q.filter(SurgicalCase.hospital_id == hospital_id)
+        if hospital_ids is not None:
+            q = q.filter(SurgicalCase.hospital_id.in_(hospital_ids))
         if status_filter and status_filter in _IN_PROGRESS_STATUSES:
             q = q.filter(SurgicalCase.status == status_filter)
         if search:
@@ -467,8 +467,8 @@ def list_hospital_cases(
             .join(latest_subq, SurgicalReport.id == latest_subq.c.max_id)
             .filter(SurgicalReport.status == "published")
         )
-        if hospital_id:
-            q = q.filter(SurgicalReport.hospital_id == hospital_id)
+        if hospital_ids is not None:
+            q = q.filter(SurgicalReport.hospital_id.in_(hospital_ids))
         if search:
             s = f"%{search}%"
             q = q.filter(

@@ -10,6 +10,7 @@ import {
   Badge,
   Row,
   Col,
+  Select,
 } from "antd";
 import {
   LogoutOutlined,
@@ -37,6 +38,7 @@ const HospitalResultPage = () => {
   const [noHospital, setNoHospital] = useState(false);
   const [counts, setCounts] = useState({ all: 0, published: 0, in_progress: 0, unread: 0 });
   const [activeCard, setActiveCard] = useState<StatusCardKey>("all");
+  const [selectedHospitalId, setSelectedHospitalId] = useState<number | undefined>(undefined);
 
   const fetchCounts = useCallback(async () => {
     try {
@@ -65,8 +67,9 @@ const HospitalResultPage = () => {
     { key: "unread" as StatusCardKey, title: "Unread Reports", value: counts.unread, icon: <EyeOutlined style={{ fontSize: 24 }} />, color: "#f5222d", bg: "#fff1f0" },
   ];
 
-  const hospitalName = user?.hospital_name || user?.hospital?.name;
-  const hospitalId = user?.hospital_id;
+  const hospitalIds = user?.hospital_ids || [];
+  const hospitalNames = user?.hospital_names || [];
+  const hospitalName = hospitalNames.length === 1 ? hospitalNames[0] : undefined;
 
   return (
     <Layout style={{ minHeight: "100vh", background: "transparent" }}>
@@ -148,6 +151,21 @@ const HospitalResultPage = () => {
                 style={{ borderRadius: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
                 styles={{ body: { paddingTop: 12 } }}
               >
+                {hospitalIds.length > 1 && (
+                  <div style={{ marginBottom: 16, display: "flex", justifyContent: "flex-end" }}>
+                    <Select
+                      value={selectedHospitalId}
+                      onChange={setSelectedHospitalId}
+                      style={{ minWidth: 220 }}
+                      placeholder="All assigned hospitals"
+                      allowClear
+                      options={[
+                        { value: undefined, label: "All assigned hospitals" },
+                        ...hospitalIds.map((id, i) => ({ value: id, label: hospitalNames[i] || `Hospital #${id}` })),
+                      ]}
+                    />
+                  </div>
+                )}
                 <Tabs
                   activeKey={activeTab}
                   onChange={setActiveTab}
@@ -161,17 +179,17 @@ const HospitalResultPage = () => {
                           </span>
                         </Badge>
                       ),
-                      children: <SurgicalReportHistory hospital_id={hospitalId} />,
+                      children: <SurgicalReportHistory hospital_id={selectedHospitalId} />,
                     },
                     {
                       key: "gyne",
                       label: "Gyne Cytology",
-                      children: <GyneReportHistory hospital_id={hospitalId} />,
+                      children: <GyneReportHistory hospital_id={selectedHospitalId} />,
                     },
                     {
                       key: "nongyne",
                       label: "Non-Gyne Cytology",
-                      children: <NonGyneReportHistory hospital_id={hospitalId} />,
+                      children: <NonGyneReportHistory hospital_id={selectedHospitalId} />,
                     },
                   ]}
                 />

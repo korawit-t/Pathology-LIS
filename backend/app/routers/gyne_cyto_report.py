@@ -24,7 +24,7 @@ from app.core.roles import (
     CAN_WRITE_GYNE_CYTO_REPORT,
     CAN_READ_GYNE_CYTO_REPORT
 )
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids
 from pydantic import BaseModel
 from datetime import datetime
 from app.utils.time import local_now
@@ -72,8 +72,16 @@ def read_gyne_archive(
     hospital_id: Optional[int] = Query(None),
     clinician: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return get_gyne_archive(db, page=page, size=size, search=search, hospital_id=hospital_id, clinician=clinician)
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        hospital_ids = [hospital_id] if hospital_id is not None else list(allowed_hospital_ids)
+    else:
+        hospital_ids = [hospital_id] if hospital_id is not None else None
+    return get_gyne_archive(db, page=page, size=size, search=search, hospital_ids=hospital_ids, clinician=clinician)
 
 
 @router.post(

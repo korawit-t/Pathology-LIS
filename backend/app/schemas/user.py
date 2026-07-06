@@ -9,7 +9,7 @@ class UserBase(BaseModel):
     full_name: str | None = None
     report_name: str | None = None
     position_id: int | None = None
-    hospital_id: int | None = None
+    hospital_ids: List[int] = []
     roles: List[str] = []  # เปลี่ยนเป็น roles ที่เป็น List[str]
     preferences: dict = {"layout_mode": "top", "theme": "light", "show_navigator": True}
     status: bool = True
@@ -30,7 +30,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     report_name: str | None = None
     position_id: int | None = None
-    hospital_id: int | None = None
+    hospital_ids: List[int] | None = None
     roles: List[str] | None = None
     status: bool | None = None
     # 🔒 SECURITY: minimum length enforced server-side when present.

@@ -49,7 +49,7 @@ from app.schemas.surgical_case import (
     HospitalBillingResponse,
 )
 from app.crud import surgical_case as crud_case
-from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access
+from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.user import User
 
 router = APIRouter(
@@ -79,13 +79,9 @@ def search_all_reports_public(
     from app.models.nongyne_cyto_report import NongyneCytoReport
     from app.models.patient import Patient
 
-    user_hospital_id = getattr(current_user, "hospital_id", None)
-    user_roles = getattr(current_user, "roles", [])
-    target_hospital_id = None
-    if "admin" not in user_roles:
-        if not user_hospital_id:
-            raise HTTPException(status_code=403, detail="No hospital assigned to this account")
-        target_hospital_id = user_hospital_id
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None and not allowed_hospital_ids:
+        raise HTTPException(status_code=403, detail="No hospital assigned to this account")
 
     s = f"%{q}%"
     items = []
@@ -106,8 +102,8 @@ def search_all_reports_public(
         .join(SurgicalCase.patient)
         .filter(or_(SurgicalCase.accession_no.ilike(s), SurgicalCase.hn.ilike(s), Patient.name.ilike(s)))
     )
-    if target_hospital_id:
-        surg_q = surg_q.filter(SurgicalCase.hospital_id == target_hospital_id)
+    if allowed_hospital_ids is not None:
+        surg_q = surg_q.filter(SurgicalCase.hospital_id.in_(allowed_hospital_ids))
     for case, report in surg_q.all():
         items.append({
             "case_type": "SURGICAL",
@@ -147,8 +143,8 @@ def search_all_reports_public(
         .join(GyneCytologyCase.patient)
         .filter(or_(GyneCytologyCase.accession_no.ilike(s), GyneCytologyCase.hn.ilike(s), Patient.name.ilike(s)))
     )
-    if target_hospital_id:
-        gyne_q = gyne_q.filter(GyneCytologyCase.hospital_id == target_hospital_id)
+    if allowed_hospital_ids is not None:
+        gyne_q = gyne_q.filter(GyneCytologyCase.hospital_id.in_(allowed_hospital_ids))
     for case, report in gyne_q.all():
         items.append({
             "case_type": "GYNE",
@@ -188,8 +184,8 @@ def search_all_reports_public(
         .join(NongyneCytologyCase.patient)
         .filter(or_(NongyneCytologyCase.accession_no.ilike(s), NongyneCytologyCase.hn.ilike(s), Patient.name.ilike(s)))
     )
-    if target_hospital_id:
-        ng_q = ng_q.filter(NongyneCytologyCase.hospital_id == target_hospital_id)
+    if allowed_hospital_ids is not None:
+        ng_q = ng_q.filter(NongyneCytologyCase.hospital_id.in_(allowed_hospital_ids))
     for case, report in ng_q.all():
         items.append({
             "case_type": "NONGYNE",
@@ -239,21 +235,16 @@ def search_reports_public(
     - ค้นเจอทุกเคสที่มีในระบบ (เพื่อแสดงว่ากำลังตรวจหรือเสร็จแล้ว)
     - กรองข้อมูลตาม hospital_id ของ User
     """
-    user_hospital_id = getattr(current_user, "hospital_id", None)
-    user_roles = getattr(current_user, "roles", [])
-
-    # กรองเฉพาะโรงพยาบาลที่สังกัด (ยกเว้น admin ระบบ)
-    target_hospital_id = None
-    if "admin" not in user_roles:
-        if not user_hospital_id:
-            raise HTTPException(
-                status_code=403,
-                detail="บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลเนื่องจากไม่ระบุสังกัดโรงพยาบาล",
-            )
-        target_hospital_id = user_hospital_id
+    # กรองเฉพาะโรงพยาบาลที่สังกัด (ยกเว้น admin/internal staff)
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None and not allowed_hospital_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลเนื่องจากไม่ระบุสังกัดโรงพยาบาล",
+        )
 
     return crud_case.search_public_cases_with_latest_report(
-        db, page=page, size=size, search=q, hospital_id=target_hospital_id
+        db, page=page, size=size, search=q, hospital_ids=allowed_hospital_ids
     )
 
 
@@ -274,24 +265,19 @@ def list_hospital_cases(
     """
     Endpoint สำหรับ Hospital Staff ดูเคสทั้งหมดของโรงพยาบาลตัวเอง (ไม่ต้องระบุ q)
     """
-    user_hospital_id = getattr(current_user, "hospital_id", None)
-    user_roles = getattr(current_user, "roles", [])
-
-    target_hospital_id = None
-    if "admin" not in user_roles:
-        if not user_hospital_id:
-            raise HTTPException(
-                status_code=403,
-                detail="บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลเนื่องจากไม่ระบุสังกัดโรงพยาบาล",
-            )
-        target_hospital_id = user_hospital_id
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None and not allowed_hospital_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลเนื่องจากไม่ระบุสังกัดโรงพยาบาล",
+        )
 
     return crud_case.list_hospital_cases(
         db,
         page=page,
         size=size,
         search=q,
-        hospital_id=target_hospital_id,
+        hospital_ids=allowed_hospital_ids,
         status_filter=status_filter,
         start_date=start_date,
         end_date=end_date,
@@ -303,16 +289,15 @@ def get_hospital_unread_count(
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
-    user_hospital_id = getattr(current_user, "hospital_id", None)
-    user_roles = getattr(current_user, "roles", [])
-    if "admin" not in user_roles and not user_hospital_id:
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None and not allowed_hospital_ids:
         return {"unread": 0}
     count = (
         db.query(func.count(SurgicalReport.id))
         .filter(
             SurgicalReport.status == "published",
             SurgicalReport.is_read.is_(False),
-            *([SurgicalReport.hospital_id == user_hospital_id] if user_hospital_id and "admin" not in user_roles else []),
+            *([SurgicalReport.hospital_id.in_(allowed_hospital_ids)] if allowed_hospital_ids is not None else []),
         )
         .scalar()
     ) or 0

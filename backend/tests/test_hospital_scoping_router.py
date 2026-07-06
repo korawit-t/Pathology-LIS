@@ -26,11 +26,17 @@ from tests.factories import (
 )
 
 
-def _make_clinician_at_hospital(db, hospital_id):
+def _make_clinician_at_hospitals(db, hospital_ids):
+    from app.models.organization import Hospital
+
     user, pwd = _make_user(db, f"clin_{uuid.uuid4().hex[:6]}", "ClinPass1!", ["clinician"])
-    user.hospital_id = hospital_id
+    user.hospitals = db.query(Hospital).filter(Hospital.id.in_(hospital_ids)).all()
     db.commit()
     return user, pwd
+
+
+def _make_clinician_at_hospital(db, hospital_id):
+    return _make_clinician_at_hospitals(db, [hospital_id])
 
 
 def _login(client, username, password):
@@ -139,6 +145,60 @@ class TestGyneConsultPdfHospitalScoping:
         response = client.get(f"/gyne-cytology/{case_a.id}/consult-pdf")
 
         assert response.status_code == 200
+
+
+class TestMultiHospitalScoping:
+    def test_clinician_with_two_hospitals_can_reach_both_but_not_a_third(
+        self, client, db, admin_user
+    ):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        hosp_c = make_hospital(db)
+        case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
+        case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        case_c = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_c)
+
+        def _add_request_file(case):
+            f = SurgicalRequestFile(
+                case_id=case.id, file_path="/nonexistent/path.pdf",
+                file_name="req.pdf", file_type="application/pdf", uploaded_by_id=registrar.id,
+            )
+            db.add(f)
+            db.commit()
+            db.refresh(f)
+            return f
+
+        file_a = _add_request_file(case_a)
+        file_b = _add_request_file(case_b)
+        file_c = _add_request_file(case_c)
+
+        clinician, pwd = _make_clinician_at_hospitals(db, [hosp_a.id, hosp_b.id])
+        _login(client, clinician.username, pwd)
+
+        # 404 (not 403) proves the hospital check passed and it only failed
+        # on the intentionally-missing physical file.
+        assert client.get(f"/surgical-cases/request-files/{file_a.id}").status_code == 404
+        assert client.get(f"/surgical-cases/request-files/{file_b.id}").status_code == 404
+        assert client.get(f"/surgical-cases/request-files/{file_c.id}").status_code == 403
+
+    def test_clinician_with_no_hospitals_denied(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp = make_hospital(db)
+        case = make_bare_case(db, registrar_id=registrar.id, hospital=hosp)
+        req_file = SurgicalRequestFile(
+            case_id=case.id, file_path="/nonexistent/path.pdf",
+            file_name="req.pdf", file_type="application/pdf", uploaded_by_id=registrar.id,
+        )
+        db.add(req_file)
+        db.commit()
+        db.refresh(req_file)
+
+        clinician, pwd = _make_clinician_at_hospitals(db, [])
+        _login(client, clinician.username, pwd)
+
+        response = client.get(f"/surgical-cases/request-files/{req_file.id}")
+        assert response.status_code == 403
 
 
 class TestNongyneRequestFileHospitalScoping:
