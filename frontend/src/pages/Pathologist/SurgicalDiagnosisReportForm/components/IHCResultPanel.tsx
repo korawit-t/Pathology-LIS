@@ -100,14 +100,33 @@ function generateIHCHtml(
 
   if (lineFormat === "bullet") {
     const lis = items
-      .map((i) => `<li><strong>${i.marker}</strong>: ${i.value}</li>`)
+      .map((i) => `<li>${i.marker}: ${i.value}</li>`)
       .join("");
     return `${prefixHtml}<ul>${lis}</ul>`;
   }
-  const lines = items
-    .map((i) => `<strong>${i.marker}</strong>: ${i.value}`)
-    .join("<br>");
-  return `${prefixHtml}<p>${lines}</p>`;
+  const line = items
+    .map((i) => `${i.marker}: ${i.value}`)
+    .join(", ");
+  return `${prefixHtml}<p>${line}</p>`;
+}
+
+const PREVIEW_SAMPLE = [
+  { marker: "ER", value: "Positive (90%)" },
+  { marker: "PR", value: "Negative" },
+];
+
+function buildPreviewHtml(prefix: string, lineFormat: "bullet" | "plain"): string {
+  const prefixHtml = prefix ? `<p>${prefix}</p>` : "";
+  if (lineFormat === "bullet") {
+    const lis = PREVIEW_SAMPLE
+      .map((i) => `<li>${i.marker}: ${i.value}</li>`)
+      .join("");
+    return `${prefixHtml}<ul>${lis}</ul>`;
+  }
+  const line = PREVIEW_SAMPLE
+    .map((i) => `${i.marker}: ${i.value}`)
+    .join(", ");
+  return `${prefixHtml}<p>${line}</p>`;
 }
 
 // ── Sortable row ──────────────────────────────────────────────────────────────
@@ -291,6 +310,11 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
   const [extraSaving, setExtraSaving] = useState<Record<string, boolean>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsForm] = Form.useForm();
+  const watchedPrefix = Form.useWatch("prefix", settingsForm);
+  const watchedLineFormat = Form.useWatch("line_format", settingsForm) as
+    | "bullet"
+    | "plain"
+    | undefined;
   const numericTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const extraFieldTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveOrderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -516,6 +540,28 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
             <Radio value="plain">Inline paragraph</Radio>
           </Radio.Group>
         </Form.Item>
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "8px 10px",
+            background: "#fafafa",
+            border: "1px dashed #d9d9d9",
+            borderRadius: 6,
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>
+            ตัวอย่างข้อความที่จะแทรก / Preview:
+          </Text>
+          <div
+            style={{ fontSize: 13 }}
+            dangerouslySetInnerHTML={{
+              __html: buildPreviewHtml(
+                watchedPrefix ?? currentPrefix,
+                (watchedLineFormat ?? currentLineFormat) as "bullet" | "plain"
+              ),
+            }}
+          />
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button size="small" onClick={() => setSettingsOpen(false)}>Cancel</Button>
           <Button size="small" type="primary" onClick={handleSaveSettings}>Save</Button>
