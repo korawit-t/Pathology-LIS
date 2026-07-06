@@ -150,8 +150,11 @@ def update_my_password(
     silently setting a new password.
     """
     if not verify_password(data.current_password, current_user.hashed_password):
+        # 400, not 401: the caller IS authenticated, they just supplied the
+        # wrong current password. A 401 here would trip httpClient.tsx's
+        # global interceptor into attempting a silent token refresh + retry.
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect.",
         )
 

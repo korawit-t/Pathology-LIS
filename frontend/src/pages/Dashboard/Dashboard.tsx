@@ -4,6 +4,7 @@ import {
   Layout,
   Button,
   Menu,
+  Dropdown,
   Typography,
   Divider,
   Space,
@@ -19,6 +20,9 @@ import {
   VerticalLeftOutlined,
   SunOutlined,
   MoonOutlined,
+  UserOutlined,
+  KeyOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 
 import {
@@ -34,6 +38,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useAuth } from "../../contexts/AuthContext";
 import logger from "../../utils/logger";
 import SystemSettingService from "../../services/systemSettingService";
+import ChangePasswordModal from "../../components/auth/ChangePasswordModal";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -53,6 +58,7 @@ const Dashboard: React.FC = () => {
     null,
   );
   const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const navigate = useNavigate();
   // ดึงข้อมูล User เมื่อ Component mount
@@ -266,17 +272,39 @@ const Dashboard: React.FC = () => {
               style={{ borderColor: isDarkMode ? "#303030" : "#f0f0f0" }}
             />
 
-            <Text strong style={{ color: isDarkMode ? "#fff" : "inherit" }}>
-              {user?.full_name}
-            </Text>
-
-            <Button
-              icon={<LogoutOutlined />}
-              danger
-              type="text"
-              onClick={logout}
-              className="logout-button"
-            />
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: [
+                  {
+                    key: "change-password",
+                    icon: <KeyOutlined />,
+                    label: "Change Password",
+                    onClick: () => setChangePasswordOpen(true),
+                  },
+                  { type: "divider" },
+                  {
+                    key: "logout",
+                    icon: <LogoutOutlined />,
+                    label: "Logout",
+                    danger: true,
+                    onClick: logout,
+                  },
+                ],
+              }}
+            >
+              <Space
+                align="center"
+                size={4}
+                style={{ cursor: "pointer", color: isDarkMode ? "#fff" : "inherit" }}
+              >
+                <UserOutlined />
+                <Text strong style={{ color: isDarkMode ? "#fff" : "inherit" }}>
+                  {user?.full_name}
+                </Text>
+                <DownOutlined style={{ fontSize: 10 }} />
+              </Space>
+            </Dropdown>
           </Space>
         </Header>
 
@@ -363,6 +391,11 @@ const Dashboard: React.FC = () => {
           })}
         </Content>
       </Layout>
+
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
     </Layout>
   );
 };
