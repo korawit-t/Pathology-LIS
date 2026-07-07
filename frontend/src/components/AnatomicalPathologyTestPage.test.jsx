@@ -413,6 +413,12 @@ describe("AnatomicalPathologyTestPage", () => {
         );
       });
 
+      // Longer per-test timeout: opening a modal nested inside another open
+      // modal is the heaviest render path in this file (two full antd Modal
+      // trees + Table + Form mounting in one commit), and it has intermittently
+      // exceeded the 5000ms default under full-suite CPU contention (30+ files
+      // running in parallel) — passes instantly (2/2 clean runs) in isolation,
+      // so this is a slow-environment allowance, not a correctness fix.
       it("edits an existing Extra Field option (calls updateExtraFieldOption, not create)", async () => {
         IHCService.getExtraFields.mockResolvedValue([
           makeExtraField({ options: [{ id: 5, field_id: 1, option_label: "3+", option_value: "three-plus", display_order: 0 }] }),
@@ -438,7 +444,7 @@ describe("AnatomicalPathologyTestPage", () => {
           ),
         );
         expect(IHCService.createExtraFieldOption).not.toHaveBeenCalled();
-      });
+      }, 15000);
 
       it("deletes an Extra Field option after confirming", async () => {
         IHCService.getExtraFields.mockResolvedValue([
@@ -457,7 +463,7 @@ describe("AnatomicalPathologyTestPage", () => {
         fireEvent.click(await screen.findByRole("button", { name: /confirm|ok|yes/i }));
 
         await waitFor(() => expect(IHCService.deleteExtraFieldOption).toHaveBeenCalledWith(5));
-      });
+      }, 15000);
     });
   });
 

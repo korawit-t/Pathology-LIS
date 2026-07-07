@@ -17,6 +17,25 @@ def _force_not_configured(monkeypatch):
     monkeypatch.setattr(his_database_module, "_HisSessionLocal", None)
 
 
+class _FakeHisSession:
+    """Stand-in for a real HIS DB session — only close() is ever called on
+    it by get_his_db()'s cleanup; tests using this never reach a real query
+    because they're only exercising guards that run before any query."""
+
+    def close(self):
+        pass
+
+
+def _force_configured(monkeypatch):
+    # is_his_configured() only checks the URL string; get_his_db() separately
+    # checks _HisSessionLocal is None. Both must be patched together, or the
+    # request 503s on the his_db-is-None guard before ever reaching the
+    # guard/logic under test — which is exactly what happened in CI (no real
+    # HIS_DATABASE_URL there), even though HIS_DATABASE_URL alone was patched.
+    monkeypatch.setattr(his_database_module, "HIS_DATABASE_URL", "mysql+pymysql://fake/db")
+    monkeypatch.setattr(his_database_module, "_HisSessionLocal", lambda: _FakeHisSession())
+
+
 class TestAuth:
     def test_requires_authentication(self, client):
         assert client.get("/his/patients", params={"hn": "12345"}).status_code == 401
@@ -34,10 +53,9 @@ class TestNotConfiguredGuards:
         assert r.status_code == 503
 
     def test_search_patients_requires_hn_or_date_range_once_configured(self, pathologist_client, monkeypatch):
-        # Simulate "configured" without a real connection: is_his_configured()
-        # only checks the URL string, not connectivity, so this reaches the
-        # hn/date-range 400 guard without needing a real HIS database.
-        monkeypatch.setattr(his_database_module, "HIS_DATABASE_URL", "mysql+pymysql://fake/db")
+        # Simulate "configured" without a real connection, so this reaches
+        # the hn/date-range 400 guard without needing a real HIS database.
+        _force_configured(monkeypatch)
         r = pathologist_client.get("/his/patients")
         assert r.status_code == 400
 
