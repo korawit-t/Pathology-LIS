@@ -7,6 +7,39 @@ unauthenticated access to protected routes.
 
 import pytest
 
+from app.routers import auth as auth_router
+
+
+def _set_cookie_headers(response):
+    return [v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"]
+
+
+class TestCookieDomain:
+    """COOKIE_DOMAIN drives the `domain=` attribute on the auth cookies.
+
+    Regression coverage for the Safari cross-site cookie fix: when unset
+    (the default — LAN-only / single-host deployments), cookies must NOT
+    carry a Domain attribute, preserving the original host-only behavior.
+    """
+
+    def test_no_domain_attribute_when_cookie_domain_unset(self, client, admin_user, monkeypatch):
+        monkeypatch.setattr(auth_router, "COOKIE_DOMAIN", None)
+        user, pwd = admin_user
+        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
+        assert r.status_code == 200
+        cookies = _set_cookie_headers(r)
+        assert cookies, "expected Set-Cookie headers on login"
+        assert all("domain=" not in c.lower() for c in cookies)
+
+    def test_domain_attribute_present_when_cookie_domain_set(self, client, admin_user, monkeypatch):
+        monkeypatch.setattr(auth_router, "COOKIE_DOMAIN", ".mylis.example.com")
+        user, pwd = admin_user
+        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
+        assert r.status_code == 200
+        cookies = _set_cookie_headers(r)
+        assert cookies, "expected Set-Cookie headers on login"
+        assert all("domain=.mylis.example.com" in c.lower() for c in cookies)
+
 
 class TestLogin:
     def test_login_success_returns_user_data(self, client, admin_user):

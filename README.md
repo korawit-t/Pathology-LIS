@@ -141,6 +141,15 @@ docker compose -f docker-compose.yml run --rm backend python seed_data.py
 
 > ⚠️ Never run `docker compose up` (without `-f`) on production — it auto-loads the dev override with insecure defaults.
 
+### 4C. Cloud deployment (e.g. Railway) as two separate services
+
+If frontend and backend are deployed as two separate services with two different hostnames (Railway, or similar PaaS), **Safari will block the login cookie** — it treats the two hostnames as cross-site, even with `SameSite=None; Secure` set. This does not affect the Docker/LAN setup above, where frontend and backend share a host (only the port differs), which every browser treats as same-site.
+
+Two ways to fix it, pick one:
+
+- **You own a custom domain** — put frontend and backend on subdomains of it (e.g. `app.yourdomain.com` + `api.yourdomain.com`) and set `COOKIE_DOMAIN=.yourdomain.com` in `backend/.env` (see the variable's comment in `backend/.env.example` for details).
+- **No custom domain** — build the frontend with `frontend/Dockerfile.railway` instead of `frontend/Dockerfile`. It serves the app and reverse-proxies API calls to the backend through the same nginx, so the browser only ever sees one origin. Requires setting `BACKEND_UPSTREAM=<backend-service>.railway.internal:8000` (get the exact hostname from the backend service's private-networking settings) and leaving `VITE_API_BASE_URL` empty. See the comments in `frontend/nginx.railway.conf.template` for the full explanation.
+
 ---
 
 ### 5. Accessing the system

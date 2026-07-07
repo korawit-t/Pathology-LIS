@@ -1,0 +1,59 @@
+# Cloud/Railway-only nginx config: serves the built frontend AND reverse-proxies
+# API calls to the backend, so the browser only ever talks to ONE origin.
+#
+# Why: Safari (and eventually Chrome) blocks cookies as third-party/cross-site
+# whenever the frontend and backend are on different hostnames — which is what
+# happens when frontend/backend are deployed as two separate Railway services
+# with their own *.up.railway.app domains. Proxying API calls through this
+# nginx makes them same-origin from the browser's point of view, so the auth
+# cookie works in every browser without needing a custom domain.
+#
+# BACKEND_UPSTREAM is substituted at container start (nginx's built-in
+# envsubst-on-templates entrypoint). Set it on the Railway frontend service to
+# the backend service's private networking address, e.g.:
+#   BACKEND_UPSTREAM=pathologylisbackend.railway.internal:8000
+# (Railway dashboard -> backend service -> Settings -> Networking -> Private
+# Networking shows the exact hostname; port is whatever the backend listens
+# on, 8000 per backend/Dockerfile's CMD.)
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Vite build output (hashed JS/CSS/images/fonts) — serve directly if the
+    # file exists on disk, otherwise treat the request as an API/page route.
+    location / {
+        try_files $uri @backend;
+    }
+
+    location @backend {
+        proxy_pass http://${BACKEND_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # If the backend has no route for this path, it's most likely a
+        # client-side React Router path (e.g. /dashboard/xyz) rather than a
+        # real 404 — but ONLY fall back to the SPA shell for actual browser
+        # navigations (Sec-Fetch-Mode: navigate). XHR/fetch calls from the
+        # app itself (Sec-Fetch-Mode: cors/same-origin) must keep getting the
+        # real backend 404 body, e.g. "GET /users/9999 -> 404" needs its JSON
+        # error intact, not an HTML page.
+        proxy_intercept_errors on;
+        error_page 404 = @spa_fallback;
+    }
+
+    location @spa_fallback {
+        if ($http_sec_fetch_mode != "navigate") {
+            return 404;
+        }
+        try_files /index.html =404;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
