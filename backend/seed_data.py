@@ -113,7 +113,6 @@ def seed_admin(db: Session):
         full_name="System Administrator",
         report_name="Admin",
         position_id=admin_pos.id if admin_pos else None,
-        hospital_id=default_hos.id if default_hos else None,
         roles=["admin"],
         status=True,
         # 🔒 SECURITY: mark password as temporary so the user is forced to
@@ -121,6 +120,8 @@ def seed_admin(db: Session):
         # "admin1234" credential would remain valid indefinitely.
         is_temporary_password=True,
     )
+    if default_hos:
+        admin_user.hospitals = [default_hos]
 
     db.add(admin_user)
     db.commit()
