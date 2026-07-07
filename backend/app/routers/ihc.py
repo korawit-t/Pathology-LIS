@@ -274,6 +274,9 @@ def get_ihc_case_list(
     from app.models.ihc_result import IHCResult
     from app.models.nongyne_ihc_result import NongyneIHCResult
     from app.models.ihc_marker_option import IHCMarkerOption
+    from app.models.ihc_marker_extra_field import IHCMarkerExtraField
+    from app.models.ihc_marker_extra_field_option import IHCMarkerExtraFieldOption
+    from app.models.ihc_result_extra_value import IHCResultExtraValue
     from app.models.anatomical_pathology_test import AnatomicalPathologyTest
     from app.models.surgical_specimen import SurgicalSpecimen
     from app.models.surgical_case import SurgicalCase
@@ -299,6 +302,52 @@ def get_ihc_case_list(
         )
         return {(r.ap_test_id, r.option_value): r.option_label for r in rows}
 
+    def _build_extra_field_strings_by_result(db, ihc_result_ids: list) -> dict:
+        """Surgical-only (no nongyne_ihc_result_extra_values table exists yet).
+        Returns {ihc_result_id: ["Intensity: Strong (3+)", ...]} in display_order,
+        mirroring generate_ihc_text's composition so the case-list cell reads the
+        same way the report text does."""
+        if not ihc_result_ids:
+            return {}
+        rows = (
+            db.query(
+                IHCResultExtraValue.ihc_result_id,
+                IHCMarkerExtraField.id.label("field_id"),
+                IHCMarkerExtraField.label,
+                IHCMarkerExtraField.field_type,
+                IHCMarkerExtraField.numeric_unit,
+                IHCMarkerExtraField.display_order,
+                IHCResultExtraValue.value,
+            )
+            .join(IHCMarkerExtraField, IHCMarkerExtraField.id == IHCResultExtraValue.field_id)
+            .filter(
+                IHCResultExtraValue.ihc_result_id.in_(ihc_result_ids),
+                IHCResultExtraValue.value.isnot(None),
+            )
+            .order_by(IHCResultExtraValue.ihc_result_id, IHCMarkerExtraField.display_order)
+            .all()
+        )
+
+        field_ids = list({r.field_id for r in rows})
+        option_rows = (
+            db.query(IHCMarkerExtraFieldOption.field_id, IHCMarkerExtraFieldOption.option_value, IHCMarkerExtraFieldOption.option_label)
+            .filter(IHCMarkerExtraFieldOption.field_id.in_(field_ids))
+            .all()
+            if field_ids else []
+        )
+        option_label_map = {(o.field_id, o.option_value): o.option_label for o in option_rows}
+
+        by_result: dict = {}
+        for r in rows:
+            if r.field_type == "select":
+                value_str = option_label_map.get((r.field_id, r.value), r.value)
+            elif r.field_type == "numeric":
+                value_str = f"{r.value}{r.numeric_unit or ''}"
+            else:
+                value_str = r.value
+            by_result.setdefault(r.ihc_result_id, []).append(f"{r.label}: {value_str}")
+        return by_result
+
     # ── Surgical ─────────────────────────────────────────────────────────────
     surg_results = (
         db.query(
@@ -309,6 +358,7 @@ def get_ihc_case_list(
             SurgicalSpecimen.specimen_name,
             AnatomicalPathologyTest.id.label("ap_test_id"),
             AnatomicalPathologyTest.name.label("marker_name"),
+            IHCResult.id.label("ihc_result_id"),
             IHCResult.selected_option,
             IHCResult.numeric_value,
         )
@@ -326,6 +376,7 @@ def get_ihc_case_list(
 
     surg_ap_ids = list({r.ap_test_id for r in surg_results})
     surg_option_map = _build_option_map(db, surg_ap_ids)
+    surg_extra_by_result = _build_extra_field_strings_by_result(db, [r.ihc_result_id for r in surg_results])
 
     # Collect latest signed diagnosis per specimen
     surg_diag_map: dict = {}
@@ -362,6 +413,8 @@ def get_ihc_case_list(
         label = _label_for(r.selected_option, r.ap_test_id, surg_option_map)
         if r.numeric_value is not None:
             label = f"{label} ({r.numeric_value})"
+        for extra_str in surg_extra_by_result.get(r.ihc_result_id, []):
+            label = f"{label}, {extra_str}"
         surg_specimen_map[key]["ihc"][r.marker_name] = label
         if r.marker_name not in surg_columns_seen:
             surg_columns_seen.add(r.marker_name)

@@ -477,6 +477,8 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     if not report:
         # ถ้ายังไม่มีรายงาน (เช่น กำลัง Preview) ให้ใช้ prepare_gyne_report_data เป็นฐาน
         data = prepare_gyne_report_data(db, case_id)
+        if not data:
+            return None
         # ปรับรูปแบบวันที่ให้พร้อมแสดงผล
         data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
         data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"

@@ -329,7 +329,7 @@ def _get_image_base64(image_url: str, max_width: int = 800) -> str | None:
         from PIL import Image
         import io
         storage_root = Path("uploads")
-        relative = image_url.lstrip("/storage/")
+        relative = image_url.removeprefix("/storage/")
         file_path = storage_root / relative
         if not file_path.exists():
             return None

@@ -68,6 +68,11 @@ class SlideStorageDetail(SlideStorageDetailBase):
     id: int
     run_id: int
     stored_at: datetime
+    # Overrides the base's required stain_id: this is a response (not
+    # request) context, and only one of stain_id/gyne_stain_id/
+    # nongyne_stain_id is ever populated on a given row (see
+    # app/models/slide_storage.py) — the other two stay NULL.
+    stain_id: Optional[int] = None
     stain: Optional[SlideShortInfo] = None
     gyne_stain: Optional[CytoStainShortInfo] = None
     nongyne_stain: Optional[CytoStainShortInfo] = None

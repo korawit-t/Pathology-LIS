@@ -339,7 +339,15 @@ def read_cases(
     is_express: Optional[bool] = Query(None),
     exclude_signed: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if not allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="No hospital assigned to this account")
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+
     return crud_case.get_cases(
         db,
         skip=skip,
@@ -348,6 +356,7 @@ def read_cases(
         pathologist_id=pathologist_id,
         status=status,
         hospital_id=hospital_id,
+        hospital_ids=list(allowed_hospital_ids) if (allowed_hospital_ids is not None and hospital_id is None) else None,
         medical_scheme_id=medical_scheme_id,
         has_gross_draft=has_gross_draft,
         is_out_lab_consult=is_out_lab_consult,
@@ -879,10 +888,11 @@ def read_surgical_slide_quality_stats(
 
 
 @router.get("/{case_id}", response_model=SurgicalCaseResponse)
-def read_case(case_id: int, db: Session = Depends(get_db)):
+def read_case(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_case = crud_case.get_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
     return db_case
 
 @router.get("/{case_id}/cost-summary", response_model=CostSummaryResponse)

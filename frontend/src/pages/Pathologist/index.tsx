@@ -22,10 +22,9 @@ import {
 
 const { Text } = Typography;
 import { useSurgicalCaseWorklist } from "./hooks/useCaseWorklist";
+import { useMyTatStatus } from "./hooks/useMyTatStatus";
 import SurgicalCaseWorklist, { WorklistRow } from "./SurgicalDiagnosisReportForm/SurgicalCaseWorklist";
 import type { User } from "../../types/user";
-import PathologistService from "../../services/pathologistService";
-import { calculateTATProgress } from "../../utils/tatUtils";
 import { CASE_STATUS } from "../../constants/lab.constants";
 import GyneCytoWorklist from "../GyneCytoDiagnosis/GyneCytoWorklist";
 import PathologistNongyneWorklist from "../NongyneCytoDiagnosis/PathologistNongyneWorklist";
@@ -60,8 +59,7 @@ const PathologistPage: React.FC<{
   const [pendingConsultCount, setPendingConsultCount] = useState(0);
   const [externalConsultCount, setExternalConsultCount] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
-  const [tatCases, setTatCases] = useState<(WorklistRow & { tatPercent: number; tatDisplay: string })[]>([]);
-  const [tatLoading, setTatLoading] = useState(false);
+  const { overdueCases: tatCases, loading: tatLoading } = useMyTatStatus(user?.id);
 
   const {
     filteredData,
@@ -84,27 +82,6 @@ const PathologistPage: React.FC<{
     refresh();
     setCytoRefreshTrigger((n) => n + 1);
   };
-
-  useEffect(() => {
-    if (activeTab !== "tat-overdue" || !user?.id || !systemSettings) return;
-    setTatLoading(true);
-    PathologistService.getMyWorklist(user.id, 0, 500, "", "ALL")
-      .then((data: any) => {
-        const items: WorklistRow[] = Array.isArray(data) ? data : (data.items ?? []);
-        const DONE_STATUSES = [CASE_STATUS.SIGNED_OUT, CASE_STATUS.ADDENDUM_SIGNED, CASE_STATUS.CANCELLED];
-        const overdue = items
-          .flatMap((row) => {
-            if (DONE_STATUSES.includes(row.status as typeof DONE_STATUSES[number])) return [];
-            const tat = calculateTATProgress(row.registered_at ?? "", "SURGICAL", systemSettings, row.is_express, holidays);
-            if (!tat?.isOverdue) return [];
-            return [{ ...row, tatPercent: tat.percent, tatDisplay: tat.displayTime }];
-          })
-          .sort((a, b) => b.tatPercent - a.tatPercent);
-        setTatCases(overdue);
-      })
-      .catch(() => {})
-      .finally(() => setTatLoading(false));
-  }, [activeTab, user?.id, systemSettings, holidays]);
 
   useEffect(() => {
     if (!user?.id) return;

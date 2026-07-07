@@ -27,7 +27,7 @@ from app.schemas.surgical_report import (
     SurgicalStatResponse,
     LabTechStatResponse,
 )
-from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids
+from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.models.surgical_report import SurgicalReport, ReportStatus
@@ -284,13 +284,19 @@ def read_report_history(
     size: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    from app.models.surgical_case import SurgicalCase
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     return get_reports_paginated(
         db, case_id=case_id, page=page, size=size, search=search
     )
 
 
-@router.post("/cases/{case_id}/preview-pdf")
+@router.post("/cases/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_REPORT)])
 def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db)):
     """
     API สำหรับดึง PDF Preview (ยังไม่บันทึกลง DB)
@@ -339,7 +345,7 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
     )
 
 
-@router.post("/cases/{case_id}/preview-data")
+@router.post("/cases/{case_id}/preview-data", dependencies=[Depends(CAN_READ_REPORT)])
 def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(get_db)):
     """
     ดึงข้อมูล JSON ที่รวมร่างแล้ว (Merge tags แล้ว) มาเช็คบน UI ก่อน Gen PDF
@@ -352,7 +358,9 @@ def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(g
 
 
 @router.get("/cases/{case_id}/latest/pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def get_latest_finalized_report_pdf(case_id: int, db: Session = Depends(get_db)):
+def get_latest_finalized_report_pdf(
+    case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Return the PDF of the most recently published report for a case."""
     from app.models.surgical_report import SurgicalReport, ReportStatus
 
@@ -367,6 +375,7 @@ def get_latest_finalized_report_pdf(case_id: int, db: Session = Depends(get_db))
     )
     if not report:
         raise HTTPException(status_code=404, detail="No published report found for this case")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
 
     report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
 
@@ -403,14 +412,16 @@ def get_latest_finalized_report_pdf(case_id: int, db: Session = Depends(get_db))
 
 @router.get("/{report_id}/pdf", dependencies=[Depends(CAN_READ_REPORT)])
 def get_historical_report_pdf(
-    report_id: int, 
+    report_id: int,
     with_barcode: bool = Query(False),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     # 1. ดึงข้อมูลจาก DB Snapshot
     report = get_report(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
 
     # 2. แปลงเป็น Dictionary
     report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
@@ -471,7 +482,7 @@ def get_historical_report_pdf(
     response_model=SurgicalReportResponse,
     dependencies=[Depends(CAN_READ_REPORT)],
 )
-def read_report_by_id(report_id: int, db: Session = Depends(get_db)):
+def read_report_by_id(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     ดึงข้อมูลรายงานฉบับเดียวด้วย report_id
     """
@@ -480,6 +491,7 @@ def read_report_by_id(report_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Report not found"
         )
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     return report
 
 

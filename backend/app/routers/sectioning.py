@@ -21,7 +21,7 @@ def create_run(obj_in: schemas.SectioningRunCreate, db: Session = Depends(get_db
 
 @router.get("/runs/{run_id}", response_model=schemas.SectioningRun)
 def read_run(run_id: int, db: Session = Depends(get_db)):
-    db_obj = crud.get_sectioning_run(db, run_id=run_id)
+    db_obj = crud.get_sectioning_run_detail(db, run_id=run_id)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Run not found")
     return db_obj
@@ -121,7 +121,7 @@ def create_run_batch(
 
 @router.get("/runs/{run_id}", response_model=schemas.SectioningRun)
 def read_run(run_id: int, db: Session = Depends(get_db)):
-    db_obj = crud.get_sectioning_run(db, run_id=run_id)  # CRUD ที่แก้ใหม่จะส่ง Block มาด้วย
+    db_obj = crud.get_sectioning_run_detail(db, run_id=run_id)  # CRUD ที่แก้ใหม่จะส่ง Block มาด้วย
     if not db_obj:
         raise HTTPException(status_code=404, detail="Run not found")
     return db_obj

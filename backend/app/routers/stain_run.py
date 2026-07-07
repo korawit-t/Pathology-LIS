@@ -7,7 +7,11 @@ from app.crud import stain_run as crud
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 
-router = APIRouter(prefix="/stain-runs", tags=["Stain Runs"])
+router = APIRouter(
+    prefix="/stain-runs",
+    tags=["Stain Runs"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("", response_model=StainRunResponse)

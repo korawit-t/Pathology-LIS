@@ -22,7 +22,11 @@ from app.schemas.gyne_cyto_stain import GyneStainRunCreate
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 
-router = APIRouter(prefix="/gyne-stains", tags=["Gyne Staining"])
+router = APIRouter(
+    prefix="/gyne-stains",
+    tags=["Gyne Staining"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # 1. ดึงคิวงานลงทะเบียนใหม่ (เพื่อจัด Batch)

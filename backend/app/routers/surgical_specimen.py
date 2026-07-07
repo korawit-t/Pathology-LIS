@@ -162,6 +162,7 @@ def update_specimen_api(
 @router.patch(
     "/{specimen_id}/additional-sections",
     response_model=SurgicalSpecimenResponse,
+    dependencies=[Depends(CAN_GROSS)],
 )
 def set_additional_sections(
     specimen_id: int,

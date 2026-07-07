@@ -23,7 +23,7 @@ from app.schemas.nongyne_cyto_report import (
     NongyneCytoReportPagination,
     NongyneReportSignerCreate,
 )
-from app.dependencies.auth import get_current_user, get_scoped_hospital_ids
+from app.dependencies.auth import get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_REPORT
@@ -112,7 +112,12 @@ def publish_report(
 
 
 @router.get("/cases/{case_id}", response_model=List[NongyneCytoReportResponse])
-def read_report_history(case_id: int, db: Session = Depends(get_db)):
+def read_report_history(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.nongyne_cyto_case import NongyneCytologyCase
+
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     return get_reports_by_case(db, case_id=case_id)
 
 
@@ -130,10 +135,11 @@ def read_pending_cosign_worklist_nongyne(
 
 
 @router.get("/{report_id}", response_model=NongyneCytoReportResponse)
-def read_report(report_id: int, db: Session = Depends(get_db)):
+def read_report(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     return report
 
 
@@ -170,10 +176,11 @@ def preview_report_pdf(
 
 
 @router.get("/{report_id}/pdf")
-def get_report_pdf(report_id: int, db: Session = Depends(get_db)):
+def get_report_pdf(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
 
     data = get_nongyne_snapshot_pdf_data(db, report)
 

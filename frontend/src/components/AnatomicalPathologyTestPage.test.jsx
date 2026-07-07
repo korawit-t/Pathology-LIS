@@ -337,7 +337,7 @@ describe("AnatomicalPathologyTestPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /Options/ }));
       const dialog = await findDialogByTitle(/IHC Options/);
 
-      fireEvent.click(within(dialog).getByText("เพิ่ม Extra Field"));
+      fireEvent.click(within(dialog).getByText("Add Extra Field"));
       fireEvent.change(within(dialog).getByPlaceholderText("e.g. Intensity"), { target: { value: "Intensity" } });
       fireEvent.change(within(dialog).getByPlaceholderText("e.g. intensity"), { target: { value: "intensity" } });
       fireEvent.click(within(dialog).getByRole("button", { name: "บันทึก" }));

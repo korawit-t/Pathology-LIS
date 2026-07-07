@@ -75,7 +75,7 @@ class StainResponse(StainBase):
 
 class StainShortResponse(BaseModel):
     id: int
-    test_id: int
+    test_id: Optional[int] = None
     status: str
     block_code: Optional[str] = None
     accession_no: Optional[str] = None

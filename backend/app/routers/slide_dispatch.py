@@ -13,7 +13,11 @@ from app.crud import slide_dispatch as crud
 from app.models.user import User
 from app.dependencies.auth import get_current_user
 
-router = APIRouter(prefix="/slide-dispatches", tags=["Slide Dispatch"])
+router = APIRouter(
+    prefix="/slide-dispatches",
+    tags=["Slide Dispatch"],
+    dependencies=[Depends(get_current_user)],
+)
 
 # --- 1. Endpoint สำหรับระบบ Scan บาร์โค้ด ---
 

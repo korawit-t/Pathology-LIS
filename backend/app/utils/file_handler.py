@@ -144,7 +144,7 @@ def delete_nongyne_image_local(image_url: str):
     import re
     if not re.fullmatch(r"/storage/nongyne_images/\d+/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
-    relative = image_url.lstrip("/storage/")
+    relative = image_url.removeprefix("/storage/")
     file_path = (STORAGE_ROOT / relative).resolve()
     storage_root_resolved = STORAGE_ROOT.resolve()
     if not file_path.is_relative_to(storage_root_resolved):
@@ -170,7 +170,7 @@ def delete_gyne_image_local(image_url: str):
     import re
     if not re.fullmatch(r"/storage/gyne_images/\d+/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
-    relative = image_url.lstrip("/storage/")
+    relative = image_url.removeprefix("/storage/")
     file_path = (STORAGE_ROOT / relative).resolve()
     storage_root_resolved = STORAGE_ROOT.resolve()
     if not file_path.is_relative_to(storage_root_resolved):
@@ -192,7 +192,7 @@ def delete_gross_image_local(image_url: str):
         raise ValueError(f"Invalid image_url format: {image_url}")
 
     # Strip the leading /storage prefix and resolve against STORAGE_ROOT
-    relative = image_url.lstrip("/storage/")
+    relative = image_url.removeprefix("/storage/")
     file_path = (STORAGE_ROOT / relative).resolve()
 
     # Ensure the resolved path stays inside STORAGE_ROOT

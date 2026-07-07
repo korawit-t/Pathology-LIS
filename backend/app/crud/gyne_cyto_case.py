@@ -112,6 +112,7 @@ def get_gyne_cases(
     exclude_signed_by: int = None,
     signed_by: int = None,
     hospital_id: int = None,
+    hospital_ids: list = None,
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
     has_out_lab_result: bool = None,
@@ -200,6 +201,8 @@ def get_gyne_cases(
 
     if hospital_id is not None:
         query = query.filter(GyneCytologyCase.hospital_id == hospital_id)
+    elif hospital_ids is not None:
+        query = query.filter(GyneCytologyCase.hospital_id.in_(hospital_ids))
 
     if is_out_lab_consult is not None:
         query = query.filter(GyneCytologyCase.is_out_lab_consult == is_out_lab_consult)

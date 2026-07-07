@@ -63,6 +63,31 @@ See [TERMS_OF_USE.md](./TERMS_OF_USE.md) for the full liability disclaimer.
 
 ## Changelog
 
+### 2026-07-07
+
+Found while writing HTTP-level test coverage for all backend routers (a broader audit than a targeted security review, but it surfaced the same bug class as the 2026-07-05 findings below):
+
+| Severity | Category | Component | Fix |
+|----------|----------|-----------|-----|
+| Critical | Authorization Bypass / PHI Exposure | `backend/app/routers/legacy_reports.py` | Every endpoint (unified search across all case types, and per-type list/get/pdf/mark-read for surgical/gyne/nongyne) had no auth dependency at all — reachable by anyone with no login, exposing historical patient report data (name, HN, diagnosis-adjacent fields). Added `CAN_READ_REPORT`/`CAN_READ_GYNE_CYTO_REPORT`/`CAN_READ_NONGYNE_CYTO_REPORT` per case-type group, matching each type's live-report router; mark-read routes got `get_current_user` only, matching how the live-report routers' own mark-read is intentionally looser than their read-gate. The one endpoint commented "Public unified search (for ResultPage / HospitalResultPage)" turned out to have zero callers in the frontend — dead code, not an intentional public feature; both pages are already behind `ProtectedRoute`. |
+| High | Authorization Bypass | `backend/app/routers/surgical_report.py` | `preview_report_pdf`/`preview_report_data_api` had no dependency at all, unlike every other route in the file (including the "final" PDF endpoint two lines below) — added `CAN_READ_REPORT` to match. |
+| Medium | Authorization Bypass | `backend/app/routers/gyne_cyto_stain.py`, `nongyne_cyto_stain.py` | Most endpoints (queues, create, update, run listing) had no auth dependency; only the batch-run/print-stickers endpoints did (one inline-commented "👈 ถ้ามีระบบ Auth" / "if there's an auth system", suggesting ad hoc application rather than deliberate design). Added router-level `get_current_user` to close the gap uniformly. |
+| Medium | Authorization Bypass | `backend/app/routers/stain_run.py` | `list_runs`/`get_run`/`update_status` had no auth dependency; only `create_run` did. Added router-level `get_current_user`. |
+| Medium | Authorization Bypass | `backend/app/routers/slide_dispatch.py` | `read_dispatches` had no auth dependency, unlike its 3 siblings in the same file. Added router-level `get_current_user`. |
+
+Follow-up same day, prompted by a direct OWASP Top 10 #1 review request: the fixes above (and the 2026-07-05 role-gate fixes) confirmed each endpoint requires *a* valid role, but didn't check whether an external-facing account (`clinician`/`hospital`, scoped to specific hospitals via `User.hospitals`) was reading a resource *outside* their assigned hospitals — an IDOR gap distinct from missing auth. `app/dependencies/auth.py`'s `assert_hospital_scoped_access`/`get_scoped_hospital_ids` (already used correctly by `storage.py`, the request-files/consult-pdf endpoints, and the `/archive`/`/search-public`/`/hospital-cases` endpoints per 2026-07-05) had never been applied to the *primary* read paths:
+
+| Severity | Category | Component | Fix |
+|----------|----------|-----------|-----|
+| Medium | Insecure Direct Object Reference | `backend/app/routers/surgical_report.py`, `gyne_cyto_report.py`, `nongyne_cyto_report.py` | The report-by-id, report-pdf, and report-history (by case_id) endpoints in all three files fetched and returned/streamed the resource with no hospital check — an external account could read any hospital's report snapshot by incrementing the id. Added `assert_hospital_scoped_access(current_user, report.hospital_id)` (or the case's, for the by-case_id history routes) right after the existing not-found check, mirroring the exact pattern already used on `surgical_case.py`'s request-files endpoints. |
+| Medium | Insecure Direct Object Reference | `backend/app/routers/legacy_reports.py` | Same gap on all 6 `get_legacy_*`/`get_legacy_*_pdf` routes, using each legacy model's own `hospital_id` snapshot column. |
+| Medium | Insecure Direct Object Reference | `backend/app/routers/surgical_case.py`, `gyne_cyto_case.py`, `nongyne_cyto_case.py` | Two gaps per file: (1) the main case-detail `GET /{case_id}` had no hospital check at all (only `gyne`/`nongyne` even had a role check beyond login); (2) the case-list endpoints' `hospital_id` query param was an unrestricted client-supplied filter, never intersected with the caller's own assigned hospitals — omitting it returned every hospital's cases, and supplying one just filtered to whatever the caller chose. Fixed the detail endpoints the same way as the report routers; fixed the list endpoints by resolving `get_scoped_hospital_ids` and either 403ing on an out-of-scope explicit `hospital_id`, or restricting the query to the caller's allowed set via a new `hospital_ids: list` param added to `get_cases`/`get_gyne_cases`/`get_nongyne_cases` (mirroring the naming already used by `search_public_cases_with_latest_report` in the same crud module) when no explicit `hospital_id` was given. |
+| Medium | Authorization Bypass | `backend/app/routers/surgical_specimen.py` | `set_additional_sections` had no role gate at all beyond login, unlike every sibling route in the file (`CAN_GROSS`) — added the same `CAN_GROSS` dependency, which already excludes `clinician`/`hospital`, closing the gap without needing new hospital-scoping code in this file. |
+
+Regression tests added to the existing `test_hospital_scoping_router.py` (25 new tests across 7 new classes, reusing its established `_make_clinician_at_hospital(s)` helper).
+
+All five were confirmed as accidental gaps, not intentional public-access design, before fixing: every consuming frontend page is already gated behind `ProtectedRoute`/login, so this is pure defense-in-depth with no user-facing behavior change. Regression tests updated in `test_legacy_reports_router.py`, `test_surgical_report_router.py`, `test_gyne_cyto_stain_router.py`, `test_nongyne_cyto_stain_router.py`, `test_stain_run_router.py`, `test_slide_dispatch_router.py`.
+
 ### 2026-07-06
 
 | Severity | Category | Component | Fix |

@@ -17,7 +17,7 @@ from app.schemas.nongyne_cyto_case import (
 )
 from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
-from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
+from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.user import User
@@ -72,6 +72,13 @@ def read_cases(
 ):
     assigned_user_id = current_user.id if assigned_to_me else None
 
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if not allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="No hospital assigned to this account")
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+
     return crud.get_nongyne_cases(
         db=db,
         skip=skip,
@@ -82,6 +89,7 @@ def read_cases(
         signer_id=signer_id,
         exclude_signed_by=exclude_signed_by,
         hospital_id=hospital_id,
+        hospital_ids=list(allowed_hospital_ids) if (allowed_hospital_ids is not None and hospital_id is None) else None,
         medical_scheme_id=medical_scheme_id,
         is_out_lab_consult=is_out_lab_consult,
         consult_status=consult_status,
@@ -227,10 +235,11 @@ def get_nongyne_tat_stats(
 
 
 @router.get("/{case_id}", response_model=NongyneCytologyCaseResponse)
-def read_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def read_case(case_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     db_case = crud.get_nongyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ไม่พบข้อมูลเคส")
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
     return db_case
 
 

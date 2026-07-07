@@ -7,9 +7,22 @@ pin down both the surgical and non-gyne branches independently."""
 
 from datetime import date, timedelta
 
-from app.crud.ihc import upsert_result, create_option
+from app.crud.ihc import (
+    upsert_result,
+    create_option,
+    create_extra_field,
+    create_extra_field_option,
+    upsert_extra_value,
+)
 from app.crud.nongyne_ihc import upsert_nongyne_result
-from app.schemas.ihc import IHCResultUpsert, NongyneIHCResultUpsert, IHCMarkerOptionCreate
+from app.schemas.ihc import (
+    IHCResultUpsert,
+    NongyneIHCResultUpsert,
+    IHCMarkerOptionCreate,
+    IHCMarkerExtraFieldCreate,
+    IHCMarkerExtraFieldOptionCreate,
+    IHCResultExtraValueUpsert,
+)
 
 from tests.factories import (
     make_signable_case,
@@ -110,6 +123,53 @@ class TestIHCCaseList:
         assert "ER-CaseList" in surgical["columns"]
         row = next(r for r in surgical["rows"] if r["accession_no"] == case.accession_no)
         assert row["ihc"]["ER-CaseList"] == "Positive (31-40)"
+
+    def test_surgical_cell_composes_extra_field_values_alongside_the_primary_pick(self, db, admin_client, admin_user):
+        """Case-list should read the same way generate_ihc_text's report line does:
+        primary pick + percentage + each extra field's resolved value."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        ihc_test = make_anatomical_pathology_test(db, category="IHC", name="ER-Extra-CaseList")
+        create_option(db, IHCMarkerOptionCreate(
+            ap_test_id=ihc_test.id, option_label="Positive", option_value="positive",
+        ))
+        field = create_extra_field(db, IHCMarkerExtraFieldCreate(
+            ap_test_id=ihc_test.id, field_key="intensity", label="Intensity", field_type="select",
+        ))
+        create_extra_field_option(db, field.id, IHCMarkerExtraFieldOptionCreate(
+            option_label="Strong (3+)", option_value="3+",
+        ))
+        upsert_result(db, IHCResultUpsert(
+            surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id,
+            selected_option="positive", numeric_value="91-100",
+        ))
+        upsert_extra_value(db, IHCResultExtraValueUpsert(
+            surgical_specimen_id=specimen.id, field_id=field.id, value="3+",
+        ))
+
+        res = admin_client.get("/ihc/case-list", params={"start_date": YESTERDAY, "end_date": TOMORROW})
+
+        row = next(r for r in res.json()["surgical"]["rows"] if r["accession_no"] == case.accession_no)
+        assert row["ihc"]["ER-Extra-CaseList"] == "Positive (91-100), Intensity: Strong (3+)"
+
+    def test_surgical_cell_ignores_unset_extra_fields(self, db, admin_client, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        ihc_test = make_anatomical_pathology_test(db, category="IHC", name="ER-NoExtra-CaseList")
+        create_option(db, IHCMarkerOptionCreate(
+            ap_test_id=ihc_test.id, option_label="Positive", option_value="positive",
+        ))
+        create_extra_field(db, IHCMarkerExtraFieldCreate(
+            ap_test_id=ihc_test.id, field_key="intensity", label="Intensity", field_type="select",
+        ))
+        upsert_result(db, IHCResultUpsert(
+            surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id, selected_option="positive",
+        ))
+
+        res = admin_client.get("/ihc/case-list", params={"start_date": YESTERDAY, "end_date": TOMORROW})
+
+        row = next(r for r in res.json()["surgical"]["rows"] if r["accession_no"] == case.accession_no)
+        assert row["ihc"]["ER-NoExtra-CaseList"] == "Positive"
 
     def test_nongyne_numeric_value_still_uses_float_g_formatting(self, db, admin_client, admin_user):
         """Nongyne's numeric_value column was intentionally left as Float (out

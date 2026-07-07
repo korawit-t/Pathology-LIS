@@ -99,6 +99,7 @@ def get_cases(
     pathologist_id: int = None,
     status: any = None,
     hospital_id: int = None,
+    hospital_ids: list = None,
     medical_scheme_id: int = None,
     has_gross_draft: bool = None,
     is_out_lab_consult: bool = None,
@@ -147,6 +148,8 @@ def get_cases(
     # 4. กรองตาม Hospital
     if hospital_id is not None:
         query = query.filter(SurgicalCase.hospital_id == hospital_id)
+    elif hospital_ids is not None:
+        query = query.filter(SurgicalCase.hospital_id.in_(hospital_ids))
 
     if medical_scheme_id is not None:
         query = query.filter(SurgicalCase.medical_scheme_id == medical_scheme_id)

@@ -10,7 +10,7 @@ import {
 } from "@ant-design/icons";
 import { useTheme } from "../../contexts/ThemeContext";
 import { usePathologistStats } from "./PendingTask/Pathologist/hooks/usePathologistStats";
-import { useDashboardSummary } from "./hooks/useDashboardSummary";
+import { useMyTatStatus } from "../Pathologist/hooks/useMyTatStatus";
 import { UI_COLOR, WORKFLOW_COLOR } from "../../constants/theme";
 import type { User } from "../../types/user";
 
@@ -76,7 +76,7 @@ const CSS = `
 const PathologistDashboard: React.FC<Props> = ({ user, onNavigate }) => {
   const { isDarkMode } = useTheme();
   const { stats, loading: statsLoading } = usePathologistStats(user?.id);
-  const { summary } = useDashboardSummary();
+  const { overdueByStatus, warningByStatus, totalOverdue, totalWarning } = useMyTatStatus(user?.id);
 
   const nav = (v: string) => onNavigate?.(v);
   const hue = (name: keyof typeof CATEGORICAL) => CATEGORICAL[name][isDarkMode ? "dark" : "light"];
@@ -84,11 +84,6 @@ const PathologistDashboard: React.FC<Props> = ({ user, onNavigate }) => {
   const inkPrimary = isDarkMode ? "#ffffff" : "#0b0b0b";
   const inkSecondary = isDarkMode ? "#c3c2b7" : "#52514e";
   const inkMuted = "#898781";
-
-  const overdueByStatus = summary.tat_overdue.by_status;
-  const warningByStatus = summary.tat_warning.by_status;
-  const totalOverdue = summary.tat_overdue.total;
-  const totalWarning = summary.tat_warning.total;
 
   const totalPending =
     stats.pendingDiagnosis + stats.pendingGross +

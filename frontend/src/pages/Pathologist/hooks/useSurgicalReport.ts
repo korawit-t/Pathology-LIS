@@ -307,7 +307,7 @@ export const useSurgicalReport = (
       Modal.confirm({
         title: "Confirm Switch to Individual",
         content:
-          "คุณพิมพ์คำวินิจฉัยค้างอยู่ในโหมด Integrated/Clean หากบันทึกแบบแยกชิ้น ข้อมูลที่คุณพิมพ์ค้างอยู่ในช่องพิมพ์ล่าสุดจะถูกลบ ยืนยันหรือไม่?",
+          "You have saved diagnosis text in Integrated/Clean mode. Saving as Individual will clear that text. Continue?",
         onOk: () => proceedWithSave(mode),
       });
       return;
@@ -318,7 +318,7 @@ export const useSurgicalReport = (
       Modal.confirm({
         title: "Confirm Switch to Combined Mode",
         content:
-          "คุณพิมพ์ Diagnosis ค้างในโหมดแยกชิ้น (Individual) หากบันทึกแบบรวม ข้อมูล Diagnosis ที่พิมพ์ค้างอยู่ในช่องพิมพ์ล่าสุดจะถูกลบ ยืนยันหรือไม่?",
+          "You have saved diagnosis text in Individual mode. Saving as Combined will clear that text. Continue?",
         onOk: () => proceedWithSave(mode),
       });
       return;

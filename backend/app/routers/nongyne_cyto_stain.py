@@ -22,7 +22,11 @@ from app.schemas.nongyne_cyto_stain import NongyneStainRunCreate
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 
-router = APIRouter(prefix="/nongyne-stains", tags=["Nongyne Staining"])
+router = APIRouter(
+    prefix="/nongyne-stains",
+    tags=["Nongyne Staining"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # 1. ดึงคิวงานลงทะเบียนใหม่ (เพื่อจัด Batch)

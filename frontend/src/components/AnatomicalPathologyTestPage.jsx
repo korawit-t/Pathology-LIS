@@ -194,13 +194,13 @@ const AnatomicalPathologyTestPage = () => {
         message.success("Option updated successfully");
       } else {
         await IHCService.createOption(ihcTestId, { ...values, ap_test_id: ihcTestId, display_order: ihcOptions.length });
-        message.success("เพิ่ม option สำเร็จ");
+        message.success("Option added successfully");
       }
       closeIHCOptionForm();
       const opts = await IHCService.getOptions(ihcTestId);
       setIhcOptions(opts);
     } catch {
-      message.error(ihcEditingOptionId ? "Failed to update option" : "เพิ่ม option ไม่สำเร็จ");
+      message.error(ihcEditingOptionId ? "Failed to update option" : "Failed to add option");
     }
   };
 
@@ -253,12 +253,12 @@ const AnatomicalPathologyTestPage = () => {
           ap_test_id: ihcTestId,
           display_order: ihcExtraFields.length,
         });
-        message.success("เพิ่ม Extra Field สำเร็จ");
+        message.success("Extra Field added successfully");
       }
       closeExtraFieldForm();
       loadIhcExtraFields(ihcTestId);
     } catch {
-      message.error(ihcEditingFieldId ? "Failed to update Extra Field" : "เพิ่ม Extra Field ไม่สำเร็จ");
+      message.error(ihcEditingFieldId ? "Failed to update Extra Field" : "Failed to add Extra Field");
     }
   };
 
@@ -580,7 +580,7 @@ const AnatomicalPathologyTestPage = () => {
             onClick={() => setIhcExtraFieldAddVisible(true)}
             block
           >
-            เพิ่ม Extra Field
+            Add Extra Field
           </Button>
         ) : (
           <Form form={ihcExtraFieldAddForm} layout="vertical" onFinish={handleIHCAddExtraField}>

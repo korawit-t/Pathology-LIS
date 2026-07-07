@@ -123,6 +123,7 @@ def get_nongyne_cases(
     signer_id: int = None,
     exclude_signed_by: int = None,
     hospital_id: int = None,
+    hospital_ids: list = None,
     medical_scheme_id: int = None,
     is_out_lab_consult: bool = None,
     consult_status: str = None,
@@ -188,6 +189,8 @@ def get_nongyne_cases(
 
     if hospital_id is not None:
         query = query.filter(NongyneCytologyCase.hospital_id == hospital_id)
+    elif hospital_ids is not None:
+        query = query.filter(NongyneCytologyCase.hospital_id.in_(hospital_ids))
 
     if medical_scheme_id is not None:
         query = query.filter(NongyneCytologyCase.medical_scheme_id == medical_scheme_id)

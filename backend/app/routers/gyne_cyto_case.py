@@ -17,7 +17,7 @@ from app.schemas.gyne_cyto_case import (
 )
 from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
-from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
+from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
@@ -76,6 +76,13 @@ def read_cases(
 ):
     resolved_user_id = current_user.id if assigned_to_me else assigned_user_id
 
+    allowed_hospital_ids = get_scoped_hospital_ids(current_user)
+    if allowed_hospital_ids is not None:
+        if not allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="No hospital assigned to this account")
+        if hospital_id is not None and hospital_id not in allowed_hospital_ids:
+            raise HTTPException(status_code=403, detail="Access denied.")
+
     return crud.get_gyne_cases(
         db=db,
         skip=skip,
@@ -89,6 +96,7 @@ def read_cases(
         signed_by=signed_by,
         is_reviewed=is_reviewed,
         hospital_id=hospital_id,
+        hospital_ids=list(allowed_hospital_ids) if (allowed_hospital_ids is not None and hospital_id is None) else None,
         is_out_lab_consult=is_out_lab_consult,
         is_out_lab=is_out_lab,
         has_out_lab_result=has_out_lab_result,
@@ -289,10 +297,11 @@ def get_gyne_tat_stats(
 
 
 @router.get("/{case_id}", response_model=GyneCytologyCaseResponse)
-def read_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def read_case(case_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ไม่พบข้อมูลเคส")
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
     return db_case
 
 

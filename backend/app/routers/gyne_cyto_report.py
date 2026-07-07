@@ -24,7 +24,7 @@ from app.core.roles import (
     CAN_WRITE_GYNE_CYTO_REPORT,
     CAN_READ_GYNE_CYTO_REPORT
 )
-from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids
+from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
 from pydantic import BaseModel
 from datetime import datetime
 from app.utils.time import local_now
@@ -122,8 +122,13 @@ def publish_report(
     response_model=List[GyneCytoReportResponse],
     dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)]
 )
-def read_report_history(case_id: int, db: Session = Depends(get_db)):
+def read_report_history(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ดึงประวัติรายงานของเคส"""
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     return get_reports_by_case(db, case_id=case_id)
 
 
@@ -149,11 +154,12 @@ def read_pending_cosign_worklist_gyne(
     response_model=GyneCytoReportResponse,
     dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)]
 )
-def read_report(report_id: int, db: Session = Depends(get_db)):
+def read_report(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ดึงข้อมูลรายงานฉบับเดียว"""
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     return report
 
 
@@ -198,11 +204,12 @@ def preview_report_data(case_id: int, db: Session = Depends(get_db)):
 from fastapi.responses import StreamingResponse
 
 @router.get("/{report_id}/pdf", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def get_report_pdf(report_id: int, db: Session = Depends(get_db)):
+def get_report_pdf(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ดาวน์โหลดรายงาน PDF"""
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
 
     from app.crud.gyne_cyto_report import get_gyne_report_pdf
     pdf_blob = get_gyne_report_pdf(db, case_id=report.case_id, is_preview=False, report_id=report_id)
