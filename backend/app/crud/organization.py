@@ -51,6 +51,16 @@ def update_hospital(db: Session, hospital_id: int, hospital_data: HospitalUpdate
     return db_hospital
 
 
+def update_hospital_logo(db: Session, hospital_id: int, logo_path: str):
+    db_hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not db_hospital:
+        return None
+    db_hospital.logo_path = logo_path
+    db.commit()
+    db.refresh(db_hospital)
+    return db_hospital
+
+
 def delete_hospital(db: Session, hospital_id: int):
     db_hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
     if db_hospital:
@@ -58,6 +68,26 @@ def delete_hospital(db: Session, hospital_id: int):
         db.commit()
         return True
     return False
+
+
+def resolve_lab_header(hospital: Hospital | None, settings) -> tuple[str, str, str | None]:
+    """(name_en, address, logo_relative_path) for the report header — the referring
+    hospital's own branding when it has use_custom_report_header set, else the master
+    SystemSetting's branding."""
+    if hospital and hospital.use_custom_report_header:
+        name = hospital.report_name_en or hospital.name
+        return name, hospital.address or "", hospital.logo_path
+    name = (settings.lab_name_en or settings.lab_name_th) if settings else "Laboratory Name"
+    address = settings.lab_address if settings else ""
+    return name, address, (settings.report_logo_url if settings else None)
+
+
+def resolve_lab_short_name(hospital: Hospital | None, settings) -> str:
+    """Short lab code stamped on slide/block stickers — the referring hospital's own
+    short name when it has use_custom_report_header set, else the master SystemSetting's."""
+    if hospital and hospital.use_custom_report_header:
+        return hospital.report_short_name_en or hospital.name or ""
+    return (settings.lab_short_name_en or "") if settings else ""
 
 
 # --- Position CRUD ---

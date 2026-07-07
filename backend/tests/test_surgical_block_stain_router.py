@@ -9,7 +9,12 @@ re-verifying PDF layout)."""
 from app.crud.surgical_block import create_block
 from app.schemas.surgical_block import SurgicalBlockCreate
 
-from tests.factories import make_signable_case, make_anatomical_pathology_test, make_system_setting
+from tests.factories import (
+    make_signable_case,
+    make_anatomical_pathology_test,
+    make_system_setting,
+    make_hospital,
+)
 
 
 def _make_block(db, specimen_id):
@@ -114,6 +119,34 @@ class TestPrintHeQuick:
     def test_missing_stain_ids_returns_404(self, pathologist_client):
         r = pathologist_client.post("/surgical-block-stains/print-he-quick", json={"stain_ids": [999999]})
         assert r.status_code == 404
+
+    def test_sticker_uses_hospital_short_name_when_overridden(self, db, pathologist_client, admin_user, monkeypatch):
+        make_system_setting(db, lab_short_name_en="MASTER-LAB")
+        hospital = make_hospital(db)
+        hospital.use_custom_report_header = True
+        hospital.report_short_name_en = "HOSP-B"
+        db.commit()
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id, hospital=hospital)
+        block = _make_block(db, specimen.id)
+        test = make_anatomical_pathology_test(db, category="IHC", system_code="ROUTER_STAIN_TEST_HOSP")
+        created = pathologist_client.post(
+            "/surgical-block-stains", json={"block_id": block.id, "test_id": test.id, "slide_no": 1},
+        ).json()
+
+        captured = {}
+
+        def fake_generate(print_data, **kwargs):
+            captured["print_data"] = print_data
+            return b"%PDF-fake"
+
+        import app.routers.surgical_block_stain as router_module
+        monkeypatch.setattr(router_module, "generate_slide_sticker_pdf", fake_generate)
+
+        r = pathologist_client.post("/surgical-block-stains/print-he-quick", json={"stain_ids": [created["id"]]})
+
+        assert r.status_code == 200
+        assert captured["print_data"][0]["hospital_code"] == "HOSP-B"
 
 
 def test_requires_authentication(client):

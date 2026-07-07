@@ -19,6 +19,9 @@ class Hospital(Base):
     code = Column(String, unique=True, nullable=True)  # e.g. H001
     address = Column(String, nullable=True)
     logo_path = Column(String, nullable=True)  # เก็บ path รูปโลโก้ รพ. ไว้โชว์ใน report
+    use_custom_report_header = Column(Boolean, nullable=False, default=False)
+    report_name_en = Column(String, nullable=True)  # Laboratory Name (EN) for the report header — falls back to `name`
+    report_short_name_en = Column(String, nullable=True)  # Short Name (EN) for slide stickers — falls back to `name`
 
     surgical_cases = relationship("SurgicalCase", back_populates="hospital")
 

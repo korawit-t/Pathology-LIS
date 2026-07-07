@@ -9,6 +9,9 @@ class HospitalBase(BaseModel):
     name: str
     code: Optional[str] = None
     address: Optional[str] = None
+    use_custom_report_header: bool = False
+    report_name_en: Optional[str] = None
+    report_short_name_en: Optional[str] = None
 
 
 class HospitalCreate(HospitalBase):
@@ -17,10 +20,12 @@ class HospitalCreate(HospitalBase):
 
 class HospitalUpdate(HospitalBase):
     name: Optional[str] = None
+    use_custom_report_header: Optional[bool] = None
 
 
 class HospitalResponse(HospitalBase):
     id: int
+    logo_path: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

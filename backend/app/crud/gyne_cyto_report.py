@@ -11,6 +11,7 @@ from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
 from app.models.organization import Hospital
+from app.crud.organization import resolve_lab_header
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException
 from app.services import pdf_service
@@ -483,7 +484,7 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
         data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
         data["cytology_images"] = _embed_case_images(db, case_id)
-        _enrich_gyne_settings_snapshot(data, db)
+        _enrich_gyne_settings_snapshot(data, db, case_id)
         return data
 
     # ถ้ามีรายงานแล้ว ให้แปลงเป็นดิคชันนารี
@@ -524,39 +525,40 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
     data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
     
-    _enrich_gyne_settings_snapshot(data, db)
+    _enrich_gyne_settings_snapshot(data, db, case_id)
 
     data["cytology_images"] = _embed_case_images(db, case_id)
     return data
 
 
-def _enrich_gyne_settings_snapshot(data: dict, db: Session) -> dict:
-    """Add lab name/address/footer/logo snapshot fields from current SystemSetting.
+def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dict:
+    """Add lab name/address/footer/logo snapshot fields — from the case's hospital when
+    it has use_custom_report_header, else from the current master SystemSetting.
     Shared by both the live-preview (no report yet) and existing-report code paths."""
     settings = db.query(SystemSetting).first()
-    if settings:
-        data["lab_name_en_snapshot"] = settings.lab_name_en or settings.lab_name_th or ""
-        data["lab_address_snapshot"] = settings.lab_address or ""
-        data["report_footer_snapshot"] = settings.gyne_report_footer or settings.report_footer_text or ""
-        if settings.report_logo_url:
-            try:
-                storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
-                full_path = storage_root / settings.report_logo_url.removeprefix("/storage/")
-                if full_path.exists():
-                    with open(full_path, "rb") as f:
-                        encoded = base64.b64encode(f.read()).decode("utf-8")
-                        ext = full_path.suffix.lower().lstrip(".")
-                        data["report_logo_url_snapshot"] = f"data:image/{ext};base64,{encoded}"
-                else:
-                    data.setdefault("report_logo_url_snapshot", None)
-            except Exception:
+    db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    hospital = db_case.hospital if db_case else None
+
+    name_en, address, logo_url = resolve_lab_header(hospital, settings)
+    data["lab_name_en_snapshot"] = name_en
+    data["lab_address_snapshot"] = address
+    data["report_footer_snapshot"] = (
+        (settings.gyne_report_footer or settings.report_footer_text or "") if settings else ""
+    )
+    if logo_url:
+        try:
+            storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
+            full_path = storage_root / logo_url.removeprefix("/storage/")
+            if full_path.exists():
+                with open(full_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                    ext = full_path.suffix.lower().lstrip(".")
+                    data["report_logo_url_snapshot"] = f"data:image/{ext};base64,{encoded}"
+            else:
                 data.setdefault("report_logo_url_snapshot", None)
-        else:
+        except Exception:
             data.setdefault("report_logo_url_snapshot", None)
     else:
-        data.setdefault("lab_name_en_snapshot", "")
-        data.setdefault("lab_address_snapshot", "")
-        data.setdefault("report_footer_snapshot", "")
         data.setdefault("report_logo_url_snapshot", None)
     return data
 

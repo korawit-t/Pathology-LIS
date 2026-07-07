@@ -45,14 +45,11 @@ describe("CaseViewTab", () => {
       }),
     ]);
     render(<CaseViewTab refreshTrigger={0} />);
-    await waitFor(() => expect(screen.getByText("3 stain item(s) total")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("3 stain item(s)")).toBeInTheDocument());
 
-    // The accession_no column merges same-accession rows via rowSpan (so
-    // "S26-00002" is only rendered once as a cell, spanning both its rows) —
-    // confirm grouping worked (2 distinct accession cells, not 3 rows'
-    // worth) and that the row order within a group is by block_code.
+    // Confirm rows are ordered by accession_no then block_code.
     const accessionCells = screen.getAllByText(/S26-0000\d/).map((el) => el.textContent);
-    expect(accessionCells).toEqual(["S26-00001", "S26-00002"]);
+    expect(accessionCells).toEqual(["S26-00001", "S26-00002", "S26-00002"]);
 
     const blockCells = screen.getAllByText(/^A\d$/).map((el) => el.textContent);
     expect(blockCells).toEqual(["A1", "A1", "A2"]); // S26-00001/A1, S26-00002/A1, S26-00002/A2
@@ -70,13 +67,13 @@ describe("CaseViewTab", () => {
       run({ details: [detail({ id: 1, accession_no: "S26-00001" }), detail({ id: 2, accession_no: "S26-00002" })] }),
     ]);
     render(<CaseViewTab refreshTrigger={0} />);
-    await waitFor(() => expect(screen.getByText("2 stain item(s) total")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("2 stain item(s)")).toBeInTheDocument());
 
     fireEvent.change(screen.getByPlaceholderText("Search by Accession No., HN, or Patient name"), {
       target: { value: "Somchai" },
     });
 
-    await waitFor(() => expect(screen.getByText("1 stain item(s) total")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("1 stain item(s)")).toBeInTheDocument());
     expect(screen.getByText("S26-00002")).toBeInTheDocument();
     expect(screen.queryByText("S26-00001")).not.toBeInTheDocument();
   });
@@ -86,7 +83,10 @@ describe("CaseViewTab", () => {
       run({ details: [detail({ id: 1, received_at: "2026-01-11T00:00:00Z" })] }),
     ]);
     render(<CaseViewTab refreshTrigger={0} />);
-    await waitFor(() => expect(screen.getByText("1 stain item(s) total")).toBeInTheDocument());
+    // Default view is "Unreceived", which hides this already-received row — switch to "All" to see it.
+    await waitFor(() => expect(screen.getByText(/^All \(\d+\)$/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/^All \(\d+\)$/));
+    await waitFor(() => expect(screen.getByText("1 stain item(s)")).toBeInTheDocument());
 
     const rowCheckbox = screen.getAllByRole("checkbox")[1]; // [0] = select-all header
     expect(rowCheckbox).toBeDisabled();
@@ -99,7 +99,7 @@ describe("CaseViewTab", () => {
     ]);
     SurgicalBlockStainService.receiveOutlabRunDetails.mockResolvedValue({});
     render(<CaseViewTab refreshTrigger={0} />);
-    await waitFor(() => expect(screen.getByText("2 stain item(s) total")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("2 stain item(s)")).toBeInTheDocument());
 
     fireEvent.click(screen.getAllByRole("checkbox")[0]); // select-all header checkbox
     fireEvent.click(screen.getByRole("button", { name: /Receive selected \(2\)/i }));
@@ -118,7 +118,7 @@ describe("CaseViewTab", () => {
       runId === 1 ? Promise.resolve({}) : Promise.reject(new Error("network error")),
     );
     render(<CaseViewTab refreshTrigger={0} />);
-    await waitFor(() => expect(screen.getByText("2 stain item(s) total")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("2 stain item(s)")).toBeInTheDocument());
 
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /Receive selected \(2\)/i }));

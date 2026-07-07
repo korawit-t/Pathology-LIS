@@ -12,7 +12,12 @@ authentication. Fixed by adding `dependencies=[Depends(get_current_user)]`
 at the router level, matching the "any authenticated user" bar
 `POST /runs`/`GET /runs/{run_id}/print-stickers` already required."""
 
-from tests.factories import make_bare_gyne_case, make_anatomical_pathology_test, make_system_setting
+from tests.factories import (
+    make_bare_gyne_case,
+    make_anatomical_pathology_test,
+    make_system_setting,
+    make_hospital,
+)
 
 
 class TestNowRequireAuthentication:
@@ -107,3 +112,33 @@ class TestCreateRunAndPrintStickers:
 
     def test_print_stickers_missing_run_returns_404(self, pathologist_client):
         assert pathologist_client.get("/gyne-stains/runs/999999/print-stickers").status_code == 404
+
+    def test_sticker_uses_hospital_short_name_when_overridden(self, db, pathologist_client, admin_user, monkeypatch):
+        make_system_setting(db, lab_short_name_en="MASTER-LAB")
+        hospital = make_hospital(db)
+        hospital.use_custom_report_header = True
+        hospital.report_short_name_en = "HOSP-B"
+        db.commit()
+        registrar, _ = admin_user
+        case = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hospital)
+        ap_test = make_anatomical_pathology_test(db)
+        stain = pathologist_client.post(
+            "/gyne-stains", json={"case_id": case.id, "test_id": ap_test.id, "slide_no": 1}
+        ).json()
+        run = pathologist_client.post(
+            "/gyne-stains/runs", json={"stainer_id": "ST-1", "stain_ids": [stain["id"]], "run_name": "RUN-GYNE-HOSP"}
+        ).json()
+
+        captured = {}
+
+        def fake_generate(print_data, **kwargs):
+            captured["print_data"] = print_data
+            return b"%PDF-fake"
+
+        import app.routers.gyne_cyto_stain as router_module
+        monkeypatch.setattr(router_module, "generate_slide_sticker_pdf", fake_generate)
+
+        r = pathologist_client.get(f"/gyne-stains/runs/{run['id']}/print-stickers")
+
+        assert r.status_code == 200
+        assert captured["print_data"][0]["hospital_code"] == "HOSP-B"

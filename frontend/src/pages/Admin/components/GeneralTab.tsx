@@ -283,9 +283,11 @@ const GeneralTab = () => {
             <Input placeholder="e.g. PDC-LAB" />
           </Form.Item>
 
-          <Form.Item name="lab_address" label="Laboratory Address">
-            <TextArea rows={3} placeholder="Laboratory address..." />
-          </Form.Item>
+          {editingSetting?.hospital_slug === "master" && (
+            <Form.Item name="lab_address" label="Laboratory Address">
+              <TextArea rows={3} placeholder="Laboratory address..." />
+            </Form.Item>
+          )}
 
           <Form.Item
             name="login_announcement"
@@ -298,14 +300,18 @@ const GeneralTab = () => {
             />
           </Form.Item>
 
-          {/* We only show upload boxes when editing, so we have the slug to save against */}
+          {/* We only show upload boxes when editing, so we have the slug to save against.
+              Report Header Logo only applies to "master" — report generation always reads
+              the master row, so setting it on any other slug would silently do nothing. */}
           {editingSetting && (
              <div style={{ marginTop: 24 }}>
                 <Text strong>Logos</Text>
                 <Divider style={{ margin: "8px 0" }} />
                 <div style={{ display: "flex", gap: "16px" }}>
                    <LogoBox type="login" label="Login Page Logo" />
-                   <LogoBox type="report" label="Report Header Logo" />
+                   {editingSetting.hospital_slug === "master" && (
+                     <LogoBox type="report" label="Report Header Logo" />
+                   )}
                 </div>
              </div>
           )}

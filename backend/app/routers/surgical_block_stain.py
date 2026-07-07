@@ -31,6 +31,7 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_block_stain import SurgicalBlockStain
 from app.utils.slide_sticker_pdf_generator import generate_slide_sticker_pdf
+from app.crud.organization import resolve_lab_short_name
 from app.core.roles import CAN_ACCESS_SURGICAL_BLOCK
 
 router = APIRouter(
@@ -203,7 +204,6 @@ def print_stain_run_stickers(
 ):
     from app.models.system_setting import SystemSetting as SystemSettingModel
     master = db.query(SystemSettingModel).filter(SystemSettingModel.hospital_slug == "master").first()
-    lab_short_name = (master.lab_short_name_en or "") if master else ""
     sticker_w = float(master.sticker_width_cm or 2.0) if master else 2.0
     sticker_h = float(master.sticker_height_cm or 2.0) if master else 2.0
     sticker_orient = (master.sticker_orientation or "portrait") if master else "portrait"
@@ -225,7 +225,13 @@ def print_stain_run_stickers(
         .options(
             joinedload(SurgicalStainRun.details)
             .joinedload(SurgicalStainRunDetail.stain_order)
-            .joinedload(SurgicalBlockStain.test)  # <--- โหลด Master Data มาด้วย
+            .joinedload(SurgicalBlockStain.test),  # <--- โหลด Master Data มาด้วย
+            joinedload(SurgicalStainRun.details)
+            .joinedload(SurgicalStainRunDetail.stain_order)
+            .joinedload(SurgicalBlockStain.block)
+            .joinedload(SurgicalBlock.specimen)
+            .joinedload(SurgicalSpecimen.case)
+            .joinedload(SurgicalCase.hospital),
         )
         .filter(SurgicalStainRun.id == run_id)
         .first()
@@ -260,7 +266,7 @@ def print_stain_run_stickers(
                 "block_code": detail.block_code or "N/A",
                 "stain_display": stain_display,
                 "reg_date": reg_date,
-                "hospital_code": lab_short_name,
+                "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
             }
         )
 
@@ -365,7 +371,8 @@ def print_quick_stickers(
             joinedload(SurgicalBlockStain.test),
             joinedload(SurgicalBlockStain.block)
             .joinedload(SurgicalBlock.specimen)
-            .joinedload(SurgicalSpecimen.case),
+            .joinedload(SurgicalSpecimen.case)
+            .joinedload(SurgicalCase.hospital),
         )
         .filter(SurgicalBlockStain.id.in_(request.stain_ids))
         .all()
@@ -376,7 +383,6 @@ def print_quick_stickers(
 
     from app.models.system_setting import SystemSetting as SystemSettingModel
     master = db.query(SystemSettingModel).filter(SystemSettingModel.hospital_slug == "master").first()
-    lab_short_name = (master.lab_short_name_en or "") if master else ""
     sticker_w = float(master.sticker_width_cm or 2.0) if master else 2.0
     sticker_h = float(master.sticker_height_cm or 2.0) if master else 2.0
     sticker_orient = (master.sticker_orientation or "portrait") if master else "portrait"
@@ -409,7 +415,7 @@ def print_quick_stickers(
                 "block_code": block.block_code if block else "N/A",
                 "stain_display": order.test.name if order.test else "Unknown",
                 "reg_date": reg_date,
-                "hospital_code": lab_short_name,
+                "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
             }
         )
 

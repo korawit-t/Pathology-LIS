@@ -18,6 +18,7 @@ Before installing or using this software, please read:
 
 - **[TERMS_OF_USE.md](./TERMS_OF_USE.md)** — Scope of responsibility and support policy
 - **[LICENSE.md](./LICENSE.md)** — MIT License
+- **[SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md)** — Complete this before handling real patient data in production
 
 ---
 

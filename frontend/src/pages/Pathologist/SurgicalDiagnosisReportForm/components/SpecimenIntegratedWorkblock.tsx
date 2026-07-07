@@ -118,7 +118,7 @@ const SpecimenGrossImagesTab: React.FC<{ specimenId: number }> = ({ specimenId }
                     await GrossImageService.updateImage(img.id, { show_in_report: checked });
                     setImages(prev => prev.map(i => i.id === img.id ? { ...i, show_in_report: checked } : i));
                   } catch (err) {
-                    message.error("บันทึกไม่สำเร็จ");
+                    message.error("Save failed");
                   }
                 }}
               />
@@ -201,7 +201,7 @@ const SpecimenIntegratedWorkblock: React.FC<
     return user ? user.report_name || user.full_name : `ID: ${userId}`;
   };
 
-  // 🚩 สำหรับข้อมูลคนทำ Gross เราสามารถดึงชื่อตรงๆ จาก surgicalCase ได้เลยถ้ามีข้อมูล
+  // For the Gross examiner/assistant info, we can pull the name directly from surgicalCase if available
   const examinerName =
     surgicalCase?.gross_examiner?.report_name || getUserName(exId);
   const assistantName =
@@ -223,7 +223,7 @@ const SpecimenIntegratedWorkblock: React.FC<
       }}
       bodyStyle={{ padding: 0 }}
     >
-      {/* --- ส่วนหัว Card (sticky while scrolling) --- */}
+      {/* --- Card header (sticky while scrolling) --- */}
       <div
         style={{
           padding: "12px 20px",
@@ -270,7 +270,7 @@ const SpecimenIntegratedWorkblock: React.FC<
           </Text>
         </Space>
 
-        {/* ส่วน Checkbox */}
+        {/* Checkbox section */}
         {hasOriginalSigned ? (
           <Form.Item
             name={activeFieldName}
@@ -294,7 +294,7 @@ const SpecimenIntegratedWorkblock: React.FC<
         )}
       </div>
 
-      {/* --- ส่วนเนื้อหา (จะซ่อนเมื่อไม่ได้ติ๊ก Checkbox) --- */}
+      {/* --- Content section (hidden when checkbox is unchecked) --- */}
       <Form.Item
         noStyle
         shouldUpdate={(prev, curr) =>
@@ -305,7 +305,7 @@ const SpecimenIntegratedWorkblock: React.FC<
         {({ getFieldValue }) => {
           const isActive = getFieldValue(activeFieldName) !== false;
 
-          // ถ้าไม่ Active ให้แสดงแค่ข้อความแจ้งเตือนสั้นๆ หรือไม่แสดงเลย
+          // If not active, just show a brief notice (or nothing)
           if (!isActive) {
             return (
               <div
@@ -323,11 +323,11 @@ const SpecimenIntegratedWorkblock: React.FC<
           }
           return (
             <Row style={{ background: "#fff" }}>
-              {/* --- ฝั่งขวา: Diagnosis Section --- */}
+              {/* --- Right side: Diagnosis Section --- */}
               <Col
                 span={14}
                 style={{
-                  padding: "20px 12px 20px 20px", // 🚩 ลด padding ด้านขวา (เหลือ 10px) เพื่อขยับหาตรงกลาง
+                  padding: "20px 12px 20px 20px", // reduced right padding (down to 10px) to shift toward center
                   background: "#ffffff",
                 }}
               >
@@ -350,7 +350,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                   wsiSlides={specimenSlides}
                 />
               </Col>
-              {/* --- ฝั่งซ้าย: Gross Section --- */}
+              {/* --- Left side: Gross Section --- */}
               <Col
                 span={10}
                 style={{
@@ -387,7 +387,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                               >
                                 <SimpleTiptapEditor
                                   disabled={isLocked}
-                                  placeholder="บรรยายลักษณะเนื้อสด..."
+                                  placeholder="Describe gross appearance..."
                                 />
                               </Form.Item>
                             ),
@@ -451,7 +451,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                     )}
                   </div>
 
-                  {/* 🚩 Integrated Metadata Block: รวมคนทำ Gross และ Audit Info เข้าด้วยกัน */}
+                  {/* Integrated Metadata Block: combines Gross examiner info and Audit Info */}
                   <div
                     style={{
                       marginTop: 8,
@@ -461,7 +461,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                       border: "1px solid #f0f0f0",
                     }}
                   >
-                    {/* แถวบน: ผู้ตรวจ (Ex / Asst) */}
+                    {/* Top row: Examiner (Ex / Asst) */}
                     <div
                       style={{
                         display: "flex",
@@ -482,7 +482,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                           />
                         }
                       >
-                        <Tooltip title="ผู้ตรวจ Gross">
+                        <Tooltip title="Gross Examiner">
                           <span
                             style={{
                               display: "inline-flex",
@@ -497,7 +497,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                           </span>
                         </Tooltip>
                         {asstId && (
-                          <Tooltip title="ผู้ช่วยตรวจ Gross">
+                          <Tooltip title="Gross Assistant">
                             <span
                               style={{
                                 display: "inline-flex",
@@ -515,7 +515,7 @@ const SpecimenIntegratedWorkblock: React.FC<
                       </Space>
                     </div>
 
-                    {/* แถวล่าง: ประวัติ (สร้าง/แก้ไข) */}
+                    {/* Bottom row: history (created/edited) */}
                     <div
                       style={{
                         display: "flex",
@@ -529,12 +529,12 @@ const SpecimenIntegratedWorkblock: React.FC<
                     >
                       <span>
                         <HistoryOutlined style={{ marginRight: 3 }} />
-                        สร้าง:{" "}
+                        Created:{" "}
                         {dayjs(specimen.created_at).format("DD/MM/YY HH:mm")}
                       </span>
                       {specimen.updated_at && (
                         <span>
-                          แก้ไข:{" "}
+                          Edited:{" "}
                           {dayjs(specimen.updated_at).format("DD/MM/YY HH:mm")}
                           {specimen.updated_by_user && (
                             <Text

@@ -17,6 +17,7 @@ from app.models.surgical_report import SurgicalReport, ReportStatus, ReportType,
 from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.models.tumor_registry import TumorRegistry
+from app.crud.organization import resolve_lab_header
 
 logger = logging.getLogger(__name__)
 
@@ -509,17 +510,17 @@ def prepare_report_data(
     show_specimen_name = settings.show_specimen_name if settings else True
 
     lab_name_th = settings.lab_name_th if settings else "ชื่อห้องปฏิบัติการ"
-    lab_name_en = settings.lab_name_en if settings else "Laboratory Name"
-    lab_address = settings.lab_address if settings else ""
     footer_text = (settings.surgical_report_footer or settings.report_footer_text or "") if settings else ""
     primary_color = settings.report_primary_color if settings else None
     primary_color_dark = _darken_hex(primary_color) if primary_color else None
 
-    logo_url = settings.report_logo_url if settings else None
-
     db_case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
     if not db_case:
         return None
+
+    lab_name_en, lab_address, _logo_relative_path = resolve_lab_header(db_case.hospital, settings)
+    if db_case.hospital and db_case.hospital.use_custom_report_header:
+        lab_name_th = db_case.hospital.name
 
     spec_data = _prepare_specimen_and_images(
         db, db_case, active_specimen_ids, STORAGE_BASE

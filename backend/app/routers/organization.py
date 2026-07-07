@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
+from pathlib import Path
+import uuid
 
 from app.db.database import get_db
+from app.utils.file_handler import validate_and_sanitize
 from app.schemas.organization import (
     HospitalCreate,
     HospitalResponse,
@@ -29,6 +32,12 @@ from app.core.roles import CAN_MANAGE_SETTINGS
 from app.utils.time import local_now
 
 router = APIRouter(prefix="/org", tags=["Organization"])
+
+# Anchored to this file's location (not the process cwd) so uploads land in the
+# same place regardless of where the server was launched from.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+HOSPITAL_LOGO_DIR = BASE_DIR / "uploads" / "hospitals"
+HOSPITAL_LOGO_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- Hospitals Endpoints ---
 
@@ -75,6 +84,31 @@ def delete_existing_hospital(hospital_id: int, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Hospital not found")
     return {"message": "Hospital deleted"}
+
+
+# 🔒 อัปโหลดโลโก้ รพ. สำหรับใช้เป็น header ของ report เมื่อเปิด use_custom_report_header
+@router.post(
+    "/hospitals/{hospital_id}/upload-logo",
+    response_model=HospitalResponse,
+    dependencies=[Depends(CAN_MANAGE_SETTINGS)],
+)
+async def upload_hospital_logo(
+    hospital_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    file_bytes, safe_ext = validate_and_sanitize(file, allowed="image")
+
+    HOSPITAL_LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    file_name = f"logo_{hospital_id}_{uuid.uuid4()}.{safe_ext}"
+    file_path = HOSPITAL_LOGO_DIR / file_name
+    with file_path.open("wb") as buffer:
+        buffer.write(file_bytes)
+
+    updated = crud.update_hospital_logo(db, hospital_id, f"hospitals/{file_name}")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Hospital not found")
+    return updated
 
 
 # --- Positions Endpoints ---

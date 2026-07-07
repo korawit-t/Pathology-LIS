@@ -16,6 +16,7 @@ const PathologistService = {
     is_pending?: boolean,
     is_express?: boolean,
     exclude_signed?: boolean,
+    prioritizeStatus?: string,
   ): Promise<any> => {
     const response = await api.get("/surgical-cases", {
       params: {
@@ -28,6 +29,7 @@ const PathologistService = {
         is_pending: is_pending || undefined,
         is_express: is_express || undefined,
         exclude_signed: exclude_signed || undefined,
+        prioritize_status: prioritizeStatus || undefined,
       },
       paramsSerializer: (params) => {
         return qs.stringify(params, { arrayFormat: "repeat", skipNulls: true });

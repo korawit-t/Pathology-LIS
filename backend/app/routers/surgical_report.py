@@ -30,6 +30,8 @@ from app.schemas.surgical_report import (
 from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
+from app.models.organization import Hospital
+from app.crud.organization import resolve_lab_header
 from app.models.surgical_report import SurgicalReport, ReportStatus
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
 from app.crud.report_archive import get_surgical_archive
@@ -40,9 +42,14 @@ router = APIRouter(prefix="/surgical-reports", tags=["Surgical Reports"])
 
 def _resolve_logo(report_data: dict, db: Session) -> None:
     """Pass the logo as a file:// URI so WeasyPrint reads it directly from disk.
-    Always uses current system settings — no snapshot needed for logo."""
+    Always uses the current hospital/system settings — no snapshot needed for logo."""
     settings = get_system_settings(db)
-    logo_path = settings.report_logo_url if settings else None
+    hospital = (
+        db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
+        if report_data.get("hospital_id")
+        else None
+    )
+    _name, _address, logo_path = resolve_lab_header(hospital, settings)
     if logo_path:
         full = STORAGE_BASE / logo_path.removeprefix("/storage/")
         report_data["report_logo_url_snapshot"] = full.as_uri() if full.exists() else None

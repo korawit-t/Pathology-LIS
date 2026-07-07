@@ -10,6 +10,7 @@ from app.models.nongyne_diagnosis import NongyneDiagnosis
 from app.models.cyto_approval_log import CytoReportAuditLog
 from app.models.user import User
 from app.models.system_setting import SystemSetting
+from app.crud.organization import resolve_lab_header
 from app.schemas.report_approval import ReportApproveRequest
 from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
@@ -350,30 +351,31 @@ def _get_image_base64(image_url: str, max_width: int = 800) -> str | None:
 def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
     """Add template variables that are missing from snapshot/preview data."""
     settings = db.query(SystemSetting).first()
-    if settings:
-        data["lab_name_snapshot"] = settings.lab_name_th or ""
-        data["lab_name_en_snapshot"] = settings.lab_name_en or settings.lab_name_th or ""
-        data["lab_address_snapshot"] = settings.lab_address or ""
-        data["report_footer_snapshot"] = settings.nongyne_report_footer or settings.report_footer_text or ""
-        # Logo base64
-        if settings.report_logo_url:
-            try:
-                storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
-                full_path = storage_root / settings.report_logo_url.removeprefix("/storage/")
-                if full_path.exists():
-                    with open(full_path, "rb") as f:
-                        encoded = base64.b64encode(f.read()).decode("utf-8")
-                        ext = full_path.suffix.lower().lstrip(".")
-                        data["report_logo_url_snapshot"] = f"data:image/{ext};base64,{encoded}"
-                else:
-                    data.setdefault("report_logo_url_snapshot", None)
-            except Exception:
+    db_case_obj = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    hospital = db_case_obj.hospital if db_case_obj else None
+
+    name_en, address, logo_url = resolve_lab_header(hospital, settings)
+    data["lab_name_snapshot"] = (settings.lab_name_th or "") if settings else ""
+    data["lab_name_en_snapshot"] = name_en
+    data["lab_address_snapshot"] = address
+    data["report_footer_snapshot"] = (
+        (settings.nongyne_report_footer or settings.report_footer_text or "") if settings else ""
+    )
+    # Logo base64
+    if logo_url:
+        try:
+            storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
+            full_path = storage_root / logo_url.removeprefix("/storage/")
+            if full_path.exists():
+                with open(full_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                    ext = full_path.suffix.lower().lstrip(".")
+                    data["report_logo_url_snapshot"] = f"data:image/{ext};base64,{encoded}"
+            else:
                 data.setdefault("report_logo_url_snapshot", None)
-        else:
+        except Exception:
             data.setdefault("report_logo_url_snapshot", None)
     else:
-        data.setdefault("lab_name_en_snapshot", "")
-        data.setdefault("report_footer_snapshot", "")
         data.setdefault("report_logo_url_snapshot", None)
 
     # Field name aliases used in template
@@ -383,7 +385,6 @@ def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
     data["comment_summary"] = data.get("comment") or data.get("comment_summary") or ""
 
     # registered_at + actual case status
-    db_case_obj = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
     if not data.get("registered_at"):
         data["registered_at"] = db_case_obj.registered_at if db_case_obj else None
     if not data.get("collect_at"):

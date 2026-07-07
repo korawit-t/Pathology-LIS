@@ -136,6 +136,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           currentStatus === CASE_STATUS.PENDING_DIAGNOSIS ? true : undefined,
           currentStatus === "EXPRESS" ? true : undefined,
           currentStatus === "EXPRESS" ? true : undefined,
+          currentStatus === "ALL" ? CASE_STATUS.SLIDE_SENT : undefined,
         );
       }
 

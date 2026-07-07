@@ -44,6 +44,18 @@ const HospitalService = {
   deleteHospital: async (id: number): Promise<void> => {
     await api.delete(`/org/hospitals/${id}`);
   },
+
+  /**
+   * อัปโหลดโลโก้สำหรับใช้เป็น report header ของโรงพยาบาลนี้
+   */
+  uploadLogo: async (id: number, file: File): Promise<Hospital> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await api.post(`/org/hospitals/${id}/upload-logo`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
 };
 
 export default HospitalService;

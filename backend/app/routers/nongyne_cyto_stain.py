@@ -21,6 +21,7 @@ from app.models.patient import Patient
 from app.schemas.nongyne_cyto_stain import NongyneStainRunCreate
 from app.dependencies.auth import get_current_user
 from app.models.user import User
+from app.crud.organization import resolve_lab_short_name
 
 router = APIRouter(
     prefix="/nongyne-stains",
@@ -107,7 +108,6 @@ def print_nongyne_run_stickers(
 ):
     from app.models.system_setting import SystemSetting as SystemSettingModel
     master = db.query(SystemSettingModel).filter(SystemSettingModel.hospital_slug == "master").first()
-    lab_short_name = (master.lab_short_name_en or "") if master else ""
     sticker_w = float(master.sticker_width_cm or 2.0) if master else 2.0
     sticker_h = float(master.sticker_height_cm or 2.0) if master else 2.0
     sticker_orient = (master.sticker_orientation or "portrait") if master else "portrait"
@@ -129,7 +129,11 @@ def print_nongyne_run_stickers(
             joinedload(NongyneStainRun.details)
             .joinedload(NongyneStainRunDetail.stain_order)
             .joinedload(NongyneCytologyStain.case)
-            .joinedload(NongyneCytologyCase.patient)
+            .joinedload(NongyneCytologyCase.patient),
+            joinedload(NongyneStainRun.details)
+            .joinedload(NongyneStainRunDetail.stain_order)
+            .joinedload(NongyneCytologyStain.case)
+            .joinedload(NongyneCytologyCase.hospital),
         )
         .filter(NongyneStainRun.id == run_id)
         .first()
@@ -155,7 +159,7 @@ def print_nongyne_run_stickers(
             "block_code": patient_name,
             "stain_display": patient_ln,
             "reg_date": str(case.registered_at) if case and case.registered_at else None,
-            "hospital_code": lab_short_name,
+            "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
             "_slide_no": order.slide_no or 0,
         })
 

@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy.orm import Session, selectinload, joinedload
-from sqlalchemy import func, or_, and_, exists, select
+from sqlalchemy import func, or_, and_, exists, select, case
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
@@ -110,6 +110,7 @@ def get_cases(
     is_pending: bool = None,
     is_express: bool = None,
     exclude_signed: bool = None,
+    prioritize_status: str = None,
 ):
     query = db.query(SurgicalCase).join(Patient)
 
@@ -188,6 +189,13 @@ def get_cases(
 
     total = query.count()
 
+    order_by_clauses = []
+    if prioritize_status:
+        order_by_clauses.append(
+            case((SurgicalCase.status.ilike(prioritize_status), 0), else_=1)
+        )
+    order_by_clauses.append(SurgicalCase.accession_no.asc())
+
     items = (
         query.options(
             selectinload(SurgicalCase.specimens)
@@ -195,7 +203,7 @@ def get_cases(
             .selectinload(SurgicalBlock.stains)
             .joinedload(SurgicalBlockStain.test)
         )
-        .order_by(SurgicalCase.accession_no.asc())
+        .order_by(*order_by_clauses)
         .offset(skip)
         .limit(limit)
         .all()
@@ -204,10 +212,10 @@ def get_cases(
     # Flag cases that have ever had an IHC stain ordered on any block — not a
     # stored column, computed from the already-eager-loaded specimens/blocks
     # so this stays a single query set, not one query per case.
-    for case in items:
-        case.has_ihc = any(
+    for item in items:
+        item.has_ihc = any(
             stain.test and stain.test.category == "IHC"
-            for spec in case.specimens
+            for spec in item.specimens
             for block in spec.blocks
             for stain in block.stains
         )

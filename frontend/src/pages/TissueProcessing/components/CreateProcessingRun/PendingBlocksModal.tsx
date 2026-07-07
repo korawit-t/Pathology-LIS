@@ -11,7 +11,7 @@ interface PendingBlocksModalProps {
   open: boolean;
   dataSource: PendingDataNode[];
   onCancel: () => void;
-  onConfirm: (selectedBlocks: ScannedBlock[]) => void; // ระบุ Type ให้ชัดเจน
+  onConfirm: (selectedBlocks: ScannedBlock[]) => void;
 }
 
 const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
@@ -22,13 +22,13 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
 }) => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
-  // คำนวณจำนวน Block ทั้งหมดในเครื่อง (Flatten children)
+  // Total number of blocks pending in the machine (flatten children)
   const totalPendingBlocks = dataSource.reduce(
     (acc, curr) => acc + (curr.children?.length || 0),
     0,
   );
 
-  // นับจำนวนที่เลือก (กรองเฉพาะ ID ที่ไม่ใช่ Key ของ Case)
+  // Count selected (filter out keys that aren't Case keys)
   const selectedBlocksCount = selectedRowKeys.filter(
     (key) => typeof key === "number" || !key.toString().startsWith("case-"),
   ).length;
@@ -41,7 +41,7 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
         if (selectedRowKeys.includes(block.key)) {
           newlySelected.push({
             id: block.id,
-            // 🌟 ใช้ full_code ที่เราเตรียมไว้จาก Backend เพื่อให้แสดง S26-xxx A1
+            // Use full_code prepared by the backend so it displays as S26-xxx A1
             code: block.full_code || block.code,
             is_decal: block.is_decal,
             scannedAt: dayjs().format("HH:mm:ss"),
@@ -60,10 +60,10 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
       dataIndex: "code",
       key: "code",
       render: (text: string, record: PendingDataNode) => {
-        // เช็คว่าใน Case นี้มีลูกตัวไหนต้องทำ Decal ไหม (สำหรับโชว์ไอคอนที่แถว Case)
+        // Check whether any child block in this case requires decal (to show the icon on the case row)
         const hasDecalChild =
           record.isCase && record.children?.some((child) => child.is_decal);
-        // เช็คเฉพาะตัวมันเองถ้าเป็น Block
+        // Check the block itself if it's a block row
         const isDecalBlock = !record.isCase && record.is_decal;
         const isDecalFinished = !!record.decal_end_at;
 
@@ -71,13 +71,11 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
           <Space>
             {(hasDecalChild || isDecalBlock) && (
               <Tooltip
-                title={
-                  isDecalFinished ? "Decal เสร็จสิ้น" : "ต้องผ่านการ Decal"
-                }
+                title={isDecalFinished ? "Decal finished" : "Requires decal"}
               >
                 <ExperimentOutlined
                   style={{
-                    // ถ้าเสร็จแล้วให้เป็นสีเขียว ถ้ายังไม่เสร็จเป็นสีส้ม
+                    // Green if finished, orange if not
                     color: isDecalFinished ? "#52c41a" : "#fa541c",
                     fontSize: record.isCase ? "18px" : "14px",
                   }}
@@ -109,7 +107,7 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
             <Tag color="purple">CASE ({record.children?.length || 0})</Tag>
           );
 
-        // Logic สำหรับ Block
+        // Logic for block rows
         if (record.is_decal) {
           const isFinished = !!record.decal_end_at;
           return (
@@ -138,7 +136,7 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
 
   return (
     <Modal
-      title="เลือกตลับเนื้อที่รอเข้าเครื่อง"
+      title="Select tissue blocks pending processing"
       open={open}
       onOk={handleOk}
       onCancel={onCancel}
@@ -148,10 +146,10 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
       <Alert
         message={
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span>เลือกที่รหัส Case เพื่อเลือก Blocks ทั้งหมดในเคสนั้น</span>
+            <span>Select a Case code to select all blocks in that case</span>
             <Tag color="blue">
-              เลือกแล้ว <b>{selectedBlocksCount}</b> /{" "}
-              <b>{totalPendingBlocks}</b> ตลับ
+              Selected <b>{selectedBlocksCount}</b> /{" "}
+              <b>{totalPendingBlocks}</b> blocks
             </Tag>
           </div>
         }
@@ -166,14 +164,13 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
           onChange: (keys) => setSelectedRowKeys(keys),
           checkStrictly: false,
           getCheckboxProps: (record: PendingDataNode) => {
-            // 1. ถ้าเป็นแถวแม่ (Case) ให้ Enable ไว้เสมอ
+            // 1. Case rows are always enabled
             if (record.isCase) {
               return { disabled: false, name: record.code };
             }
 
-            // 2. ถ้าเป็นแถวลูก (Block)
-            // เงื่อนไข Disable คือ: ต้องเป็น Decal "และ" ยังไม่มีวันสิ้นสุด (decal_end_at)
-            // ดังนั้น ถ้ามี decal_end_at (เหมือนใน JSON) เงื่อนไขนี้จะเป็น false และจะ Enable ทันที
+            // 2. Block rows: disabled when it requires decal AND has no end date (decal_end_at)
+            // so once decal_end_at is set, the condition is false and it's enabled
             const isDecalNotReady = record.is_decal && !record.decal_end_at;
 
             return {
@@ -190,8 +187,10 @@ const PendingBlocksModal: React.FC<PendingBlocksModalProps> = ({
         size="small"
         footer={() => (
           <div style={{ textAlign: "right" }}>
-            <Text strong>ยอดรวมที่กำลังจะเพิ่ม: </Text>
-            <Text style={{ fontSize: "18px" }}>{selectedBlocksCount} ตลับ</Text>
+            <Text strong>Total to add: </Text>
+            <Text style={{ fontSize: "18px" }}>
+              {selectedBlocksCount} blocks
+            </Text>
           </div>
         )}
       />
