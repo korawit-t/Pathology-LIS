@@ -34,7 +34,13 @@ server {
     # Vite build output (hashed JS/CSS/images/fonts) — serve directly if the
     # file exists on disk, otherwise treat the request as an API/page route.
     location / {
-        try_files $uri @backend;
+        # $uri/ is required so "/" itself (and any other directory-like
+        # path) resolves to index.html via the `index` directive above,
+        # instead of falling straight through to @backend — without it,
+        # "/" isn't a file on disk so it always missed to the backend,
+        # which happens to have its own GET / health-check route, so the
+        # site showed that raw JSON instead of the SPA shell.
+        try_files $uri $uri/ @backend;
     }
 
     location @backend {
