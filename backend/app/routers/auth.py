@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.revoked_token import RevokedToken
 from app.context import current_user_id, current_ip
-from app.core.config import IS_PRODUCTION
+from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN
 from app.core.security import (
     verify_password,
     create_access_token,
@@ -40,6 +40,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite="none" if IS_PRODUCTION else "lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
+        domain=COOKIE_DOMAIN,
     )
     response.set_cookie(
         key="refresh_token",
@@ -49,12 +50,13 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite="none" if IS_PRODUCTION else "strict",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         path="/",
+        domain=COOKIE_DOMAIN,
     )
 
 
 def _clear_auth_cookies(response: Response):
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("access_token", path="/", domain=COOKIE_DOMAIN)
+    response.delete_cookie("refresh_token", path="/", domain=COOKIE_DOMAIN)
 
 
 # --- Login ---
