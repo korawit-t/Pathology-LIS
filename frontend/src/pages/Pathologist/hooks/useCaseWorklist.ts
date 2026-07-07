@@ -41,9 +41,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const [currentStatus, setCurrentStatus] = useState<string>(
-    CASE_STATUS.SLIDE_SENT,
-  );
+  const [currentStatus, setCurrentStatus] = useState<string>("ALL");
   const [slideSentTotal, setSlideSentTotal] = useState(0);
   const [pendingTotal, setPendingTotal] = useState(0);
   const [coSignTotal, setCoSignTotal] = useState(0);

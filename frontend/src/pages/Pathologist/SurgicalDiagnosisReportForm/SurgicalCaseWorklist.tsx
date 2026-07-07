@@ -379,6 +379,7 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
           <Text type="secondary"></Text>
           <Segmented
             options={[
+              { label: "All", value: "ALL" },
               {
                 label: (
                   <span>
@@ -428,7 +429,6 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
                 ),
                 value: "EXPRESS",
               },
-              { label: "All", value: "ALL" },
             ]}
             value={selectedStatus}
             onChange={(value) => {
