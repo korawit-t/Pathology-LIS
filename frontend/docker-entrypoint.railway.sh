@@ -9,7 +9,17 @@ set -e
 
 : "${BACKEND_UPSTREAM:?BACKEND_UPSTREAM env var is required, e.g. BACKEND_UPSTREAM=backend.railway.internal:8000}"
 
-RESOLVER_ADDR=$(awk '$1 == "nameserver" { printf "%s ", $2 }' /etc/resolv.conf)
+# nginx's `resolver` directive requires IPv6 literals wrapped in [brackets]
+# (otherwise it tries to parse text after the last ":" as a port number,
+# e.g. "fd12::10" -> "invalid port in resolver"). IPv4 addresses are left
+# bare.
+RESOLVER_ADDR=$(awk '
+    $1 == "nameserver" {
+        addr = $2
+        if (index(addr, ":") > 0) { printf "[%s] ", addr }
+        else { printf "%s ", addr }
+    }
+' /etc/resolv.conf)
 export RESOLVER_ADDR="${RESOLVER_ADDR:-127.0.0.11}"
 
 envsubst '${BACKEND_UPSTREAM} ${RESOLVER_ADDR}' \
