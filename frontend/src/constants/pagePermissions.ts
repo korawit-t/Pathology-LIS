@@ -4,7 +4,6 @@ import RequireRoleView from "../components/auth/RequireRoleView";
 
 export type PageKey =
   | "dashboard"
-  | "surgical-cases"
   | "grossing"
   | "surgical-blocks"
   | "decal-queue"
@@ -71,7 +70,6 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
     "hospital",
     "clinician",
   ],
-  "surgical-cases": ["admin", "lab_manager", "gross"],
   grossing: ["gross", "pathologist", "lab_manager", "admin"],
   "surgical-blocks": ["gross", "lab_manager", "admin"],
   "decal-queue": ["gross", "histo", "lab_manager", "admin"],

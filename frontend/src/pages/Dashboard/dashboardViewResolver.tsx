@@ -6,7 +6,6 @@ import { Spin } from "antd";
 
 // --- Lazy Imports (ช่วยลดขนาดไฟล์แรกที่โหลด) ---
 const PatientManager = lazy(() => import("../../components/PatientManager"));
-const SurgicalCaseManager = lazy(() => import("../SurgicalCase"));
 const NongyneCaseManager = lazy(() => import("../NongyneCase"));
 const GrossExamination = lazy(() => import("../Gross"));
 const SurgicalBlockList = lazy(() => import("../SurgicalBlock"));
@@ -109,10 +108,6 @@ const VIEW_CONFIG: Record<
   { pageKey: PageKey; component: React.ElementType }
 > = {
   patients: { pageKey: "patients", component: PatientManager },
-  "surgical-cases": {
-    pageKey: "surgical-cases",
-    component: SurgicalCaseManager,
-  },
   grossing: { pageKey: "grossing", component: GrossExamination },
   "surgical-blocks": {
     pageKey: "surgical-blocks",

@@ -8,13 +8,23 @@
 # nginx makes them same-origin from the browser's point of view, so the auth
 # cookie works in every browser without needing a custom domain.
 #
-# BACKEND_UPSTREAM is substituted at container start (nginx's built-in
-# envsubst-on-templates entrypoint). Set it on the Railway frontend service to
-# the backend service's private networking address, e.g.:
+# BACKEND_UPSTREAM and RESOLVER_ADDR are substituted by
+# docker-entrypoint.railway.sh at container start (NOT nginx's built-in
+# envsubst-on-templates mechanism — see that script for why). Set
+# BACKEND_UPSTREAM on the Railway frontend service to the backend service's
+# private networking address, e.g.:
 #   BACKEND_UPSTREAM=pathologylisbackend.railway.internal:8000
 # (Railway dashboard -> backend service -> Settings -> Networking -> Private
 # Networking shows the exact hostname; port is whatever the backend listens
 # on, 8000 per backend/Dockerfile's CMD.)
+#
+# `resolver` + a variable in proxy_pass forces nginx to re-resolve that
+# hostname periodically (every 10s) instead of caching whatever IP it got at
+# container startup for the container's entire lifetime. Without this, the
+# backend getting a new internal IP on its next redeploy/restart (which
+# Railway does routinely) leaves nginx forwarding to a dead IP forever —
+# every request then hangs until it times out connecting upstream.
+resolver ${RESOLVER_ADDR} valid=10s;
 
 server {
     listen 80;
@@ -28,7 +38,8 @@ server {
     }
 
     location @backend {
-        proxy_pass http://${BACKEND_UPSTREAM};
+        set $backend_upstream ${BACKEND_UPSTREAM};
+        proxy_pass http://$backend_upstream;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

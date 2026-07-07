@@ -118,15 +118,15 @@ const GrossFinalizeSection: React.FC<GrossFinalizeSectionProps> = ({
 
         <Col xs={24} lg={6}>
           <Form.Item label=" " colon={false}>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {onSaveDraft && (
               <Button
                 size="large"
                 icon={<SaveOutlined />}
                 onClick={onSaveDraft}
                 style={{
-                  flex: 1,
-                  height: 50,
+                  width: "100%",
+                  height: 44,
                   fontSize: 15,
                   fontWeight: 600,
                   borderRadius: 8,
@@ -144,8 +144,8 @@ const GrossFinalizeSection: React.FC<GrossFinalizeSectionProps> = ({
               size="large"
               icon={<CheckCircleOutlined />}
               style={{
-                flex: 2,
-                height: 50,
+                width: "100%",
+                height: 44,
                 fontSize: 15,
                 fontWeight: 600,
                 borderRadius: 8,
