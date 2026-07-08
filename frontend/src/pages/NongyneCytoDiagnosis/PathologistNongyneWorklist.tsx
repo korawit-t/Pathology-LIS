@@ -45,7 +45,7 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
   const [cases, setCases] = useState<NongyneCytologyCase[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("my_cases");
+  const [activeTab, setActiveTab] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSetting | null>(null);
@@ -90,8 +90,11 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       } else if (activeTab === "express") {
         params.assigned_to_me = true;
         params.is_express = true;
+      } else if (activeTab === "all") {
+        // Scoped to cases assigned to me (including already-reported ones),
+        // matching how the Surgical and Gyne worklists scope their "All" tab.
+        params.assigned_to_me = true;
       }
-      // "all" → no extra params
       if (searchText.trim()) params.search = searchText.trim();
 
       const data = await NongyneCytologyCaseService.getAll(params);
@@ -109,8 +112,20 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       title: "Accession No.",
       dataIndex: "accession_no",
       key: "accession_no",
-      sorter: (a: NongyneCytologyCase, b: NongyneCytologyCase) =>
-        (a.accession_no || "").localeCompare(b.accession_no || ""),
+      sorter: (a: NongyneCytologyCase, b: NongyneCytologyCase) => {
+        // Pin "My New Cases" (assigned to me, not yet reported) to the top
+        // of the "All" tab. The Table applies this comparator client-side
+        // to the whole page, so the priority has to live in the comparator
+        // itself, not just in fetch order.
+        const isMyNewCase = (c: NongyneCytologyCase) =>
+          !!currentUser &&
+          (c.pathologist_id === currentUser.id || c.cytotechnologist_id === currentUser.id) &&
+          !c.is_reported;
+        const aPriority = isMyNewCase(a) ? 0 : 1;
+        const bPriority = isMyNewCase(b) ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.accession_no || "").localeCompare(b.accession_no || "");
+      },
       defaultSortOrder: "ascend" as const,
       render: (text: string, record: NongyneCytologyCase) => (
         <Space size={4}>
@@ -278,11 +293,11 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <Segmented
           options={[
+            { label: "All", value: "all" },
             { label: "My New Cases", value: "my_cases" },
             { label: "Pending", value: "pending" },
             { label: "Sign Required", value: "co_sign" },
             { label: "Express", value: "express" },
-            { label: "All", value: "all" },
           ]}
           value={activeTab}
           onChange={(value) => { setActiveTab(value as string); setSearchText(""); }}

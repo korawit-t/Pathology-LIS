@@ -89,20 +89,20 @@ const STATUS_CONFIG: Record<
 };
 
 const CYTO_TABS = [
+  { label: "All", value: "all" },
   { label: "Pending Report", value: "stained" },
   { label: "Sign Required", value: "co_sign" },
   { label: "Awaiting Co-sign", value: "awaiting_cosign" },
   { label: "QC Slide Queue", value: "qc_slide_queue" },
   { label: "Express", value: "express" },
-  { label: "All", value: "all" },
 ];
 
 const PATHO_TABS = [
+  { label: "All", value: "all" },
   { label: "Pending Report", value: "stained" },
   { label: "Sign Required", value: "co_sign" },
   { label: "Awaiting Co-sign", value: "awaiting_cosign" },
   { label: "Express", value: "express" },
-  { label: "All", value: "all" },
 ];
 
 const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
@@ -121,6 +121,9 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   const [qcSlideCount, setQcSlideCount] = useState(0);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [holidays, setHolidays] = useState<string[]>([]);
+  // Case ids that belong to the "Pending Report" bucket (stained + co_sign +
+  // awaiting_cosign) — used to pin those cases to the top of the "All" tab.
+  const [pendingReportIds, setPendingReportIds] = useState<Set<number>>(new Set());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isPathologist = useMemo(
@@ -229,7 +232,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   // Set default tab once user role is known
   useEffect(() => {
     if (!currentUser || activeTab !== null) return;
-    setActiveTab("stained");
+    setActiveTab("all");
   }, [currentUser, activeTab]);
 
   useEffect(() => {
@@ -332,10 +335,31 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     }
   };
 
+  // Fetch the full id set behind "Pending Report" (not just its count) so the
+  // "All" tab can pin those cases to the top regardless of accession number.
+  const loadPendingReportIds = async (userId: number) => {
+    try {
+      const results = await Promise.all(
+        PENDING_REPORT_SUB_TABS.map((sub) =>
+          GyneCytologyCaseService.getAll({
+            ...buildTabParams(sub, userId),
+            limit: 500,
+          }),
+        ),
+      );
+      const ids = new Set<number>();
+      results.forEach((r) => r.items.forEach((c: GyneCytologyCase) => ids.add(c.id)));
+      setPendingReportIds(ids);
+    } catch {
+      // non-critical
+    }
+  };
+
   // Load counts for every tab as soon as the worklist opens, not only the active one
   useEffect(() => {
     if (currentUser) {
       loadAllTabCounts(currentUser.id, tabOptions);
+      loadPendingReportIds(currentUser.id);
       if (!isPathologist) loadQcSlideCount(currentUser.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -352,6 +376,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     if (refreshTrigger && currentUser && activeTab !== null) {
       loadCases();
       loadAllTabCounts(currentUser.id, tabOptions);
+      loadPendingReportIds(currentUser.id);
       if (!isPathologist) loadQcSlideCount(currentUser.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,8 +438,16 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       dataIndex: "accession_no",
       key: "accession_no",
       width: 160,
-      sorter: (a: GyneCytologyCase, b: GyneCytologyCase) =>
-        (a.accession_no || "").localeCompare(b.accession_no || ""),
+      sorter: (a: GyneCytologyCase, b: GyneCytologyCase) => {
+        // Pin "Pending Report" cases to the top of the "All" tab. The Table
+        // applies this comparator client-side to the whole page (that's how
+        // defaultSortOrder + a function sorter behave), so the priority has
+        // to live in the comparator itself, not just in fetch order.
+        const aPriority = pendingReportIds.has(a.id) ? 0 : 1;
+        const bPriority = pendingReportIds.has(b.id) ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.accession_no || "").localeCompare(b.accession_no || "");
+      },
       defaultSortOrder: "ascend" as const,
       render: (text: string, record: GyneCytologyCase) => (
         <Space size={4}>

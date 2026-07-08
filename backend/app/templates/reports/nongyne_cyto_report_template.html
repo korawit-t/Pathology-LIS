@@ -138,9 +138,8 @@
 
 
       .badge-container {
-        position: absolute;
-        top: 10px;
-        right: 10px;
+        float: right;
+        margin: 0 0 6px 8px;
         text-align: right;
         display: flex;
         flex-direction: column;
@@ -323,7 +322,7 @@
                 <span class="badge badge-final">FINAL REPORT</span>
                 {% endif %}
               </div>
-              <div style="font-size: 15px; color: #0f172a; line-height: 1.5; padding-right: 120px; word-wrap: break-word;">{{ (diagnosis_summary or '-') | safe }}</div>
+              <div style="font-size: 15px; color: #0f172a; line-height: 1.5; word-wrap: break-word;">{{ (diagnosis_summary or '-') | safe }}</div>
             </div>
 
             <!-- GROSS DESCRIPTION -->

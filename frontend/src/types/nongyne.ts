@@ -57,6 +57,7 @@ export interface NongyneCytologyCase {
   // สถานะและเจ้าหน้าที่
   status: "registered" | "screened" | "reported" | "revised" | "cancelled" | string;
   is_screened?: boolean;
+  is_reported?: boolean;
   is_pending?: boolean;
   pending_reason?: string | null;
   cytotechnologist_id: number | null;

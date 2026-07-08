@@ -101,7 +101,17 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       dataIndex: "accession_no",
       width: 180,
       fixed: "left",
-      sorter: (a, b) => (a.accession_no || "").localeCompare(b.accession_no || ""),
+      sorter: (a, b) => {
+        // Keep Slide Sent cases pinned to the top of the "All" view — the
+        // Table applies this comparator to the whole page client-side, so
+        // status priority has to live here, not just in the backend's
+        // prioritize_status ordering (which only affects which rows land
+        // on a given page, not their on-page display order).
+        const aPriority = a.status === CASE_STATUS.SLIDE_SENT ? 0 : 1;
+        const bPriority = b.status === CASE_STATUS.SLIDE_SENT ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.accession_no || "").localeCompare(b.accession_no || "");
+      },
       defaultSortOrder: "ascend" as const,
       render: (text: string, record) => (
         <Space size={8}>

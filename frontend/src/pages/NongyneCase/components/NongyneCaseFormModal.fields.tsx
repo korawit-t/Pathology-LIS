@@ -166,7 +166,7 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
             >
               {cytotechnologists.map((p) => (
                 <Option key={p.id} value={p.id}>
-                  {p.full_name || p.username}
+                  {p.report_name || p.full_name || p.username}
                 </Option>
               ))}
             </Select>

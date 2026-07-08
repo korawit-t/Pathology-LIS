@@ -128,7 +128,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
         }
       }
     } catch (err) {
-      message.error("ไม่สามารถโหลดข้อมูลพื้นฐานได้");
+      message.error("Failed to load master data");
     }
   };
 
@@ -170,7 +170,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
         });
       }, 0);
     } catch (err) {
-      message.error("โหลดข้อมูลเคสล้มเหลว");
+      message.error("Failed to load case data");
     } finally {
       setLoading(false);
     }
@@ -399,10 +399,10 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
       const res = editingId
         ? await GyneCytologyCaseService.update(editingId, payload)
         : await GyneCytologyCaseService.create(payload);
-      message.success(editingId ? "แก้ไขสำเร็จ" : "ลงทะเบียนสำเร็จ");
+      message.success(editingId ? "Updated successfully" : "Registered successfully");
       onSuccess(res);
     } catch (err) {
-      message.error("เกิดข้อผิดพลาดในการบันทึก");
+      message.error("An error occurred while saving");
     } finally {
       setLoading(false);
     }
@@ -411,11 +411,11 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   const onFinish = async (values: any) => {
     if (!values.cytotechnologist_id) {
       Modal.confirm({
-        title: "ไม่ได้ระบุนักเซลล์วิทยา",
+        title: "Cytotechnologist not specified",
         content:
-          "ยังไม่ได้ระบุ Screened by (Cytotechnologist) ต้องการบันทึกต่อหรือไม่?",
-        okText: "บันทึกต่อ",
-        cancelText: "ยกเลิก",
+          "Screened by (Cytotechnologist) has not been specified. Continue saving anyway?",
+        okText: "Continue Saving",
+        cancelText: "Cancel",
         onOk: () => doSave(values),
       });
       return;
@@ -433,13 +433,13 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
         collect_at: values.collect_at?.toISOString(),
       };
       const res = await GyneCytologyCaseService.create(payload);
-      message.success(`ลงทะเบียนสำเร็จ (${res.accession_no})`);
+      message.success(`Registered successfully (${res.accession_no})`);
       onRefresh?.();
       setFileList([]);
       pendingResetRef.current = true;
       setSaveAndNewData(res);
     } catch (err) {
-      message.error("เกิดข้อผิดพลาดในการบันทึก");
+      message.error("An error occurred while saving");
     } finally {
       setLoading(false);
     }
@@ -454,11 +454,11 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
     if (!values.cytotechnologist_id) {
       Modal.confirm({
-        title: "ไม่ได้ระบุนักเซลล์วิทยา",
+        title: "Cytotechnologist not specified",
         content:
-          "ยังไม่ได้ระบุ Screened by (Cytotechnologist) ต้องการบันทึกต่อหรือไม่?",
-        okText: "บันทึกต่อ",
-        cancelText: "ยกเลิก",
+          "Screened by (Cytotechnologist) has not been specified. Continue saving anyway?",
+        okText: "Continue Saving",
+        cancelText: "Cancel",
         onOk: () => doSaveAndNew(values),
       });
       return;
@@ -494,9 +494,9 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
               <Form.Item
                 name="hospital_id"
                 label="Hospital"
-                rules={[{ required: true, message: "กรุณาเลือกโรงพยาบาล" }]}
+                rules={[{ required: true, message: "Please select a hospital" }]}
               >
-                <Select placeholder="เลือกโรงพยาบาล">
+                <Select placeholder="Select Hospital">
                   {hospitals.map((h) => (
                     <Select.Option key={h.id} value={h.id}>
                       {h.name}
@@ -601,7 +601,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
           >
             <Space size={8}>
               <Button onClick={onCancel} size="large">
-                ยกเลิก
+                Cancel
               </Button>
               {editingId && (
                 <>
@@ -657,7 +657,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
                 size="large"
                 style={{ minWidth: 150 }}
               >
-                {editingId ? "บันทึกการแก้ไข" : "Save & Close"}
+                {editingId ? "Save Changes" : "Save & Close"}
               </Button>
             </Space>
           </div>
@@ -728,8 +728,8 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
               );
             }
             let gender: string | undefined;
-            if (record.gender_code === 1) gender = "ชาย";
-            else if (record.gender_code === 2) gender = "หญิง";
+            if (record.gender_code === 1) gender = "Male";
+            else if (record.gender_code === 2) gender = "Female";
 
             const pnameClean = (record.pname || "").trim();
             let matchedTitle = pnameClean
@@ -743,9 +743,9 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
                 });
                 matchedTitle = created;
                 setTitles((prev) => [...prev, created]);
-                message.info(`เพิ่มคำนำหน้าใหม่: ${created.title}`);
+                message.info(`Added new title: ${created.title}`);
               } catch {
-                /* ไม่มีสิทธิ์สร้าง */
+                /* No permission to create */
               }
             }
 
@@ -761,7 +761,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
                   : undefined,
               });
               message.success(
-                `สร้างข้อมูลผู้ป่วยใหม่: ${firstName} ${lastName}`.trim(),
+                `Created new patient: ${firstName} ${lastName}`.trim(),
               );
             } else if (!patient.title_id && matchedTitle) {
               await PatientService.updatePatient(patient.id, {
@@ -794,9 +794,9 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
                   });
                   matchedDepartmentId = created.id;
                   setDepartments((prev) => [...prev, created]);
-                  message.info(`เพิ่ม Department ใหม่: ${created.name}`);
+                  message.info(`Added new Department: ${created.name}`);
                 } catch {
-                  /* ไม่มีสิทธิ์สร้าง */
+                  /* No permission to create */
                 }
               }
             }
@@ -819,9 +819,9 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
                   });
                   matchedSchemeId = created.id;
                   setSchemes((prev) => [...prev, created]);
-                  message.info(`เพิ่มสิทธิ์การรักษาใหม่: ${created.name}`);
+                  message.info(`Added new Medical Scheme: ${created.name}`);
                 } catch {
-                  /* ไม่มีสิทธิ์สร้าง */
+                  /* No permission to create */
                 }
               }
             }
@@ -838,9 +838,9 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
               clinician_name: record.doctor || undefined,
               collect_at: dayObj?.isValid() ? dayObj : undefined,
             });
-            message.success("คัดลอกข้อมูลจาก HIS เรียบร้อยแล้ว");
+            message.success("Data copied from HIS successfully");
           } catch (err: any) {
-            message.error("ไม่สามารถนำเข้าข้อมูลได้: " + (err.message || ""));
+            message.error("Failed to import data: " + (err.message || ""));
           }
         }}
       />
