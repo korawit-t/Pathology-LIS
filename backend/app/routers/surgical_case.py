@@ -674,13 +674,15 @@ def get_tat_stats(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """TAT statistics: average days, distribution buckets, monthly breakdown."""
+    """TAT statistics: average business days (weekends/holidays excluded), distribution buckets, monthly breakdown."""
     from collections import defaultdict
     from app.models.system_setting import SystemSetting
+    from app.utils.tat import get_holiday_dates, business_days_between
 
     setting = db.query(SystemSetting).first()
     target_days = (setting.surgical_tat_days if setting else None) or 10
     express_target_days = (setting.surgical_express_tat_days if setting else None) or 3
+    holidays = get_holiday_dates(db)
 
     filters = [
         SurgicalCase.is_cancelled == False,
@@ -731,7 +733,7 @@ def get_tat_stats(
     on_time_count = 0
 
     for c in cases:
-        tat = (c.report_at - c.registered_at).total_seconds() / 86400
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
         month_key = c.registered_at.strftime("%Y-%m")
         monthly_map[month_key]["count"] += 1
         monthly_map[month_key]["total_days"] += tat
@@ -796,6 +798,9 @@ def get_tat_cases(
 ):
     """List cases (accession_no, patient, tat days) belonging to a TAT distribution bucket."""
     from app.models.patient import Patient
+    from app.utils.tat import get_holiday_dates, business_days_between
+
+    holidays = get_holiday_dates(db)
 
     filters = [
         SurgicalCase.is_cancelled == False,
@@ -821,7 +826,7 @@ def get_tat_cases(
 
     result = []
     for c in cases:
-        tat = (c.report_at - c.registered_at).total_seconds() / 86400
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
         if tat < 3:
             case_bucket = "lt3"
         elif tat < 5:

@@ -141,10 +141,12 @@ def get_nongyne_tat_stats(
 ):
     from collections import defaultdict
     from app.models.system_setting import SystemSetting
+    from app.utils.tat import get_holiday_dates, business_days_between
 
     setting = db.query(SystemSetting).first()
     target_days = (setting.non_gyne_tat_days if setting else None) or 5
     express_target_days = (setting.non_gyne_express_tat_days if setting else None) or 3
+    holidays = get_holiday_dates(db)
 
     filters = [
         NongyneCytologyCase.report_at.isnot(None),
@@ -193,7 +195,7 @@ def get_nongyne_tat_stats(
     on_time_count = 0
 
     for c in cases:
-        tat = (c.report_at - c.registered_at).total_seconds() / 86400
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
         month_key = c.registered_at.strftime("%Y-%m")
         monthly_map[month_key]["count"] += 1
         monthly_map[month_key]["total_days"] += tat
