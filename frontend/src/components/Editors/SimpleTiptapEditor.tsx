@@ -59,6 +59,20 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 /* =======================
+   Empty-paragraph trimming
+======================= */
+const EMPTY_P_SOURCE = "<p>(?:\\s|&nbsp;)*</p>";
+const LEADING_EMPTY_P = new RegExp(`^(?:${EMPTY_P_SOURCE})+`, "i");
+const TRAILING_EMPTY_P = new RegExp(`(?:${EMPTY_P_SOURCE})+$`, "i");
+
+// Strips runs of empty <p></p> left behind by repeated Enter presses at the
+// start/end of the content. Only edges are trimmed — blank paragraphs in the
+// middle of the text are intentional formatting and are left alone.
+function trimEdgeEmptyParagraphs(html: string): string {
+  return html.replace(LEADING_EMPTY_P, "").replace(TRAILING_EMPTY_P, "");
+}
+
+/* =======================
    Tab Keymap Extension
 ======================= */
 const TabKeymap = Extension.create({
@@ -150,6 +164,15 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
         const html = editor.getHTML();
         lastEmittedHtml.current = html;
         onChange?.(html);
+      },
+      onBlur: ({ editor }: { editor: Editor }) => {
+        const html = editor.getHTML();
+        const trimmed = trimEdgeEmptyParagraphs(html);
+        if (trimmed !== html) {
+          editor.commands.setContent(trimmed, { emitUpdate: false });
+          lastEmittedHtml.current = trimmed;
+          onChange?.(trimmed);
+        }
       },
     });
 

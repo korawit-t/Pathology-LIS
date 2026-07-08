@@ -17,6 +17,7 @@ from dateutil.relativedelta import relativedelta
 from typing import List
 import base64
 import os
+import re
 from pathlib import Path
 
 _BKK = ZoneInfo("Asia/Bangkok")
@@ -348,6 +349,13 @@ def _get_image_base64(image_url: str, max_width: int = 800) -> str | None:
         return None
 
 
+def _is_blank_richtext(html: str | None) -> bool:
+    """True if rich-text HTML has no visible content (e.g. just empty <p></p> tags)."""
+    if not html:
+        return True
+    return re.sub(r"<[^>]*>", "", html).replace("&nbsp;", "").strip() == ""
+
+
 def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
     """Add template variables that are missing from snapshot/preview data."""
     settings = db.query(SystemSetting).first()
@@ -380,9 +388,15 @@ def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
 
     # Field name aliases used in template
     data["diagnosis_summary"] = data.get("diagnosis") or data.get("diagnosis_summary") or ""
-    data["gross_description_summary"] = data.get("gross_description") or data.get("gross_description_summary") or ""
-    data["microscopic_summary"] = data.get("microscopic_description") or data.get("microscopic_summary") or ""
-    data["comment_summary"] = data.get("comment") or data.get("comment_summary") or ""
+
+    raw_gross = data.get("gross_description") or data.get("gross_description_summary") or ""
+    data["gross_description_summary"] = "" if _is_blank_richtext(raw_gross) else raw_gross
+
+    raw_micro = data.get("microscopic_description") or data.get("microscopic_summary") or ""
+    data["microscopic_summary"] = "" if _is_blank_richtext(raw_micro) else raw_micro
+
+    raw_comment = data.get("comment") or data.get("comment_summary") or ""
+    data["comment_summary"] = "" if _is_blank_richtext(raw_comment) else raw_comment
 
     # registered_at + actual case status
     if not data.get("registered_at"):

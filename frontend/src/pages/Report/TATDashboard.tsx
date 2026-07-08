@@ -13,6 +13,9 @@ import {
   message,
   Progress,
   Segmented,
+  Modal,
+  Table,
+  Tag,
 } from "antd";
 import {
   ClockCircleOutlined,
@@ -48,7 +51,26 @@ const DIST_COLORS: Record<string, string> = {
   "> 10 days": "#f5222d",
 };
 
+const DIST_BUCKETS: Record<string, "lt3" | "t3_5" | "t5_10" | "gt10"> = {
+  "< 3 days": "lt3",
+  "3–5 days": "t3_5",
+  "5–10 days": "t5_10",
+  "> 10 days": "gt10",
+};
+
 type DistSet = "all" | "routine" | "express";
+
+interface TatCase {
+  id: number;
+  accession_no: string;
+  patient_title: string | null;
+  patient_name: string;
+  patient_ln: string | null;
+  registered_at: string;
+  report_at: string;
+  tat_days: number;
+  is_express: boolean;
+}
 
 const TATDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -75,6 +97,33 @@ const TATDashboard: React.FC = () => {
   }, [dateRange]);
 
   useEffect(() => { fetch(); }, [fetch]);
+
+  const [tatBucketModal, setTatBucketModal] = useState<string | null>(null);
+  const [tatCasesLoading, setTatCasesLoading] = useState(false);
+  const [tatCases, setTatCases] = useState<TatCase[]>([]);
+
+  const openTatBucket = useCallback(
+    async (bucket: "lt3" | "t3_5" | "t5_10" | "gt10") => {
+      setTatBucketModal(bucket);
+      setTatCasesLoading(true);
+      try {
+        const isExpress = distSet === "all" ? undefined : distSet === "express";
+        const cases = await SurgicalCaseService.getTatCases(
+          bucket,
+          dateRange[0].format("YYYY-MM-DD"),
+          dateRange[1].format("YYYY-MM-DD"),
+          undefined,
+          isExpress
+        );
+        setTatCases(cases);
+      } catch {
+        setTatCases([]);
+      } finally {
+        setTatCasesLoading(false);
+      }
+    },
+    [dateRange, distSet]
+  );
 
   const activeDist = data
     ? distSet === "routine"
@@ -248,7 +297,11 @@ const TATDashboard: React.FC = () => {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {distData.map((d) => (
-                    <div key={d.label}>
+                    <div
+                      key={d.label}
+                      onClick={() => d.value > 0 && openTatBucket(DIST_BUCKETS[d.label])}
+                      style={{ cursor: d.value > 0 ? "pointer" : "default" }}
+                    >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                         <Text style={{ fontSize: 13 }}>{d.label}</Text>
                         <Text strong>{d.value} cases ({totalDist ? Math.round(d.value / totalDist * 100) : 0}%)</Text>
@@ -269,7 +322,16 @@ const TATDashboard: React.FC = () => {
                     <XAxis dataKey="label" {...axisProps} />
                     <YAxis allowDecimals={false} {...axisProps} />
                     <Tooltip {...tooltipProps} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Cases">
+                    <Bar
+                      dataKey="value"
+                      radius={[4, 4, 0, 0]}
+                      name="Cases"
+                      cursor="pointer"
+                      onClick={(item: { payload?: { label: string; value: number } }) => {
+                        const d = item.payload;
+                        if (d && d.value > 0) openTatBucket(DIST_BUCKETS[d.label]);
+                      }}
+                    >
                       {distData.map((d) => (
                         <Cell key={d.label} fill={DIST_COLORS[d.label]} />
                       ))}
@@ -347,6 +409,59 @@ const TATDashboard: React.FC = () => {
           </Card>
         )}
       </Spin>
+
+      <Modal
+        title={
+          tatBucketModal
+            ? `TAT Distribution — ${Object.keys(DIST_BUCKETS).find((k) => DIST_BUCKETS[k] === tatBucketModal)}`
+            : ""
+        }
+        open={!!tatBucketModal}
+        onCancel={() => setTatBucketModal(null)}
+        footer={null}
+        width={700}
+      >
+        <Table
+          size="small"
+          loading={tatCasesLoading}
+          dataSource={tatCases}
+          rowKey="id"
+          pagination={tatCases.length > 10 ? { pageSize: 10 } : false}
+          columns={[
+            { title: "Accession No.", dataIndex: "accession_no", key: "accession_no" },
+            {
+              title: "Patient",
+              key: "patient",
+              render: (_, c: TatCase) =>
+                [c.patient_title, c.patient_name, c.patient_ln].filter(Boolean).join(" "),
+            },
+            {
+              title: "Registered",
+              dataIndex: "registered_at",
+              key: "registered_at",
+              render: (v: string) => dayjs(v).format("DD/MM/YYYY"),
+            },
+            {
+              title: "Reported",
+              dataIndex: "report_at",
+              key: "report_at",
+              render: (v: string) => dayjs(v).format("DD/MM/YYYY"),
+            },
+            {
+              title: "TAT",
+              dataIndex: "tat_days",
+              key: "tat_days",
+              render: (v: number) => `${v} d`,
+            },
+            {
+              title: "Priority",
+              dataIndex: "is_express",
+              key: "is_express",
+              render: (v: boolean) => (v ? <Tag color="orange">Express</Tag> : <Tag>Routine</Tag>),
+            },
+          ]}
+        />
+      </Modal>
     </div>
   );
 };

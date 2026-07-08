@@ -297,6 +297,32 @@ const SurgicalCaseService = {
     };
   },
 
+  getTatCases: async (
+    bucket: "lt3" | "t3_5" | "t5_10" | "gt10",
+    dateFrom?: string,
+    dateTo?: string,
+    pathologistId?: number,
+    isExpress?: boolean
+  ) => {
+    const params: Record<string, string | number | boolean> = { bucket };
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (pathologistId != null) params.pathologist_id = pathologistId;
+    if (isExpress != null) params.is_express = isExpress;
+    const res = await api.get("/surgical-cases/tat-cases", { params });
+    return res.data as Array<{
+      id: number;
+      accession_no: string;
+      patient_title: string | null;
+      patient_name: string;
+      patient_ln: string | null;
+      registered_at: string;
+      report_at: string;
+      tat_days: number;
+      is_express: boolean;
+    }>;
+  },
+
   getCancerRegistrySummary: async (dateFrom?: string, dateTo?: string) => {
     const params: Record<string, string> = {};
     if (dateFrom) params.date_from = dateFrom;

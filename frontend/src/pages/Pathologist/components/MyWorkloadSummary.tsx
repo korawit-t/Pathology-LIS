@@ -8,7 +8,7 @@ interface TatData {
   distribution: { lt3: number; t3_5: number; t5_10: number; gt10: number };
   monthly: { month: string; case_count: number; avg_days: number }[];
 }
-import { Row, Col, Card, Statistic, DatePicker, Space, Typography, Spin, Progress, Divider } from "antd";
+import { Row, Col, Card, Statistic, DatePicker, Space, Typography, Spin, Progress, Divider, Modal, Table, Tag } from "antd";
 import {
   FileTextOutlined,
   CheckCircleOutlined,
@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
+  Cell,
 } from "recharts";
 import dayjs, { Dayjs } from "dayjs";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
@@ -106,6 +107,25 @@ interface MyWorkloadSummaryProps {
   pathologistId: number;
 }
 
+interface TatCase {
+  id: number;
+  accession_no: string;
+  patient_title: string | null;
+  patient_name: string;
+  patient_ln: string | null;
+  registered_at: string;
+  report_at: string;
+  tat_days: number;
+  is_express: boolean;
+}
+
+const TAT_BUCKET_LABELS: Record<string, string> = {
+  lt3: "< 3 days",
+  t3_5: "3–5 days",
+  t5_10: "5–10 days",
+  gt10: "> 10 days",
+};
+
 const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkloadData | null>(null);
@@ -116,6 +136,9 @@ const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) 
     dayjs().startOf("month"),
     dayjs().endOf("month"),
   ]);
+  const [tatBucketModal, setTatBucketModal] = useState<string | null>(null);
+  const [tatCasesLoading, setTatCasesLoading] = useState(false);
+  const [tatCases, setTatCases] = useState<TatCase[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -148,6 +171,24 @@ const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openTatBucket = useCallback(
+    async (bucket: "lt3" | "t3_5" | "t5_10" | "gt10") => {
+      setTatBucketModal(bucket);
+      setTatCasesLoading(true);
+      try {
+        const from = dateRange[0].format("YYYY-MM-DD");
+        const to = dateRange[1].format("YYYY-MM-DD");
+        const cases = await SurgicalCaseService.getTatCases(bucket, from, to, pathologistId);
+        setTatCases(cases);
+      } catch {
+        setTatCases([]);
+      } finally {
+        setTatCasesLoading(false);
+      }
+    },
+    [dateRange, pathologistId]
+  );
 
   return (
     <div>
@@ -387,17 +428,21 @@ const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) 
                     TAT Distribution
                   </Text>
                   {(() => {
-                    const dist = [
-                      { label: "< 3 days", value: tatData.distribution.lt3, color: "#52c41a" },
-                      { label: "3–5 days", value: tatData.distribution.t3_5, color: "#1890ff" },
-                      { label: "5–10 days", value: tatData.distribution.t5_10, color: "#fa8c16" },
-                      { label: "> 10 days", value: tatData.distribution.gt10, color: "#f5222d" },
+                    const dist: Array<{ label: string; value: number; color: string; bucket: "lt3" | "t3_5" | "t5_10" | "gt10" }> = [
+                      { label: "< 3 days", value: tatData.distribution.lt3, color: "#52c41a", bucket: "lt3" },
+                      { label: "3–5 days", value: tatData.distribution.t3_5, color: "#1890ff", bucket: "t3_5" },
+                      { label: "5–10 days", value: tatData.distribution.t5_10, color: "#fa8c16", bucket: "t5_10" },
+                      { label: "> 10 days", value: tatData.distribution.gt10, color: "#f5222d", bucket: "gt10" },
                     ];
                     const total = dist.reduce((s, d) => s + d.value, 0);
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         {dist.map((d) => (
-                          <div key={d.label}>
+                          <div
+                            key={d.label}
+                            onClick={() => d.value > 0 && openTatBucket(d.bucket)}
+                            style={{ cursor: d.value > 0 ? "pointer" : "default" }}
+                          >
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                               <Text style={{ fontSize: 12 }}>{d.label}</Text>
                               <Text strong style={{ fontSize: 12 }}>{d.value} ({total ? Math.round(d.value / total * 100) : 0}%)</Text>
@@ -411,6 +456,38 @@ const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) 
                           </div>
                         ))}
                       </div>
+                    );
+                  })()}
+                  {(() => {
+                    const dist: Array<{ label: string; value: number; color: string; bucket: "lt3" | "t3_5" | "t5_10" | "gt10" }> = [
+                      { label: "< 3 days", value: tatData.distribution.lt3, color: "#52c41a", bucket: "lt3" },
+                      { label: "3–5 days", value: tatData.distribution.t3_5, color: "#1890ff", bucket: "t3_5" },
+                      { label: "5–10 days", value: tatData.distribution.t5_10, color: "#fa8c16", bucket: "t5_10" },
+                      { label: "> 10 days", value: tatData.distribution.gt10, color: "#f5222d", bucket: "gt10" },
+                    ];
+                    return (
+                      <ResponsiveContainer width="100%" height={160} style={{ marginTop: 20 }}>
+                        <BarChart data={dist} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
+                          <CartesianGrid {...GRID_PROPS} />
+                          <XAxis dataKey="label" {...AXIS_PROPS} />
+                          <YAxis tick={AXIS_PROPS.tick} allowDecimals={false} />
+                          <Tooltip {...TOOLTIP_PROPS} />
+                          <Bar
+                            dataKey="value"
+                            radius={[4, 4, 0, 0]}
+                            name="Cases"
+                            cursor="pointer"
+                            onClick={(item: { payload?: { label: string; value: number; bucket: "lt3" | "t3_5" | "t5_10" | "gt10" } }) => {
+                              const d = item.payload;
+                              if (d && d.value > 0) openTatBucket(d.bucket);
+                            }}
+                          >
+                            {dist.map((d) => (
+                              <Cell key={d.label} fill={d.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     );
                   })()}
                 </Card>
@@ -450,6 +527,55 @@ const MyWorkloadSummary: React.FC<MyWorkloadSummaryProps> = ({ pathologistId }) 
           </>
         )}
       </Spin>
+
+      <Modal
+        title={tatBucketModal ? `TAT Distribution — ${TAT_BUCKET_LABELS[tatBucketModal]}` : ""}
+        open={!!tatBucketModal}
+        onCancel={() => setTatBucketModal(null)}
+        footer={null}
+        width={700}
+      >
+        <Table
+          size="small"
+          loading={tatCasesLoading}
+          dataSource={tatCases}
+          rowKey="id"
+          pagination={tatCases.length > 10 ? { pageSize: 10 } : false}
+          columns={[
+            { title: "Accession No.", dataIndex: "accession_no", key: "accession_no" },
+            {
+              title: "Patient",
+              key: "patient",
+              render: (_, c: TatCase) =>
+                [c.patient_title, c.patient_name, c.patient_ln].filter(Boolean).join(" "),
+            },
+            {
+              title: "Registered",
+              dataIndex: "registered_at",
+              key: "registered_at",
+              render: (v: string) => dayjs(v).format("DD/MM/YYYY"),
+            },
+            {
+              title: "Reported",
+              dataIndex: "report_at",
+              key: "report_at",
+              render: (v: string) => dayjs(v).format("DD/MM/YYYY"),
+            },
+            {
+              title: "TAT",
+              dataIndex: "tat_days",
+              key: "tat_days",
+              render: (v: number) => `${v} d`,
+            },
+            {
+              title: "Priority",
+              dataIndex: "is_express",
+              key: "is_express",
+              render: (v: boolean) => (v ? <Tag color="orange">Express</Tag> : <Tag>Routine</Tag>),
+            },
+          ]}
+        />
+      </Modal>
     </div>
   );
 };

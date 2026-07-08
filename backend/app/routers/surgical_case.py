@@ -784,6 +784,71 @@ def get_tat_stats(
     }
 
 
+@router.get("/tat-cases")
+def get_tat_cases(
+    bucket: str = Query(..., pattern="^(lt3|t3_5|t5_10|gt10)$"),
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
+    pathologist_id: Optional[int] = Query(default=None),
+    is_express: Optional[bool] = Query(default=None),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """List cases (accession_no, patient, tat days) belonging to a TAT distribution bucket."""
+    from app.models.patient import Patient
+
+    filters = [
+        SurgicalCase.is_cancelled == False,
+        SurgicalCase.report_at.isnot(None),
+        SurgicalCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+    if is_express is not None:
+        filters.append(SurgicalCase.is_express == is_express)
+
+    cases = (
+        db.query(SurgicalCase)
+        .join(Patient)
+        .filter(*filters)
+        .order_by(SurgicalCase.registered_at.desc())
+        .all()
+    )
+
+    result = []
+    for c in cases:
+        tat = (c.report_at - c.registered_at).total_seconds() / 86400
+        if tat < 3:
+            case_bucket = "lt3"
+        elif tat < 5:
+            case_bucket = "t3_5"
+        elif tat <= 10:
+            case_bucket = "t5_10"
+        else:
+            case_bucket = "gt10"
+        if case_bucket != bucket:
+            continue
+        result.append(
+            {
+                "id": c.id,
+                "accession_no": c.accession_no,
+                "patient_title": c.patient.title.title if c.patient and c.patient.title else None,
+                "patient_name": c.patient.name if c.patient else "Unknown",
+                "patient_ln": c.patient.ln if c.patient else None,
+                "registered_at": c.registered_at,
+                "report_at": c.report_at,
+                "tat_days": round(tat, 1),
+                "is_express": c.is_express,
+            }
+        )
+
+    return result
+
+
 @router.get("/cancer-registry-summary")
 def get_cancer_registry_summary(
     date_from: Optional[date] = Query(default=None),
