@@ -25,6 +25,8 @@ class ArchiveItem(BaseModel):
     interpretation: Optional[str] = None
     specimen: Optional[str] = None
     collection_site: Optional[str] = None
+    case_id: Optional[int] = None
+    has_outlab_result: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 

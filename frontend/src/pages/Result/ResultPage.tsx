@@ -24,6 +24,7 @@ import { useAuth } from "../../hooks/useAuth";
 import SurgicalReportService from "../../services/surgicalReportService";
 import GyneDiagnosisService from "../../services/gyneDiagnosisService";
 import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
+import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
 import legacyReportService from "../../services/legacyReportService";
 import { ArchiveItem } from "../../services/archiveService";
 import dayjs from "dayjs";
@@ -124,11 +125,19 @@ const ResultPage: React.FC = () => {
     return `${parts}_HN${hn}.pdf`.replace(/[/\\:*?"<>|]/g, "_");
   };
 
+  const isOutlabOnly = (row: SearchRow) =>
+    row.source !== "legacy" &&
+    row._type === "gyne" &&
+    row.status?.toLowerCase() !== "published" &&
+    !!row.has_outlab_result;
+
   const fetchBlob = async (row: SearchRow): Promise<Blob> => {
     if (row.source === "legacy") {
       const blob = await legacyReportService.getPdf(row._type, row.id);
       legacyReportService.markRead(row._type, row.id).catch(() => {});
       return blob;
+    } else if (row._type === "gyne" && isOutlabOnly(row)) {
+      return GyneCytologyCaseService.downloadOutlabTestResult(row.case_id!);
     } else if (row._type === "gyne") {
       const blob = await GyneDiagnosisService.getReportPdf(row.id);
       GyneDiagnosisService.markRead(row.id).catch(() => {});
@@ -249,6 +258,9 @@ const ResultPage: React.FC = () => {
       width: 140,
       render: (_: unknown, r: SearchRow) => {
         const s = r.status?.toLowerCase();
+        if (isOutlabOnly(r)) {
+          return <Tag color="cyan">ผล Out-lab</Tag>;
+        }
         const color =
           s === "published" ? "green"
           : s === "in_progress" ? "default"
@@ -268,7 +280,7 @@ const ResultPage: React.FC = () => {
       width: 150,
       fixed: "right" as const,
       render: (_: unknown, r: SearchRow) => {
-        const canView = r.source === "legacy" || r.status?.toLowerCase() === "published";
+        const canView = r.source === "legacy" || r.status?.toLowerCase() === "published" || isOutlabOnly(r);
         if (!canView)
           return (
             <Text type="secondary" style={{ fontSize: 12 }}>

@@ -175,7 +175,7 @@ def get_gyne_archive(
                clinician_name, pathologist_name, status, date, registered_date,
                NULL::boolean AS has_malignancy,
                adequacy_text, category_1_text, interpretation,
-               specimen
+               specimen, case_id, has_outlab_result
         FROM (
             SELECT
                 'current' AS source,
@@ -199,7 +199,9 @@ def get_gyne_archive(
                 sr.adequacy_text,
                 sr.category_1_text,
                 sr.interpretation,
-                c.specimen_type AS specimen
+                c.specimen_type AS specimen,
+                c.id AS case_id,
+                (c.is_out_lab AND c.out_lab_result_pdf_path IS NOT NULL) AS has_outlab_result
             FROM gyne_cytology_cases c
             JOIN patients p ON c.patient_id = p.id
             LEFT JOIN titles ti ON p.title_id = ti.id
@@ -223,7 +225,9 @@ def get_gyne_archive(
                 COALESCE(published_at, reported_at, created_at) AS date,
                 created_at AS registered_date,
                 adequacy_text, category_1_text, interpretation,
-                NULL::text AS specimen
+                NULL::text AS specimen,
+                NULL::int AS case_id,
+                false AS has_outlab_result
             FROM legacy_gyne_cyto_reports {lw}
         ) combined
         ORDER BY date DESC NULLS LAST

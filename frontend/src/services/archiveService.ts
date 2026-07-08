@@ -21,6 +21,8 @@ export interface ArchiveItem {
   interpretation?: string;
   specimen?: string;
   collection_site?: string;
+  case_id?: number;
+  has_outlab_result?: boolean;
 }
 
 export interface ArchivePage {
