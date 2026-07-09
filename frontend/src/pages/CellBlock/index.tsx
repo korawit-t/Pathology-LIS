@@ -159,7 +159,11 @@ const CellBlockTrackingPage: React.FC<CellBlockTrackingPageProps> = ({ onOpenCas
       key: "patient",
       render: (_, r) => (
         <Space direction="vertical" size={0}>
-          <Text style={{ fontSize: 13 }}>{r.patient?.name || "—"}</Text>
+          <Text style={{ fontSize: 13 }}>
+            {r.patient
+              ? [r.patient.title?.title, r.patient.name, r.patient.ln].filter(Boolean).join(" ")
+              : "—"}
+          </Text>
           {r.hn && <Text type="secondary" style={{ fontSize: 11 }}>HN {r.hn}</Text>}
         </Space>
       ),
@@ -352,7 +356,11 @@ const CellBlockTrackingPage: React.FC<CellBlockTrackingPageProps> = ({ onOpenCas
                 <Text strong>{modalRecord.accession_no}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Patient">
-                {modalRecord.patient?.name || "—"}
+                {modalRecord.patient
+                  ? [modalRecord.patient.title?.title, modalRecord.patient.name, modalRecord.patient.ln]
+                      .filter(Boolean)
+                      .join(" ")
+                  : "—"}
                 {modalRecord.hn && (
                   <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
                     HN {modalRecord.hn}

@@ -188,7 +188,7 @@ export const PendingQueueTab = ({ onSent }) => {
       ),
     },
     {
-      title: "ผู้ป่วย",
+      title: "Patient",
       key: "patient_info",
       width: 180,
       render: (_, record) => {
@@ -197,13 +197,13 @@ export const PendingQueueTab = ({ onSent }) => {
           <Space direction="vertical" size={0}>
             <Text strong style={{ fontSize: 13 }}>{info.patient_name || "-"}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>HN: {info.hn || "-"}</Text>
-            {info.age != null && <Text type="secondary" style={{ fontSize: 12 }}>อายุ {info.age} ปี</Text>}
+            {info.age != null && <Text type="secondary" style={{ fontSize: 12 }}>Age {info.age} yrs</Text>}
           </Space>
         );
       },
     },
     {
-      title: "สิทธิ / รพ.",
+      title: "Scheme / Hospital",
       key: "scheme_hospital",
       width: 150,
       render: (_, record) => {
@@ -490,7 +490,7 @@ export const TrackingTab = ({ refreshTrigger, onReceived }) => {
       render: (text) => <Text strong>{text || "-"}</Text>,
     },
     {
-      title: "เลขพัสดุ",
+      title: "Tracking No.",
       key: "tracking_number",
       onCell: () => ({ onClick: (e) => e.stopPropagation() }),
       render: (_, record) => {
@@ -799,7 +799,7 @@ export const CaseViewTab = ({ refreshTrigger, onReceived }) => {
         accNos.forEach((acc, i) => {
           const c = results[i]?.items?.[0];
           if (c) {
-            const nameParts = [c.patient?.name, c.patient?.ln].filter(Boolean);
+            const nameParts = [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean);
             map[acc] = { hn: c.hn || "-", patient_name: nameParts.join(" ") || "-" };
           }
         });
@@ -1129,7 +1129,7 @@ export const HosxpKeyTab = ({ refreshTrigger }) => {
         accNos.forEach((acc, i) => {
           const c = results[i]?.items?.[0];
           if (c) {
-            const nameParts = [c.patient?.name, c.patient?.ln].filter(Boolean);
+            const nameParts = [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean);
             map[acc] = { hn: c.hn || "-", patient_name: nameParts.join(" ") || "-" };
           }
         });
@@ -1445,7 +1445,7 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
         if (c) {
           accToCase[acc] = {
             hn: c.hn || "-",
-            patient_name: [c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "-",
+            patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "-",
           };
         }
       });
