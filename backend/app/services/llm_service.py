@@ -19,6 +19,21 @@ def _get_api_key(provider: str) -> str:
     return OPENAI_API_KEY
 
 
+def parse_json_response(raw: str) -> dict:
+    """Parse a JSON-mode LLM response into a dict.
+
+    Providers asked for a JSON *object* usually return one, but some (e.g.
+    Gemini) don't strictly enforce that and can wrap it in a JSON array
+    instead — unwrap the first element in that case rather than letting
+    callers crash on `.get()` against a list."""
+    data = json.loads(raw)
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected a JSON object from the LLM, got {type(data).__name__}: {raw[:200]!r}")
+    return data
+
+
 async def call_llm(
     profile: LlmProfile,
     system_prompt: str,

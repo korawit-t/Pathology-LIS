@@ -5,7 +5,6 @@ from datetime import date, datetime, time
 from collections import defaultdict
 from typing import Optional
 from html.parser import HTMLParser
-import json
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
@@ -20,7 +19,7 @@ from app.crud import tumor_registry as crud
 from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
 from app.schemas.tumor_registry import TumorRegistryUpsert, TumorRegistryResponse
-from app.services.llm_service import call_llm
+from app.services.llm_service import call_llm, parse_json_response
 
 router = APIRouter(prefix="/tumor-registries", tags=["Tumor Registry"])
 
@@ -198,7 +197,7 @@ async def suggest_icd_o(case_id: int, db: Session = Depends(get_db)):
     system_prompt = get_icd_o_prompt(settings.tumor_registry_system_prompt)
     try:
         raw = await call_llm(profile, system_prompt, diagnosis_text)
-        result = json.loads(raw)
+        result = parse_json_response(raw)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"LLM error: {str(e)}")
 

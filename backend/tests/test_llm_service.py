@@ -120,6 +120,28 @@ class TestCallLlm:
         assert args[0] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
 
+class TestParseJsonResponse:
+    def test_plain_object_passes_through(self):
+        assert llm_service.parse_json_response('{"a": 1}') == {"a": 1}
+
+    def test_list_wrapped_object_is_unwrapped(self):
+        # Regression: Gemini's json-mode doesn't strictly enforce a
+        # top-level object — it can wrap the intended object in a JSON
+        # array, e.g. '[{"topography_code": "C50.1"}]'. This must not
+        # crash callers doing result.get(...).
+        assert llm_service.parse_json_response('[{"a": 1}]') == {"a": 1}
+
+    def test_empty_list_becomes_empty_dict(self):
+        assert llm_service.parse_json_response("[]") == {}
+
+    def test_non_object_non_list_raises_value_error(self):
+        try:
+            llm_service.parse_json_response('"just a string"')
+            assert False, "expected ValueError"
+        except ValueError as e:
+            assert "str" in str(e)
+
+
 class TestTestConnection:
     def test_openai_compatible_returns_reply_text(self, monkeypatch):
         ctx, client = _mock_async_client(json_data={"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]})

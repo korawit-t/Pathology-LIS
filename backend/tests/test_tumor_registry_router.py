@@ -162,6 +162,26 @@ class TestSuggestIcdO:
         assert r.json()["topography_code"] == "C50"
         mock_call.assert_called_once()
 
+    def test_list_wrapped_llm_response_is_handled_not_500(self, db, admin_client, admin_user):
+        # Regression: Gemini (via openai_compatible) doesn't strictly
+        # enforce a top-level JSON object even in json-mode, and can
+        # wrap the object in a list — previously crashed with an
+        # unhandled AttributeError ('list' object has no attribute 'get')
+        # instead of a clean error response.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        profile = create_llm_profile(db, LlmProfileCreate(display_name="Test", provider="openai", model="gpt-4o"))
+        make_system_setting(db, tumor_registry_enabled=True, tumor_registry_llm_profile_id=profile.id)
+        db.add(SurgicalDiagnosis(case_id=case.id, diagnosis_level=DiagnosisLevel.CASE, diagnosis="Carcinoma", status="finalized"))
+        db.commit()
+
+        fake_llm_json = '[{"topography_code": "C50", "topography_desc": "Breast", "morphology_code": "8500/3", "morphology_desc": "Ductal"}]'
+        with patch("app.routers.tumor_registry.call_llm", return_value=fake_llm_json):
+            r = admin_client.post(f"/tumor-registries/{case.id}/suggest")
+
+        assert r.status_code == 200
+        assert r.json()["topography_code"] == "C50"
+
     def test_no_diagnosis_text_returns_422(self, db, admin_client, admin_user):
         registrar, _ = admin_user
         case = make_signable_case(db, registrar_id=registrar.id)[0]

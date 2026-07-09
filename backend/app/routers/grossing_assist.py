@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from html.parser import HTMLParser
-import json
 
 from app.db.database import get_db
 from app.models.surgical_specimen import SurgicalSpecimen
@@ -9,7 +8,7 @@ from app.core.roles import CAN_ACCESS_GROSSING_ASSIST
 from app.core.prompts import get_grossing_assist_prompt
 from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
-from app.services.llm_service import call_llm
+from app.services.llm_service import call_llm, parse_json_response
 from app.utils.submitted_sections import build_submitted_sections_text, fetch_blocks_by_specimen
 
 router = APIRouter(prefix="/surgical-cases", tags=["Grossing Assistant"])
@@ -103,7 +102,7 @@ async def run_grossing_assist(case_id: int, db: Session = Depends(get_db)):
     system_prompt = get_grossing_assist_prompt(settings.grossing_assist_system_prompt)
     try:
         raw = await call_llm(profile, system_prompt, specimens_text)
-        result = json.loads(raw)
+        result = parse_json_response(raw)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"LLM error: {str(e)}")
 

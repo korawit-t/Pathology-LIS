@@ -14,7 +14,7 @@ from app.core.roles import CAN_WRITE_REPORT
 from app.core.prompts import get_report_gen_prompt
 from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
-from app.services.llm_service import call_llm
+from app.services.llm_service import call_llm, parse_json_response
 from app.utils.submitted_sections import build_submitted_sections_text, fetch_blocks_by_specimen
 
 router = APIRouter(prefix="/surgical-cases", tags=["Report Generation"])
@@ -43,7 +43,7 @@ def _parse_json_safe(raw: str) -> dict:
     # strip ```json ... ``` or ``` ... ```
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    return parse_json_response(raw)
 
 
 # --- Request schemas ---
