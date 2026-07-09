@@ -38,13 +38,19 @@ def get_diagnosis(db: Session, diagnosis_id: int):
     )
 
 
-def get_diagnoses_by_patient(db: Session, patient_id: int):
-    return (
+def get_diagnoses_by_patient(db: Session, patient_id: int, hospital_ids=None):
+    query = (
         db.query(SurgicalDiagnosis)
         .join(SurgicalSpecimen)
         .join(SurgicalCase)
         .filter(SurgicalCase.patient_id == patient_id)
-        .options(joinedload(SurgicalDiagnosis.specimen))
+    )
+    # hospital_ids None => internal/unrestricted; a set (possibly empty) => external,
+    # scope to those hospitals only (empty set correctly yields no rows).
+    if hospital_ids is not None:
+        query = query.filter(SurgicalCase.hospital_id.in_(hospital_ids))
+    return (
+        query.options(joinedload(SurgicalDiagnosis.specimen))
         .order_by(SurgicalDiagnosis.created_at.desc())
         .all()
     )

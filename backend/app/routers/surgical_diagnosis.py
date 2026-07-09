@@ -14,7 +14,12 @@ from app.schemas.surgical_diagnosis import (
 from app.crud import surgical_diagnosis as crud
 from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.models.surgical_diagnosis import SurgicalDiagnosis
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import (
+    get_current_user,
+    RoleChecker,
+    assert_hospital_scoped_access,
+    get_scoped_hospital_ids,
+)
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen
@@ -42,7 +47,19 @@ def create_diagnosis_entry(
     response_model=List[SurgicalDiagnosisResponse],
     dependencies=[Depends(CAN_READ_REPORT)],
 )
-def get_cumulative_diagnoses(specimen_id: int, db: Session = Depends(get_db)):
+def get_cumulative_diagnoses(
+    specimen_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # 🔒 Object-level authz: external (hospital/clinician) users only within their hospital.
+    specimen = db.query(SurgicalSpecimen).filter(SurgicalSpecimen.id == specimen_id).first()
+    case = (
+        db.query(SurgicalCase).filter(SurgicalCase.id == specimen.case_id).first()
+        if specimen
+        else None
+    )
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     return crud.list_diagnoses_by_specimen(db, specimen_id)
 
 
@@ -51,11 +68,18 @@ def get_cumulative_diagnoses(specimen_id: int, db: Session = Depends(get_db)):
     response_model=List[SurgicalDiagnosisResponse],
     dependencies=[Depends(CAN_READ_REPORT)],
 )
-def get_case_diagnoses(case_id: int, db: Session = Depends(get_db)):
+def get_case_diagnoses(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """
     ดึงข้อมูลการวินิจฉัยทั้งหมดที่เกี่ยวข้องกับเคสนี้
     (ใช้สำหรับหน้า Report Preview หรือ Dashboard สรุปผลของเคส)
     """
+    # 🔒 Object-level authz: external (hospital/clinician) users only within their hospital.
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     diagnoses = crud.list_diagnoses_by_case(db, case_id)
     return diagnoses
 
@@ -101,7 +125,10 @@ def delete_draft_diagnosis(diagnosis_id: int, db: Session = Depends(get_db)):
     return {"detail": "Draft diagnosis deleted"}
 
 
-@router.delete("/case/{case_id}/case-level-draft")
+@router.delete(
+    "/case/{case_id}/case-level-draft",
+    dependencies=[Depends(CAN_WRITE_REPORT)],  # was unguarded — unauthenticated destructive delete
+)
 def delete_case_level_draft(case_id: int, db: Session = Depends(get_db)):
     # 🚩 เปลี่ยนจาก models.SurgicalDiagnosis เป็น SurgicalDiagnosis เฉยๆ ตามที่ Import มา
     draft = (
@@ -128,9 +155,14 @@ def delete_case_level_draft(case_id: int, db: Session = Depends(get_db)):
     response_model=List[SurgicalDiagnosisResponse],
     dependencies=[Depends(CAN_READ_REPORT)],
 )
-def get_patient_historical_diagnoses(patient_id: int, db: Session = Depends(get_db)):
-    diagnoses = crud.get_diagnoses_by_patient(db, patient_id=patient_id)
-    return diagnoses
+def get_patient_historical_diagnoses(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # 🔒 External users see only their hospital(s)' diagnoses; internal staff = all.
+    allowed = get_scoped_hospital_ids(current_user)
+    return crud.get_diagnoses_by_patient(db, patient_id=patient_id, hospital_ids=allowed)
 
 
 @router.post(

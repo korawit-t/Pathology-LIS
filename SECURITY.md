@@ -63,6 +63,17 @@ See [TERMS_OF_USE.md](./TERMS_OF_USE.md) for the full liability disclaimer.
 
 ## Changelog
 
+### 2026-07-09
+
+Continuation of the 2026-07-07 OWASP #1 pass — `surgical_diagnosis.py` was the one PHI-read router that pass missed, found while adding systematic code-security tooling ahead of open-sourcing:
+
+| Severity | Category | Component | Fix |
+|----------|----------|-----------|-----|
+| High | Authorization Bypass | `backend/app/routers/surgical_diagnosis.py` | `DELETE /case/{case_id}/case-level-draft` had no dependency at all (and `main.py` adds no global auth) — an unauthenticated caller could delete a case's case-level draft diagnosis by iterating `case_id`. Added `CAN_WRITE_REPORT`, matching the write/delete gate on every sibling route. |
+| Medium | Insecure Direct Object Reference | `backend/app/routers/surgical_diagnosis.py` | The three `CAN_READ_REPORT`-gated GET endpoints (`/specimen/{id}`, `/case/{case_id}`, `/patient/{patient_id}`) fetched diagnoses with no hospital check — an external `clinician`/`hospital` account could read another hospital's surgical diagnoses by incrementing ids. Added `assert_hospital_scoped_access(current_user, case.hospital_id)` to the specimen/case routes (resolving the case via the specimen for the former); the patient-history route filters results to the caller's hospitals via a new `hospital_ids` param on `get_diagnoses_by_patient` (mirroring the `get_cases` pattern from 2026-07-07). |
+
+Regression tests added to `test_hospital_scoping_router.py` (10 new tests across 2 classes — `TestSurgicalDiagnosisCaseLevelDraftDeleteGate`, `TestSurgicalDiagnosisHospitalScoping` — reusing the file's `_make_clinician_at_hospital` helper). Both gaps were confirmed accidental (gyne/nongyne diagnosis routers are write-role-gated and never exposed; the frontend calls these endpoints only from `ProtectedRoute` pages) — defense-in-depth, no user-facing change.
+
 ### 2026-07-07
 
 Found while writing HTTP-level test coverage for all backend routers (a broader audit than a targeted security review, but it surfaced the same bug class as the 2026-07-05 findings below):

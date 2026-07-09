@@ -25,6 +25,7 @@ from app.models.legacy_nongyne_cyto_report import LegacyNongyneCytoReport
 from tests.conftest import _make_user
 from tests.factories import (
     make_hospital,
+    make_patient,
     make_bare_case,
     make_bare_gyne_case,
     make_bare_nongyne_case,
@@ -577,3 +578,141 @@ class TestAdditionalSectionsNowRequiresGrossRole:
         r = client.patch(f"/surgical-specimens/{specimen.id}/additional-sections", json={"needs": True})
 
         assert r.status_code == 200
+
+
+def _add_specimen_diagnosis(db, case, specimen, text_, status="signed"):
+    from app.models.surgical_diagnosis import SurgicalDiagnosis
+    from app.enums.surgical_diagnosis_enums import DiagnosisLevel
+
+    diag = SurgicalDiagnosis(
+        case_id=case.id,
+        surgical_specimen_id=specimen.id,
+        diagnosis_level=DiagnosisLevel.SPECIMEN,
+        diagnosis=text_,
+        diagnosis_order=1,
+        status=status,
+    )
+    db.add(diag)
+    db.commit()
+    db.refresh(diag)
+    return diag
+
+
+class TestSurgicalDiagnosisCaseLevelDraftDeleteGate:
+    """DELETE /surgical-diagnoses/case/{case_id}/case-level-draft previously had
+    NO dependency at all, and main.py adds no global auth -- so it was an
+    unauthenticated destructive endpoint (delete draft diagnoses by iterating
+    case_id). Now gated by CAN_WRITE_REPORT (internal write roles only)."""
+
+    def test_unauthenticated_cannot_delete_case_level_draft(self, client, db, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_case(db, registrar_id=registrar.id)
+        r = client.delete(f"/surgical-diagnoses/case/{case.id}/case-level-draft")
+        assert r.status_code == 401
+
+    def test_clinician_cannot_delete_case_level_draft(self, client, db, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_case(db, registrar_id=registrar.id)
+        hosp_a = make_hospital(db)
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        r = client.delete(f"/surgical-diagnoses/case/{case.id}/case-level-draft")
+        assert r.status_code == 403
+
+    def test_pathologist_can_delete_case_level_draft(self, client, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path_user, path_pwd = pathologist_user
+        case = make_bare_case(db, registrar_id=registrar.id)
+        _login(client, path_user.username, path_pwd)
+        # No draft exists -> still 200 ("No case-level draft found"), proving the
+        # write-role gate lets an authorized user through.
+        r = client.delete(f"/surgical-diagnoses/case/{case.id}/case-level-draft")
+        assert r.status_code == 200
+
+
+class TestSurgicalDiagnosisHospitalScoping:
+    """The 3 GET endpoints in surgical_diagnosis.py are gated by CAN_READ_REPORT
+    (which includes clinician/hospital) but were not hospital-scoped -- an
+    external user could read another hospital's diagnoses by iterating ids.
+    specimen/case use assert_hospital_scoped_access (403); patient history
+    filters the returned rows to the caller's hospitals."""
+
+    def test_clinician_cannot_read_other_hospital_case_diagnoses(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        assert client.get(f"/surgical-diagnoses/case/{case_b.id}").status_code == 403
+
+    def test_clinician_can_read_own_hospital_case_diagnoses(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        assert client.get(f"/surgical-diagnoses/case/{case_a.id}").status_code == 200
+
+    def test_clinician_cannot_read_other_hospital_specimen_diagnoses(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        _, specimen_b = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        assert client.get(f"/surgical-diagnoses/specimen/{specimen_b.id}").status_code == 403
+
+    def test_clinician_can_read_own_hospital_specimen_diagnoses(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        _, specimen_a = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a)
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        assert client.get(f"/surgical-diagnoses/specimen/{specimen_a.id}").status_code == 200
+
+    def test_pathologist_can_read_any_hospital_case_diagnoses(self, client, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path_user, path_pwd = pathologist_user
+        hosp_b = make_hospital(db)
+        case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        _login(client, path_user.username, path_pwd)
+        # Internal staff are not hospital-scoped.
+        assert client.get(f"/surgical-diagnoses/case/{case_b.id}").status_code == 200
+
+    def test_clinician_patient_history_excludes_other_hospital(self, client, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_a, spec_a = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a, patient=patient)
+        case_b, spec_b = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b, patient=patient)
+        diag_a = _add_specimen_diagnosis(db, case_a, spec_a, "hospA")
+        diag_b = _add_specimen_diagnosis(db, case_b, spec_b, "hospB")
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.get(f"/surgical-diagnoses/patient/{patient.id}")
+        assert r.status_code == 200
+        ids = {d["id"] for d in r.json()}
+        assert diag_a.id in ids
+        assert diag_b.id not in ids
+
+    def test_internal_patient_history_sees_all_hospitals(self, client, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path_user, path_pwd = pathologist_user
+        patient = make_patient(db)
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_a, spec_a = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a, patient=patient)
+        case_b, spec_b = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b, patient=patient)
+        diag_a = _add_specimen_diagnosis(db, case_a, spec_a, "hospA")
+        diag_b = _add_specimen_diagnosis(db, case_b, spec_b, "hospB")
+
+        _login(client, path_user.username, path_pwd)
+
+        r = client.get(f"/surgical-diagnoses/patient/{patient.id}")
+        assert r.status_code == 200
+        ids = {d["id"] for d in r.json()}
+        assert {diag_a.id, diag_b.id} <= ids
