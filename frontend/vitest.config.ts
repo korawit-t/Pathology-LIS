@@ -8,6 +8,11 @@ export default defineConfig({
     setupFiles: ["./src/setupTests.ts"],
     globals: true,
     css: false,
+    // CI runners are ~3x slower than local; the antd modal/interaction suites
+    // (e.g. AnatomicalPathologyTestPage) exceed the 5s default there. Match the
+    // 15s several tests already set inline, applied globally to avoid flakiness.
+    testTimeout: 15000,
+    hookTimeout: 15000,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
