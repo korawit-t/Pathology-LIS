@@ -47,6 +47,9 @@ jobs:
       - name: Install bandit
         run: pip install bandit[toml]
       - name: Run bandit
+        # his_adapters stays excluded: its raw-SQL sites are multiline f-strings that
+        # can't carry a working inline `# nosec`. Semgrep (below) scans that folder instead;
+        # the real fix is the bindparam(expanding=True) refactor (audit H5/M4).
         run: bandit -r backend/app -ll -x backend/app/tests,backend/app/his_adapters
 
   node-audit:
@@ -63,3 +66,29 @@ jobs:
       - name: Run npm audit
         working-directory: frontend
         run: npm audit --audit-level=high
+
+  semgrep:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install semgrep
+        run: pip install semgrep
+      # Covers FastAPI + React + raw SQL (his_adapters) that bandit rules miss.
+      # `--error` = fail the build on findings. First run may surface existing issues
+      # (e.g. the his_adapters SQL, pdf_service autoescape) — triage with `# nosemgrep`
+      # or a `.semgrepignore`, or switch to SARIF-upload mode if you'd rather not block.
+      - name: Run semgrep
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/javascript \
+            --config p/react \
+            --config p/secrets \
+            --error --metrics off \
+            --exclude frontend/node_modules \
+            --exclude backend/.venv \
+            --exclude backend/venv

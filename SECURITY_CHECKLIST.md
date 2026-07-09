@@ -12,6 +12,19 @@ Tracked in `SECURITY_FINDINGS.md`, which is intentionally **not committed** to t
 
 ---
 
+## Repo Settings to Enable at Publish (GitHub-native, free for public repos)
+
+Flip these on in the repository's **Settings** when it goes public — they take minutes and only exist because the repo is public. The in-repo CI gates (gitleaks, pip-audit, bandit, npm audit, semgrep, tsc/eslint) already run from `.github/workflows/`; this section is the settings that live in the GitHub UI, not in code.
+
+- [ ] **Code scanning — CodeQL**: Settings → Code security → Code scanning → *Set up* → **Default**. Deep SAST for Python + TypeScript on every PR. (Use the UI default setup — do **not** also add a `codeql.yml`, they conflict.)
+- [ ] **Secret scanning + Push protection**: Settings → Code security. Blocks commits containing secrets before they land — the backstop for the history scrub already done.
+- [ ] **Dependabot alerts + security updates**: Settings → Code security. (The weekly update PRs are already configured in `.github/dependabot.yml`.)
+- [ ] **Branch protection on `main`**: Settings → Branches — require a PR before merge; require the `Tests` and `Security Scan` status checks to pass; dismiss stale approvals.
+- [ ] **Actions hardening**: Settings → Actions → General — "Allow select actions", and default workflow token permissions to read-only.
+- [ ] **Private vulnerability reporting**: Settings → Code security — lets researchers report privately (pairs with `SECURITY.md`).
+
+---
+
 ## 0. Foundations (do these first)
 
 - [ ] Define a **data classification policy**: what is PHI, what is internal, what is public. Tag every database column and API field accordingly.

@@ -56,3 +56,25 @@ jobs:
       - name: Run vitest
         working-directory: frontend
         run: npm test
+
+  frontend-quality:
+    name: Frontend Type-check & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      # NON-BLOCKING for now: repo currently has ~2 tsc + ~18 eslint errors.
+      # Fix those, then remove `continue-on-error` to make these real merge gates.
+      - name: Type-check (tsc --noEmit)
+        working-directory: frontend
+        continue-on-error: true
+        run: npx tsc --noEmit
+      - name: Lint (eslint)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
