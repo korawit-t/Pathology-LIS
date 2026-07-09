@@ -1537,7 +1537,7 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
       dataIndex: "earliest_time",
       key: "time",
       width: 100,
-      render: (t, record) => {
+      render: (t) => {
         const [h, m] = (t || "").split(":").map(Number);
         const apptMinutes = h * 60 + m;
         const nowMinutes = dayjs().hour() * 60 + dayjs().minute();

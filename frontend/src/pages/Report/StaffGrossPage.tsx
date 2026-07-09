@@ -133,7 +133,7 @@ const GrossStaffTable: React.FC<GrossStaffTableProps> = ({ rows, role, dateRange
           }
         >
           <Table<StaffGrossItem>
-            rowKey={(r) => `${r.specimen_name}|${r.site}|${r.procedure}`}
+            rowKey={(r) => r.specimen_name}
             dataSource={staff.items}
             columns={ITEM_COLUMNS}
             pagination={false}

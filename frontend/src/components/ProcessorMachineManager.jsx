@@ -15,7 +15,7 @@ const ProcessorMachineManager = () => {
     try {
       const res = await TissueProcessingService.getMachines();
       setMachines(res);
-    } catch (err) {
+    } catch {
       message.error("โหลดข้อมูลเครื่องเข้าเนื้อล้มเหลว");
     } finally {
       setLoading(false);
@@ -50,7 +50,7 @@ const ProcessorMachineManager = () => {
       await TissueProcessingService.deleteMachine(id);
       message.success("ลบข้อมูลสำเร็จ");
       fetchMachines();
-    } catch (err) {
+    } catch {
       message.error("ลบข้อมูลไม่สำเร็จ");
     }
   };

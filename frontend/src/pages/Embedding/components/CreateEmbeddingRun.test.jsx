@@ -120,7 +120,7 @@ describe("CreateEmbeddingRun", () => {
     // checking a whole specimen inflated the displayed count by one (3
     // instead of the 2 real blocks under it).
     EmbeddingService.getPendingBlocksTree.mockResolvedValue(tree());
-    const { container } = render(<CreateEmbeddingRun onBack={vi.fn()} />);
+    render(<CreateEmbeddingRun onBack={vi.fn()} />);
     await waitFor(() => expect(EmbeddingService.getPendingBlocksTree).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: /Manual Select/i }));

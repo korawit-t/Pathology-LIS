@@ -725,7 +725,6 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
         onSuccess={handlePatientCreationSuccess}
         titles={titles}
         hospitals={hospitals}
-        schemes={schemes}
       />
 
       <HisPatientSearchModal

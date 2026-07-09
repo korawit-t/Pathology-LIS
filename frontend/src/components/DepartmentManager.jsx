@@ -25,7 +25,7 @@ const DepartmentManager = () => {
         try {
             const response = await DepartmentService.getDepartments(false); // เอาทั้งหมดรวมที่ inactive
             setDepartments(response);
-        } catch (err) {
+        } catch {
             message.error("ไม่สามารถโหลดข้อมูลแผนกได้");
         } finally {
             setLoading(false);
@@ -60,7 +60,7 @@ const DepartmentManager = () => {
             await DepartmentService.deleteDepartment(id);
             message.success("ลบแผนกสำเร็จ");
             fetchData();
-        } catch (err) {
+        } catch {
             message.error("ไม่สามารถลบได้ เนื่องจากมีการใช้งานอยู่ในระบบ");
         }
     };

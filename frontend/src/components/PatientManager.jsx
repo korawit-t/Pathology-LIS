@@ -117,7 +117,7 @@ const PatientManager = () => {
       await PatientService.deletePatient(id);
       message.success("ลบข้อมูลคนไข้สำเร็จ");
       fetchData();
-    } catch (err) {
+    } catch {
       message.error("ลบข้อมูลไม่สำเร็จ");
     }
   };

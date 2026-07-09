@@ -29,7 +29,7 @@ const { Text } = Typography;
 
 const CreateEmbeddingRun = ({ onBack }) => {
   const user = JSON.parse(localStorage.getItem("user"));
-  const [activeRun, setActiveRun] = useState(null);
+  const [activeRun] = useState(null);
   const [scannedBlocks, setScannedBlocks] = useState([]);
   const [barcodeInput, setBarcodeInput] = useState("");
 
@@ -37,7 +37,7 @@ const CreateEmbeddingRun = ({ onBack }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pendingData, setPendingData] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {

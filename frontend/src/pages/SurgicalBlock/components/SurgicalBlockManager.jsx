@@ -228,7 +228,7 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
       await SurgicalBlockService.deleteBlock(id);
       message.success("ลบสำเร็จ");
       fetchData();
-    } catch (err) { message.error("ลบไม่สำเร็จ"); }
+    } catch { message.error("ลบไม่สำเร็จ"); }
   };
 
   return (
@@ -268,7 +268,7 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
                 message.success("สำเร็จ");
                 setIsModalOpen(false);
                 fetchData();
-            } catch (err) { message.error("ผิดพลาด"); }
+            } catch { message.error("ผิดพลาด"); }
         }}>
            <Form.Item name="specimen_id" label="Specimen ID (Reference)">
               <Input type="number" placeholder="กรอก Specimen ID" />

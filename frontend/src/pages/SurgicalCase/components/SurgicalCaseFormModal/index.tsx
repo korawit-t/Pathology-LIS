@@ -940,7 +940,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         onSuccess={handlePatientCreationSuccess}
         titles={titles}
         hospitals={hospitals}
-        schemes={schemes}
       />
 
       {/* 🌟 HIS Patient Search Modal */}

@@ -1,6 +1,5 @@
 import React, { useEffect } from "react";
 import { Modal, Form, Input, Select, DatePicker, message, Button } from "antd";
-import dayjs from "dayjs";
 import api from "../services/httpClient";
 
 const { Option } = Select;
@@ -12,7 +11,6 @@ const PatientFormModal = ({
   onSuccess,
   titles,
   hospitals,
-  schemes,
 }) => {
   const [form] = Form.useForm();
 

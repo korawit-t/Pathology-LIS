@@ -18,7 +18,7 @@ const MedicalSchemeManager = () => {
       const res = await MedicalSchemeService.getSchemes();
       const sortedData = res.sort((a, b) => a.id - b.id);
       setSchemes(sortedData);
-    } catch (err) {
+    } catch {
       message.error("โหลดข้อมูลไม่สำเร็จ");
     } finally {
       setLoading(false);
@@ -58,7 +58,7 @@ const MedicalSchemeManager = () => {
       await MedicalSchemeService.deleteScheme(id);
       message.success("ลบสำเร็จ");
       fetchSchemes();
-    } catch (err) {
+    } catch {
       message.error("ลบไม่สำเร็จ");
     }
   };

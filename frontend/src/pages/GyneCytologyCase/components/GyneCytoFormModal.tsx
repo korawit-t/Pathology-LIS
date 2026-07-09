@@ -703,7 +703,6 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
         }}
         titles={titles}
         hospitals={hospitals}
-        schemes={schemes}
       />
 
       <HisPatientSearchModal

@@ -15,7 +15,7 @@ const ProcessingProgramManager = () => {
     try {
       const res = await TissueProcessingService.getPrograms();
       setPrograms(res);
-    } catch (err) {
+    } catch {
       message.error("โหลดข้อมูลโปรแกรมล้มเหลว");
     } finally {
       setLoading(false);
@@ -50,7 +50,7 @@ const ProcessingProgramManager = () => {
       await TissueProcessingService.deleteProgram(id);
       message.success("ลบข้อมูลสำเร็จ");
       fetchPrograms();
-    } catch (err) {
+    } catch {
       message.error("ลบข้อมูลไม่สำเร็จ");
     }
   };

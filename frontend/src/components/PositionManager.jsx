@@ -57,7 +57,7 @@ const PositionManager = () => {
       form.resetFields();
       setEditingId(null);
       fetchPositions();
-    } catch (err) {
+    } catch {
       message.error("เกิดข้อผิดพลาด");
     }
   };
