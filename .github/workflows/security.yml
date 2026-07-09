@@ -77,10 +77,12 @@ jobs:
           python-version: "3.11"
       - name: Install semgrep
         run: pip install semgrep
-      # Covers FastAPI + React + raw SQL (his_adapters) that bandit rules miss.
-      # `--error` = fail the build on findings. First run may surface existing issues
-      # (e.g. the his_adapters SQL, pdf_service autoescape) — triage with `# nosemgrep`
-      # or a `.semgrepignore`, or switch to SARIF-upload mode if you'd rather not block.
+      # Covers FastAPI + React that bandit rules miss. `--error` = fail on findings.
+      # avoid-sqlalchemy-text is excluded: it flags EVERY text() call regardless of
+      # parameterization (all our text() use bound :params + carry # nosec B608), so
+      # it is pure noise here; bandit B608 + review still cover raw f-string SQL.
+      # Individual react-dangerouslysetinnerhtml sites are suppressed inline where the
+      # input is DOMPurify-sanitized, keeping the rule live for any NEW unsanitized use.
       - name: Run semgrep
         run: |
           semgrep scan \
@@ -89,6 +91,7 @@ jobs:
             --config p/react \
             --config p/secrets \
             --error --metrics off \
+            --exclude-rule python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text \
             --exclude frontend/node_modules \
             --exclude backend/.venv \
             --exclude backend/venv

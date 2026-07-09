@@ -235,7 +235,7 @@ const CaseListTable: React.FC<{
         v ? (
           <div
             style={{ fontSize: 12, lineHeight: 1.5 }}
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(v) }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(v) /* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml */ }}
           />
         ) : (
           <Text type="secondary">—</Text>

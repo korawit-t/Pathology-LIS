@@ -399,7 +399,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
             {specimen.gross_description?.trim() ? (
               <div
                 style={{ fontSize: 13, lineHeight: 1.75, color: "#262626" }}
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(specimen.gross_description) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(specimen.gross_description) /* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml */ }}
               />
             ) : (
               <Text type="secondary" style={{ fontStyle: "italic", fontSize: 13 }}>
