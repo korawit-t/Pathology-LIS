@@ -107,6 +107,11 @@ class SystemSetting(Base):
     report_gen_llm_profile_id = Column(Integer, ForeignKey("llm_profiles.id"), nullable=True)
     report_gen_system_prompt = Column(Text, nullable=True)
 
+    # --- AI / Grossing Assistant ---
+    grossing_assist_enabled = Column(Boolean, default=False, nullable=False)
+    grossing_assist_llm_profile_id = Column(Integer, ForeignKey("llm_profiles.id"), nullable=True)
+    grossing_assist_system_prompt = Column(Text, nullable=True)
+
     # --- Default Test Selection ---
     # --- Default Test Selection ---
     # 🚩 ต้องใส่ ForeignKey("ชื่อตารางใน_db.id") ลงไปในคอลัมน์ ID ด้วย

@@ -101,6 +101,11 @@ export interface SystemSetting {
   show_icd_o_in_report?: boolean;
   report_gen_llm_profile_id?: number | null;
   report_gen_system_prompt?: string | null;
+
+  // --- AI / Grossing Assistant ---
+  grossing_assist_enabled?: boolean;
+  grossing_assist_llm_profile_id?: number | null;
+  grossing_assist_system_prompt?: string | null;
 }
 
 /**

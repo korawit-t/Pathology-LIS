@@ -21,9 +21,24 @@ export interface LlmProfileCreate {
 
 export type LlmProfileUpdate = Partial<LlmProfileCreate>;
 
+export interface LlmProfileTestRequest {
+  provider: string;
+  model: string;
+  base_url?: string | null;
+}
+
+export interface LlmProfileTestResult {
+  success: boolean;
+  detail: string;
+}
+
 const LlmProfileService = {
   list: async (): Promise<LlmProfile[]> => {
     const res = await api.get<LlmProfile[]>("/llm-profiles");
+    return res.data;
+  },
+  testConnection: async (data: LlmProfileTestRequest): Promise<LlmProfileTestResult> => {
+    const res = await api.post<LlmProfileTestResult>("/llm-profiles/test-connection", data);
     return res.data;
   },
   create: async (data: LlmProfileCreate): Promise<LlmProfile> => {

@@ -20,6 +20,7 @@ import {
   EditOutlined,
   FileTextOutlined,
   MedicineBoxOutlined,
+  RobotOutlined,
   SaveOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
@@ -43,6 +44,7 @@ import PatientInfoCard from "../../components/PatientInfoCard";
 import SpecimenManagerSection from "../../components/SpecimenManagerSection/SpecimenManagerSection";
 import GrossFinalizeSection from "./components/GrossFinalizeSection";
 import GrossDescriptionSection from "../../components/GrossDescription/GrossDescriptionSection";
+import GrossingAssistModal from "./components/GrossingAssistModal";
 import PageContainer from "../../components/Layout/PageContainer";
 import StyledCard from "../../components/Layout/StyledCard";
 import styles from "../../styles/LayoutWidget.module.css";
@@ -91,6 +93,7 @@ const GrossEditView: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [editorUpdateKey, setEditorUpdateKey] = useState(0);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
+  const [isAssistModalOpen, setIsAssistModalOpen] = useState(false);
   const [currentSpecimens, setCurrentSpecimens] = useState<any[]>([]);
 
   const [isDirty, setIsDirty] = useState(false);
@@ -630,14 +633,25 @@ const GrossEditView: React.FC<Props> = ({
                         Gross Findings
                       </Title>
                     </Space>
-                    {(() => {
-                      const opt = STATUS_OPTIONS.find((o) => o.value === activeCase?.status);
-                      return (
-                        <Tag color={opt?.color ?? "default"} style={{ borderRadius: "4px", border: "none" }}>
-                          {opt?.label ?? activeCase?.status ?? "—"}
-                        </Tag>
-                      );
-                    })()}
+                    <Space size="middle">
+                      {settings?.grossing_assist_enabled && (
+                        <Button
+                          size="small"
+                          icon={<RobotOutlined />}
+                          onClick={() => setIsAssistModalOpen(true)}
+                        >
+                          AI Grossing Assistant
+                        </Button>
+                      )}
+                      {(() => {
+                        const opt = STATUS_OPTIONS.find((o) => o.value === activeCase?.status);
+                        return (
+                          <Tag color={opt?.color ?? "default"} style={{ borderRadius: "4px", border: "none" }}>
+                            {opt?.label ?? activeCase?.status ?? "—"}
+                          </Tag>
+                        );
+                      })()}
+                    </Space>
                   </div>
                   <div style={{ paddingLeft: 0 }}>
                     <Tabs
@@ -675,6 +689,12 @@ const GrossEditView: React.FC<Props> = ({
         onClose={() => setIsCaptureModalOpen(false)}
         specimens={currentSpecimens}
         onCaptureAndUpload={(src, id) => handleCaptureAndUpload(src, id, currentSpecimens)}
+      />
+
+      <GrossingAssistModal
+        open={isAssistModalOpen}
+        onClose={() => setIsAssistModalOpen(false)}
+        caseId={activeCase.id}
       />
 
       <Modal

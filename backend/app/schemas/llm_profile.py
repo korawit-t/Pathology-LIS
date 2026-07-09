@@ -29,3 +29,9 @@ class LlmProfileResponse(LlmProfileBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LlmProfileTestRequest(BaseModel):
+    provider: str
+    model: str
+    base_url: Optional[str] = None

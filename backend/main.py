@@ -60,6 +60,7 @@ from app.routers import (
     tumor_registry,
     llm_profile,
     report_generation,
+    grossing_assist,
     unified_case,
 )
 from app.middleware.audit_middleware import AuditContextMiddleware
@@ -255,6 +256,7 @@ app.include_router(surgical_case_correlation.router)
 app.include_router(tumor_registry.router)
 app.include_router(llm_profile.router)
 app.include_router(report_generation.router)
+app.include_router(grossing_assist.router)
 app.include_router(unified_case.router)
 app.include_router(audit_log.router)
 app.include_router(storage_router_module.router)

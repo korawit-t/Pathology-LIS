@@ -19,7 +19,7 @@ class SurgicalSpecimen(Base):
     case_id = Column(Integer, ForeignKey("surgical_cases.id"), nullable=False)
     
     # --- Specimen Detail ---
-    specimen_label = Column(String, nullable=False, comment="เช่น A, B, C")
+    specimen_label = Column(String, nullable=False, comment="e.g. A, B, C")
     specimen_name = Column(String, nullable=False, comment="เช่น Appendix, Left Breast")
     
     # --- Grossing (บรรยายรายชิ้น) ---

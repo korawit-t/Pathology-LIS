@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Form, Switch, Select, Input, Typography, Divider, Row, Col, Space, Spin, Tag, Tooltip } from "antd";
-import { ExperimentOutlined, RobotOutlined, InfoCircleOutlined } from "@ant-design/icons";
+import { Form, Switch, Select, Input, Typography, Divider, Row, Col, Space, Spin, Tag, Tooltip, Button, message } from "antd";
+import { ExperimentOutlined, RobotOutlined, InfoCircleOutlined, SaveOutlined } from "@ant-design/icons";
 import LlmProfileService, { LlmProfile } from "../../../services/llmProfileService";
+import SystemSettingService from "../../../services/systemSettingService";
 
 const { Text, Title } = Typography;
 
@@ -50,15 +51,33 @@ const SettingRow = ({
 );
 
 const AiRegistryTab: React.FC = () => {
+  const [form] = Form.useForm();
   const [profiles, setProfiles] = useState<LlmProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setLoadingProfiles(true);
     LlmProfileService.list()
       .then(setProfiles)
       .finally(() => setLoadingProfiles(false));
+
+    SystemSettingService.getSettings()
+      .then((data) => form.setFieldsValue(data))
+      .catch(() => message.error("Failed to load tumor registry settings"));
   }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await SystemSettingService.updateSettings(form.getFieldsValue());
+      message.success("Tumor registry settings saved");
+    } catch {
+      message.error("Failed to save tumor registry settings");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const profileOptions = profiles
     .filter((p) => p.is_active)
@@ -75,7 +94,7 @@ const AiRegistryTab: React.FC = () => {
     }));
 
   return (
-    <div>
+    <Form form={form} layout="vertical">
       <Title level={5} style={{ marginBottom: 4 }}>Tumor Registry</Title>
       <Text type="secondary" style={{ fontSize: 13 }}>
         Enables the module for recording and reporting tumor registry data (ICD-O coding, staging)
@@ -148,7 +167,17 @@ const AiRegistryTab: React.FC = () => {
         </Form.Item>
       </div>
 
-    </div>
+      <div style={{
+        position: "sticky", bottom: 0, marginTop: 32,
+        marginLeft: -48, marginRight: -48, padding: "12px 48px",
+        background: "rgba(255,255,255,0.95)", borderTop: "1px solid #f0f0f0",
+        backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end",
+      }}>
+        <Button type="primary" icon={<SaveOutlined />} size="large" loading={saving} onClick={handleSave}>
+          Save Settings
+        </Button>
+      </div>
+    </Form>
   );
 };
 

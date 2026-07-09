@@ -24,6 +24,7 @@ import NotificationRulesTab from "./components/NotificationRulesTab";
 import AiRegistryTab from "./components/AiRegistryTab";
 import AiConfigTab from "./components/AiConfigTab";
 import ReportGenTab from "./components/ReportGenTab";
+import GrossingAssistTab from "./components/GrossingAssistTab";
 import WsiTab from "./components/WsiTab";
 
 const { Title } = Typography;
@@ -50,6 +51,7 @@ const SystemSettings: React.FC = () => {
     { key: "ai-registry",        icon: <RobotOutlined />,      label: "Tumor Registry" },
     { key: "ai-config",          icon: <RobotOutlined />,      label: "AI Configuration" },
     { key: "report-gen",         icon: <RobotOutlined />,      label: "Report Generation" },
+    { key: "grossing-assist",    icon: <RobotOutlined />,      label: "Grossing Assistant" },
     { key: "wsi",                 icon: <ScanOutlined />,       label: "WSI Settings" },
     { key: "about",              icon: <InfoCircleOutlined />, label: "About" },
   ];
@@ -104,6 +106,7 @@ const SystemSettings: React.FC = () => {
           {activeKey === "ai-registry" && <AiRegistryTab />}
           {activeKey === "ai-config" && <AiConfigTab />}
           {activeKey === "report-gen" && <ReportGenTab />}
+          {activeKey === "grossing-assist" && <GrossingAssistTab />}
           {activeKey === "wsi" && <WsiTab />}
 
           {activeKey === "about" && (

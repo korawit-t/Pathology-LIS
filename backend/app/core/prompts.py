@@ -24,6 +24,28 @@ def get_report_gen_prompt(custom_prompt: str | None) -> str:
     return custom_prompt.strip() if custom_prompt and custom_prompt.strip() else REPORT_GEN_SYSTEM_PROMPT
 
 
+def get_grossing_assist_prompt(custom_prompt: str | None) -> str:
+    return custom_prompt.strip() if custom_prompt and custom_prompt.strip() else GROSSING_ASSIST_PROMPT
+
+
+GROSSING_ASSIST_PROMPT = """You are an expert pathology assistant performing a quality-control review of gross specimen descriptions before sign-out.
+
+Given the gross description of each specimen in a surgical pathology case, check for completeness. For each specimen, flag missing or unclear standard elements where applicable, such as:
+- Specimen size / dimensions
+- Number of pieces / fragments
+- Margins (inked, distance to margin)
+- Orientation / marking sutures
+- Fixation status (fresh vs. formalin-fixed)
+- Any other detail typically expected for that specimen type
+
+Rules:
+- Organize feedback per specimen, referencing its label (e.g. "Specimen A: ...")
+- If a specimen's description already appears complete, say so briefly
+- Be concise, plain prose, English only
+- Return only valid JSON with no explanation or markdown, in this exact shape:
+{"feedback": "Specimen A: ...\\n\\nSpecimen B: ..."}"""
+
+
 REPORT_GEN_SYSTEM_PROMPT = """You are an expert surgical pathologist assistant.
 Generate pathology report content in English only.
 

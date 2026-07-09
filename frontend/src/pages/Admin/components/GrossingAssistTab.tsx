@@ -1,10 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Form, Select, Input, Typography, Divider, Row, Col, Space, Spin, Tag, Tooltip, Button, message } from "antd";
-import { RobotOutlined, InfoCircleOutlined, SaveOutlined } from "@ant-design/icons";
+import { Form, Switch, Select, Input, Typography, Divider, Row, Col, Space, Spin, Tag, Tooltip, Button, message } from "antd";
+import { ExperimentOutlined, RobotOutlined, InfoCircleOutlined, SaveOutlined } from "@ant-design/icons";
 import LlmProfileService, { LlmProfile } from "../../../services/llmProfileService";
 import SystemSettingService from "../../../services/systemSettingService";
 
 const { Text, Title } = Typography;
+
+const DEFAULT_SYSTEM_PROMPT = `You are an expert pathology assistant performing a quality-control review of gross specimen descriptions before sign-out.
+
+Given the gross description of each specimen in a surgical pathology case, check for completeness. For each specimen, flag missing or unclear standard elements where applicable, such as:
+- Specimen size / dimensions
+- Number of pieces / fragments
+- Margins (inked, distance to margin)
+- Orientation / marking sutures
+- Fixation status (fresh vs. formalin-fixed)
+
+Return only valid JSON, no markdown, in this shape:
+{"feedback": "Specimen A: ...\\n\\nSpecimen B: ..."}`;
 
 const PROVIDER_COLORS: Record<string, string> = {
   openai: "green",
@@ -39,26 +51,7 @@ const SettingRow = ({
   </Row>
 );
 
-const DEFAULT_SYSTEM_PROMPT = `You are an expert surgical pathologist assistant.
-Generate pathology report content in English only.
-
-For INDIVIDUAL mode, return:
-{
-  "results": [
-    {
-      "specimen_id": <int>,
-      "microscopic_description": "<concise microscopic findings, plain prose>",
-      "diagnosis": "<pathological diagnosis, plain prose>"
-    }
-  ]
-}
-
-For INTEGRATED/COMBINED mode, return:
-{ "case_diagnosis_text": "<unified diagnosis for all specimens, plain prose>" }
-
-Rules: English only. Formal pathology language. Valid JSON only, no markdown.`;
-
-const ReportGenTab: React.FC = () => {
+const GrossingAssistTab: React.FC = () => {
   const [form] = Form.useForm();
   const [profiles, setProfiles] = useState<LlmProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -72,16 +65,16 @@ const ReportGenTab: React.FC = () => {
 
     SystemSettingService.getSettings()
       .then((data) => form.setFieldsValue(data))
-      .catch(() => message.error("Failed to load report generation settings"));
+      .catch(() => message.error("Failed to load grossing assistant settings"));
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await SystemSettingService.updateSettings(form.getFieldsValue());
-      message.success("Report generation settings saved");
+      message.success("Grossing assistant settings saved");
     } catch {
-      message.error("Failed to save report generation settings");
+      message.error("Failed to save grossing assistant settings");
     } finally {
       setSaving(false);
     }
@@ -103,19 +96,29 @@ const ReportGenTab: React.FC = () => {
 
   return (
     <Form form={form} layout="vertical">
-      <Title level={5} style={{ marginBottom: 4 }}>Report Generation</Title>
+      <Title level={5} style={{ marginBottom: 4 }}>Grossing Assistant</Title>
       <Text type="secondary" style={{ fontSize: 13 }}>
-        AI-assisted microscopic description and diagnosis generation for surgical pathology reports — output is always English
+        AI-assisted completeness check for gross specimen descriptions during grossing
       </Text>
       <Divider style={{ margin: "16px 0 0 0" }} />
 
       <SettingRow
-        title="AI Profile for Report Generation"
-        description="LLM profile used when pathologist clicks 'AI Generate' in the diagnosis form. Generates draft microscopic description and diagnosis from gross findings."
-        icon={<RobotOutlined style={{ color: "#1890ff" }} />}
+        title="Enable Grossing Assistant"
+        description="When off, the AI Grossing Assistant button is hidden from the grossing page entirely"
+        icon={<ExperimentOutlined style={{ color: "#f5222d" }} />}
+      >
+        <Form.Item name="grossing_assist_enabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+          <Switch checkedChildren="On" unCheckedChildren="Off" />
+        </Form.Item>
+      </SettingRow>
+
+      <SettingRow
+        title="AI Profile for Grossing Assistant"
+        description="Select the LLM profile used to check gross description completeness — configure profiles under AI Configuration"
+        icon={<RobotOutlined style={{ color: "#722ed1" }} />}
       >
         <Spin spinning={loadingProfiles}>
-          <Form.Item name="report_gen_llm_profile_id" style={{ marginBottom: 0 }}>
+          <Form.Item name="grossing_assist_llm_profile_id" style={{ marginBottom: 0 }}>
             <Select
               style={{ width: 300 }}
               allowClear
@@ -137,18 +140,18 @@ const ReportGenTab: React.FC = () => {
         <Space style={{ marginBottom: 8 }}>
           <RobotOutlined style={{ color: "#8c8c8c" }} />
           <Text strong style={{ fontSize: "15px" }}>System Prompt</Text>
-          <Tooltip title="If left blank, the built-in default prompt is used — fill in to override, e.g. to add hospital-specific instructions, adjust the format, or add examples">
+          <Tooltip title="If left blank, the built-in default prompt is used — fill in to override, e.g. to adjust which elements are checked or add a hospital-specific convention">
             <InfoCircleOutlined style={{ color: "#8c8c8c" }} />
           </Tooltip>
         </Space>
         <div>
           <Text type="secondary" style={{ fontSize: "13px" }}>
-            Leave blank to use the default report generation prompt — fill in to override the AI's behavior specifically for this feature
+            Leave blank to use the default completeness-check prompt — fill in to override the AI's behavior specifically for this feature
           </Text>
         </div>
-        <Form.Item name="report_gen_system_prompt" style={{ marginTop: 12, marginBottom: 0 }}>
+        <Form.Item name="grossing_assist_system_prompt" style={{ marginTop: 12, marginBottom: 0 }}>
           <Input.TextArea
-            rows={10}
+            rows={8}
             placeholder={DEFAULT_SYSTEM_PROMPT}
             style={{ fontFamily: "monospace", fontSize: 12 }}
           />
@@ -169,4 +172,4 @@ const ReportGenTab: React.FC = () => {
   );
 };
 
-export default ReportGenTab;
+export default GrossingAssistTab;

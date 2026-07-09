@@ -7,7 +7,7 @@ import {
   Table,
   Tag,
   Space,
-  Drawer,
+  Modal,
   Form,
   Input,
   Select,
@@ -15,8 +15,18 @@ import {
   Popconfirm,
   message,
   Spin,
+  Tooltip,
 } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined, RobotOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  KeyOutlined,
+  RobotOutlined,
+  ApiOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+} from "@ant-design/icons";
 import LlmProfileService, { LlmProfile, LlmProfileCreate } from "../../../services/llmProfileService";
 
 const { Text, Title } = Typography;
@@ -30,8 +40,9 @@ const PROVIDER_LABELS: Record<string, { label: string; color: string }> = {
 const AiConfigTab: React.FC = () => {
   const [profiles, setProfiles] = useState<LlmProfile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
   const provider = Form.useWatch("provider", form);
@@ -53,13 +64,13 @@ const AiConfigTab: React.FC = () => {
     setEditingId(null);
     form.resetFields();
     form.setFieldsValue({ provider: "openai", is_active: true });
-    setDrawerOpen(true);
+    setModalOpen(true);
   };
 
   const openEdit = (profile: LlmProfile) => {
     setEditingId(profile.id);
     form.setFieldsValue(profile);
-    setDrawerOpen(true);
+    setModalOpen(true);
   };
 
   const handleSave = async () => {
@@ -73,12 +84,47 @@ const AiConfigTab: React.FC = () => {
         await LlmProfileService.create(values);
         message.success("Profile added successfully");
       }
-      setDrawerOpen(false);
+      setModalOpen(false);
       load();
     } catch {
       // validation error handled by form
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    try {
+      await form.validateFields(["provider", "model"]);
+    } catch {
+      return;
+    }
+    const { provider, model, base_url } = form.getFieldsValue();
+    setTesting(true);
+    try {
+      const result = await LlmProfileService.testConnection({ provider, model, base_url });
+      message.success({
+        content: (
+          <span>
+            <CheckCircleOutlined style={{ color: "#52c41a", marginRight: 6 }} />
+            {result.detail}
+          </span>
+        ),
+        duration: 5,
+      });
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || "Connection test failed";
+      message.error({
+        content: (
+          <span>
+            <CloseCircleOutlined style={{ color: "#ff4d4f", marginRight: 6 }} />
+            {errMsg}
+          </span>
+        ),
+        duration: 7,
+      });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -187,18 +233,22 @@ const AiConfigTab: React.FC = () => {
         }
       />
 
-      {/* Drawer */}
-      <Drawer
+      {/* Modal */}
+      <Modal
         title={editingId ? "Edit LLM Profile" : "Add LLM Profile"}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
         width={480}
-        extra={
-          <Space>
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={saving} onClick={handleSave}>Save</Button>
-          </Space>
-        }
+        destroyOnHidden
+        footer={[
+          <Tooltip key="test" title="Sends a minimal ~5-token prompt to confirm the API key and model work — kept cheap on purpose">
+            <Button icon={<ApiOutlined />} loading={testing} onClick={handleTest} style={{ float: "left" }}>
+              Test Connection
+            </Button>
+          </Tooltip>,
+          <Button key="cancel" onClick={() => setModalOpen(false)}>Cancel</Button>,
+          <Button key="save" type="primary" loading={saving} onClick={handleSave}>Save</Button>,
+        ]}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -243,9 +293,9 @@ const AiConfigTab: React.FC = () => {
             <Form.Item
               name="base_url"
               label="Base URL"
-              extra="The provider's endpoint, e.g. https://your-resource.openai.azure.com/"
+              extra="Full endpoint up to (not including) /chat/completions — code appends that. e.g. https://generativelanguage.googleapis.com/v1beta/openai for Gemini, http://localhost:11434/v1 for Ollama"
             >
-              <Input placeholder="https://..." allowClear />
+              <Input placeholder="https://generativelanguage.googleapis.com/v1beta/openai" allowClear />
             </Form.Item>
           )}
 
@@ -253,7 +303,7 @@ const AiConfigTab: React.FC = () => {
             <Switch checkedChildren="On" unCheckedChildren="Off" />
           </Form.Item>
         </Form>
-      </Drawer>
+      </Modal>
     </div>
   );
 };

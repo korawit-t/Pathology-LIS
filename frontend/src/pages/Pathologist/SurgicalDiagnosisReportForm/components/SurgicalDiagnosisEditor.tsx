@@ -259,7 +259,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                           >
                             <SimpleTiptapEditor
                               disabled={isLocked}
-                              placeholder="บรรยายลักษณะทางจุลพยาธิวิทยา..."
+                              placeholder="Describe the microscopic pathology findings..."
                               style={{ background: "#fff" }}
                             />
                           </Form.Item>

@@ -21,6 +21,7 @@ CAN_ACCESS_NONGYNE_CYTO_IMAGE = RoleChecker(
 CAN_ACCESS_SURGICAL_BLOCK = RoleChecker(
     ["admin", "lab_manager", "gross", "pathologist", "senior_pathologist"]
 )
+CAN_ACCESS_GROSSING_ASSIST = RoleChecker(["admin", "lab_manager", "gross", "pathologist"])
 
 # --- กลุ่มสิทธิ์สำหรับการจัดการรายงาน (Reporting) ---
 CAN_WRITE_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist"])

@@ -95,6 +95,11 @@ class SystemSettingBase(BaseModel):
     report_gen_llm_profile_id: Optional[int] = None
     report_gen_system_prompt: Optional[str] = None
 
+    # --- AI / Grossing Assistant ---
+    grossing_assist_enabled: bool = False
+    grossing_assist_llm_profile_id: Optional[int] = None
+    grossing_assist_system_prompt: Optional[str] = None
+
 
 class SystemSettingUpdate(SystemSettingBase):
     # ให้ทุกอย่างเป็น Optional เพื่อการทำ PATCH update ที่สมบูรณ์

@@ -67,9 +67,13 @@ class TestCallLlm:
         assert kwargs["headers"]["x-api-key"] is not None
 
     def test_openai_compatible_provider_posts_to_its_own_base_url(self, monkeypatch):
+        # base_url is the exact root before /chat/completions — the admin includes
+        # any version segment themselves (e.g. "/v1"), since providers like Gemini
+        # ("/v1beta/openai/chat/completions", no extra "/v1") don't follow the
+        # OpenAI/Ollama "/v1/chat/completions" convention.
         ctx, client = _mock_async_client(json_data={"choices": [{"message": {"content": "hello from gpt"}}]})
         monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
-        profile = _profile(provider="openai_compatible", model="local-model", base_url="http://localhost:11434")
+        profile = _profile(provider="openai_compatible", model="local-model", base_url="http://localhost:11434/v1")
 
         result = asyncio.run(llm_service.call_llm(profile, "system prompt", "user message"))
 
@@ -91,9 +95,65 @@ class TestCallLlm:
     def test_trailing_slash_on_base_url_is_not_doubled(self, monkeypatch):
         ctx, client = _mock_async_client(json_data={"choices": [{"message": {"content": "hi"}}]})
         monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
-        profile = _profile(provider="openai_compatible", base_url="http://localhost:11434/")
+        profile = _profile(provider="openai_compatible", base_url="http://localhost:11434/v1/")
 
         asyncio.run(llm_service.call_llm(profile, "system", "user"))
 
         args, _ = client.post.call_args
         assert args[0] == "http://localhost:11434/v1/chat/completions"
+
+    def test_gemini_style_base_url_with_no_extra_v1_segment(self, monkeypatch):
+        # Regression test: Gemini's OpenAI-compat endpoint is exactly
+        # ".../v1beta/openai/chat/completions" — no additional "/v1" segment,
+        # unlike OpenAI/Ollama. This must not be mangled by the URL builder.
+        ctx, client = _mock_async_client(json_data={"choices": [{"message": {"content": "ok"}}]})
+        monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
+        profile = _profile(
+            provider="openai_compatible",
+            model="gemini-2.0-flash",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        )
+
+        asyncio.run(llm_service.call_llm(profile, "system", "user"))
+
+        args, _ = client.post.call_args
+        assert args[0] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+
+
+class TestTestConnection:
+    def test_openai_compatible_returns_reply_text(self, monkeypatch):
+        ctx, client = _mock_async_client(json_data={"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]})
+        monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
+        profile = _profile(provider="openai_compatible", base_url="http://localhost:11434/v1")
+
+        result = asyncio.run(llm_service.test_connection(profile))
+
+        assert result == "OK"
+        _, kwargs = client.post.call_args
+        assert kwargs["json"]["max_tokens"] == 50
+
+    def test_empty_content_raises_instead_of_keyerror(self, monkeypatch):
+        # Regression: reasoning models (e.g. Gemini 2.5) can consume the whole
+        # token budget on hidden thinking tokens and return a message with no
+        # "content" key at all plus finish_reason="length" — this must surface
+        # as a clean error, not an unhandled KeyError crashing the endpoint.
+        ctx, client = _mock_async_client(json_data={"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]})
+        monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
+        profile = _profile(provider="openai_compatible", model="gemini-2.5-flash")
+
+        try:
+            asyncio.run(llm_service.test_connection(profile))
+            assert False, "expected ValueError"
+        except ValueError as e:
+            assert "length" in str(e)
+
+    def test_anthropic_uses_generous_token_budget(self, monkeypatch):
+        ctx, client = _mock_async_client(json_data={"content": [{"text": "OK"}]})
+        monkeypatch.setattr(llm_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
+        profile = _profile(provider="anthropic", model="claude-x")
+
+        result = asyncio.run(llm_service.test_connection(profile))
+
+        assert result == "OK"
+        _, kwargs = client.post.call_args
+        assert kwargs["json"]["max_tokens"] == 50
