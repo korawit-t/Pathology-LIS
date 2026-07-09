@@ -13,7 +13,7 @@ from app.schemas.llm_profile import LlmProfileCreate
 from app.crud.system_setting import update_settings
 from app.schemas.system_setting import SystemSettingUpdate
 
-from tests.factories import make_signable_case
+from tests.factories import make_signable_case, make_block
 
 
 def _active_profile(db):
@@ -110,6 +110,50 @@ class TestPreviewMessageBuilding:
 
         assert r.status_code == 200
         assert "Should not appear" not in r.json()["user_message"]
+
+    def test_submitted_sections_interleaved_after_this_specimens_gross(self, db, pathologist_client, admin_user):
+        # Regression: the submitted-sections line for a specimen must appear
+        # right after that specimen's own gross text, not as a separate block
+        # appended after all specimens' gross descriptions.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "A 2cm firm nodule"
+        specimen.is_entirely_submitted = True
+        db.commit()
+        make_block(db, specimen_id=specimen.id, block_no=1)
+        profile = _active_profile(db)
+        update_settings(db, SystemSettingUpdate(report_gen_llm_profile_id=profile.id))
+
+        r = pathologist_client.post(
+            f"/surgical-cases/{case.id}/generate-report-preview",
+            json={"source": "gross_and_micro", "diagnosis_mode": "individual"},
+        )
+
+        assert r.status_code == 200
+        text = r.json()["user_message"]
+        gross_idx = text.index("A 2cm firm nodule")
+        submitted_idx = text.index("Entirely submitted")
+        assert submitted_idx > gross_idx, "submitted-sections line must come after this specimen's gross text"
+        assert f"{specimen.specimen_label}1" in text
+
+    def test_micro_only_also_omits_submitted_sections(self, db, pathologist_client, admin_user):
+        # Submitted-sections info is part of grossing, not microscopic — must
+        # be gated by the same source check as the Gross line.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.is_entirely_submitted = True
+        db.commit()
+        make_block(db, specimen_id=specimen.id, block_no=1)
+        profile = _active_profile(db)
+        update_settings(db, SystemSettingUpdate(report_gen_llm_profile_id=profile.id))
+
+        r = pathologist_client.post(
+            f"/surgical-cases/{case.id}/generate-report-preview",
+            json={"source": "micro_only", "diagnosis_mode": "individual"},
+        )
+
+        assert r.status_code == 200
+        assert "Entirely submitted" not in r.json()["user_message"]
 
 
 class TestGenerateReportWithMockedLlm:

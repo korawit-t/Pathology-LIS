@@ -8,6 +8,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
+from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 from app.models.surgical_case import SurgicalCase
@@ -97,29 +98,6 @@ def _calculate_patient_age(birth_date: date, ref_date: date = None) -> dict:
         display = f"{diff.days} D"
 
     return {"years": years_only, "display": display}
-
-
-def _build_submitted_text(label: str, is_entirely_submitted: bool, blocks: list) -> str:
-    """Build the 'Representative sections are submitted: A1(3, desc), A2...' line."""
-    if not blocks:
-        return ""
-    prefix = "Entirely submitted" if is_entirely_submitted else "Representative sections are submitted"
-    parts = []
-    for b in blocks:
-        code = f"{label}{b['block_no']}"
-        desc = (b.get("tissue_description") or "").strip()
-        tc = b.get("tissue_count")
-        if b.get("is_tissue_uncountable"):
-            parts.append(f"{code}(multiple fragments{', ' + desc if desc else ''})")
-        elif tc and desc:
-            parts.append(f"{code}({tc}, {desc})")
-        elif tc:
-            parts.append(f"{code}({tc})")
-        elif desc:
-            parts.append(f"{code}({desc})")
-        else:
-            parts.append(code)
-    return f"{prefix}: {', '.join(parts)}"
 
 
 def _prepare_specimen_and_images(

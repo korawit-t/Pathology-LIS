@@ -15,6 +15,7 @@ from app.core.prompts import get_report_gen_prompt
 from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
 from app.services.llm_service import call_llm
+from app.utils.submitted_sections import build_submitted_sections_text, fetch_blocks_by_specimen
 
 router = APIRouter(prefix="/surgical-cases", tags=["Report Generation"])
 
@@ -85,18 +86,19 @@ def _resolve_profile_and_settings(db, case_id):
     return settings, profile, case, specimens
 
 
-def _build_request_parts(body: "ReportGenRequest", case, specimens):
+def _build_request_parts(db: Session, body: "ReportGenRequest", case, specimens):
     draft_micro_map: dict[int, str] = {}
     if body.source in ("gross_and_micro", "micro_only") and body.draft_data:
         for s in body.draft_data.specimens:
             if s.microscopic_description:
                 draft_micro_map[s.specimen_id] = _strip_html(s.microscopic_description)
+    blocks_map = fetch_blocks_by_specimen(db, [s.id for s in specimens])
     is_individual = body.diagnosis_mode == "individual"
     clinical_ctx = _strip_html(case.clinical_diagnosis or "") or "Not provided"
     if is_individual:
-        user_message = _build_individual_message(specimens, draft_micro_map, clinical_ctx, body.source)
+        user_message = _build_individual_message(specimens, draft_micro_map, blocks_map, clinical_ctx, body.source)
     else:
-        user_message = _build_combined_message(specimens, draft_micro_map, clinical_ctx, body.source)
+        user_message = _build_combined_message(specimens, draft_micro_map, blocks_map, clinical_ctx, body.source)
     return user_message, is_individual
 
 
@@ -105,7 +107,7 @@ def _build_request_parts(body: "ReportGenRequest", case, specimens):
 @router.post("/{case_id}/generate-report-preview", dependencies=[Depends(CAN_WRITE_REPORT)])
 def get_report_preview(case_id: int, body: "ReportGenRequest", db: Session = Depends(get_db)):
     settings, profile, case, specimens = _resolve_profile_and_settings(db, case_id)
-    user_message, _ = _build_request_parts(body, case, specimens)
+    user_message, _ = _build_request_parts(db, body, case, specimens)
     system_prompt = get_report_gen_prompt(settings.report_gen_system_prompt)
     return {
         "profile_name": profile.display_name,
@@ -125,7 +127,7 @@ async def generate_report(case_id: int, body: ReportGenRequest, db: Session = De
         if not gross_available:
             raise HTTPException(status_code=422, detail="No gross descriptions available")
 
-    user_message, is_individual = _build_request_parts(body, case, specimens)
+    user_message, is_individual = _build_request_parts(db, body, case, specimens)
     system_prompt = get_report_gen_prompt(settings.report_gen_system_prompt)
 
     try:
@@ -159,7 +161,7 @@ async def generate_report(case_id: int, body: ReportGenRequest, db: Session = De
 
 
 def _build_individual_message(
-    specimens: list, draft_micro_map: dict[int, str], clinical_ctx: str, source: str
+    specimens: list, draft_micro_map: dict[int, str], blocks_map: dict[int, list], clinical_ctx: str, source: str
 ) -> str:
     lines = [f"Clinical context: {clinical_ctx}", ""]
     for spec in specimens:
@@ -167,6 +169,11 @@ def _build_individual_message(
         if source != "micro_only":
             gross = _strip_html(spec.gross_description or "") or "Not provided"
             lines.append(f"  Gross: {gross}")
+            submitted = build_submitted_sections_text(
+                spec.specimen_label, spec.is_entirely_submitted, blocks_map.get(spec.id, [])
+            )
+            if submitted:
+                lines.append(f"  {submitted}")
         if source != "gross_only":
             micro = draft_micro_map.get(spec.id, "Not provided")
             lines.append(f"  Microscopic: {micro}")
@@ -179,7 +186,7 @@ def _build_individual_message(
 
 
 def _build_combined_message(
-    specimens: list, draft_micro_map: dict[int, str], clinical_ctx: str, source: str
+    specimens: list, draft_micro_map: dict[int, str], blocks_map: dict[int, list], clinical_ctx: str, source: str
 ) -> str:
     lines = [f"Clinical context: {clinical_ctx}", ""]
     for spec in specimens:
@@ -187,6 +194,11 @@ def _build_combined_message(
         if source != "micro_only":
             gross = _strip_html(spec.gross_description or "") or "Not provided"
             lines.append(f"  Gross: {gross}")
+            submitted = build_submitted_sections_text(
+                spec.specimen_label, spec.is_entirely_submitted, blocks_map.get(spec.id, [])
+            )
+            if submitted:
+                lines.append(f"  {submitted}")
         if source != "gross_only":
             micro = draft_micro_map.get(spec.id, "Not provided")
             lines.append(f"  Microscopic: {micro}")

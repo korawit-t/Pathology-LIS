@@ -10,6 +10,7 @@ from app.core.prompts import get_grossing_assist_prompt
 from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
 from app.services.llm_service import call_llm
+from app.utils.submitted_sections import build_submitted_sections_text, fetch_blocks_by_specimen
 
 router = APIRouter(prefix="/surgical-cases", tags=["Grossing Assistant"])
 
@@ -36,11 +37,22 @@ def _build_specimens_text(db: Session, case_id: int) -> str | None:
         .order_by(SurgicalSpecimen.specimen_label)
         .all()
     )
+    blocks_map = fetch_blocks_by_specimen(db, [s.id for s in specimens])
+
     parts: list[str] = []
     for spec in specimens:
-        text = _strip_html(spec.gross_description or "")
-        if text:
-            parts.append(f"Specimen {spec.specimen_label} — {spec.specimen_name}: {text}")
+        gross = _strip_html(spec.gross_description or "")
+        submitted = build_submitted_sections_text(
+            spec.specimen_label, spec.is_entirely_submitted, blocks_map.get(spec.id, [])
+        )
+        if not gross and not submitted:
+            continue
+        lines = [f"Specimen {spec.specimen_label} — {spec.specimen_name}:"]
+        if gross:
+            lines.append(f"  Gross: {gross}")
+        if submitted:
+            lines.append(f"  {submitted}")
+        parts.append("\n".join(lines))
     return "\n\n".join(parts) if parts else None
 
 

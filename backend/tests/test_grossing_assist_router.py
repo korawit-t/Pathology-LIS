@@ -9,7 +9,7 @@ from unittest.mock import patch
 from app.crud.llm_profile import create as create_llm_profile
 from app.schemas.llm_profile import LlmProfileCreate
 
-from tests.factories import make_system_setting, make_signable_case
+from tests.factories import make_system_setting, make_signable_case, make_block
 
 
 def _active_profile(db):
@@ -91,6 +91,28 @@ class TestPreview:
         assert body["profile_name"] == "Test Profile"
         assert "A 2cm firm nodule" in body["specimens_text"]
         assert f"Specimen {specimen.specimen_label}" in body["specimens_text"]
+
+    def test_preview_interleaves_submitted_sections_per_specimen(self, db, pathologist_client, admin_user):
+        # Regression: the submitted-sections line for a specimen must appear
+        # right after that specimen's own gross text, not as a separate block
+        # appended after all specimens' gross descriptions.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "A 2cm firm nodule"
+        specimen.is_entirely_submitted = True
+        db.commit()
+        make_block(db, specimen_id=specimen.id, block_no=1)
+        profile = _active_profile(db)
+        make_system_setting(db, grossing_assist_enabled=True, grossing_assist_llm_profile_id=profile.id)
+
+        r = pathologist_client.get(f"/surgical-cases/{case.id}/grossing-assist-preview")
+
+        assert r.status_code == 200
+        text = r.json()["specimens_text"]
+        gross_idx = text.index("A 2cm firm nodule")
+        submitted_idx = text.index("Entirely submitted")
+        assert submitted_idx > gross_idx, "submitted-sections line must come after this specimen's gross text"
+        assert f"{specimen.specimen_label}1" in text
 
     def test_preview_with_no_gross_text_returns_null_specimens_text(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
