@@ -42,7 +42,7 @@ Pygments==2.20.0
 PyMySQL==1.2.0
 pypdf==6.13.3
 pyphen==0.17.2
-pytest==9.0.3
+pytest==9.1.1
 pythainlp==5.2.0
 python-barcode==0.16.1
 python-dateutil==2.9.0.post0
