@@ -28,7 +28,7 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg2://lis_test:lis_test@localhost:5432/pathology_lis_test
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - name: Install system dependencies (weasyprint)
