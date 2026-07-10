@@ -1,5 +1,5 @@
 # ใช้ Python Image ที่เบาและเสถียร
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # ตั้งค่า Working Directory
 WORKDIR /app
