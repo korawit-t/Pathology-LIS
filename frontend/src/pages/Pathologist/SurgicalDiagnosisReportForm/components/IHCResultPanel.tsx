@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { sanitizeHtml } from "../../../../utils/sanitize";
 import {
   Button,
   Form,
@@ -555,10 +556,10 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
           <div
             style={{ fontSize: 13 }}
             dangerouslySetInnerHTML={{
-              __html: buildPreviewHtml(
+              __html: sanitizeHtml(buildPreviewHtml(
                 watchedPrefix ?? currentPrefix,
                 (watchedLineFormat ?? currentLineFormat) as "bullet" | "plain"
-              ),
+              )),
             }}
           />
         </div>

@@ -6,6 +6,7 @@ from app.crud import sectioning as crud
 from app.schemas import sectioning as schemas
 from app.dependencies.auth import get_current_user, RoleChecker
 from app.core.roles import CAN_ACCESS_SURGICAL_BLOCK
+from app.models.user import User
 
 router = APIRouter(
     prefix="/sectioning",
@@ -109,13 +110,16 @@ def get_pending_tree(db: Session = Depends(get_db)):
 
 @router.post("/batch", response_model=schemas.SectioningRun)
 def create_run_batch(
-    obj_in: schemas.SectioningRunCreateBatch, db: Session = Depends(get_db)
+    obj_in: schemas.SectioningRunCreateBatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Endpoint สำหรับสร้างรอบการตัด (Run) และบันทึกรายการสไลด์ (Details)
     พร้อมกันในครั้งเดียว (Batch)
     """
-    # เรียกใช้ฟังก์ชันใน crud/sectioning.pyที่เราสร้างไว้
+    # Audit integrity: record the acting user from the JWT, never the client body.
+    obj_in.user_id = current_user.id
     return crud.create_sectioning_run_batch(db=db, obj_in=obj_in)
 
 
