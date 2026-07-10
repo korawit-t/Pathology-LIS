@@ -72,32 +72,32 @@ describe("CriticalNotificationSection", () => {
     expect(mockGetByCaseId).not.toHaveBeenCalled();
   });
 
-  it("shows เพิ่มบันทึกการแจ้ง button after loading", async () => {
+  it("shows Add Notification Record button after loading", async () => {
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
   });
 
-  it("shows form when เพิ่มบันทึกการแจ้ง button is clicked", async () => {
+  it("shows form when Add Notification Record button is clicked", async () => {
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i }));
-    expect(screen.getByText("ประเภท")).toBeInTheDocument();
-    expect(screen.getByText("วัน/เวลาที่แจ้ง")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add Notification Record/i }));
+    expect(screen.getByText("Type")).toBeInTheDocument();
+    expect(screen.getByText("Notified Date/Time")).toBeInTheDocument();
   });
 
-  it("hides form and resets when ยกเลิก is clicked", async () => {
+  it("hides form and resets when Cancel is clicked", async () => {
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i }));
-    fireEvent.click(screen.getByRole("button", { name: /ยกเลิก/i }));
-    expect(screen.queryByText("ประเภท")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add Notification Record/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    expect(screen.queryByText("Type")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument();
   });
 
   it("renders existing records in the table", async () => {
@@ -129,11 +129,11 @@ describe("CriticalNotificationSection", () => {
     mockGetChannels.mockResolvedValue([]);
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Notification Record/i }));
     expect(
-      screen.queryByText("แจ้งผ่านช่องทาง (Notification Channels)"),
+      screen.queryByText("Notify via Channels (Notification Channels)"),
     ).not.toBeInTheDocument();
   });
 
@@ -141,12 +141,12 @@ describe("CriticalNotificationSection", () => {
     mockGetChannels.mockResolvedValue([makeChannel()]);
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Notification Record/i }));
     await waitFor(() =>
       expect(
-        screen.getByText("แจ้งผ่านช่องทาง (Notification Channels)"),
+        screen.getByText("Notify via Channels (Notification Channels)"),
       ).toBeInTheDocument(),
     );
   });
@@ -155,7 +155,7 @@ describe("CriticalNotificationSection", () => {
     mockGetByCaseId.mockRejectedValue(new Error("Network error"));
     render(<CriticalNotificationSection caseId={10} caseType="SURGICAL" />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /เพิ่มบันทึกการแจ้ง/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Add Notification Record/i })).toBeInTheDocument(),
     );
   });
 
