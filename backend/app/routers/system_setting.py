@@ -162,7 +162,7 @@ def preview_report_template(report_type: str, template_name: str, db: Session = 
     settings = crud.get_settings(db)
     now = datetime.now()
     accession_no = "66-00001"
-    barcode_svg = generate_code39_base64_img(accession_no)
+    barcode_svg, _, _ = generate_code39_base64_img(accession_no)
     primary_color = settings.report_primary_color if settings else None
     primary_color_dark = _darken_hex(primary_color) if primary_color else None
 

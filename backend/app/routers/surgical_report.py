@@ -456,7 +456,7 @@ def get_historical_report_pdf(
         type_code = (setting.barcode_surgical_type_code or "08") if setting else "08"
 
         barcode_value, barcode_type = _build_barcode_value(case, setting, type_code)
-        report_data["barcode_svg"] = generate_code39_base64_img(barcode_value)
+        report_data["barcode_svg"], _, _ = generate_code39_base64_img(barcode_value)
         report_data["barcode_value"] = barcode_value
         report_data["barcode_type"] = barcode_type
 
@@ -564,7 +564,7 @@ def generate_barcode_label_pdf(payload: dict, db: Session = Depends(get_db)):
 
         case = db.query(SurgicalCase).filter(SurgicalCase.id == report.case_id).first()
         barcode_value, barcode_type = _build_barcode_value(case, setting, type_code)
-        barcode_svg = generate_code39_base64_img(barcode_value)
+        barcode_svg, barcode_width_mm, barcode_height_mm = generate_code39_base64_img(barcode_value)
 
         labels.append({
             "accession_no": report.accession_no,
@@ -579,6 +579,8 @@ def generate_barcode_label_pdf(payload: dict, db: Session = Depends(get_db)):
             "barcode_svg": barcode_svg,
             "barcode_value": barcode_value,
             "barcode_type": barcode_type,
+            "barcode_width_mm": barcode_width_mm,
+            "barcode_height_mm": barcode_height_mm,
         })
 
     if not labels:
