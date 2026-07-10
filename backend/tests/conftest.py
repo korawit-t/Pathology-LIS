@@ -125,34 +125,34 @@ def _make_user(db, username: str, password: str, roles: list[str], status: bool 
 
 @pytest.fixture
 def admin_user(db):
-    return _make_user(db, f"admin_{uuid.uuid4().hex[:6]}", "AdminPass1!", ["admin"])
+    return _make_user(db, f"admin_{uuid.uuid4().hex[:12]}", "AdminPass1!", ["admin"])
 
 
 @pytest.fixture
 def pathologist_user(db):
-    return _make_user(db, f"path_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
+    return _make_user(db, f"path_{uuid.uuid4().hex[:12]}", "PathPass1!", ["pathologist"])
 
 
 @pytest.fixture
 def clinician_user(db):
-    return _make_user(db, f"clin_{uuid.uuid4().hex[:6]}", "ClinPass1!", ["clinician"])
+    return _make_user(db, f"clin_{uuid.uuid4().hex[:12]}", "ClinPass1!", ["clinician"])
 
 
 @pytest.fixture
 def lab_manager_user(db):
-    return _make_user(db, f"labmgr_{uuid.uuid4().hex[:6]}", "LabMgrPass1!", ["lab_manager"])
+    return _make_user(db, f"labmgr_{uuid.uuid4().hex[:12]}", "LabMgrPass1!", ["lab_manager"])
 
 
 @pytest.fixture
 def inactive_user(db):
-    return _make_user(db, f"inact_{uuid.uuid4().hex[:6]}", "InactPass1!", ["register"], status=False)
+    return _make_user(db, f"inact_{uuid.uuid4().hex[:12]}", "InactPass1!", ["register"], status=False)
 
 
 @pytest.fixture
 def two_pathologists(db):
     """Two distinct pathologist users, e.g. for co-sign / two-round consult tests."""
-    path1, _ = _make_user(db, f"path1_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
-    path2, _ = _make_user(db, f"path2_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
+    path1, _ = _make_user(db, f"path1_{uuid.uuid4().hex[:12]}", "PathPass1!", ["pathologist"])
+    path2, _ = _make_user(db, f"path2_{uuid.uuid4().hex[:12]}", "PathPass1!", ["pathologist"])
     return path1, path2
 
 
