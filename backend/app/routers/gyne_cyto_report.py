@@ -267,7 +267,7 @@ def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
         if not report:
             continue
         barcode_value = f"{opd_prefix}{type_code}{report.patient_hn or report.accession_no}"
-        barcode_svg = generate_code39_base64_img(barcode_value)
+        barcode_svg, barcode_width_mm, barcode_height_mm = generate_code39_base64_img(barcode_value)
         labels.append({
             "accession_no": report.accession_no,
             "patient_title": report.patient_title or "",
@@ -281,6 +281,8 @@ def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
             "barcode_svg": barcode_svg,
             "barcode_value": barcode_value,
             "barcode_type": f"Gyne HN: {report.patient_hn}",
+            "barcode_width_mm": barcode_width_mm,
+            "barcode_height_mm": barcode_height_mm,
         })
 
     if not labels:

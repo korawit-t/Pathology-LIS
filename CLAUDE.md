@@ -58,7 +58,7 @@ docker compose exec backend alembic upgrade head       # apply migrations
 
 ### CI
 
-`.github/workflows/tests.yml` runs backend pytest (with a Postgres 16 service container) and frontend vitest on every push/PR to `main`. `.github/workflows/security.yml` runs gitleaks, pip-audit, bandit, and npm audit. Neither currently runs `tsc --noEmit` or `eslint` as a gate — known gap, not yet acted on.
+`.github/workflows/tests.yml` runs backend pytest (with a Postgres 16 service container), frontend vitest, and a blocking `frontend-quality` job (`tsc --noEmit` + `eslint`) on every push/PR to `main`. `.github/workflows/security.yml` runs gitleaks, pip-audit, bandit, and npm audit.
 
 ## Architecture
 

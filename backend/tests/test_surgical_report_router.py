@@ -136,3 +136,25 @@ class TestMarkReadAndBarcode:
     def test_barcode_pdf_no_valid_reports_returns_404(self, pathologist_client):
         r = pathologist_client.post("/surgical-reports/barcode-pdf", json={"report_ids": [999999]})
         assert r.status_code == 404
+
+    def test_barcode_pdf_generates_a_pdf_for_a_valid_report(
+        self, db, pathologist_client, admin_user, pathologist_user
+    ):
+        """Happy-path regression test: generate_code39_base64_img now returns a
+        (data_uri, width_mm, height_mm) tuple instead of a bare string, and this
+        route unpacks it before rendering barcode_label_template.html. A mismatch
+        here would 500 or raise inside WeasyPrint, not just fail an assertion."""
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        make_system_setting(db)
+        payload = build_bulk_save_payload(case.id, specimen.id, pathologist.id)
+        created = pathologist_client.post(
+            f"/surgical-reports/{case.id}/finalize-snapshot", json=payload.model_dump(mode="json")
+        ).json()
+
+        r = pathologist_client.post("/surgical-reports/barcode-pdf", json={"report_ids": [created["id"]]})
+
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/pdf"
+        assert r.content[:4] == b"%PDF"

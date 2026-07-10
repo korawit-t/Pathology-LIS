@@ -18,7 +18,11 @@ from app.schemas.nongyne_cyto_stain import (
 from app.models.nongyne_cyto_stain import NongyneStainRun, NongyneStainRunDetail, NongyneCytologyStain
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.patient import Patient
-from app.schemas.nongyne_cyto_stain import NongyneStainRunCreate
+from app.schemas.nongyne_cyto_stain import (
+    NongyneStainRunCreate,
+    NongyneStainRunResponse,
+    NongyneStainRunListResponse,
+)
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.crud.organization import resolve_lab_short_name
@@ -72,7 +76,7 @@ def update_stain_status(
 
 
 # 🚩 6. ยืนยันการส่งย้อมแบบกลุ่ม (Create Batch Run)
-@router.post("/runs")
+@router.post("/runs", response_model=NongyneStainRunResponse)
 def create_nongyne_stain_run(
     obj_in: NongyneStainRunCreate,
     db: Session = Depends(get_db),
@@ -95,7 +99,7 @@ def create_nongyne_stain_run(
     )
 
 
-@router.get("/runs")
+@router.get("/runs", response_model=NongyneStainRunListResponse)
 def read_runs(db: Session = Depends(get_db), skip: int = 0, limit: int = 20):
     total = db.query(NongyneStainRun).count()
     items = crud.get_all_stain_runs(db, skip=skip, limit=limit)

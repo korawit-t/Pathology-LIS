@@ -103,6 +103,57 @@ class TestCreateRunAndPrintStickers:
     def test_print_stickers_missing_run_returns_404(self, pathologist_client):
         assert pathologist_client.get("/nongyne-stains/runs/999999/print-stickers").status_code == 404
 
+    def test_create_run_response_excludes_password_and_includes_operator(
+        self, db, pathologist_client, pathologist_user, admin_user
+    ):
+        """Regression test for the response_model added in NongyneStainRunResponse:
+        the endpoint used to return the raw ORM object, which would have leaked
+        User.hashed_password once the `operator` relationship was joined in."""
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        ap_test = make_anatomical_pathology_test(db)
+        stain = pathologist_client.post(
+            "/nongyne-stains", json={"case_id": case.id, "test_id": ap_test.id, "slide_no": 1}
+        ).json()
+
+        r = pathologist_client.post(
+            "/nongyne-stains/runs", json={"stainer_id": "ST-1", "stain_ids": [stain["id"]]}
+        )
+
+        assert r.status_code == 200
+        body = r.json()
+        assert "hashed_password" not in body
+        operator = body["operator"]
+        path_user, _ = pathologist_user
+        assert operator["id"] == path_user.id
+        assert operator["username"] == path_user.username
+        assert operator["full_name"] == path_user.full_name
+        assert "hashed_password" not in operator
+
+    def test_list_runs_response_shape_and_excludes_password(
+        self, db, pathologist_client, pathologist_user, admin_user
+    ):
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        ap_test = make_anatomical_pathology_test(db)
+        stain = pathologist_client.post(
+            "/nongyne-stains", json={"case_id": case.id, "test_id": ap_test.id, "slide_no": 1}
+        ).json()
+        created = pathologist_client.post(
+            "/nongyne-stains/runs", json={"stainer_id": "ST-1", "stain_ids": [stain["id"]]}
+        ).json()
+
+        r = pathologist_client.get("/nongyne-stains/runs")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert set(body.keys()) == {"total", "items", "skip", "limit"}
+        run = next(item for item in body["items"] if item["id"] == created["id"])
+        path_user, _ = pathologist_user
+        assert run["operator"]["username"] == path_user.username
+        assert "hashed_password" not in run["operator"]
+        assert "hashed_password" not in run
+
     def test_sticker_uses_hospital_short_name_when_overridden(self, db, pathologist_client, admin_user, monkeypatch):
         make_system_setting(db, lab_short_name_en="MASTER-LAB")
         hospital = make_hospital(db)

@@ -68,9 +68,12 @@
         margin: 6px 0;
       }
 
-      .barcode-area svg {
-        max-width: 280px;
-        height: 50px;
+      .barcode-area img {
+        /* Width/height are set inline per-item to the barcode's true physical
+           print size (see barcode_service.py) so the printed bar width stays
+           at the scanner-safe X-dimension regardless of value length.
+           max-width is only a safety net if a label column is ever too narrow. */
+        max-width: 100%;
       }
 
       .barcode-text {
@@ -111,7 +114,7 @@
             </td>
             <td style="vertical-align: middle; text-align: center; width: 55%;">
               <div class="barcode-area">
-                <img src="{{ item.barcode_svg | safe }}" style="width: 100%;">
+                <img src="{{ item.barcode_svg | safe }}" style="width: {{ item.barcode_width_mm }}mm; height: {{ item.barcode_height_mm }}mm;">
               </div>
               <div class="barcode-text">{{ item.barcode_value }}</div>
               <div class="barcode-type-label">{{ item.barcode_type }}</div>
