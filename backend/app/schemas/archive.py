@@ -18,6 +18,7 @@ class ArchiveItem(BaseModel):
     clinician_name: Optional[str] = None
     pathologist_name: Optional[str] = None
     date: Optional[datetime] = None
+    registered_date: Optional[datetime] = None
     status: Optional[str] = None
     has_malignancy: Optional[bool] = None
     adequacy_text: Optional[str] = None

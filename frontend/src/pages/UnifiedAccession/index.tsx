@@ -7,7 +7,6 @@ import {
   InboxOutlined,
   QuestionCircleOutlined,
   GlobalOutlined,
-  SearchOutlined,
 } from "@ant-design/icons";
 import { Typography } from "antd";
 import dayjs from "dayjs";
@@ -472,6 +471,27 @@ const UnifiedAccession: React.FC = () => {
     </Space>
   );
 
+  // ---- Tab bar search (swaps target per active tab) ----
+  const tabSearchConfig: Record<string, { placeholder: string; value: string; onChange: (v: string) => void }> = {
+    all: { placeholder: "Search by Accession No., HN, or Patient name", value: searchText, onChange: setSearchText },
+    surgical: { placeholder: "Search by Accession No., HN, or Patient name", value: surgTabSearch, onChange: setSurgTabSearch },
+    gyne: { placeholder: "Search by Accession No., HN, or Patient name", value: gyneTabSearch, onChange: setGyneTabSearch },
+    nongyne: { placeholder: "Search by Accession No., HN, or Patient name", value: ngTabSearch, onChange: setNgTabSearch },
+    outlab: { placeholder: "Search by Run No., Accession No., Lab, or Patient", value: outlabSearch, onChange: setOutlabSearch },
+  };
+  const activeSearch = tabSearchConfig[activeTab];
+  const tabBarExtraContent = activeSearch ? (
+    <Input.Search
+      key={activeTab}
+      placeholder={activeSearch.placeholder}
+      allowClear
+      enterButton
+      defaultValue={activeSearch.value}
+      onSearch={(value) => activeSearch.onChange(value)}
+      style={{ width: 320 }}
+    />
+  ) : null;
+
   const pageTabs = [
     {
       key: "all",
@@ -480,8 +500,6 @@ const UnifiedAccession: React.FC = () => {
         <AllTabContent
           rows={allRows}
           loading={unifiedLoading}
-          searchText={searchText}
-          onSearchChange={setSearchText}
           onRowClick={openDetailModal}
           onEdit={openEditModal}
           onPrint={openPrintFromRow}
@@ -500,16 +518,6 @@ const UnifiedAccession: React.FC = () => {
       label: <span style={{ fontSize: 15, paddingRight: 4 }}>Surgical</span>,
       children: (
         <>
-          <Space style={{ marginBottom: 12 }}>
-            <Input
-              prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-              placeholder="Search by Accession No., HN, or Patient name"
-              allowClear
-              value={surgTabSearch}
-              onChange={(e) => setSurgTabSearch(e.target.value)}
-              style={{ width: 360 }}
-            />
-          </Space>
           <SurgicalTable
             dataSource={surgCases}
             departments={surgDepts}
@@ -532,16 +540,6 @@ const UnifiedAccession: React.FC = () => {
       label: <span style={{ fontSize: 15, paddingRight: 4 }}>Gyne Cytology</span>,
       children: (
         <>
-          <Space style={{ marginBottom: 12 }}>
-            <Input
-              prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-              placeholder="Search by Accession No., HN, or Patient name"
-              allowClear
-              value={gyneTabSearch}
-              onChange={(e) => setGyneTabSearch(e.target.value)}
-              style={{ width: 360 }}
-            />
-          </Space>
           <GyneCytoTable
             dataSource={gyneCases}
             total={gyneTotal}
@@ -556,6 +554,8 @@ const UnifiedAccession: React.FC = () => {
             departments={surgDepts}
             schemes={schemes}
             onFilterChange={handleGyneFilter}
+            settings={settings}
+            holidays={holidays}
           />
         </>
       ),
@@ -565,16 +565,6 @@ const UnifiedAccession: React.FC = () => {
       label: <span style={{ fontSize: 15, paddingRight: 4 }}>Non-Gyne Cytology</span>,
       children: (
         <>
-          <Space style={{ marginBottom: 12 }}>
-            <Input
-              prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-              placeholder="Search by Accession No., HN, or Patient name"
-              allowClear
-              value={ngTabSearch}
-              onChange={(e) => setNgTabSearch(e.target.value)}
-              style={{ width: 360 }}
-            />
-          </Space>
           <NongyneTable
             dataSource={ngCases}
             departments={ngDepts}
@@ -588,6 +578,8 @@ const UnifiedAccession: React.FC = () => {
             hospitals={hospitals}
             schemes={schemes}
             onFilterChange={handleNgFilter}
+            settings={settings}
+            holidays={holidays}
           />
         </>
       ),
@@ -605,8 +597,6 @@ const UnifiedAccession: React.FC = () => {
         <OutlabTabContent
           runs={outlabFilteredRuns}
           loading={outlabLoading}
-          searchText={outlabSearch}
-          onSearchChange={setOutlabSearch}
           onRefresh={loadOutlabRuns}
           onReceive={handleReceiveConsultRun}
           pendingCount={outlabPendingCount}
@@ -634,6 +624,7 @@ const UnifiedAccession: React.FC = () => {
         type="line"
         size="large"
         tabBarStyle={{ marginBottom: 24 }}
+        tabBarExtraContent={tabBarExtraContent}
       />
 
       <DetailModal

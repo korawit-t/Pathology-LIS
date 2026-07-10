@@ -233,7 +233,7 @@ def validate_sign_off(diagnosis: SurgicalDiagnosis, update_data: dict):
         if not reason:
             raise HTTPException(
                 status_code=400,
-                detail="กรุณาระบุเหตุผลการแก้ไข (Revision Reason) ก่อนลงนามฉบับแก้ไข",
+                detail="Please provide a revision reason before signing the revised report",
             )
 
 

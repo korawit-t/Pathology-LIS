@@ -156,6 +156,7 @@ const WSISlideGallery: React.FC<Props> = ({ onNavigate }) => {
           <Input.Search
             placeholder="Search filename, accession, block..."
             allowClear
+            enterButton
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 280 }}

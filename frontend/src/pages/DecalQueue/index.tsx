@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { Typography, Space, Button, Input } from "antd";
+import { Typography, Space, Button } from "antd";
 import { ExperimentOutlined, ReloadOutlined } from "@ant-design/icons";
 import PageContainer from "../../components/Layout/PageContainer";
 import DecalQueueManager from "../SurgicalBlock/components/DecalQueueManager";
@@ -10,7 +10,6 @@ const { Title } = Typography;
 
 const DecalQueuePage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [searchText, setSearchText] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -32,7 +31,7 @@ const DecalQueuePage: React.FC = () => {
   return (
     <PageContainer
       withCard
-      cardProps={{ styles: { body: { padding: 0 } } }}
+      cardProps={{ styles: { body: { padding: "8px 0 0 0" } } }}
       title={
         <Title level={3} style={{ margin: 0, display: "flex", alignItems: "center" }}>
           <ExperimentOutlined style={{ marginRight: 12, color: "#595959" }} />
@@ -41,20 +40,10 @@ const DecalQueuePage: React.FC = () => {
       }
       extra={
         <Space>
-          <Input.Search
-            placeholder="Search by Block / Accession No."
-            style={{ width: 300 }}
-            allowClear
-            enterButton
-            onSearch={(value) => setSearchText(value)}
-          />
           <Button
             icon={<ReloadOutlined />}
             loading={loadingUsers}
-            onClick={() => {
-              fetchUsers();
-              setSearchText("");
-            }}
+            onClick={fetchUsers}
           >
             Refresh
           </Button>
@@ -63,7 +52,6 @@ const DecalQueuePage: React.FC = () => {
     >
       <DecalQueueManager
         users={users}
-        searchText={searchText}
         onRefreshCount={() => {}}
       />
     </PageContainer>

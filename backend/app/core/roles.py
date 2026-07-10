@@ -53,4 +53,4 @@ CAN_MANAGE_USERS = RoleChecker(["admin", "lab_manager"])
 CAN_MANAGE_SYSTEM_SETTINGS = RoleChecker(["admin"])
 
 # 3. WSI Viewer
-CAN_VIEW_WSI = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist"])
+CAN_VIEW_WSI = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist", "histo"])

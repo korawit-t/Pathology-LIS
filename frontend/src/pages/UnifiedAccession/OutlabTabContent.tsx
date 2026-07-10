@@ -5,11 +5,9 @@ import {
   Typography,
   Space,
   Button,
-  Input,
   Popconfirm,
 } from "antd";
 import {
-  SearchOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
@@ -22,8 +20,6 @@ const { Text } = Typography;
 interface OutlabTabContentProps {
   runs: OutlabConsultRunResponse[];
   loading: boolean;
-  searchText: string;
-  onSearchChange: (v: string) => void;
   onRefresh: () => void;
   onReceive: (runId: number) => void;
   pendingCount: number;
@@ -32,22 +28,12 @@ interface OutlabTabContentProps {
 const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
   runs,
   loading,
-  searchText,
-  onSearchChange,
   onRefresh,
   onReceive,
   pendingCount,
 }) => (
   <>
     <Space style={{ marginBottom: 12 }} wrap>
-      <Input
-        prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-        placeholder="Search by Run No., Accession No., Lab, or Patient"
-        allowClear
-        value={searchText}
-        onChange={(e) => onSearchChange(e.target.value)}
-        style={{ width: 380 }}
-      />
       <Button icon={<ReloadOutlined />} onClick={onRefresh} loading={loading}>
         Refresh
       </Button>

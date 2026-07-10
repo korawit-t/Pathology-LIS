@@ -6,10 +6,8 @@ import {
   Space,
   Tooltip,
   Button,
-  Input,
 } from "antd";
 import {
-  SearchOutlined,
   EditOutlined,
   EyeOutlined,
   FireFilled,
@@ -30,8 +28,6 @@ const { Text } = Typography;
 interface AllTabContentProps {
   rows: UnifiedRow[];
   loading: boolean;
-  searchText: string;
-  onSearchChange: (v: string) => void;
   onRowClick: (row: UnifiedRow) => void;
   onEdit: (row: UnifiedRow) => void;
   onPrint: (row: UnifiedRow) => void;
@@ -47,8 +43,6 @@ interface AllTabContentProps {
 const AllTabContent: React.FC<AllTabContentProps> = ({
   rows,
   loading,
-  searchText,
-  onSearchChange,
   onRowClick,
   onEdit,
   onPrint,
@@ -100,8 +94,8 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
       width: 120,
       render: (v: string) => (v ? dayjs(v).format("DD/MM/YY HH:mm") : "-"),
     },
-    { title: "HN", dataIndex: "hn", width: 75 },
     { title: "Patient", dataIndex: "patient_name", width: 200 },
+    { title: "HN", dataIndex: "hn", width: 75 },
     {
       title: "Hospital",
       dataIndex: "hospital",
@@ -240,16 +234,6 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
 
   return (
     <>
-      <Space style={{ marginBottom: 12 }} wrap>
-        <Input
-          prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-          placeholder="Search by Accession No., HN, or Patient name"
-          allowClear
-          value={searchText}
-          onChange={(e) => onSearchChange(e.target.value)}
-          style={{ width: 360 }}
-        />
-      </Space>
       <Table
         dataSource={rows}
         rowKey="_key"

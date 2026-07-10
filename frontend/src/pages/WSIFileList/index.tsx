@@ -355,6 +355,7 @@ const WsiFileListPage: React.FC<Props> = ({ onNavigate }) => {
           <Input.Search
             placeholder="Search filename..."
             allowClear
+            enterButton
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 240 }}

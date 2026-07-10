@@ -73,7 +73,7 @@ const CytoWorkloadPage: React.FC = () => {
       });
       setStats(data);
     } catch {
-      message.error("ไม่สามารถโหลดข้อมูล workload ได้");
+      message.error("Failed to load workload data");
     } finally {
       setLoading(false);
     }
@@ -104,11 +104,11 @@ const CytoWorkloadPage: React.FC = () => {
         reading_hours: values.reading_hours,
         note: values.note || undefined,
       });
-      message.success("บันทึกชั่วโมงเรียบร้อยแล้ว");
+      message.success("Hours saved successfully");
       setModalOpen(false);
       fetchStats();
     } catch {
-      message.error("ไม่สามารถบันทึกได้");
+      message.error("Failed to save");
     } finally {
       setSaving(false);
     }
@@ -120,7 +120,7 @@ const CytoWorkloadPage: React.FC = () => {
 
   const columns = [
     {
-      title: "วันที่",
+      title: "Date",
       dataIndex: "work_date",
       key: "work_date",
       width: 120,
@@ -129,7 +129,7 @@ const CytoWorkloadPage: React.FC = () => {
         a.work_date.localeCompare(b.work_date),
     },
     {
-      title: "นักเซลล์วิทยา",
+      title: "Cytotechnologist",
       dataIndex: "user_full_name",
       key: "user_full_name",
       width: 180,
@@ -158,13 +158,13 @@ const CytoWorkloadPage: React.FC = () => {
       width: 120,
       align: "center" as const,
       render: (v: number) => (
-        <Tooltip title="นับเป็น 0.5 unit/slide">
+        <Tooltip title="Counted as 0.5 unit/slide">
           <Tag color="orange">{v}</Tag>
         </Tooltip>
       ),
     },
     {
-      title: "รวม (equiv.)",
+      title: "Total (equiv.)",
       dataIndex: "effective_count",
       key: "effective_count",
       width: 110,
@@ -172,20 +172,20 @@ const CytoWorkloadPage: React.FC = () => {
       render: (v: number) => <Text strong>{v}</Text>,
     },
     {
-      title: "ชั่วโมงอ่านสไลด์",
+      title: "Reading Hours",
       dataIndex: "reading_hours",
       key: "reading_hours",
       width: 130,
       align: "center" as const,
       render: (v: number | null) =>
         v === null ? (
-          <Tag color="warning">ยังไม่บันทึก</Tag>
+          <Tag color="warning">Not recorded</Tag>
         ) : (
-          <Text>{v} ชม.</Text>
+          <Text>{v} hrs</Text>
         ),
     },
     {
-      title: "Limit (สไลด์)",
+      title: "Limit (slides)",
       dataIndex: "adjusted_limit",
       key: "adjusted_limit",
       width: 110,
@@ -193,18 +193,18 @@ const CytoWorkloadPage: React.FC = () => {
       render: (v: number) => <Text type="secondary">{v}</Text>,
     },
     {
-      title: "สถานะ",
+      title: "Status",
       key: "status",
       width: 100,
       align: "center" as const,
       render: (_: unknown, row: CytoWorkloadDayStats) =>
         row.is_compliant ? (
           <Tag icon={<CheckCircleOutlined />} color="success">
-            ปกติ
+            Compliant
           </Tag>
         ) : (
           <Tag icon={<WarningOutlined />} color="error">
-            เกิน
+            Over Limit
           </Tag>
         ),
     },
@@ -231,34 +231,34 @@ const CytoWorkloadPage: React.FC = () => {
           onChange={(v) => v && setDateRange(v as [Dayjs, Dayjs])}
           format="DD/MM/YYYY"
           presets={[
-            { label: "เดือนนี้", value: [today.startOf("month"), today] },
+            { label: "This month", value: [today.startOf("month"), today] },
             {
-              label: "เดือนที่แล้ว",
+              label: "Last month",
               value: [
                 today.subtract(1, "month").startOf("month"),
                 today.subtract(1, "month").endOf("month"),
               ],
             },
-            { label: "3 เดือน", value: [today.subtract(3, "month"), today] },
+            { label: "3 months", value: [today.subtract(3, "month"), today] },
           ]}
         />
         <Select
           mode="multiple"
           allowClear
-          placeholder="เลือกนักเซลล์วิทยา (ทั้งหมด)"
+          placeholder="Select cytotechnologist (all)"
           style={{ minWidth: 240 }}
           options={userOptions}
           onChange={setSelectedUserIds}
         />
         <Button icon={<ReloadOutlined />} onClick={fetchStats} loading={loading}>
-          โหลด
+          Load
         </Button>
         <Button
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => openRecord()}
         >
-          บันทึกชั่วโมง
+          Record Hours
         </Button>
         <Button
           icon={<DownloadOutlined />}
@@ -267,16 +267,16 @@ const CytoWorkloadPage: React.FC = () => {
               `cyto-workload-${dateRange[0].format("YYYYMMDD")}-${dateRange[1].format("YYYYMMDD")}`,
               stats as unknown as Record<string, unknown>[],
               [
-                { header: "วันที่", key: "work_date", render: (v) => v ? String(v).slice(0, 10) : "" },
-                { header: "นักเซลล์วิทยา", key: "user_full_name" },
+                { header: "Date", key: "work_date", render: (v) => v ? String(v).slice(0, 10) : "" },
+                { header: "Cytotechnologist", key: "user_full_name" },
                 { header: "Gyne", key: "gyne_slides" },
                 { header: "NonGyne Conv.", key: "nongyne_conv_slides" },
                 { header: "NonGyne Liquid", key: "nongyne_liquid_slides" },
-                { header: "รวม (equiv.)", key: "effective_count" },
-                { header: "ชั่วโมงอ่านสไลด์", key: "reading_hours", render: (v) => v === null || v === undefined ? "" : String(v) },
-                { header: "Limit (สไลด์)", key: "adjusted_limit" },
-                { header: "สถานะ", key: "is_compliant", render: (v) => v ? "ปกติ" : "เกิน" },
-                { header: "หมายเหตุ", key: "note", render: (v) => String(v ?? "") },
+                { header: "Total (equiv.)", key: "effective_count" },
+                { header: "Reading Hours", key: "reading_hours", render: (v) => v === null || v === undefined ? "" : String(v) },
+                { header: "Limit (slides)", key: "adjusted_limit" },
+                { header: "Status", key: "is_compliant", render: (v) => v ? "Compliant" : "Over Limit" },
+                { header: "Note", key: "note", render: (v) => String(v ?? "") },
               ],
             )
           }
@@ -288,25 +288,25 @@ const CytoWorkloadPage: React.FC = () => {
       {/* Summary */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col>
-          <Statistic title="รายการทั้งหมด" value={stats.length} suffix="วัน-คน" />
+          <Statistic title="Total Records" value={stats.length} suffix="day-person" />
         </Col>
         <Col>
           <Statistic
-            title="ปกติ"
+            title="Compliant"
             value={compliantCount}
             valueStyle={{ color: "#52c41a" }}
           />
         </Col>
         <Col>
           <Statistic
-            title="เกินกำหนด"
+            title="Over Limit"
             value={overCount}
             valueStyle={{ color: overCount > 0 ? "#ff4d4f" : undefined }}
           />
         </Col>
         <Col>
           <Statistic
-            title="ยังไม่บันทึกชั่วโมง"
+            title="Hours Not Recorded"
             value={unrecordedCount}
             valueStyle={{ color: unrecordedCount > 0 ? "#faad14" : undefined }}
           />
@@ -329,46 +329,46 @@ const CytoWorkloadPage: React.FC = () => {
 
       {/* Record Hours Modal */}
       <Modal
-        title="บันทึกชั่วโมงอ่านสไลด์"
+        title="Record Slide Reading Hours"
         open={modalOpen}
         onOk={handleSave}
         onCancel={() => setModalOpen(false)}
-        okText="บันทึก"
-        cancelText="ยกเลิก"
+        okText="Save"
+        cancelText="Cancel"
         confirmLoading={saving}
         destroyOnClose
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="user_id"
-            label="นักเซลล์วิทยา"
-            rules={[{ required: true, message: "กรุณาเลือกนักเซลล์วิทยา" }]}
+            label="Cytotechnologist"
+            rules={[{ required: true, message: "Please select a cytotechnologist" }]}
           >
-            <Select options={userOptions} placeholder="เลือกนักเซลล์วิทยา" />
+            <Select options={userOptions} placeholder="Select cytotechnologist" />
           </Form.Item>
           <Form.Item
             name="work_date"
-            label="วันที่ปฏิบัติงาน"
-            rules={[{ required: true, message: "กรุณาเลือกวันที่" }]}
+            label="Work Date"
+            rules={[{ required: true, message: "Please select a date" }]}
           >
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item
             name="reading_hours"
-            label="จำนวนชั่วโมงอ่านสไลด์จริง"
-            rules={[{ required: true, message: "กรุณาระบุชั่วโมง" }]}
-            extra="มาตรฐาน ≥ 8 ชม./วัน — ถ้าน้อยกว่า 8 ชม. จำนวนสไลด์สูงสุดจะลดตามสัดส่วน"
+            label="Actual Slide Reading Hours"
+            rules={[{ required: true, message: "Please enter the hours" }]}
+            extra="Standard ≥ 8 hrs/day — if less than 8 hrs, the max slide count is reduced proportionally"
           >
             <InputNumber
               min={0}
               max={24}
               step={0.5}
               style={{ width: "100%" }}
-              addonAfter="ชม."
+              addonAfter="hrs"
             />
           </Form.Item>
-          <Form.Item name="note" label="หมายเหตุ">
-            <Input.TextArea rows={2} placeholder="เช่น ทำงานธุรการ 2 ชม." />
+          <Form.Item name="note" label="Note">
+            <Input.TextArea rows={2} placeholder="e.g. 2 hrs of administrative work" />
           </Form.Item>
         </Form>
       </Modal>

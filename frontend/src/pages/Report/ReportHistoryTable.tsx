@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { Tabs, Typography } from "antd";
+import React, { useRef, useState } from "react";
+import { Input, Tabs, Typography } from "antd";
 import { HistoryOutlined } from "@ant-design/icons";
 import PageContainer from "../../components/Layout/PageContainer";
-import SurgicalReportHistory from "./components/SurgicalReportHistory";
+import SurgicalReportHistory, { ReportHistoryHandle } from "./components/SurgicalReportHistory";
 import GyneReportHistory from "./components/GyneReportHistory";
 import NonGyneReportHistory from "./components/NonGyneReportHistory";
 
@@ -16,21 +16,30 @@ interface Props {
 const ReportHistoryTable: React.FC<Props> = ({ onBack: _ }) => {
   const [activeTab, setActiveTab] = useState("surgical");
 
+  const surgicalRef = useRef<ReportHistoryHandle>(null);
+  const gyneRef = useRef<ReportHistoryHandle>(null);
+  const nongyneRef = useRef<ReportHistoryHandle>(null);
+
+  const activeRef =
+    activeTab === "surgical" ? surgicalRef :
+    activeTab === "gyne" ? gyneRef :
+    nongyneRef;
+
   const items = [
     {
       key: "surgical",
       label: "Surgical Pathology",
-      children: <SurgicalReportHistory />,
+      children: <SurgicalReportHistory ref={surgicalRef} />,
     },
     {
       key: "gyne",
       label: "Gyne Cytology",
-      children: <GyneReportHistory />,
+      children: <GyneReportHistory ref={gyneRef} />,
     },
     {
       key: "nongyne",
       label: "Non-Gyne Cytology",
-      children: <NonGyneReportHistory />,
+      children: <NonGyneReportHistory ref={nongyneRef} />,
     },
   ];
 
@@ -43,8 +52,24 @@ const ReportHistoryTable: React.FC<Props> = ({ onBack: _ }) => {
         </Title>
       }
       withCard
+      cardProps={{ bodyStyle: { paddingTop: 8 } }}
     >
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} />
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={items}
+        tabBarStyle={{ marginBottom: 16 }}
+        tabBarExtraContent={
+          <Input.Search
+            key={activeTab}
+            placeholder="Search HN, Name, Accession No..."
+            onSearch={(value) => activeRef.current?.search(value)}
+            style={{ width: 300 }}
+            allowClear
+            enterButton
+          />
+        }
+      />
     </PageContainer>
   );
 };

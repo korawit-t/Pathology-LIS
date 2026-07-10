@@ -10,6 +10,7 @@ import {
   InfoCircleOutlined,
   RobotOutlined,
   ScanOutlined,
+  SafetyOutlined,
 } from "@ant-design/icons";
 import { APP_VERSION } from "../../constants/app.constants";
 import api from "../../services/httpClient";
@@ -17,6 +18,7 @@ import PageContainer from "../../components/Layout/PageContainer";
 import GeneralTab from "./components/GeneralTab";
 import ReportTab from "./components/ReportTab";
 import WorkflowTab from "./components/WorkflowTab";
+import SecurityTab from "./components/SecurityTab";
 import BarcodeTab from "./components/BarcodeTab";
 import StickerTab from "./components/StickerTab";
 import NotificationChannelTab from "./components/NotificationChannelTab";
@@ -43,6 +45,7 @@ const SystemSettings: React.FC = () => {
   const menuItems = [
     { key: "general",            icon: <BankOutlined />,      label: "General" },
     { key: "workflow",           icon: <BranchesOutlined />,  label: "Workflow & SLA" },
+    { key: "security",           icon: <SafetyOutlined />,    label: "Security" },
     { key: "report",             icon: <FileTextOutlined />,  label: "Report Settings" },
     { key: "notifications",      icon: <FileTextOutlined />,  label: "Notification Channels" },
     { key: "notification-rules", icon: <FileTextOutlined />,  label: "Notification Rules" },
@@ -98,6 +101,7 @@ const SystemSettings: React.FC = () => {
         <Content style={{ padding: "32px 48px 80px", background: "#fff", position: "relative" }}>
           {activeKey === "general" && <GeneralTab />}
           {activeKey === "workflow" && <WorkflowTab />}
+          {activeKey === "security" && <SecurityTab />}
           {activeKey === "report" && <ReportTab />}
           {activeKey === "notifications" && <NotificationChannelTab />}
           {activeKey === "notification-rules" && <NotificationRulesTab />}

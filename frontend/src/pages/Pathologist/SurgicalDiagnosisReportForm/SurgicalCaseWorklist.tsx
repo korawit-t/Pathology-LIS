@@ -14,7 +14,6 @@ import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import {
-  SearchOutlined,
   FilterOutlined,
   FireFilled,
   HistoryOutlined,
@@ -99,7 +98,7 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
     {
       title: "Accession No.",
       dataIndex: "accession_no",
-      width: 180,
+      width: 210,
       fixed: "left",
       sorter: (a, b) => {
         // Keep Slide Sent cases pinned to the top of the "All" view — the
@@ -151,8 +150,17 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       ),
     },
     {
+      title: isCoSignMode ? "Report At" : "Register At",
+      dataIndex: isCoSignMode ? "reported_at" : "registered_at",
+      key: "date_col",
+      width: 150,
+      render: (value: string) =>
+        value ? dayjs(value).format("DD/MM/YYYY HH:mm") : "-",
+    },
+    {
       title: "Patient",
       key: "patient_info",
+      width: 250,
       render: (_, record) => {
         const patientName =
           [
@@ -182,14 +190,6 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       },
     },
     {
-      title: isCoSignMode ? "Report At" : "Register At",
-      dataIndex: isCoSignMode ? "reported_at" : "registered_at",
-      key: "date_col",
-      width: 150,
-      render: (value: string) =>
-        value ? dayjs(value).format("DD/MM/YYYY HH:mm") : "-",
-    },
-    {
       title: (
         <Space size={4}>
           TAT / PROGRESS
@@ -213,7 +213,7 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
         </Space>
       ),
       dataIndex: "registered_at",
-      width: 200,
+      width: 150,
       render: (value: string, record) => {
         const s = record.status?.toUpperCase();
         const isSignedOut = s === "COMPLETED" || s === "PUBLISHED" || s === "SIGNED OUT";
@@ -447,13 +447,13 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
             }}
           />
         </Space>
-        <Input
+        <Input.Search
           placeholder="Search Accession / Patient"
-          prefix={<SearchOutlined />}
           style={{ width: 300 }}
           allowClear
-          onChange={(e) => {
-            onSearch(e.target.value);
+          enterButton
+          onSearch={(val) => {
+            onSearch(val);
             setPagination({ ...pagination, current: 1 });
           }}
         />

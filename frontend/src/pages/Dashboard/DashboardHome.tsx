@@ -78,6 +78,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user, onNavigate, onSelec
           <Input.Search
             placeholder="Accession No"
             allowClear
+            enterButton
             style={{ width: 220 }}
             value={accessionSearch}
             onChange={(e) => setAccessionSearch(e.target.value)}

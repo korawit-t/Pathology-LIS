@@ -1,7 +1,7 @@
 import React from "react";
 import { Form, Input, Typography } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
-// 🚩 เรียกใช้ StyledCard ที่เราสร้างไว้เป็นกองกลาง
+// 🚩 Uses the shared StyledCard
 import StyledCard from "./Layout/StyledCard";
 import SimpleTiptapEditor from "./Editors/SimpleTiptapEditor";
 import { useTheme } from "../contexts/ThemeContext";
@@ -21,7 +21,7 @@ interface ClinicalInfoSectionProps {
 const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
   name = "clinical_diagnosis",
   label = "Clinical Information",
-  placeholder = "ระบุการวินิจฉัยทางคลินิกหรือประวัติโดยสังเขป...",
+  placeholder = "Enter the clinical diagnosis or a brief history...",
   readOnly = false,
   required = true,
 }) => {
@@ -30,7 +30,7 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
     <StyledCard
       size="small"
       style={{
-        height: "100%", // 🚩 เปลี่ยนจาก auto เป็น 100% เพื่อให้ยืดเต็ม Row
+        height: "100%", // 🚩 Changed from auto to 100% so it fills the row
         display: "flex",
         flexDirection: "column",
       }}
@@ -39,7 +39,7 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        height: "100%", // 🚩 ให้ body ยืดเต็ม
+        height: "100%", // 🚩 Let the body stretch fully
       }}
     >
       <div
@@ -47,7 +47,7 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          marginBottom: 16, // 🚩 เพิ่ม margin-bottom ให้สมดุลแทน 1
+          marginBottom: 16, // 🚩 Added margin-bottom for balance instead of 1
         }}
       >
         <Title
@@ -75,21 +75,21 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
           display: "flex",
           flexDirection: "column",
         }}
-        // 🚩 สำคัญ: Tiptap ส่งค่าเป็น HTML String
+        // 🚩 Important: Tiptap emits its value as an HTML string
         rules={
           required && !readOnly
-            ? [{ required: true, message: `กรุณาระบุ ${label}` }]
+            ? [{ required: true, message: `Please enter ${label}` }]
             : []
         }
       >
-        {/* 🚩 เปลี่ยน TextArea เป็น SimpleTiptapEditor */}
+        {/* 🚩 Replaced TextArea with SimpleTiptapEditor */}
         <SimpleTiptapEditor
           placeholder={placeholder}
           style={{
             flex: 1,
             width: "100%",
             minHeight: "30px",
-            // 🚩 4. ขอบและสีพื้นหลังต้องเป็น Dynamic
+            // 🚩 4. Border and background color must be dynamic
             border: isDarkMode ? "1px solid #434343" : "1px solid #d9d9d9",
             borderRadius: "6px",
             background: isDarkMode
@@ -99,25 +99,25 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
               : readOnly
                 ? "#fafafa"
                 : "#ffffff",
-            // เพิ่มสีตัวอักษรใน Editor (ถ้า Tiptap ไม่ได้จัดการให้)
+            // Set text color in the editor (in case Tiptap doesn't handle it)
             color: isDarkMode ? "#e6e6e6" : "#000000",
           }}
         />
       </Form.Item>
 
-      {/* 🚩 แก้ไข CSS Selector ให้ครอบคลุมทุกเลเยอร์ของ Ant Design */}
+      {/* 🚩 Fixed CSS selector to cover every Ant Design layer */}
       <style>{`
         .stretch-form-item {
           display: flex;
           flex-direction: column;
-          width: 100%; /* บังคับกางกว้าง */
+          width: 100%; /* Force full width */
         }
         .stretch-form-item .ant-form-item-row {
           flex: 1;
           display: flex;
           flex-direction: column;
           width: 100%;
-          align-items: stretch; /* 🚩 บังคับให้ลูกกางออกแนวขวาง */
+          align-items: stretch; /* 🚩 Force children to stretch horizontally */
         }
         .stretch-form-item .ant-form-item-control {
           flex: 1;
@@ -131,15 +131,15 @@ const ClinicalInfoSection: React.FC<ClinicalInfoSectionProps> = ({
           display: flex;
           flex-direction: column;
           height: 100%;
-          width: 100%; /* 🚩 ย้ำความกว้างชั้นในสุด */
+          width: 100%; /* 🚩 Reinforce full width on the innermost layer */
         }
-        /* ป้องกัน Ant Design ใส่ Margin หรือความกว้างคงที่ */
+        /* Prevent Ant Design from adding margin or a fixed width */
         .stretch-form-item .ant-col {
           width: 100%;
           max-width: 100%;
-          display: flex; /* 🚩 เพิ่ม flex ไว้บีบไส้ใน */
+          display: flex; /* 🚩 Add flex to squeeze the inner content */
           flex-direction: column;
-          flex: 1; /* 🚩 ให้ครอบคลุมความสูงของ row */
+          flex: 1; /* 🚩 Cover the full height of the row */
         }
           ${
             isDarkMode

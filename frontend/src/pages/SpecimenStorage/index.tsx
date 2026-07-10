@@ -432,7 +432,7 @@ const SpecimenStorage: React.FC = () => {
   return (
     <PageContainer
       withCard
-      cardProps={{ styles: { body: { padding: 0 } } }}
+      cardProps={{ styles: { body: { padding: "8px 0 0 0" } } }}
       title={
         <Title level={3} style={{ margin: 0 }}>
           <InboxOutlined style={{ marginRight: 8, color: "#595959" }} />
@@ -444,6 +444,27 @@ const SpecimenStorage: React.FC = () => {
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key)}
         tabBarStyle={{ padding: "0 24px", marginBottom: 0 }}
+        tabBarExtraContent={
+          activeTab === "2" ? (
+            <Search
+              placeholder="Search Accession No, HN, Name, Container No."
+              allowClear
+              enterButton="Search"
+              size="middle"
+              onSearch={onSearchStored}
+              style={{ width: 400 }}
+            />
+          ) : activeTab === "3" ? (
+            <Search
+              placeholder="Search Accession No, HN, Name, Container No."
+              allowClear
+              enterButton="Search"
+              size="middle"
+              onSearch={onSearchDisposed}
+              style={{ width: 400 }}
+            />
+          ) : undefined
+        }
         items={[
           {
             key: "1",
@@ -504,21 +525,7 @@ const SpecimenStorage: React.FC = () => {
               label: <span><DatabaseOutlined style={{ marginRight: 6 }} />Stored Specimens</span>,
               children: (
                 <div style={{ padding: "16px 24px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: 16,
-                    }}
-                  >
-                    <Search
-                      placeholder="ค้นหา Accession No, HN, Name, Container No."
-                      allowClear
-                      enterButton="Search"
-                      size="middle"
-                      onSearch={onSearchStored}
-                      style={{ width: 400 }}
-                    />
+                  <div style={{ marginBottom: 16 }}>
                     <Space>
                       <Button
                         type="primary"
@@ -566,21 +573,7 @@ const SpecimenStorage: React.FC = () => {
               label: <span><StopOutlined style={{ marginRight: 6 }} />Disposed Specimens</span>,
               children: (
                 <div style={{ padding: "16px 24px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: 16,
-                    }}
-                  >
-                    <Search
-                      placeholder="ค้นหา Accession No, HN, Name, Container No."
-                      allowClear
-                      enterButton="Search"
-                      size="middle"
-                      onSearch={onSearchDisposed}
-                      style={{ width: 400 }}
-                    />
+                  <div style={{ marginBottom: 16 }}>
                     <Button
                       icon={<ReloadOutlined />}
                       onClick={() => fetchDisposedCases(disposedPage, disposedSearch)}
