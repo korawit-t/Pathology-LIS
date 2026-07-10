@@ -174,6 +174,9 @@ def get_ihc_stats(
     from app.models.ihc_result import IHCResult
     from app.models.nongyne_ihc_result import NongyneIHCResult
     from app.models.ihc_marker_option import IHCMarkerOption
+    from app.models.ihc_marker_extra_field import IHCMarkerExtraField
+    from app.models.ihc_marker_extra_field_option import IHCMarkerExtraFieldOption
+    from app.models.ihc_result_extra_value import IHCResultExtraValue
     from app.models.anatomical_pathology_test import AnatomicalPathologyTest
     from app.models.surgical_specimen import SurgicalSpecimen
     from app.models.surgical_case import SurgicalCase
@@ -181,6 +184,92 @@ def get_ihc_stats(
 
     start = date_type.fromisoformat(start_date)
     end = date_type.fromisoformat(end_date)
+
+    def _build_extra_field_stats(ap_test_ids: list) -> dict:
+        """Surgical-only (no nongyne_ihc_result_extra_values table exists yet).
+        Returns {ap_test_id: [{field_id, label, total, results: [...]}]} aggregating
+        IHCResultExtraValue counts per marker per extra field per value, scoped to the
+        same date range as the primary marker stats."""
+        if not ap_test_ids:
+            return {}
+
+        rows = (
+            db.query(
+                IHCMarkerExtraField.ap_test_id,
+                IHCMarkerExtraField.id.label("field_id"),
+                IHCMarkerExtraField.label,
+                IHCMarkerExtraField.field_type,
+                IHCMarkerExtraField.numeric_unit,
+                IHCMarkerExtraField.display_order,
+                IHCResultExtraValue.value,
+                func.count(IHCResultExtraValue.id),
+            )
+            .join(IHCResultExtraValue, IHCResultExtraValue.field_id == IHCMarkerExtraField.id)
+            .join(IHCResult, IHCResult.id == IHCResultExtraValue.ihc_result_id)
+            .join(SurgicalSpecimen, SurgicalSpecimen.id == IHCResult.surgical_specimen_id)
+            .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
+            .filter(
+                IHCMarkerExtraField.ap_test_id.in_(ap_test_ids),
+                IHCResultExtraValue.value.isnot(None),
+                func.date(SurgicalCase.registered_at) >= start,
+                func.date(SurgicalCase.registered_at) <= end,
+            )
+            .group_by(
+                IHCMarkerExtraField.ap_test_id,
+                IHCMarkerExtraField.id,
+                IHCMarkerExtraField.label,
+                IHCMarkerExtraField.field_type,
+                IHCMarkerExtraField.numeric_unit,
+                IHCMarkerExtraField.display_order,
+                IHCResultExtraValue.value,
+            )
+            .all()
+        )
+
+        field_ids = list({r.field_id for r in rows})
+        option_label_map = {}
+        if field_ids:
+            option_rows = (
+                db.query(
+                    IHCMarkerExtraFieldOption.field_id,
+                    IHCMarkerExtraFieldOption.option_value,
+                    IHCMarkerExtraFieldOption.option_label,
+                )
+                .filter(IHCMarkerExtraFieldOption.field_id.in_(field_ids))
+                .all()
+            )
+            option_label_map = {(o.field_id, o.option_value): o.option_label for o in option_rows}
+
+        by_marker: dict = {}
+        for ap_test_id, field_id, label, field_type, numeric_unit, display_order, value, count in rows:
+            fields = by_marker.setdefault(ap_test_id, {})
+            field_entry = fields.setdefault(field_id, {
+                "field_id": field_id,
+                "label": label,
+                "display_order": display_order,
+                "total": 0,
+                "results": [],
+            })
+            if field_type == "select":
+                value_label = option_label_map.get((field_id, value), value)
+            elif field_type == "numeric":
+                value_label = f"{value}{numeric_unit or ''}"
+            else:
+                value_label = value
+            field_entry["results"].append({
+                "option_value": value or "",
+                "option_label": value_label,
+                "count": count,
+            })
+            field_entry["total"] += count
+
+        result: dict = {}
+        for ap_test_id, fields in by_marker.items():
+            sorted_fields = sorted(fields.values(), key=lambda f: f["display_order"])
+            for f in sorted_fields:
+                f.pop("display_order")
+            result[ap_test_id] = sorted_fields
+        return result
 
     def _build_marker_rows(rows, db):
         markers: dict = {}
@@ -254,9 +343,18 @@ def get_ihc_stats(
         .all()
     )
 
+    surgical_markers = _build_marker_rows(surgical_rows, db)
+    nongyne_markers = _build_marker_rows(nongyne_rows, db)
+
+    extra_stats = _build_extra_field_stats([m["ap_test_id"] for m in surgical_markers])
+    for m in surgical_markers:
+        m["extra_fields"] = extra_stats.get(m["ap_test_id"], [])
+    for m in nongyne_markers:
+        m["extra_fields"] = []
+
     return {
-        "surgical": _build_marker_rows(surgical_rows, db),
-        "nongyne": _build_marker_rows(nongyne_rows, db),
+        "surgical": surgical_markers,
+        "nongyne": nongyne_markers,
     }
 
 

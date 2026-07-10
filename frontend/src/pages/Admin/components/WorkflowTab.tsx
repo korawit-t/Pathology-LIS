@@ -102,7 +102,6 @@ const WorkflowTab: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [masterTests, setMasterTests] = useState<AnatomicalPathologyTest[]>([]);
 
-  const warningMinutes = Form.useWatch("idle_warning_minutes", form) ?? 1;
   const gyneQcOn = Form.useWatch("enable_gyne_qc_system", form);
 
   const gyneOptions = masterTests
@@ -290,66 +289,6 @@ const WorkflowTab: React.FC = () => {
               <Switch checkedChildren="ON" unCheckedChildren="OFF" />
             </Form.Item>
           </SettingRow>
-        </div>
-
-        {/* Section: Session Security */}
-        <div style={{ marginBottom: 40 }}>
-          <Title level={5} style={{ marginBottom: 8 }}>
-            <ControlOutlined /> Session Security
-          </Title>
-          <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
-            <SettingRow
-              title="Idle Timeout"
-              description={`Automatically logs out when idle — a warning is shown ${warningMinutes} minutes before timeout`}
-              icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
-            >
-              <Form.Item name="idle_timeout_minutes" noStyle>
-                <InputNumber min={2} max={480} step={5} addonAfter="min" style={{ width: 160 }} />
-              </Form.Item>
-            </SettingRow>
-            <SettingRow
-              title="Warning Lead Time"
-              description="Shows a warning before automatically logging out"
-              icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
-            >
-              <Form.Item name="idle_warning_minutes" noStyle>
-                <InputNumber min={1} max={10} step={1} addonAfter="min" style={{ width: 160 }} />
-              </Form.Item>
-            </SettingRow>
-          </div>
-        </div>
-
-        {/* Password Policy */}
-        <div style={{ marginBottom: 40 }}>
-          <Title level={5} style={{ marginBottom: 8 }}>
-            <ControlOutlined /> Password Policy
-          </Title>
-          <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
-            <SettingRow
-              title="Minimum Password Length"
-              description="Minimum number of characters required for all user passwords"
-              icon={<ControlOutlined style={{ color: "#1890ff" }} />}
-            >
-              <Space>
-                <Form.Item name="password_min_length" noStyle>
-                  <InputNumber min={6} max={32} style={{ width: 100 }} />
-                </Form.Item>
-                <Text type="secondary">chars</Text>
-              </Space>
-            </SettingRow>
-            <SettingRow
-              title="Password Expiry"
-              description="Users must change their password after this many days. Set to 0 to disable."
-              icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
-            >
-              <Space>
-                <Form.Item name="password_expiry_days" noStyle>
-                  <InputNumber min={0} max={365} style={{ width: 100 }} />
-                </Form.Item>
-                <Text type="secondary">days</Text>
-              </Space>
-            </SettingRow>
-          </div>
         </div>
 
         {/* Section 2: TAT SLA */}

@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Table, Tag, Button, Space, Typography, message, Input, Divider } from "antd";
+import React, { useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { Table, Tag, Button, Space, Typography, message, Divider } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import GyneDiagnosisService from "../../../services/gyneDiagnosisService";
+import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
 import legacyReportService from "../../../services/legacyReportService";
 import { ArchiveItem } from "../../../services/archiveService";
 import dayjs from "dayjs";
@@ -17,7 +18,11 @@ interface Props {
   hospital_id?: number;
 }
 
-const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
+export interface ReportHistoryHandle {
+  search: (value: string) => void;
+}
+
+const GyneReportHistory = forwardRef<ReportHistoryHandle, Props>(({ hospital_id }, ref) => {
   const [rows, setRows] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -44,21 +49,30 @@ const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
 
   useEffect(() => { fetchData(1, undefined); }, [fetchData]);
 
-  const onSearch = (value: string) => {
+  const onSearch = useCallback((value: string) => {
     const s = value.trim() || undefined;
     setSearchText(s);
     setPage(1);
     fetchData(1, s);
-  };
+  }, [fetchData]);
+
+  useImperativeHandle(ref, () => ({ search: onSearch }), [onSearch]);
+
+  const isOutlabOnly = (row: ArchiveItem) =>
+    row.source !== "legacy" &&
+    row.status?.toLowerCase() !== "published" &&
+    !!row.has_outlab_result;
 
   const handleViewPDF = async (row: ArchiveItem) => {
     const key = `${row.source}-${row.id}`;
     try {
       setPreviewLoadingId(key);
       const blob =
-        row.source === "current"
-          ? await GyneDiagnosisService.getReportPdf(row.id)
-          : await legacyReportService.getPdf("gyne", row.id);
+        row.source === "legacy"
+          ? await legacyReportService.getPdf("gyne", row.id)
+          : isOutlabOnly(row)
+            ? await GyneCytologyCaseService.downloadOutlabTestResult(row.case_id!)
+            : await GyneDiagnosisService.getReportPdf(row.id);
       const url = URL.createObjectURL(blob);
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
       setPdfUrl(url);
@@ -151,9 +165,10 @@ const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
       dataIndex: "status",
       key: "status",
       width: 110,
-      render: (s: string) => (
-        <Tag color={s?.toLowerCase() === "published" ? "green" : "orange"}>{s?.toUpperCase() || "-"}</Tag>
-      ),
+      render: (s: string, r: ArchiveItem) => {
+        if (isOutlabOnly(r)) return <Tag color="cyan">OUT-LAB RESULT</Tag>;
+        return <Tag color={s?.toLowerCase() === "published" ? "green" : "orange"}>{s?.toUpperCase() || "-"}</Tag>;
+      },
     },
     {
       title: "PDF",
@@ -161,7 +176,7 @@ const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
       width: 110,
       fixed: "right" as const,
       render: (_: unknown, r: ArchiveItem) => {
-        const canView = r.source === "legacy" || r.status?.toLowerCase() === "published";
+        const canView = r.source === "legacy" || r.status?.toLowerCase() === "published" || isOutlabOnly(r);
         if (!canView) return <Text type="secondary" style={{ fontSize: 12 }}>In Progress</Text>;
         return (
           <Button
@@ -181,17 +196,10 @@ const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
 
   return (
     <>
-      <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 16 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
           Total {total} records (current + legacy)
         </Text>
-        <Input.Search
-          placeholder="Search HN, Name, Accession No..."
-          onSearch={onSearch}
-          style={{ width: 300 }}
-          allowClear
-          enterButton
-        />
       </div>
       <Table
         dataSource={rows}
@@ -245,6 +253,6 @@ const GyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
       <ReportPreviewModal open={isModalOpen} pdfUrl={pdfUrl} onCancel={() => setIsModalOpen(false)} />
     </>
   );
-};
+});
 
 export default GyneReportHistory;

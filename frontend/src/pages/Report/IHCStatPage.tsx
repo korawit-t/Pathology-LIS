@@ -45,11 +45,19 @@ interface MarkerResult {
   count: number;
 }
 
+interface MarkerExtraFieldStat {
+  field_id: number;
+  label: string;
+  total: number;
+  results: MarkerResult[];
+}
+
 interface MarkerStat {
   ap_test_id: number;
   marker_name: string;
   total: number;
   results: MarkerResult[];
+  extra_fields?: MarkerExtraFieldStat[];
 }
 
 interface IHCStats {
@@ -173,6 +181,27 @@ const MarkerCard: React.FC<{ marker: MarkerStat }> = ({ marker }) => {
           />
         </Col>
       </Row>
+
+      {marker.extra_fields && marker.extra_fields.length > 0 && (
+        <>
+          <Divider style={{ margin: "12px 0" }} />
+          {marker.extra_fields.map((field) => (
+            <div key={field.field_id} style={{ marginBottom: 12 }}>
+              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                {field.label} <Text type="secondary">(n={field.total})</Text>
+              </Text>
+              <Space size={[8, 8]} wrap>
+                {field.results.map((r, i) => (
+                  <Tag key={r.option_value || i} color={pickColor(i)}>
+                    {r.option_label}: {r.count}
+                    {field.total > 0 && ` (${((r.count / field.total) * 100).toFixed(1)}%)`}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
+          ))}
+        </>
+      )}
     </Card>
   );
 };

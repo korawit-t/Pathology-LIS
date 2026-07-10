@@ -140,7 +140,7 @@ const SlideStorageManager: React.FC = () => {
     setState(cat, { view: "list", selectedRun: null });
 
   const handleCreateSuccess = (cat: StainCategory, run: SlideStorageRunResponse) => {
-    message.success(`บันทึกรอบการจัดเก็บ ${run?.run_no || ""} เรียบร้อย`);
+    message.success(`Storage batch ${run?.run_no || ""} saved successfully`);
     handleBack(cat);
   };
 
@@ -149,7 +149,7 @@ const SlideStorageManager: React.FC = () => {
       const fullRun = await SlideStorageService.getRunDetails(run.id);
       setState(cat, { view: "details", selectedRun: fullRun });
     } catch {
-      message.error("ไม่สามารถโหลดรายละเอียดได้");
+      message.error("Failed to load details");
     }
   };
 
@@ -168,7 +168,7 @@ const SlideStorageManager: React.FC = () => {
                   icon={<PlusOutlined />}
                   onClick={() => setState(key, { view: "create" })}
                 >
-                  สร้างรอบจัดเก็บใหม่
+                  Create New Storage Batch
                 </Button>
               </div>
               <SlideStorageList
@@ -191,11 +191,11 @@ const SlideStorageManager: React.FC = () => {
               title={
                 <Space>
                   <HistoryOutlined />
-                  <span>รายละเอียดรอบการจัดเก็บ: {selectedRun?.run_no}</span>
+                  <span>Storage Batch Details: {selectedRun?.run_no}</span>
                 </Space>
               }
               extra={
-                <Button onClick={() => handleBack(key)}>กลับหน้าประวัติ</Button>
+                <Button onClick={() => handleBack(key)}>Back to History</Button>
               }
               variant="borderless"
             >
@@ -214,7 +214,7 @@ const SlideStorageManager: React.FC = () => {
       label: (
         <Space>
           <DeleteOutlined />
-          ทำลายสไลด์
+          Slide Disposal
         </Space>
       ),
       children: <SlideDisposalTab />,

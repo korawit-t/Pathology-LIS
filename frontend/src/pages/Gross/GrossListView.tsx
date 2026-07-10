@@ -45,6 +45,7 @@ const GrossListView: React.FC<Props> = ({ hospitals, onEditClick, refreshToken }
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [filterHospitalId, setFilterHospitalId] = useState<number | null>(null);
   const [worklistTab, setWorklistTab] = useState<"registered" | "in_progress" | "all">("registered");
+  const [activeTab, setActiveTab] = useState("worklist");
   const [registeredCount, setRegisteredCount] = useState<number | null>(null);
   const [inProgressCount, setInProgressCount] = useState<number | null>(null);
 
@@ -228,22 +229,32 @@ const GrossListView: React.FC<Props> = ({ hospitals, onEditClick, refreshToken }
           Gross Examination
         </Title>
       }
-      extra={
-        <Input.Search
-          placeholder="Search accession, HN, patient..."
-          allowClear
-          onSearch={handleSearch}
-          style={{ width: 280 }}
-        />
-      }
+      cardProps={{ bodyStyle: { paddingTop: 8 } }}
     >
       <Tabs
-        type="card"
-        onChange={(key) => { if (key === "additional-sections") fetchAdditionalSections(); }}
+        type="line"
+        size="large"
+        tabBarStyle={{ marginBottom: 16 }}
+        activeKey={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          if (key === "additional-sections") fetchAdditionalSections();
+        }}
+        tabBarExtraContent={
+          activeTab === "worklist" ? (
+            <Input.Search
+              placeholder="Search accession, HN, patient..."
+              allowClear
+              enterButton
+              onSearch={handleSearch}
+              style={{ width: 280 }}
+            />
+          ) : undefined
+        }
         items={[
           {
             key: "worklist",
-            label: "Gross Worklist",
+            label: <span style={{ fontSize: 15, paddingRight: 4 }}>Gross Worklist</span>,
             children: (
               <>
                 <div style={{ marginBottom: 12 }}>
@@ -293,7 +304,7 @@ const GrossListView: React.FC<Props> = ({ hospitals, onEditClick, refreshToken }
           {
             key: "additional-sections",
             label: (
-              <Space size={6}>
+              <Space size={6} style={{ fontSize: 15 }}>
                 <PlusSquareOutlined />
                 Additional Sections
                 {addlSpecimens.length > 0 && (

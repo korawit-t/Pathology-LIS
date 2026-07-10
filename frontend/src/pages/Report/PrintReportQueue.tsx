@@ -477,23 +477,25 @@ const PrintReportQueue: React.FC = () => {
         </Title>
       }
       withCard
+      cardProps={{ bodyStyle: { paddingTop: 8 } }}
     >
       <Tabs
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as ReportSource)}
         items={tabItems}
-        style={{ marginBottom: 0 }}
+        tabBarStyle={{ marginBottom: 16 }}
+        tabBarExtraContent={
+          <Input.Search
+            placeholder="Search HN, Name, Accession No..."
+            onSearch={onSearch}
+            style={{ width: 300 }}
+            allowClear
+            enterButton
+          />
+        }
       />
 
-      <div
-        style={{
-          marginBottom: 16,
-          marginTop: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
+      <div style={{ marginBottom: 16 }}>
         <Space>
           <Button
             type="primary"
@@ -531,13 +533,6 @@ const PrintReportQueue: React.FC = () => {
             <Text type="secondary">Selected {selectedRowKeys.length} items</Text>
           )}
         </Space>
-        <Input.Search
-          placeholder="Search HN, Name, Accession No..."
-          onSearch={onSearch}
-          style={{ width: 300 }}
-          allowClear
-          enterButton
-        />
       </div>
 
       <Table

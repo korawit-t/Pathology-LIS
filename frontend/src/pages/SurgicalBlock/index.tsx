@@ -20,7 +20,7 @@ const SurgicalBlockList: React.FC = () => {
   const [searchText, setSearchText] = useState<string>("");
   const [blockRefreshKey, setBlockRefreshKey] = useState<number>(0);
 
-  // 4. รายการ Tabs
+  // 4. Tab list
   const tabItems: TabsProps["items"] = [
     {
       key: "all-blocks",
@@ -55,7 +55,7 @@ const SurgicalBlockList: React.FC = () => {
       label: (
         <Space>
           <DeleteOutlined />
-          ทำลายบล็อก
+          Block Disposal
         </Space>
       ),
       children: (
@@ -101,7 +101,7 @@ const SurgicalBlockList: React.FC = () => {
           marginBottom: 16,
           borderBottom: "1px solid #f0f0f0",
         }}
-        // ปรับให้สอดคล้องกับ Dashboard style ที่คุณชอบ
+        // Matches the Dashboard style you prefer
         style={{ padding: "8px 20px 24px 20px" }}
       />
 

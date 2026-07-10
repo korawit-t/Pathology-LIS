@@ -1,16 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Button, Input, Table, Tag, Typography, message, Segmented, Space, Tooltip, Progress } from "antd";
+import React, { useEffect, useState } from "react";
+import { Input, Table, Tag, Typography, message, Segmented, Space, Tooltip, Progress } from "antd";
 
 const { Text } = Typography;
 import {
-  ReloadOutlined,
   ExperimentOutlined,
   ClockCircleOutlined,
   SyncOutlined,
   ExclamationCircleOutlined,
   CheckCircleOutlined,
   FileDoneOutlined,
-  SearchOutlined,
   LinkOutlined,
   FireFilled,
   HistoryOutlined,
@@ -50,7 +48,6 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSetting | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     UserService.getCurrentUser().then(setCurrentUser).catch(() => {});
@@ -139,6 +136,19 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       ),
     },
     {
+      title: "Registered At",
+      dataIndex: "registered_at",
+      key: "registered_at_col",
+      width: 110,
+      render: (val: string) =>
+        val ? (
+          <div>
+            <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
+            <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
+          </div>
+        ) : "—",
+    },
+    {
       title: "Patient / Hospital",
       key: "patient",
       render: (_: unknown, record: NongyneCytologyCase) => (
@@ -161,19 +171,6 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
           <div className="text-xs text-gray-500">{record.collection_site}</div>
         </div>
       ),
-    },
-    {
-      title: "Registered At",
-      dataIndex: "registered_at",
-      key: "registered_at_col",
-      width: 110,
-      render: (val: string) =>
-        val ? (
-          <div>
-            <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
-            <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
-          </div>
-        ) : "—",
     },
     {
       title: (
@@ -271,21 +268,6 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         );
       },
     },
-    {
-      title: "Action",
-      key: "action",
-      align: "center" as const,
-      render: (_: unknown, record: NongyneCytologyCase) => (
-        <Button
-          type="primary"
-          icon={<ExperimentOutlined />}
-          onClick={(e) => { e.stopPropagation(); onSelectCase(record.id, "nongyne"); }}
-          className="bg-indigo-600 hover:bg-indigo-700 border-none"
-        >
-          Diagnosis
-        </Button>
-      ),
-    },
   ];
 
   const content = (
@@ -303,23 +285,15 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
           onChange={(value) => { setActiveTab(value as string); setSearchText(""); }}
         />
         <Space>
-          <Input
-            prefix={<SearchOutlined />}
+          <Input.Search
+            key={activeTab}
             placeholder="Search Accession / Patient"
             style={{ width: 260 }}
             allowClear
-            value={searchText}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (searchTimer.current) clearTimeout(searchTimer.current);
-              searchTimer.current = setTimeout(() => setSearchText(val), 400);
-            }}
+            enterButton
+            defaultValue={searchText}
+            onSearch={(val) => setSearchText(val)}
           />
-          {!standAlone && (
-            <Button icon={<ReloadOutlined />} onClick={loadCases} loading={loading} size="small">
-              Refresh
-            </Button>
-          )}
         </Space>
       </div>
 
@@ -346,11 +320,6 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
     <PageContainer
       title="Non-Gyne Cytology Worklist (Pathologist)"
       subTitle={`Total Cases: ${total}`}
-      extra={[
-        <Button key="refresh" icon={<ReloadOutlined />} onClick={loadCases} loading={loading}>
-          รีเฟรชข้อมูล
-        </Button>,
-      ]}
       withCard
     >
       {content}

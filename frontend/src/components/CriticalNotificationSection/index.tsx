@@ -61,7 +61,7 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
       );
       setRecords(res.items);
     } catch {
-      // ไม่มี record = ปกติ
+      // No records = normal
     } finally {
       setLoading(false);
     }
@@ -96,12 +96,12 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
           ? values.channel_ids
           : undefined,
       });
-      message.success("บันทึกการแจ้งเรียบร้อย");
+      message.success("Notification saved successfully");
       form.resetFields();
       setShowForm(false);
       load();
     } catch {
-      message.error("ไม่สามารถบันทึกได้");
+      message.error("Failed to save");
     } finally {
       setSaving(false);
     }
@@ -109,7 +109,7 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
 
   const columns = [
     {
-      title: "ประเภท",
+      title: "Type",
       dataIndex: "notification_type",
       width: 150,
       render: (v: string) => {
@@ -119,25 +119,25 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
       },
     },
     {
-      title: "วัน/เวลาที่แจ้ง",
+      title: "Notified Date/Time",
       dataIndex: "notified_at",
       width: 150,
       render: (v: string) => dayjs(v).format("DD/MM/YY HH:mm"),
     },
     {
-      title: "ผู้รับแจ้ง",
+      title: "Recipient",
       dataIndex: "recipient_name",
       render: (v: string, row: CriticalNotificationRecord) =>
         row.recipient_role ? `${v} (${row.recipient_role})` : v,
     },
     {
-      title: "ผู้แจ้ง",
+      title: "Notified By",
       dataIndex: "notified_by",
       width: 130,
       render: (v: any) => v?.full_name ?? v?.username ?? "—",
     },
     {
-      title: "หมายเหตุ",
+      title: "Note",
       dataIndex: "note",
       render: (v: string) =>
         v ? (
@@ -186,7 +186,7 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
               }}
               style={{ marginTop: records.length > 0 ? 0 : 4 }}
             >
-              เพิ่มบันทึกการแจ้ง
+              Add Notification Record
             </Button>
           ) : (
             <div
@@ -203,21 +203,21 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
                   <Space size={8} style={{ width: "100%", flexWrap: "wrap" }}>
                     <Form.Item
                       name="notification_type"
-                      label="ประเภท"
-                      rules={[{ required: true, message: "กรุณาเลือกประเภท" }]}
+                      label="Type"
+                      rules={[{ required: true, message: "Please select a type" }]}
                       style={{ marginBottom: 8, minWidth: 200 }}
                     >
                       <Select
                         options={NOTIFICATION_TYPE_OPTIONS}
-                        placeholder="เลือกประเภท"
+                        placeholder="Select type"
                         style={{ width: 220 }}
                         onChange={() => {}}
                       />
                     </Form.Item>
                     <Form.Item
                       name="notified_at"
-                      label="วัน/เวลาที่แจ้ง"
-                      rules={[{ required: true, message: "กรุณาระบุวันเวลา" }]}
+                      label="Notified Date/Time"
+                      rules={[{ required: true, message: "Please specify the date/time" }]}
                       style={{ marginBottom: 8 }}
                     >
                       <DatePicker
@@ -230,45 +230,45 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
                   <Space size={8} style={{ width: "100%", flexWrap: "wrap" }}>
                     <Form.Item
                       name="recipient_name"
-                      label="ชื่อผู้รับแจ้ง"
+                      label="Recipient Name"
                       style={{ marginBottom: 8 }}
                     >
                       <Input
-                        placeholder="ชื่อผู้รับแจ้ง (optional)"
+                        placeholder="Recipient name (optional)"
                         style={{ width: 200 }}
                       />
                     </Form.Item>
                     <Form.Item
                       name="recipient_role"
-                      label="ตำแหน่ง"
+                      label="Role"
                       style={{ marginBottom: 8 }}
                     >
                       <Input
-                        placeholder="เช่น แพทย์ / พยาบาล"
+                        placeholder="e.g. Physician / Nurse"
                         style={{ width: 180 }}
                       />
                     </Form.Item>
                   </Space>
                   <Form.Item
                     name="note"
-                    label="หมายเหตุ"
+                    label="Note"
                     style={{ marginBottom: 8 }}
                   >
                     <Input.TextArea
                       rows={2}
-                      placeholder="สิ่งที่แจ้ง หรือรายละเอียดเพิ่มเติม"
+                      placeholder="What was reported or additional details"
                     />
                   </Form.Item>
                   {channels.length > 0 && (
                     <Form.Item
                       name="channel_ids"
-                      label="แจ้งผ่านช่องทาง (Notification Channels)"
+                      label="Notify via Channels (Notification Channels)"
                       style={{ marginBottom: 8 }}
                     >
                       <Select
                         ref={channelSelectRef}
                         mode="multiple"
-                        placeholder="เลือก channel (ไม่บังคับ)"
+                        placeholder="Select channel (optional)"
                         style={{ width: "100%" }}
                         options={channels.map((c) => ({
                           value: c.id,
@@ -286,7 +286,7 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
                     loading={saving}
                     onClick={handleSave}
                   >
-                    บันทึก
+                    Save
                   </Button>
                   <Button
                     size="small"
@@ -295,7 +295,7 @@ const CriticalNotificationSection: React.FC<Props> = ({ caseId, caseType, access
                       form.resetFields();
                     }}
                   >
-                    ยกเลิก
+                    Cancel
                   </Button>
                 </Space>
               </Form>

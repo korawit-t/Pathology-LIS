@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Button,
   Table,
@@ -15,7 +15,6 @@ import {
 } from "antd";
 import {
   ReloadOutlined,
-  SearchOutlined,
   ExclamationCircleFilled,
   CheckCircleFilled,
   ClockCircleOutlined,
@@ -124,7 +123,6 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   // Case ids that belong to the "Pending Report" bucket (stained + co_sign +
   // awaiting_cosign) — used to pin those cases to the top of the "All" tab.
   const [pendingReportIds, setPendingReportIds] = useState<Set<number>>(new Set());
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isPathologist = useMemo(
     () =>
@@ -461,6 +459,14 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       ),
     },
     {
+      title: "Registered At",
+      dataIndex: "registered_at",
+      key: "registered_at_col",
+      width: 150,
+      render: (value: string) =>
+        value ? dayjs(value).format("DD/MM/YYYY HH:mm") : "-",
+    },
+    {
       title: "Patient",
       key: "patient",
       render: (_: unknown, record: GyneCytologyCase) => (
@@ -541,7 +547,10 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     width: 200,
     render: (value: string, record: GyneCytologyCase) => {
       const s = record.status?.toLowerCase();
-      const isTerminal = s === "reported" || s === "published" || s === "cancelled";
+      // Out-lab cases never go through the normal reported/published flow —
+      // the case is done once the out-lab result PDF is uploaded instead.
+      const isOutlabDone = record.is_out_lab && !!record.out_lab_result_pdf_path;
+      const isTerminal = isOutlabDone || s === "reported" || s === "published" || s === "cancelled";
       if (isTerminal) {
         return <CheckCircleFilled style={{ color: "#52c41a", fontSize: 20 }} />;
       }
@@ -601,15 +610,18 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     key: "status",
     width: 160,
     render: (status: string, record: GyneCytologyCase) => {
-      const cfg = STATUS_CONFIG[status] ?? {
-        color: "default",
-        label: status?.toUpperCase() ?? "—",
-      };
+      const isOutlabDone = record.is_out_lab && !!record.out_lab_result_pdf_path;
+      const cfg = isOutlabDone
+        ? { color: "cyan", label: "Out-Lab Result" }
+        : STATUS_CONFIG[status] ?? {
+            color: "default",
+            label: status?.toUpperCase() ?? "—",
+          };
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Tag
             color={cfg.color}
-            icon={cfg.icon}
+            icon={"icon" in cfg ? cfg.icon : undefined}
             style={{ borderRadius: 20, padding: "2px 10px", margin: 0 }}
           >
             {cfg.label}
@@ -760,28 +772,15 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
           />
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-          <Input
+          <Input.Search
+            key={activeTab}
             placeholder="Search Accession / Patient"
-            prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
             style={{ width: 260 }}
             allowClear
-            value={searchText}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (searchTimer.current) clearTimeout(searchTimer.current);
-              searchTimer.current = setTimeout(() => setSearchText(val), 400);
-            }}
+            enterButton
+            defaultValue={searchText}
+            onSearch={(val) => setSearchText(val)}
           />
-          {!standAlone && (
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={loadCases}
-              loading={loading}
-              size="small"
-            >
-              Refresh
-            </Button>
-          )}
         </div>
       </div>
 

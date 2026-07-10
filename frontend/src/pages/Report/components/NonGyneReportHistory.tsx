@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Table, Tag, Button, Space, Typography, message, Input, Divider } from "antd";
+import React, { useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { Table, Tag, Button, Space, Typography, message, Divider } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import NongyneDiagnosisService from "../../../services/nongyneDiagnosisService";
 import legacyReportService from "../../../services/legacyReportService";
@@ -16,7 +16,11 @@ interface Props {
   hospital_id?: number;
 }
 
-const NonGyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
+export interface ReportHistoryHandle {
+  search: (value: string) => void;
+}
+
+const NonGyneReportHistory = forwardRef<ReportHistoryHandle, Props>(({ hospital_id }, ref) => {
   const [rows, setRows] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -42,12 +46,14 @@ const NonGyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
 
   useEffect(() => { fetchData(1, undefined); }, [fetchData]);
 
-  const onSearch = (value: string) => {
+  const onSearch = useCallback((value: string) => {
     const s = value.trim() || undefined;
     setSearchText(s);
     setPage(1);
     fetchData(1, s);
-  };
+  }, [fetchData]);
+
+  useImperativeHandle(ref, () => ({ search: onSearch }), [onSearch]);
 
   const handleViewPDF = async (row: ArchiveItem) => {
     const key = `${row.source}-${row.id}`;
@@ -180,17 +186,10 @@ const NonGyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
 
   return (
     <>
-      <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 16 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
           Total {total} records (current + legacy)
         </Text>
-        <Input.Search
-          placeholder="Search HN, Name, Accession No..."
-          onSearch={onSearch}
-          style={{ width: 300 }}
-          allowClear
-          enterButton
-        />
       </div>
       <Table
         dataSource={rows}
@@ -231,6 +230,6 @@ const NonGyneReportHistory: React.FC<Props> = ({ hospital_id }) => {
       <ReportPreviewModal open={isModalOpen} pdfUrl={pdfUrl} onCancel={() => setIsModalOpen(false)} />
     </>
   );
-};
+});
 
 export default NonGyneReportHistory;

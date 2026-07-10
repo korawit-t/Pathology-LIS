@@ -9,11 +9,8 @@ import {
   Tooltip,
   Modal,
   message,
-  Space,
 } from "antd";
 import {
-  SearchOutlined,
-  ReloadOutlined,
   ExclamationCircleFilled,
   CheckCircleFilled,
   ClockCircleOutlined,
@@ -324,25 +321,22 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
           }}
         />
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-          <Input
+          <Input.Search
             placeholder="Search Accession / Patient"
-            prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
             style={{ width: 260 }}
             allowClear
+            enterButton
             value={searchText}
             onChange={(e) => {
               const val = e.target.value;
               if (searchTimer.current) clearTimeout(searchTimer.current);
               searchTimer.current = setTimeout(() => setSearchText(val), 400);
             }}
+            onSearch={(val) => {
+              if (searchTimer.current) clearTimeout(searchTimer.current);
+              setSearchText(val);
+            }}
           />
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={loadCases}
-            loading={loading}
-          >
-            Refresh
-          </Button>
         </div>
       </div>
 
@@ -380,21 +374,12 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
         subTitle={`${total} case${total !== 1 ? "s" : ""} flagged for review`}
         withCard
         extra={
-          <Space>
-            <Button
-              icon={<QuestionCircleOutlined />}
-              onClick={() => setInfoOpen(true)}
-            >
-              วิธีการทำงาน
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={loadCases}
-              loading={loading}
-            >
-              Refresh
-            </Button>
-          </Space>
+          <Button
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setInfoOpen(true)}
+          >
+            วิธีการทำงาน
+          </Button>
         }
       >
         {content}

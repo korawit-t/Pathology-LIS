@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Input, Table, Tag, message, Segmented, Space, Tooltip } from "antd";
 import {
   ReloadOutlined,
@@ -8,7 +8,6 @@ import {
   ExclamationCircleOutlined,
   CheckCircleOutlined,
   FileDoneOutlined,
-  SearchOutlined,
   LinkOutlined,
   FireFilled,
 } from "@ant-design/icons";
@@ -39,7 +38,6 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
   const [activeTab, setActiveTab] = useState("my_cases");
   const [searchText, setSearchText] = useState("");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     UserService.getCurrentUser()
@@ -216,17 +214,14 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
           onChange={(value) => { setActiveTab(value as string); setSearchText(""); }}
         />
         <Space>
-          <Input
-            prefix={<SearchOutlined />}
+          <Input.Search
+            key={activeTab}
             placeholder="Search Accession / Patient"
             style={{ width: 260 }}
             allowClear
-            value={searchText}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (searchTimer.current) clearTimeout(searchTimer.current);
-              searchTimer.current = setTimeout(() => setSearchText(val), 400);
-            }}
+            enterButton
+            defaultValue={searchText}
+            onSearch={(val) => setSearchText(val)}
           />
           {!standAlone && (
             <Button icon={<ReloadOutlined />} onClick={loadCases} loading={loading} size="small">
@@ -259,11 +254,6 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
     <PageContainer
       title="Non-Gyne Cytology Worklist (Cytotechnologist)"
       subTitle={`Total Cases: ${total}`}
-      extra={[
-        <Button key="refresh" icon={<ReloadOutlined />} onClick={loadCases} loading={loading}>
-          รีเฟรชข้อมูล
-        </Button>,
-      ]}
       withCard
     >
       {content}

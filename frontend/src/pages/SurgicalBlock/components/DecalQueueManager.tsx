@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC, useCallback } from "react";
-import { Table, Tag, Button, Typography, Tabs, Badge, Tooltip } from "antd";
+import { Table, Tag, Button, Typography, Tabs, Badge, Tooltip, Input } from "antd";
 import {
   ExperimentOutlined,
   CheckCircleOutlined,
@@ -20,7 +20,6 @@ const { Text } = Typography;
 
 interface DecalQueueManagerProps {
   users: User[];
-  searchText: string;
   onRefreshCount?: () => void;
 }
 
@@ -46,9 +45,10 @@ function useBlockQueue(filter: { is_decal?: boolean; is_fixing?: boolean; decal_
   return { blocks, loading, refetch: fetch };
 }
 
-const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, searchText, onRefreshCount }) => {
+const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, onRefreshCount }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedBlock, setSelectedBlock] = useState<SurgicalBlock | null>(null);
+  const [searchText, setSearchText] = useState("");
 
   const decal = useBlockQueue({ is_decal: true }, onRefreshCount);
   const fixing = useBlockQueue({ is_fixing: true }, onRefreshCount);
@@ -344,7 +344,19 @@ const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, searchText, onRe
 
   return (
     <>
-      <Tabs items={tabItems} tabBarStyle={{ padding: "0 24px", marginBottom: 0 }} />
+      <Tabs
+        items={tabItems}
+        tabBarStyle={{ padding: "0 24px", marginBottom: 0 }}
+        tabBarExtraContent={
+          <Input.Search
+            placeholder="Search by Block / Accession No."
+            style={{ width: 300 }}
+            allowClear
+            enterButton
+            onSearch={(value) => setSearchText(value)}
+          />
+        }
+      />
 
       {isModalOpen && (
         <DecalFormModal

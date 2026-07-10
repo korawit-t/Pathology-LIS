@@ -130,7 +130,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
       onFocusCapture={() => { isFocusedWithin.current = true; }}
       onBlurCapture={() => { isFocusedWithin.current = false; }}
     >
-      {/* 2. ส่วนเนื้อหา: จะ Render ใหม่เมื่อค่า is_active เปลี่ยน */}
+      {/* 2. Content section: re-renders when the is_active value changes */}
       <Form.Item
         noStyle
         shouldUpdate={(prev, curr) =>
@@ -141,7 +141,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
         {({ getFieldValue }) => {
           const isActive = getFieldValue(getFieldName("is_active")) !== false;
 
-          // --- กรณี "ปิด" การแก้ไขชิ้นเนื้อนี้ ---
+          // --- Case: editing for this specimen is "off" ---
           if (!isActive) {
             return (
               <div
@@ -154,14 +154,14 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                 }}
               >
                 <Text type="secondary">
-                  <InfoCircleOutlined /> ชิ้นเนื้อนี้จะไม่ถูกบันทึกข้อมูลใหม่
-                  (ระบบจะใช้ผลเดิมที่มีอยู่ล่าสุดในรายงาน)
+                  <InfoCircleOutlined /> No new data will be saved for this specimen
+                  (the report will use the latest existing result)
                 </Text>
               </div>
             );
           }
 
-          // --- กรณี "เปิด" การแก้ไขชิ้นเนื้อนี้ ---
+          // --- Case: editing for this specimen is "on" ---
           return (
             <div>
               <div
@@ -172,7 +172,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                 }}
               >
                 {/* Section: Diagnosis */}
-                {/* 🚩 ส่วนที่แก้ไข: ซ่อน Diagnosis เฉพาะเมื่อสั่ง hideDiagnosisOnly */}
+                {/* 🚩 Edited part: hide Diagnosis only when hideDiagnosisOnly is set */}
                 {!hideDiagnosisOnly && (
                   <section>
                     <div
@@ -188,7 +188,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                         <Text
                           strong
                           style={{
-                            textTransform: "uppercase", // 🚩 ปรับเป็นตัวพิมพ์ใหญ่
+                            textTransform: "uppercase", // 🚩 Force uppercase
                           }}
                         >
                           Diagnosis
@@ -225,7 +225,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                     <Form.Item
                       name={getFieldName("diagnosis")}
                       rules={[
-                        { required: !hideDiagnosisOnly, message: "กรุณาระบุผลการวินิจฉัย" },
+                        { required: !hideDiagnosisOnly, message: "Please enter the diagnosis" },
                       ]}
                       style={{ marginBottom: 0 }}
                     >
@@ -363,7 +363,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                 />
               </div>
             </div>
-          ); // จบ return กล่อง Card
+          ); // end of Card return
         }}
       </Form.Item>
       <Drawer
@@ -410,7 +410,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
         </Row>
       </Drawer>
     </div>
-  ); // จบ return หลักของ Component
+  ); // end of the Component's main return
 };
 
 export default SurgicalDiagnosisEditor;

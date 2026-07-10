@@ -9,12 +9,14 @@ import {
   SyncOutlined,
   ExclamationCircleOutlined,
   CheckCircleOutlined,
+  CheckCircleFilled,
   FileDoneOutlined,
   ExperimentOutlined,
   EditOutlined,
   FileSearchOutlined,
   FireFilled,
   PrinterOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import { STATUS_OPTIONS } from "../../../constants/lab.constants";
 import { NongyneCytologyCase } from "../../../types/nongyne";
@@ -200,30 +202,52 @@ const NongyneTable: React.FC<NongyneTableProps> = ({
       ),
     },
     {
-      title: "TAT",
+      title: (
+        <Space size={4}>
+          TAT / PROGRESS
+          <Tooltip title={`SLA: Non-Gyne ${settings?.non_gyne_tat_days ?? "—"} days`}>
+            <HistoryOutlined style={{ color: "#8c8c8c", cursor: "help" }} />
+          </Tooltip>
+        </Space>
+      ),
       key: "tat",
       width: 170,
       render: (_: unknown, record: NongyneCytologyCase) => {
+        const s = record.status?.toLowerCase();
+        const isTerminal = s === "reported" || s === "completed" || s === "published" || s === "cancelled";
+        if (isTerminal) {
+          return <CheckCircleFilled style={{ color: "#52c41a", fontSize: 20 }} />;
+        }
+
         const tat = calculateTATProgress(record.registered_at, "non_gyne", settings ?? null, !!record.is_express, holidays);
         if (!tat) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
         return (
-          <Tooltip title={`Due: ${dayjs(tat.dueDate).format("DD/MM/YYYY")}`}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 150 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 12, fontWeight: 500, color: tat.isOverdue ? "#f5222d" : "inherit" }}>
-                  {tat.displayTime}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 10 }}>{tat.percent}%</Text>
-              </div>
-              <Progress
-                percent={tat.percent}
-                showInfo={false}
-                strokeColor={tat.statusColor}
-                size={[150, 6]}
-                status={tat.isOverdue ? "exception" : "active"}
-              />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 150 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 12, fontWeight: 500, color: tat.isOverdue ? "#f5222d" : "inherit" }}>
+                {tat.displayTime}
+              </Text>
+              <Text type="secondary" style={{ fontSize: 10 }}>{tat.percent}%</Text>
             </div>
-          </Tooltip>
+            <Progress
+              percent={tat.percent}
+              showInfo={false}
+              strokeColor={tat.statusColor}
+              size={[150, 6]}
+              status={tat.isOverdue ? "exception" : "active"}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Due:{" "}
+                <Text strong={tat.isOverdue} style={{ fontSize: 11, color: tat.isOverdue ? "#f5222d" : "#595959" }}>
+                  {tat.dueDate ? dayjs(tat.dueDate).format("DD/MM/YYYY") : "-"}
+                </Text>
+              </Text>
+              {tat.isOverdue && (
+                <Text style={{ fontSize: 10, color: "#f5222d", fontWeight: "bold" }}>OVERDUE</Text>
+              )}
+            </div>
+          </div>
         );
       },
     },

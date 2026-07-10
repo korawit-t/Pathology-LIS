@@ -46,7 +46,7 @@ const BlockDisposalTab: React.FC = () => {
       setStoredBlocks(data.items);
       setStoredTotal(data.total);
     } catch {
-      message.error("ไม่สามารถโหลดข้อมูลบล็อกที่จัดเก็บได้");
+      message.error("Failed to load stored blocks");
     } finally {
       setLoadingStored(false);
     }
@@ -60,7 +60,7 @@ const BlockDisposalTab: React.FC = () => {
       setDisposedBlocks(data.items);
       setDisposedTotal(data.total);
     } catch {
-      message.error("ไม่สามารถโหลดประวัติการทำลายได้");
+      message.error("Failed to load disposal history");
     } finally {
       setLoadingDisposed(false);
     }
@@ -73,18 +73,18 @@ const BlockDisposalTab: React.FC = () => {
 
   const handleDispose = () => {
     if (selectedRowKeys.length === 0) {
-      return message.warning("กรุณาเลือกอย่างน้อย 1 บล็อก");
+      return message.warning("Please select at least 1 block");
     }
     const selected = storedBlocks.filter((b) => selectedRowKeys.includes(b.id));
     Modal.confirm({
-      title: "ยืนยันการทำลายบล็อก",
+      title: "Confirm Block Disposal",
       width: 600,
       content: (
         <div>
           <p>
-            คุณกำลังจะทำลาย <b>{selected.length}</b> บล็อก
+            You are about to dispose of <b>{selected.length}</b> block(s)
             <br />
-            <Text type="danger">การดำเนินการนี้ไม่สามารถย้อนกลับได้</Text>
+            <Text type="danger">This action cannot be undone</Text>
           </p>
           <Table
             size="small"
@@ -94,24 +94,24 @@ const BlockDisposalTab: React.FC = () => {
             columns={[
               { title: "Accession No.", render: (_, r) => r.block?.accession_no ?? "-", width: 140 },
               { title: "Block", render: (_, r) => r.block?.block_code ?? "-", width: 80 },
-              { title: "ตำแหน่งจัดเก็บ", dataIndex: "storage_location", render: (v: string) => v || "-" },
+              { title: "Storage Location", dataIndex: "storage_location", render: (v: string) => v || "-" },
             ]}
             style={{ marginTop: 12 }}
           />
         </div>
       ),
-      okText: "ยืนยันทำลาย",
-      cancelText: "ยกเลิก",
+      okText: "Confirm Disposal",
+      cancelText: "Cancel",
       okType: "danger",
       onOk: async () => {
         try {
           setIsDisposing(true);
           await BlockStorageService.disposeBlocks(selectedRowKeys as number[]);
-          message.success(`ทำลาย ${selected.length} บล็อกเรียบร้อยแล้ว`);
+          message.success(`${selected.length} block(s) disposed successfully`);
           setSelectedRowKeys([]);
           fetchStored(storedPage, storedSearch);
         } catch {
-          message.error("ไม่สามารถทำลายบล็อกได้");
+          message.error("Failed to dispose blocks");
         } finally {
           setIsDisposing(false);
         }
@@ -135,13 +135,13 @@ const BlockDisposalTab: React.FC = () => {
       render: (_: unknown, r: BlockStorageDetailResponse) => r.block?.block_code ?? "-",
     },
     {
-      title: "ตำแหน่งจัดเก็บ",
+      title: "Storage Location",
       dataIndex: "storage_location",
       key: "storage_location",
       render: (v: string) => v || "-",
     },
     {
-      title: "วันที่จัดเก็บ",
+      title: "Stored At",
       dataIndex: "stored_at",
       key: "stored_at",
       render: (v: string) => (v ? dayjs(v).format("DD/MM/YYYY HH:mm") : "-"),
@@ -170,7 +170,7 @@ const BlockDisposalTab: React.FC = () => {
       render: (_: unknown, r: BlockStorageDetailResponse) => r.block?.block_code ?? "-",
     },
     {
-      title: "ตำแหน่งจัดเก็บ",
+      title: "Storage Location",
       dataIndex: "storage_location",
       key: "storage_location",
       render: (v: string) => v || "-",
@@ -182,13 +182,13 @@ const BlockDisposalTab: React.FC = () => {
         r.run?.run_no ? <Tag>{r.run.run_no}</Tag> : "-",
     },
     {
-      title: "วันที่ทำลาย",
+      title: "Disposed At",
       dataIndex: "discard_at",
       key: "discard_at",
       render: (v: string) => (v ? dayjs(v).format("DD/MM/YYYY HH:mm") : "-"),
     },
     {
-      title: "ทำลายโดย",
+      title: "Disposed By",
       key: "discard_by",
       render: (_: unknown, r: BlockStorageDetailResponse) => r.discard_by?.full_name ?? "-",
     },
@@ -205,7 +205,7 @@ const BlockDisposalTab: React.FC = () => {
       items={[
         {
           key: "stored",
-          label: "รอทำลาย",
+          label: "Pending Disposal",
           children: (
             <div>
               <div
@@ -218,7 +218,7 @@ const BlockDisposalTab: React.FC = () => {
               >
                 <Space>
                   <Input.Search
-                    placeholder="ค้นหา Accession No."
+                    placeholder="Search Accession No."
                     prefix={<SearchOutlined />}
                     allowClear
                     style={{ width: 280 }}
@@ -228,7 +228,7 @@ const BlockDisposalTab: React.FC = () => {
                       fetchStored(1, v);
                     }}
                   />
-                  <Text type="secondary">เลือกแล้ว: {selectedRowKeys.length} บล็อก</Text>
+                  <Text type="secondary">Selected: {selectedRowKeys.length} block(s)</Text>
                 </Space>
                 <Space>
                   <Button
@@ -239,14 +239,14 @@ const BlockDisposalTab: React.FC = () => {
                     loading={isDisposing}
                     disabled={selectedRowKeys.length === 0}
                   >
-                    ทำลาย ({selectedRowKeys.length})
+                    Dispose ({selectedRowKeys.length})
                   </Button>
                   <Button
                     icon={<ReloadOutlined />}
                     onClick={() => fetchStored(storedPage, storedSearch)}
                     loading={loadingStored}
                   >
-                    รีเฟรช
+                    Refresh
                   </Button>
                 </Space>
               </div>
@@ -266,7 +266,7 @@ const BlockDisposalTab: React.FC = () => {
                   pageSize: PAGE_SIZE,
                   total: storedTotal,
                   showSizeChanger: false,
-                  showTotal: (t) => `ทั้งหมด ${t} บล็อก`,
+                  showTotal: (t) => `Total ${t} block(s)`,
                 }}
                 onChange={(p: TablePaginationConfig) => setStoredPage(p.current ?? 1)}
               />
@@ -275,7 +275,7 @@ const BlockDisposalTab: React.FC = () => {
         },
         {
           key: "disposed",
-          label: "ประวัติทำลาย",
+          label: "Disposal History",
           children: (
             <div>
               <div
@@ -287,7 +287,7 @@ const BlockDisposalTab: React.FC = () => {
                 }}
               >
                 <Input.Search
-                  placeholder="ค้นหา Accession No."
+                  placeholder="Search Accession No."
                   prefix={<SearchOutlined />}
                   allowClear
                   style={{ width: 280 }}
@@ -302,7 +302,7 @@ const BlockDisposalTab: React.FC = () => {
                   onClick={() => fetchDisposed(disposedPage, disposedSearch)}
                   loading={loadingDisposed}
                 >
-                  รีเฟรช
+                  Refresh
                 </Button>
               </div>
               <Table
@@ -317,7 +317,7 @@ const BlockDisposalTab: React.FC = () => {
                   pageSize: PAGE_SIZE,
                   total: disposedTotal,
                   showSizeChanger: false,
-                  showTotal: (t) => `ทั้งหมด ${t} บล็อก`,
+                  showTotal: (t) => `Total ${t} block(s)`,
                 }}
                 onChange={(p: TablePaginationConfig) => setDisposedPage(p.current ?? 1)}
               />
