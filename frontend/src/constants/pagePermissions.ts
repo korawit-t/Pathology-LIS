@@ -84,7 +84,7 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "slide-storage": ["histo", "lab_manager", "admin"],
   "pathologist-page": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
   "surgical-report-form": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
-  "all-report": ["admin", "lab_manager", "senior_pathologist"],
+  "all-report": ["admin", "lab_manager", "senior_pathologist", "register"],
   "gyne-cyto-cases": ["admin", "lab_manager", "cytotechnologist"],
   "nongyne-cyto-cases": ["admin", "lab_manager", "cytotechnologist"],
   "gyne-cyto-run-list": ["admin", "lab_manager", "cytotechnologist"],
