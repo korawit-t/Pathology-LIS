@@ -186,7 +186,12 @@ describe("SurgicalBlockManager", () => {
     render(<SurgicalBlockManager searchText="" refreshKey={0} />);
     await waitFor(() => expect(SurgicalBlockService.getBlocks).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByTitle("2"));
+    // findByTitle (not getByTitle): the page-2 control only appears once the
+    // resolved `total: 50` has been committed into state and re-rendered by
+    // Pagination. The waitFor above only proves the mock was *called*, not
+    // that render - a getByTitle right after it is a race that can lose on a
+    // slower runner even though it usually wins locally.
+    fireEvent.click(await screen.findByTitle("2"));
 
     await waitFor(() =>
       expect(SurgicalBlockService.getBlocks).toHaveBeenCalledWith(
