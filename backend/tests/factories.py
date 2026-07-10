@@ -32,8 +32,8 @@ from app.crud.nongyne_cyto_report import publish_nongyne_report
 
 def make_hospital(db) -> Hospital:
     hospital = Hospital(
-        name=f"Test Hospital {uuid.uuid4().hex[:8]}",
-        code=f"H{uuid.uuid4().hex[:6]}",
+        name=f"Test Hospital {uuid.uuid4().hex[:12]}",
+        code=f"H{uuid.uuid4().hex[:12]}",
     )
     db.add(hospital)
     db.commit()
@@ -55,7 +55,7 @@ def make_bare_case(db, registrar_id: int, hospital: Hospital = None, patient: Pa
     hospital = hospital or make_hospital(db)
     patient = patient or make_patient(db)
     case = SurgicalCase(
-        accession_no=f"S26-{uuid.uuid4().hex[:8]}",
+        accession_no=f"S26-{uuid.uuid4().hex[:12]}",
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
@@ -103,7 +103,7 @@ def make_bare_nongyne_case(db, registrar_id: int, hospital: Hospital = None, pat
     hospital = hospital or make_hospital(db)
     patient = patient or make_patient(db)
     case = NongyneCytologyCase(
-        accession_no=f"N26-{uuid.uuid4().hex[:8]}",
+        accession_no=f"N26-{uuid.uuid4().hex[:12]}",
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
@@ -120,7 +120,7 @@ def make_bare_gyne_case(db, registrar_id: int, hospital: Hospital = None, patien
     hospital = hospital or make_hospital(db)
     patient = patient or make_patient(db)
     case = GyneCytologyCase(
-        accession_no=f"C26-{uuid.uuid4().hex[:8]}",
+        accession_no=f"C26-{uuid.uuid4().hex[:12]}",
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
