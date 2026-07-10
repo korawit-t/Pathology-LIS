@@ -60,6 +60,7 @@ class NongyneStainRun(Base):
     completed_at = Column(DateTime, nullable=True)
 
     details = relationship("NongyneStainRunDetail", back_populates="stain_run")
+    operator = relationship("User")
 
 
 class NongyneStainRunDetail(Base):

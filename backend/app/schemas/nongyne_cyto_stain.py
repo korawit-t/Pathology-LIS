@@ -59,3 +59,51 @@ class NongyneStainRunCreate(BaseModel):
     stainer_id: str
     stain_ids: List[int]
     run_name: Optional[str] = None
+
+
+# 🚩 จำกัดฟิลด์ของ User ที่โชว์ให้ Frontend เห็น (ห้ามหลุด hashed_password ออกไป)
+class OperatorInfo(BaseModel):
+    id: int
+    full_name: Optional[str] = None
+    username: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneStainOrderInfo(BaseModel):
+    id: int
+    accession_no: Optional[str] = None
+    slide_no: Optional[int] = None
+    status: Optional[str] = None
+    is_printed: bool = False
+    test: Optional[APTestSimple] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneStainRunDetailResponse(BaseModel):
+    id: int
+    stain_id: int
+    stain_order: Optional[NongyneStainOrderInfo] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneStainRunResponse(BaseModel):
+    id: int
+    run_no: Optional[str] = None
+    stainer_id: Optional[str] = None
+    status: str
+    operator_id: Optional[int] = None
+    operator: Optional[OperatorInfo] = None
+    created_at: datetime
+    details: List[NongyneStainRunDetailResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneStainRunListResponse(BaseModel):
+    total: int
+    items: List[NongyneStainRunResponse]
+    skip: int
+    limit: int

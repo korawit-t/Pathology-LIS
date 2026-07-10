@@ -155,6 +155,7 @@ def get_all_stain_runs(db: Session, skip: int = 0, limit: int = 20):
     return (
         db.query(NongyneStainRun)
         .options(
+            joinedload(NongyneStainRun.operator),
             joinedload(NongyneStainRun.details)
             .joinedload(NongyneStainRunDetail.stain_order)
             .joinedload(NongyneCytologyStain.case),
