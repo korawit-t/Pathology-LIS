@@ -63,6 +63,18 @@ See [TERMS_OF_USE.md](./TERMS_OF_USE.md) for the full liability disclaimer.
 
 ## Changelog
 
+### 2026-07-11
+
+Proactive multi-class review (SSRF / stored XSS / audit-integrity) ahead of the public release, looking beyond the §2 role-gate findings:
+
+| Severity | Category | Component | Fix |
+|----------|----------|-----------|-----|
+| Medium | SSRF | `backend/app/services/notification_service.py` | The Slack sender POSTed to a `webhook_url` read verbatim from a channel's `credentials` — and notification-channel credentials are writable by any authenticated user, so a user could point `webhook_url` at internal infra (LAN services, or `169.254.169.254` cloud-metadata on a PaaS) and fire it via the "send test" endpoint. Added `_assert_public_https_url()` (require https + reject any host resolving to a loopback / private / link-local / reserved IP) and applied it in both the async (`send_slack_message`) and sync fire-and-forget (`_send_slack_sync`) paths. LINE uses a hardcoded `api.line.me` host and was never affected. |
+| Medium | Stored XSS | `frontend/src/pages/Pathologist/SurgicalDiagnosisReportForm/components/IHCResultPanel.tsx`, `frontend/src/pages/NongyneCytoDiagnosis/components/NongyneIHCResultPanel.tsx` | `buildPreviewHtml` built the report-preview markup by raw string-interpolating user-entered IHC fields (`<li>${marker}: ${value}</li>`, `<p>${prefix}</p>`) and injected the result via `dangerouslySetInnerHTML`, bypassing the `sanitizeHtml()` (DOMPurify) helper every other such usage in the app routes through. Wrapped both call sites in `sanitizeHtml(...)`, so a marker/value/prefix containing HTML can no longer render as live markup. |
+| Low | Audit Falsification | `backend/app/routers/block_storage.py`, `slide_storage.py`, `sectioning.py` | The block/slide-storage and sectioning batch-create endpoints recorded the acting user from the client-supplied `payload.user_id` instead of the JWT, letting an authenticated user attribute a storage/sectioning action to someone else. Each now sets `payload.user_id = current_user.id` before the crud call — the same fix already applied to `stain_run.py`/`embedding.py`/`tissue_processing.py`/`surgical_block_stain.py`; the `dispose_*` routes in these same routers already derived it correctly. |
+
+Regression tests added: `tests/test_ssrf_guard.py` (8 refuse cases incl. cloud-metadata + IPv6 loopback, 1 public-allow). The affected notification/storage/sectioning suites still pass.
+
 ### 2026-07-09
 
 Continuation of the 2026-07-07 OWASP #1 pass — `surgical_diagnosis.py` was the one PHI-read router that pass missed, found while adding systematic code-security tooling ahead of open-sourcing:

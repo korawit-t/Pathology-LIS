@@ -4,11 +4,38 @@ Handles sending messages to external channels (Line, Slack, etc.)
 """
 
 import httpx
+import ipaddress
 import re
+import socket
 from typing import Dict, Any
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 _TZ_BANGKOK = ZoneInfo("Asia/Bangkok")
+
+
+def _assert_public_https_url(url: str) -> None:
+    """SSRF guard for user-supplied webhook URLs. Notification-channel
+    ``credentials`` are writable by any authenticated user, so an attacker could
+    point ``webhook_url`` at internal infra. Only allow https URLs whose host
+    resolves exclusively to public IPs — refuse loopback / private / link-local
+    (incl. 169.254.169.254 cloud-metadata) / reserved targets."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError("Webhook URL must use https")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Webhook URL has no host")
+    try:
+        addrinfos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve webhook host: {host}")
+    for info in addrinfos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global or ip.is_reserved:
+            raise ValueError(
+                f"Webhook URL resolves to a non-public address ({ip}); refused (SSRF guard)"
+            )
 
 # Dummy data for test messages
 DUMMY_DATA = {
@@ -65,6 +92,7 @@ async def send_slack_message(credentials: Dict[str, Any], message: str) -> Dict:
 
     if not webhook_url:
         raise ValueError("Slack credentials must have 'webhook_url'")
+    _assert_public_https_url(webhook_url)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -126,6 +154,10 @@ def _send_slack_sync(credentials: Dict[str, Any], message: str) -> None:
     webhook_url = credentials.get("webhook_url", "")
     if not webhook_url:
         return
+    try:
+        _assert_public_https_url(webhook_url)
+    except ValueError:
+        return  # refuse SSRF target in the fire-and-forget path
     with httpx.Client() as client:
         client.post(webhook_url, json={"text": message}, timeout=5)
 

@@ -25,11 +25,14 @@ def read_pending_blocks_tree(db: Session = Depends(get_db)):
 @router.post("/batch", response_model=schemas.BlockStorageRun)
 def create_block_storage_batch(
     payload: schemas.BlockStorageRunCreateBatch,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     บันทึกการจัดเก็บแบบทีละหลายตลับ (Batch Storage)
     """
+    # Audit integrity: record the acting user from the JWT, never the client body.
+    payload.user_id = current_user.id
     try:
         run = crud.create_block_storage_run_batch(db, obj_in=payload)
         return run

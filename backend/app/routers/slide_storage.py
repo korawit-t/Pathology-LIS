@@ -28,11 +28,14 @@ def read_pending_slides_tree(
 @router.post("/batch", response_model=schemas.SlideStorageRun)
 def create_slide_storage_batch(
     payload: schemas.SlideStorageRunCreateBatch,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     บันทึกการจัดเก็บแบบทีละหลายแผ่น (Batch Storage)
     """
+    # Audit integrity: record the acting user from the JWT, never the client body.
+    payload.user_id = current_user.id
     try:
         run = crud.create_slide_storage_run_batch(db, obj_in=payload)
         return run
