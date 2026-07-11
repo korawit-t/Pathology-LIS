@@ -5,12 +5,11 @@ import SurgicalBlockStainService from "../../services/surgicalBlockStainService"
 import SurgicalCaseService from "../../services/surgicalCaseService";
 import HisService from "../../services/hisService";
 
-// Real (unfrozen) time throughout this file — vi.useFakeTimers() was tried
-// and made every async fetch/waitFor time out (fake timers don't play well
-// with the component's promise-chain fetch pipeline here). Instead,
-// appointment times are computed relative to the real "now" at test-run
-// time, which is enough to exercise "today"/"urgent (within 2h)" branches
-// without needing a frozen clock.
+// Only Date is frozen (see beforeEach) so the "today"/"urgent (within 2h)"
+// branches are deterministic. Faking ALL timers was tried and timed out every
+// async fetch/waitFor (the promise-chain fetch pipeline needs real timers), so
+// we fake Date alone — that keeps timeIn()/today() from drifting or wrapping
+// past midnight while leaving setTimeout/Promise untouched.
 vi.mock("../../services/surgicalBlockStainService", () => ({
   default: { getOutlabRuns: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
@@ -32,6 +31,17 @@ const timeAgo = (minutes) => dayjs().subtract(minutes, "minute").format("HH:mm:s
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Freeze ONLY Date (leave setTimeout/Promise real) so dayjs()-derived "now"
+  // is deterministic without breaking the component's async fetch pipeline —
+  // faking all timers made every waitFor time out. A fixed mid-day clock stops
+  // timeIn(30)/timeIn(180) from wrapping past midnight, which otherwise flaked
+  // the "urgent (within 2h)" branch when the suite ran near 23:30–23:59.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 0, 15, 10, 0, 0)); // 2026-01-15 10:00 local
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("TodayPatientsTab", () => {
