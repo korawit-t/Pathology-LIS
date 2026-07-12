@@ -16,6 +16,8 @@ from app.models.surgical_diagnosis import (
     SurgicalDiagnosis,
 )
 from app.enums.case_status import CaseStatus
+from app.crud import his_export_log as his_export_crud
+from app.crud.surgical_report import build_surgical_export_payload
 
 
 def process_report_approval(
@@ -70,6 +72,14 @@ def process_report_approval(
                 db_case.status = CaseStatus.SIGNED_OUT.value
                 db_case.is_reported = True
                 db_case.report_at = now
+
+        his_export_crud.enqueue(
+            db,
+            resource_type="SurgicalReport",
+            resource_id=db_report.id,
+            accession_no=db_report.accession_no,
+            payload_snapshot=build_surgical_export_payload(db_report),
+        )
 
     elif action in ["REJECT", "REQUEST_CHANGES"]:
         db_report.status = ReportStatus.DRAFT

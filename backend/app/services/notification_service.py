@@ -4,38 +4,13 @@ Handles sending messages to external channels (Line, Slack, etc.)
 """
 
 import httpx
-import ipaddress
 import re
-import socket
 from typing import Dict, Any
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+from app.utils.network_security import assert_public_https_url as _assert_public_https_url
+
 _TZ_BANGKOK = ZoneInfo("Asia/Bangkok")
-
-
-def _assert_public_https_url(url: str) -> None:
-    """SSRF guard for user-supplied webhook URLs. Notification-channel
-    ``credentials`` are writable by any authenticated user, so an attacker could
-    point ``webhook_url`` at internal infra. Only allow https URLs whose host
-    resolves exclusively to public IPs — refuse loopback / private / link-local
-    (incl. 169.254.169.254 cloud-metadata) / reserved targets."""
-    parsed = urlparse(url)
-    if parsed.scheme != "https":
-        raise ValueError("Webhook URL must use https")
-    host = parsed.hostname
-    if not host:
-        raise ValueError("Webhook URL has no host")
-    try:
-        addrinfos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        raise ValueError(f"Cannot resolve webhook host: {host}")
-    for info in addrinfos:
-        ip = ipaddress.ip_address(info[4][0])
-        if not ip.is_global or ip.is_reserved:
-            raise ValueError(
-                f"Webhook URL resolves to a non-public address ({ip}); refused (SSRF guard)"
-            )
 
 # Dummy data for test messages
 DUMMY_DATA = {

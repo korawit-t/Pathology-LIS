@@ -49,6 +49,7 @@ export type PageKey =
   | "report-lookup"
   | "slide-block-release"
   | "audit-log"
+  | "his-export-log"
   | "accession"
   | "results"
   | "nongyne-cell-block"
@@ -149,6 +150,7 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "wsi-file-list": ["admin", "lab_manager", "histo"],
   "wsi-slide-gallery": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
   "audit-log": ["admin"],
+  "his-export-log": ["admin"],
   results: ["admin", "lab_manager", "hospital", "clinician"],
   accession: Array.from(
     new Set([

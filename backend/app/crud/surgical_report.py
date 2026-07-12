@@ -1,5 +1,5 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
-from app.crud.surgical_report_builder import prepare_report_data
+from app.crud.surgical_report_builder import prepare_report_data, STORAGE_BASE
 from app.schemas.surgical_bulk import BulkSaveDraft
 import logging
 from sqlalchemy.orm import Session, joinedload
@@ -15,9 +15,103 @@ from app.models.surgical_report import (
     ReportSigner,
 )
 from app.models.system_setting import SystemSetting
+from app.models.organization import Hospital
+from app.crud.organization import resolve_lab_header
+from app.crud.system_setting import get_settings as get_system_settings
 from app.enums.case_status import CaseStatus
+from app.crud import his_export_log as his_export_crud
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_report_logo(report_data: dict, db: Session) -> None:
+    """Pass the logo as a file:// URI so WeasyPrint reads it directly from disk.
+    Always uses the current hospital/system settings — no snapshot needed for logo."""
+    settings = get_system_settings(db)
+    hospital = (
+        db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
+        if report_data.get("hospital_id")
+        else None
+    )
+    _name, _address, logo_path = resolve_lab_header(hospital, settings)
+    if logo_path:
+        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
+        report_data["report_logo_url_snapshot"] = full.as_uri() if full.exists() else None
+    else:
+        report_data["report_logo_url_snapshot"] = None
+
+
+def get_surgical_report_pdf(db: Session, report: SurgicalReport) -> bytes:
+    """PDF bytes for a specific published report snapshot — the counterpart
+    of gyne's get_gyne_report_pdf()/nongyne's get_nongyne_snapshot_pdf_data()
+    pairing, used by both the report-download router and the HIS export
+    worker so the two never drift apart."""
+    report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
+
+    fresh_data = prepare_report_data(db, report.case_id) if report.case_id else None
+    report_data["gross_images"] = fresh_data.get("gross_images", []) if fresh_data else []
+    report_data["micro_images"] = fresh_data.get("micro_images", []) if fresh_data else []
+    if not report_data.get("patient_title") and fresh_data:
+        report_data["patient_title"] = fresh_data.get("patient_title") or ""
+
+    resolve_report_logo(report_data, db)
+
+    prepend_pdfs = []
+    if report.consult_pdf_path_snapshot:
+        prepend_pdfs.append(report.consult_pdf_path_snapshot)
+
+    settings = get_system_settings(db)
+    active_template = f"reports/{settings.surgical_report_template or 'surgical_report_template.html'}"
+
+    from app.services.pdf_service import generate_pdf_blob
+    return generate_pdf_blob(
+        report_data,
+        template_name=active_template,
+        is_preview=False,
+        prepend_pdfs=prepend_pdfs if prepend_pdfs else None,
+    )
+
+
+def build_surgical_export_payload(report: SurgicalReport) -> dict:
+    """Structured export payload for outbound HIS delivery. Keeps report
+    column knowledge local to this domain — app/his_export/ never needs to
+    know surgical-specific field names."""
+    signers = [
+        {
+            "user_id": s.user_id,
+            "name": (s.user.report_name or s.user.full_name) if s.user else None,
+            "role": s.role,
+            "signed_at": s.signed_at.isoformat() if s.signed_at else None,
+        }
+        for s in report.signers
+    ]
+    return {
+        "accession_no": report.accession_no,
+        "patient_title": report.patient_title,
+        "patient_name": report.patient_name,
+        "patient_ln": report.patient_ln,
+        "patient_hn": report.patient_hn,
+        "patient_cid": report.patient_cid,
+        "patient_birth_date": report.patient_birth_date.isoformat() if report.patient_birth_date else None,
+        "patient_age": report.patient_age,
+        "patient_gender": report.patient_gender,
+        "hospital_name": report.hospital_name,
+        "hospital_id": report.hospital_id,
+        "department_name": report.department_name,
+        "clinician_name": report.clinician_name,
+        "report_type": report.report_type,
+        "status": report.status.value if hasattr(report.status, "value") else report.status,
+        "published_at": report.published_at.isoformat() if report.published_at else None,
+        "version_no": report.version_no,
+        "clinical_history_text": report.clinical_history_snapshot,
+        "specimen_summary": report.specimen_summary,
+        "gross_description_text": report.gross_description_summary,
+        "diagnosis_text": report.diagnosis_summary,
+        "microscopic_text": report.microscopic_summary,
+        "comment_text": report.comment_summary,
+        "pathologist_name": report.pathologist_name,
+        "signers": signers,
+    }
 
 
 def create_final_report_snapshot(db: Session, case_id: int, report_id: int = None):
@@ -347,6 +441,13 @@ def finalize_and_snapshot_orchestrator(
             else:
                 report.status = ReportStatus.PUBLISHED
                 db_case.status = CaseStatus.SIGNED_OUT.value
+                his_export_crud.enqueue(
+                    db,
+                    resource_type="SurgicalReport",
+                    resource_id=report.id,
+                    accession_no=report.accession_no,
+                    payload_snapshot=build_surgical_export_payload(report),
+                )
 
             if is_consult_dispatched:
                 db_case.consult_status = "received"

@@ -20,8 +20,44 @@ from datetime import date
 from typing import List
 import base64
 from pathlib import Path
+from app.crud import his_export_log as his_export_crud
 
 _BKK = ZoneInfo("Asia/Bangkok")
+
+
+def build_gyne_export_payload(report: GyneCytoReport) -> dict:
+    """Structured export payload for outbound HIS delivery. Keeps report
+    column knowledge local to this domain — app/his_export/ never needs to
+    know gyne-specific field names."""
+    return {
+        "accession_no": report.accession_no,
+        "patient_title": report.patient_title,
+        "patient_name": report.patient_name,
+        "patient_ln": report.patient_ln,
+        "patient_hn": report.patient_hn,
+        "patient_cid": report.patient_cid,
+        "patient_birth_date": report.patient_birth_date.isoformat() if report.patient_birth_date else None,
+        "patient_age": report.patient_age,
+        "patient_gender": report.patient_gender,
+        "hospital_name": report.hospital_name,
+        "hospital_id": report.hospital_id,
+        "department_name": report.department_name,
+        "clinician_name": report.clinician_name,
+        "report_type": report.report_type,
+        "status": report.status.value if hasattr(report.status, "value") else report.status,
+        "published_at": report.published_at.isoformat() if report.published_at else None,
+        "version_no": report.version_no,
+        "adequacy_text": report.adequacy_text,
+        "endocervical_status_text": report.endocervical_status_text,
+        "quality_text": report.quality_text,
+        "category_1_text": report.category_1_text,
+        "category_2_text": report.category_2_text,
+        "diagnosis_text": report.interpretation,
+        "microscopic_text": None,
+        "comment_text": report.note,
+        "pathologist_name": report.pathologist_name,
+        "signers": report.signers_snapshot or [],
+    }
 
 
 def _fmt_dt(val) -> str | None:
@@ -361,6 +397,13 @@ def publish_gyne_report(
                 db_case.status = "published"
                 db_report.status = GyneReportStatus.PUBLISHED
                 db_report.published_at = local_now()
+                his_export_crud.enqueue(
+                    db,
+                    resource_type="GyneCytoReport",
+                    resource_id=db_report.id,
+                    accession_no=db_report.accession_no,
+                    payload_snapshot=build_gyne_export_payload(db_report),
+                )
 
     db.commit()
     db.refresh(db_report)
@@ -441,6 +484,17 @@ def complete_gyne_review(
             for signer_row in latest_report.signers:
                 if signer_row.user_id == reviewer_id and not signer_row.signed_at:
                     signer_row.signed_at = now
+
+            # Enqueue after signers_snapshot is fully synced above, so the
+            # export payload's signer list reflects the signature that was
+            # just recorded rather than a stale pre-sync snapshot.
+            his_export_crud.enqueue(
+                db,
+                resource_type="GyneCytoReport",
+                resource_id=latest_report.id,
+                accession_no=latest_report.accession_no,
+                payload_snapshot=build_gyne_export_payload(latest_report),
+            )
 
         current_diag = (
             db.query(GyneDiagnosis)

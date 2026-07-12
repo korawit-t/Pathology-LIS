@@ -66,6 +66,7 @@ from app.routers import (
 from app.middleware.audit_middleware import AuditContextMiddleware
 from app.services.audit_service import register_audit_listeners
 from app.core.config import IS_PRODUCTION
+from app.his_export.worker import export_worker_lifespan
 
 # C5: disable Swagger / ReDoc / OpenAPI schema in production so the full
 # endpoint map is not publicly reachable (SECURITY_AUDIT.md §C5).
@@ -76,6 +77,7 @@ app = FastAPI(
     redoc_url=None if IS_PRODUCTION else "/redoc",
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
     redirect_slashes=True,
+    lifespan=export_worker_lifespan,
 )
 
 register_audit_listeners()
@@ -198,6 +200,7 @@ for _example in _TEMPLATES_DIR.glob("*.html.example"):
 from app.routers import storage as storage_router_module
 from app.routers import version as version_router_module
 from app.routers import critical_notification_log as critical_notification_log_router
+from app.routers import his_export_log as his_export_log_router
 from app.routers import legacy_reports as legacy_reports_router
 from app.routers import wsi_viewer
 from app.routers import wsi_settings as wsi_settings_router
@@ -263,6 +266,7 @@ app.include_router(storage_router_module.router)
 app.include_router(storage_router_module.public_router)
 app.include_router(version_router_module.router)
 app.include_router(critical_notification_log_router.router)
+app.include_router(his_export_log_router.router)
 app.include_router(legacy_reports_router.router)
 app.include_router(wsi_viewer.router)
 app.include_router(wsi_settings_router.router)

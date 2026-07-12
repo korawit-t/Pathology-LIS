@@ -75,6 +75,7 @@ from .wsi_setting import WsiScannerProfile, WsiSetting
 from .wsi_file import WsiFile
 from .wsi_slide_link import WsiSlideLink
 from .stain_panel import StainPanel, StainPanelItem
+from .his_export_log import HisExportLog
 
 # ... models อื่นๆ
 # การทำแบบนี้จะทำให้เวลาเราเขียน:

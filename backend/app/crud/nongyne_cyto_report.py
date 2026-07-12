@@ -19,8 +19,44 @@ import base64
 import os
 import re
 from pathlib import Path
+from app.crud import his_export_log as his_export_crud
 
 _BKK = ZoneInfo("Asia/Bangkok")
+
+
+def build_nongyne_export_payload(report: "NongyneCytoReport") -> dict:
+    """Structured export payload for outbound HIS delivery. Keeps report
+    column knowledge local to this domain — app/his_export/ never needs to
+    know nongyne-specific field names."""
+    return {
+        "accession_no": report.accession_no,
+        "patient_title": report.patient_title,
+        "patient_name": report.patient_name,
+        "patient_ln": report.patient_ln,
+        "patient_hn": report.patient_hn,
+        "patient_cid": report.patient_cid,
+        "patient_birth_date": report.patient_birth_date.isoformat() if report.patient_birth_date else None,
+        "patient_age": report.patient_age,
+        "patient_gender": report.patient_gender,
+        "hospital_name": report.hospital_name,
+        "hospital_id": report.hospital_id,
+        "department_name": report.department_name,
+        "clinician_name": report.clinician_name,
+        "report_type": report.report_type,
+        "status": report.status.value if hasattr(report.status, "value") else report.status,
+        "published_at": report.published_at.isoformat() if report.published_at else None,
+        "version_no": report.version_no,
+        "clinical_history_text": report.clinical_history_snapshot,
+        "clinical_diagnosis_text": report.clinical_diagnosis_snapshot,
+        "specimen_type": report.specimen_type,
+        "collection_site": report.collection_site,
+        "gross_description_text": report.gross_description,
+        "microscopic_text": report.microscopic_description,
+        "diagnosis_text": report.diagnosis,
+        "comment_text": report.comment,
+        "pathologist_name": report.pathologist_name,
+        "signers": report.signers_snapshot or [],
+    }
 
 
 def _fmt_dt(val) -> str | None:
@@ -468,6 +504,19 @@ def get_nongyne_snapshot_pdf_data(db: Session, report: NongyneCytoReport) -> dic
     return _enrich_report_data(data, db, report.case_id)
 
 
+def get_nongyne_report_pdf(db: Session, report: NongyneCytoReport) -> bytes:
+    """PDF bytes for a specific published report snapshot — the counterpart
+    of gyne's get_gyne_report_pdf(), used by both the report-download router
+    and the HIS export worker so the two never drift apart."""
+    from app.crud.system_setting import get_settings as get_system_settings
+    from app.services import pdf_service
+
+    data = get_nongyne_snapshot_pdf_data(db, report)
+    settings = get_system_settings(db)
+    active_template = f"reports/{settings.nongyne_report_template or 'nongyne_cyto_report_template.html'}"
+    return pdf_service.generate_pdf_blob(data, template_name=active_template, is_preview=False)
+
+
 def prepare_nongyne_report_pdf_data(db: Session, case_id: int):
     """เตรียมข้อมูล live สำหรับ Preview PDF (draft/pre-publish)"""
     data = prepare_nongyne_report_data(db, case_id)
@@ -515,6 +564,19 @@ def process_nongyne_report_approval(
         signer.agreement = req.agreement
         signer.agreement_note = req.agreement_note
         _stamp_snapshot_signed_at(db_report, current_user.id, now)
+
+        # Enqueue after _stamp_snapshot_signed_at above, so the export
+        # payload's signer list reflects the signature that was just
+        # recorded rather than a stale pre-sync snapshot. Deliberately not
+        # nested inside the case_id lookup below — the report itself
+        # reaching PUBLISHED is the real terminal condition.
+        his_export_crud.enqueue(
+            db,
+            resource_type="NongyneCytoReport",
+            resource_id=db_report.id,
+            accession_no=db_report.accession_no,
+            payload_snapshot=build_nongyne_export_payload(db_report),
+        )
 
         if db_report.case_id is not None:
             db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_report.case_id).first()

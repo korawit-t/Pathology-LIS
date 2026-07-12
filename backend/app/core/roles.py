@@ -52,5 +52,8 @@ CAN_MANAGE_USERS = RoleChecker(["admin", "lab_manager"])
 # 2. การตั้งค่าระบบหลัก (Branding, Logo, Global Config)
 CAN_MANAGE_SYSTEM_SETTINGS = RoleChecker(["admin"])
 
+# 2b. Outbound HIS export log (view + manual retry)
+CAN_VIEW_HIS_EXPORT_LOG = RoleChecker(["admin"])
+
 # 3. WSI Viewer
 CAN_VIEW_WSI = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist", "histo"])
