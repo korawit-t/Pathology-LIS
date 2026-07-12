@@ -66,6 +66,15 @@ const GROSS_STAGE_STATUSES: string[] = [
   CASE_STATUS.GROSSED,
 ];
 
+// Statuses that should be bumped to GROSS_IN_PROGRESS on draft save.
+// GROSSED is intentionally excluded: re-opening an already-completed case
+// (e.g. to fix a typo) must not revert it to "in progress".
+const DRAFT_ADVANCE_STATUSES: string[] = [
+  CASE_STATUS.REGISTERED,
+  CASE_STATUS.FORMALIN_FIXING,
+  CASE_STATUS.GROSS_IN_PROGRESS,
+];
+
 interface Props {
   activeCase: SurgicalCase;
   onBack: () => void;
@@ -330,7 +339,7 @@ const GrossEditView: React.FC<Props> = ({
         gross_examiner_id: formValues.gross_examiner_id,
         gross_assistant_id: formValues.gross_assistant_id,
         pathologist_id: formValues.pathologist_id,
-        status: GROSS_STAGE_STATUSES.includes(freshCase.status) ? CASE_STATUS.GROSS_IN_PROGRESS : freshCase.status,
+        status: DRAFT_ADVANCE_STATUSES.includes(freshCase.status) ? CASE_STATUS.GROSS_IN_PROGRESS : freshCase.status,
       };
 
       const validIds = freshSpecimens.map((s) => s.id.toString());
