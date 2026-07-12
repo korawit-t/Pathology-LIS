@@ -74,6 +74,8 @@ Other backend dirs: `app/core/` (config, security/JWT, `roles.py` RBAC constants
 
 **HIS integration** (`app/his_adapters/hosxp.py`): queries an external HOSxP MySQL database read-only to auto-fill patient data. SQL is built via `text(f"...")` for structural WHERE-fragments (marked `# nosec B608` with justification), but actual user-supplied values (hn, dates) are always bound via `:param` placeholders — never interpolate user input directly into the f-string. Optional integration; the app works without `HIS_DATABASE_URL` configured.
 
+**Outbound HIS export** (`app/his_export/`): the opposite direction — sends a finalized report back out to an external HIS once a case is signed out, via a pluggable adapter (`none` default | `generic_webhook` | `custom` escape hatch; HL7v2/FHIR are a documented extension point, not implemented — no real spec was available to build against). Enqueuing happens at 5 exact CRUD-layer terminal-state transitions (see `app/his_export/README.md`), into a dedicated `his_export_logs` outbox table (not per-report columns — a 2026-06-27 migration added unused `his_sent_at`/etc. columns to the report tables before this existed; they were dropped in favor of the dedicated table). Delivery is an in-process asyncio poll loop wired via FastAPI `lifespan` (`app/his_export/worker.py`) — this project has no Celery/APScheduler/Redis, and this feature doesn't add any.
+
 **Accession numbers**: per-case-type prefixed sequences (`S`=surgical, `C`=gyne cytology, `N`=non-gyne cytology) generated with `with_for_update()` row locking to avoid duplicates under concurrent registration (see `_get_next_nongyne_accession_no` and equivalents).
 
 **Gotchas** (from prior debugging in this repo):

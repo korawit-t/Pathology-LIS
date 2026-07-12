@@ -18,6 +18,7 @@ from app.crud.surgical_report import (
     get_reports_paginated,
     get_report,
     get_pending_cosign_worklist,
+    resolve_report_logo,
 )
 from app.crud.surgical_report_builder import prepare_report_data, get_image_base64_from_path, STORAGE_BASE
 from app.crud.surgical_statistics import get_surgical_statistics, get_lab_tech_statistics, get_staff_registration_stats, get_staff_gross_stats, get_tissue_process_stats, get_storage_stats, get_outlab_stats
@@ -30,31 +31,12 @@ from app.schemas.surgical_report import (
 from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
-from app.models.organization import Hospital
-from app.crud.organization import resolve_lab_header
 from app.models.surgical_report import SurgicalReport, ReportStatus
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
 from app.crud.report_archive import get_surgical_archive
 from app.schemas.archive import ArchivePage
 
 router = APIRouter(prefix="/surgical-reports", tags=["Surgical Reports"])
-
-
-def _resolve_logo(report_data: dict, db: Session) -> None:
-    """Pass the logo as a file:// URI so WeasyPrint reads it directly from disk.
-    Always uses the current hospital/system settings — no snapshot needed for logo."""
-    settings = get_system_settings(db)
-    hospital = (
-        db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
-        if report_data.get("hospital_id")
-        else None
-    )
-    _name, _address, logo_path = resolve_lab_header(hospital, settings)
-    if logo_path:
-        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
-        report_data["report_logo_url_snapshot"] = full.as_uri() if full.exists() else None
-    else:
-        report_data["report_logo_url_snapshot"] = None
 
 
 def _build_barcode_value(case, setting, case_type_code: str) -> tuple[str, str]:
@@ -339,7 +321,7 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
     if case_obj and case_obj.consult_pdf_path:
         prepend_pdfs.append(case_obj.consult_pdf_path)
 
-    _resolve_logo(report_data, db)
+    resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
     pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=True, prepend_pdfs=prepend_pdfs if prepend_pdfs else None)
@@ -400,7 +382,7 @@ def get_latest_finalized_report_pdf(
     if report.consult_pdf_path_snapshot:
         prepend_pdfs.append(report.consult_pdf_path_snapshot)
 
-    _resolve_logo(report_data, db)
+    resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
     pdf_blob = generate_pdf_blob(
@@ -472,7 +454,7 @@ def get_historical_report_pdf(
     if report.consult_pdf_path_snapshot:
         prepend_pdfs.append(report.consult_pdf_path_snapshot)
 
-    _resolve_logo(report_data, db)
+    resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
     pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=is_preview_mode, prepend_pdfs=prepend_pdfs if prepend_pdfs else None)

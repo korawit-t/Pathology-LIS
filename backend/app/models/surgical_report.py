@@ -115,12 +115,6 @@ class SurgicalReport(Base):
     )
     approved_at = Column(DateTime, nullable=True)
     published_at = Column(DateTime, nullable=True)  # วันที่ออกรายงานฉบับสมบูรณ์
-
-    # --- HIS Outbound Tracking ---
-    his_sent_at = Column(DateTime, nullable=True)
-    his_send_error = Column(Text, nullable=True)
-    his_reference_id = Column(String, nullable=True)
-    his_send_retries = Column(Integer, default=0, nullable=False)
     is_print = Column(Boolean, default=False, nullable=False)  # สถานะว่าพิมพ์ PDF หรือยัง
     is_read = Column(Boolean, default=False, nullable=False)
     read_at = Column(DateTime, nullable=True)

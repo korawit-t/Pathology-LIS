@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional
 from jose import jwt, JWTError
@@ -203,7 +204,12 @@ def refresh_access_token(
     # Revoke the just-used refresh token so it cannot be replayed.
     if old_jti and old_exp_ts:
         db.merge(RevokedToken(jti=old_jti, expires_at=datetime.fromtimestamp(old_exp_ts, tz=timezone.utc)))
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent /refresh call for the same token won the race and
+            # already inserted this jti — it's revoked either way, so proceed.
+            db.rollback()
 
     _set_auth_cookies(response, new_access_token, new_refresh_token)
 
@@ -234,8 +240,12 @@ def logout(
             if jti and exp_ts:
                 expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
                 db.merge(RevokedToken(jti=jti, expires_at=expires_at))
+                db.commit()
+        except IntegrityError:
+            # Already revoked by a concurrent request — fine, it's revoked either way.
+            db.rollback()
         except Exception:
-            pass  # Expired or invalid token — no need to revoke
+            db.rollback()  # Expired or invalid token — no need to revoke
 
     if uid:
         db.add(AuditLog(
