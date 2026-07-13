@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Card,
   Button,
@@ -122,7 +122,7 @@ const CreateStainingRun: React.FC<CreateStainingRunProps> = ({ onBack }) => {
   const handleModalOk = () => {
     const newlySelected: ScannedBlock[] = [];
 
-    pendingTree.forEach((specimen) => {
+    filteredPendingTree.forEach((specimen) => {
       specimen.children?.forEach((block) => {
         if (selectedRowKeys.includes(block.key)) {
           newlySelected.push({
@@ -196,7 +196,21 @@ const CreateStainingRun: React.FC<CreateStainingRunProps> = ({ onBack }) => {
     }
   };
 
-  const totalInTree = pendingTree.reduce(
+  // Exclude blocks already in the current basket so manual select can't re-add
+  // something already scanned/added (see handleScan's equivalent dedup check).
+  const filteredPendingTree = useMemo(() => {
+    const scannedIds = new Set(scannedBlocks.map((b) => b.block_id));
+    return pendingTree
+      .map((specimen) => ({
+        ...specimen,
+        children: specimen.children?.filter(
+          (block) => !scannedIds.has(block.id as number),
+        ),
+      }))
+      .filter((specimen) => (specimen.children?.length ?? 0) > 0);
+  }, [pendingTree, scannedBlocks]);
+
+  const totalInTree = filteredPendingTree.reduce(
     (acc, curr) => acc + (curr.children?.length || 0),
     0,
   );
@@ -354,7 +368,7 @@ const CreateStainingRun: React.FC<CreateStainingRunProps> = ({ onBack }) => {
               ),
             },
           ]}
-          dataSource={pendingTree}
+          dataSource={filteredPendingTree}
           rowKey="key"
           pagination={false}
           scroll={{ y: 400 }}

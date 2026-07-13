@@ -49,6 +49,7 @@ export interface SystemSetting {
   enable_gyne_qc_system: boolean;
   enable_non_gyne_approve_system: boolean;
   nongyne_slide_dispatch_enabled: boolean;
+  enable_tissue_processing_workflow: boolean;
   require_all_pathologists_sign: boolean;
   require_all_gyne_sign: boolean;
   require_all_non_gyne_sign: boolean;

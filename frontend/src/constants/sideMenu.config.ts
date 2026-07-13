@@ -105,6 +105,7 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         label: "Tissue Processing",
         view: "sur:tissue-processing",
         roles: PAGE_PERMISSIONS["tissue-processing"],
+        featureFlag: "enable_tissue_processing_workflow",
       },
       {
         key: "decal-queue",
@@ -132,18 +133,21 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         label: "Process Out",
         view: "his:process-out",
         roles: PAGE_PERMISSIONS["tissue-processing"],
+        featureFlag: "enable_tissue_processing_workflow",
       },
       {
         key: "embed",
         label: "Embedding",
         view: "embedding",
         roles: PAGE_PERMISSIONS["embedding"],
+        featureFlag: "enable_tissue_processing_workflow",
       },
       {
         key: "section",
         label: "Sectioning",
         view: "sectioning",
         roles: PAGE_PERMISSIONS["sectioning"],
+        featureFlag: "enable_tissue_processing_workflow",
       },
       {
         key: "he-staining-manager",

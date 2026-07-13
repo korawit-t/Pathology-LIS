@@ -22,6 +22,7 @@ import {
   ExperimentOutlined,
   ExclamationCircleOutlined,
   SaveOutlined,
+  ScissorOutlined,
 } from "@ant-design/icons";
 import SystemSettingService from "../../../services/systemSettingService";
 import AnatomicalPathologyTestService, { AnatomicalPathologyTest } from "../../../services/anatomicalTestService";
@@ -286,6 +287,25 @@ const WorkflowTab: React.FC = () => {
             description='For Non-Gyne Cytology — On: after the Cytotechnologist clicks "Send to Pathologist", the Lab Tech must scan and send the slide again via the Slide Dispatch page | Off: clicking "Send to Pathologist" once sends the slide to the Pathologist immediately'
           >
             <Form.Item name="nongyne_slide_dispatch_enabled" valuePropName="checked" noStyle>
+              <Switch checkedChildren="ON" unCheckedChildren="OFF" />
+            </Form.Item>
+          </SettingRow>
+        </div>
+
+        <Divider />
+
+        {/* Section: Grossing Pipeline */}
+        <div style={{ marginBottom: 40 }}>
+          <Title level={5} style={{ marginBottom: 24 }}>
+            <ScissorOutlined /> Grossing Pipeline
+          </Title>
+
+          <SettingRow
+            icon={<ScissorOutlined style={{ color: "#13c2c2" }} />}
+            title="Enable Tissue Processing / Embedding / Sectioning Workflow"
+            description='On (default): full pipeline — a block must pass through Tissue Processing, Embedding, and Sectioning before it can be sent to H&E Staining. Off (simplified): those 3 menu items are hidden, and a block becomes available in H&E Staining immediately after Grossing.'
+          >
+            <Form.Item name="enable_tissue_processing_workflow" valuePropName="checked" noStyle>
               <Switch checkedChildren="ON" unCheckedChildren="OFF" />
             </Form.Item>
           </SettingRow>

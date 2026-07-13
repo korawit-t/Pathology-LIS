@@ -43,6 +43,7 @@ class TestGetSettings:
 
         assert settings.hospital_slug == "master"
         assert db.query(SystemSetting).filter(SystemSetting.hospital_slug == "master").count() == 1
+        assert settings.enable_tissue_processing_workflow is True
 
     def test_returns_existing_row_without_duplicating(self, db):
         existing = make_system_setting(db, hospital_slug="master", lab_name_th="Existing Lab")
@@ -76,6 +77,16 @@ class TestUpdateSettings:
 
         assert updated.hospital_slug == "master"  # lookup key itself can't be changed via payload
 
+    def test_updates_tissue_processing_workflow_flag(self, db):
+        make_system_setting(db, hospital_slug="master", enable_tissue_processing_workflow=True, lab_name_th="Keep Me")
+
+        updated = update_settings(
+            db, SystemSettingUpdate(enable_tissue_processing_workflow=False), hospital_slug="master"
+        )
+
+        assert updated.enable_tissue_processing_workflow is False
+        assert updated.lab_name_th == "Keep Me"  # untouched
+
 
 class TestDeleteSettings:
     def test_refuses_to_delete_master(self, db):
@@ -107,6 +118,14 @@ class TestUpdateSettingsRouter:
         r = admin_client.patch("/system-settings/update", json={"lab_name_th": "Updated via API"})
         assert r.status_code == 200
         assert r.json()["lab_name_th"] == "Updated via API"
+
+    def test_admin_can_toggle_tissue_processing_workflow(self, admin_client, db):
+        clear_system_settings(db)
+        r = admin_client.patch(
+            "/system-settings/update", json={"enable_tissue_processing_workflow": False}
+        )
+        assert r.status_code == 200
+        assert r.json()["enable_tissue_processing_workflow"] is False
 
 
 class TestUploadLogoRouter:
