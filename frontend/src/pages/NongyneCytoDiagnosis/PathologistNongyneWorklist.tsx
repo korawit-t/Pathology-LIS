@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Input, Table, Tag, Typography, message, Segmented, Space, Tooltip, Progress } from "antd";
+import { Input, Table, Tag, Typography, message, Segmented, Space, Tooltip, Progress, Badge } from "antd";
 
 const { Text } = Typography;
 import {
@@ -48,6 +48,7 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSetting | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
+  const [myNewCasesCount, setMyNewCasesCount] = useState(0);
 
   useEffect(() => {
     UserService.getCurrentUser().then(setCurrentUser).catch(() => {});
@@ -55,15 +56,41 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
     HolidayService.getHolidayDateList().then(setHolidays).catch(() => {});
   }, []);
 
+  const loadMyNewCasesCount = async () => {
+    try {
+      const data = await NongyneCytologyCaseService.getAll({
+        assigned_to_me: true,
+        is_reported: false,
+        limit: 1,
+      });
+      setMyNewCasesCount(data.total);
+    } catch {
+      // non-critical
+    }
+  };
+
   useEffect(() => {
     if (currentUser) loadCases();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, activeTab, searchText]);
 
   useEffect(() => {
-    if (refreshTrigger && currentUser) loadCases();
+    if (currentUser) loadMyNewCasesCount();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (refreshTrigger && currentUser) {
+      loadCases();
+      loadMyNewCasesCount();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
+
+  // Keep the badge in sync with the exact total once "My New Cases" is the active tab
+  useEffect(() => {
+    if (activeTab === "my_cases") setMyNewCasesCount(total);
+  }, [activeTab, total]);
 
   const loadCases = async () => {
     if (!currentUser) return;
@@ -276,7 +303,17 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         <Segmented
           options={[
             { label: "All", value: "all" },
-            { label: "My New Cases", value: "my_cases" },
+            {
+              label: (
+                <span>
+                  My New Cases
+                  {myNewCasesCount > 0 && (
+                    <Badge count={myNewCasesCount} size="small" style={{ marginLeft: 6 }} />
+                  )}
+                </span>
+              ),
+              value: "my_cases",
+            },
             { label: "Pending", value: "pending" },
             { label: "Sign Required", value: "co_sign" },
             { label: "Express", value: "express" },
