@@ -35,6 +35,8 @@ export interface SystemSetting {
   // --- Workflow & Report Settings ---
   // True = แสดงประวัติเดิมต่อท้าย / False = แสดงเฉพาะผลปัจจุบัน
   is_cumulative_report: boolean;
+  // True = เรียงรอบล่าสุดขึ้นก่อน (desc) / False = เรียงรอบเก่าขึ้นก่อน (asc) — ใช้กับ Surgical Pathology
+  cumulative_report_newest_first: boolean;
 
   // ควบคุมการแสดงชื่อชิ้นเนื้อ (เช่น A: Appendix vs A:)
   show_specimen_name: boolean;
@@ -56,8 +58,6 @@ export interface SystemSetting {
   // --- Gyne Cytology QC Review ---
   nilm_review_every_n: number;
 
-  // รูปแบบเลข Case เช่น {year}-{no}
-  accession_no_format: string;
   surgical_accession_prefix?: string;
   gyne_accession_prefix?: string;
   nongyne_accession_prefix?: string;
@@ -65,10 +65,8 @@ export interface SystemSetting {
   // 🚩 Default Test Selection (ID)
   default_gyne_test_id?: number | null;
   default_non_gyne_test_id?: number | null;
-  default_surgical_test_id?: number | null;
 
   // 🚩 เพิ่มฟิลด์เหล่านี้เพื่อให้ตรงกับ Pydantic model_validator (Backend)
-  default_surgical_test_name?: string | null;
   default_gyne_test_name?: string | null;
   default_non_gyne_test_name?: string | null;
 
@@ -82,9 +80,6 @@ export interface SystemSetting {
   sticker_font_hospital?: number;
   sticker_font_date?: number;
   sticker_margin_top_cm?: number;
-
-  // ฟิลด์ JSON สำหรับการตั้งค่าอื่นๆ ในอนาคต
-  config_options?: Record<string, any>;
 
   // --- Report Template Selection ---
   surgical_report_template?: string | null;

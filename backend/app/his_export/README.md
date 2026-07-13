@@ -10,7 +10,7 @@ env var" shape.
 ## Architecture
 
 ```
-[Case reaches PUBLISHED / SIGNED_OUT]   (5 exact CRUD-layer call sites — see below)
+[Case reaches PUBLISHED / SIGNED_OUT]   (6 exact CRUD-layer call sites — see below)
         │  cheap synchronous DB insert, same transaction, no network I/O
         ▼
   his_export_logs (status=pending)
@@ -107,7 +107,7 @@ class, the outbox table, the trigger points, or the worker — only:
 
 ## Trigger points
 
-Enqueuing happens at the **CRUD layer**, at the exact 5 places each report's status
+Enqueuing happens at the **CRUD layer**, at the exact 6 places each report's status
 flips to its terminal `PUBLISHED`/`SIGNED_OUT` value — not at the router layer, and not by
 mirroring `notification_service.notify_signed_out()` (that hook fires unconditionally
 regardless of whether a case actually reached a terminal state, and is missing from
@@ -120,13 +120,15 @@ for anything else):
 | 2 | `process_report_approval` (APPROVE) | `app/crud/report_crud.py` | Surgical |
 | 3 | `publish_gyne_report` (direct-publish branch) | `app/crud/gyne_cyto_report.py` | Gyne |
 | 4 | `complete_gyne_review` (agree branch) | `app/crud/gyne_cyto_report.py` | Gyne |
-| 5 | `process_nongyne_report_approval` (APPROVE) | `app/crud/nongyne_cyto_report.py` | Non-gyne |
+| 5 | `publish_nongyne_report` (direct-publish branch, `enable_non_gyne_approve_system` off) | `app/crud/nongyne_cyto_report.py` | Non-gyne |
+| 6 | `process_nongyne_report_approval` (APPROVE) | `app/crud/nongyne_cyto_report.py` | Non-gyne |
 
-`publish_nongyne_report()` is deliberately **not** a trigger point — it always routes to
-`pending_approval` and never reaches `PUBLISHED` on its own; #5 is the only terminal
-point for that domain.
+Non-gyne now mirrors Surgical: `publish_nongyne_report()` only routes to
+`pending_approval` (leaving #6 as the terminal point) when
+`enable_non_gyne_approve_system` is on. When it's off, publish itself is site #5 —
+the terminal `PUBLISHED` transition — and enqueues immediately.
 
-Sites #4 and #5 enqueue *after* each domain's `signers_snapshot` sync, not immediately
+Sites #4 and #6 enqueue *after* each domain's `signers_snapshot` sync, not immediately
 after the status flip — hooking in earlier would export a payload where the signer who
 just signed still shows `signed_at: null`. See `test_his_export_trigger_wiring.py` for
 the regression tests.

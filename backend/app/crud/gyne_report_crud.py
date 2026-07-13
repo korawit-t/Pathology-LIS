@@ -4,6 +4,7 @@ from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneRe
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.cyto_approval_log import CytoReportAuditLog
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.report_approval import ReportApproveRequest
 from datetime import datetime
@@ -23,8 +24,25 @@ def process_gyne_report_approval(
     # Note: GyneCytoReport doesn't currently have a separate Log table like Surgical.
     # We could add one, but for now we'll just update the status.
     # If the user wants audit logs for Gyne, we should create a GyneReportApprovalLog table.
-    
+
     if action in ["APPROVE", "APPROVED"]:
+        settings = db.query(SystemSetting).first()
+        if settings and settings.require_all_gyne_sign:
+            pending_count = (
+                db.query(GyneReportSigner)
+                .filter(
+                    GyneReportSigner.report_id == report_id,
+                    GyneReportSigner.signed_at.is_(None),
+                    GyneReportSigner.user_id != current_user.id,
+                )
+                .count()
+            )
+            if pending_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot publish — {pending_count} co-signer(s) have not signed yet.",
+                )
+
         db_report.status = GyneReportStatus.PUBLISHED
         db_report.approved_at = now
         db_report.published_at = now

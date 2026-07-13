@@ -50,12 +50,9 @@ import NongyneCaseImageService, {
   NongyneCaseImage,
 } from "../../services/nongyneCaseImageService";
 import { API_BASE_URL } from "../../services/httpClient";
-import SystemSettingService from "../../services/systemSettingService";
-import ApprovalService from "../../services/approvalService";
 import UserService from "../../services/userService";
 import { NongyneDiagnosisResponse } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
-import { SystemSetting } from "../../types/system";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
 import PatientInfoCard from "../../components/PatientInfoCard";
@@ -138,9 +135,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
 
   const [isPatientInfoExpanded, setIsPatientInfoExpanded] = useState(false);
   const [caseData, setCaseData] = useState<NongyneCytologyCase | null>(null);
-  const [systemSettings, setSystemSettings] = useState<SystemSetting | null>(
-    null,
-  );
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [diagnosis, setDiagnosis] = useState<NongyneDiagnosisResponse | null>(
@@ -269,13 +263,11 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     if (!caseId) return;
     Promise.all([
       NongyneCytologyCaseService.getById(Number(caseId)),
-      SystemSettingService.getSettings(),
       UserService.getUsers(),
       UserService.getCurrentUser(),
     ])
-      .then(([caseRes, settings, users, me]) => {
+      .then(([caseRes, users, me]) => {
         setCaseData(caseRes);
-        setSystemSettings(settings);
         setAllUsers(users);
         setCurrentUser(me);
         form.setFieldsValue({
@@ -480,8 +472,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     if (!diagnosis) return;
     try {
       setSubmitting(true);
-      const requireApproval =
-        systemSettings?.enable_non_gyne_approve_system ?? true;
       const clinical_history = form.getFieldValue("clinical_history");
       const now = new Date().toISOString();
 
@@ -522,19 +512,11 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         isCasePending ? pendingReason : undefined,
         outLab ? true : undefined,
         outLab?.reason,
-      )) as { id: number };
+      )) as { id: number; status: string };
 
       if (outLab) {
         message.success("Report signed off — flagged for Out-Lab Consult");
-      } else if (!requireApproval) {
-        await ApprovalService.processDecision(
-          publishedReport.id,
-          {
-            action: "APPROVED",
-            comment: "Auto-approved (approval not required)",
-          },
-          "nongyne",
-        );
+      } else if (publishedReport.status === "published") {
         message.success("Report finalized and published.");
       } else {
         message.success("Report submitted for approval.");

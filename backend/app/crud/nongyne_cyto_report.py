@@ -268,7 +268,7 @@ def publish_nongyne_report(
     is_out_lab_consult: bool = None,
     consult_reason: str = None,
 ):
-    """สร้าง Snapshot และส่งเข้าสู่กระบวนการอนุมัติ"""
+    """สร้าง Snapshot และส่งเข้าสู่กระบวนการอนุมัติ (หรือ publish ตรงถ้า enable_non_gyne_approve_system ปิดอยู่)"""
     report_data = prepare_nongyne_report_data(db, case_id)
     if not report_data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -282,6 +282,12 @@ def publish_nongyne_report(
     report_data.pop("signers", None)
     report_data["is_pending"] = is_pending
     report_data["pending_reason"] = pending_reason if is_pending else None
+
+    settings = db.query(SystemSetting).first()
+    approve_enabled = settings.enable_non_gyne_approve_system if settings else False
+    if not approve_enabled:
+        report_data["status"] = NongyneReportStatus.PUBLISHED
+        report_data["published_at"] = local_now()
 
     db_report = NongyneCytoReport(**report_data)
     db.add(db_report)
@@ -340,7 +346,7 @@ def publish_nongyne_report(
         db_case.is_pending = is_pending
         db_case.pending_reason = pending_reason if is_pending else None
         db_case.report_at = local_now()
-        db_case.status = "pending_approval"
+        db_case.status = "published" if not approve_enabled else "pending_approval"
 
         # Captured before this block's own mutations below — resolves round 2
         # (already flagged, already "processing"/"received") while leaving
@@ -356,6 +362,15 @@ def publish_nongyne_report(
             db_case.consult_reason = consult_reason
         if was_consult_dispatched:
             db_case.consult_status = "received"
+
+        if not approve_enabled:
+            his_export_crud.enqueue(
+                db,
+                resource_type="NongyneCytoReport",
+                resource_id=db_report.id,
+                accession_no=db_report.accession_no,
+                payload_snapshot=build_nongyne_export_payload(db_report),
+            )
 
     db.commit()
     db.refresh(db_report)
@@ -542,6 +557,23 @@ def process_nongyne_report_approval(
     now = local_now()
 
     if action in ["APPROVE", "APPROVED"]:
+        settings = db.query(SystemSetting).first()
+        if settings and settings.require_all_non_gyne_sign:
+            pending_count = (
+                db.query(NongyneReportSigner)
+                .filter(
+                    NongyneReportSigner.report_id == report_id,
+                    NongyneReportSigner.signed_at.is_(None),
+                    NongyneReportSigner.user_id != current_user.id,
+                )
+                .count()
+            )
+            if pending_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot publish — {pending_count} co-signer(s) have not signed yet.",
+                )
+
         db_report.status = NongyneReportStatus.PUBLISHED
         db_report.approved_at = now
         db_report.published_at = now

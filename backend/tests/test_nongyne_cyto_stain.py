@@ -1,8 +1,8 @@
 """Tests for app/crud/nongyne_cyto_stain.py — slide CRUD, the
-PAP_ROUTINE-based auto-create-default-stain helper (returns [] gracefully
-when no such master test exists, unlike Gyne's version which also falls
-back to a SystemSetting-configured default — confirmed intentional, NonGyne
-has no such setting), and create_stain_run's slide+case status stamping."""
+auto-create-default-stain helper (checks SystemSetting.default_non_gyne_test_id
+first, falling back to a PAP_ROUTINE master test, then returns [] gracefully
+if neither exists — mirrors Gyne's auto_create_default_stain exactly, see
+test_gyne_cyto_stain.py), and create_stain_run's slide+case status stamping."""
 
 from app.crud.nongyne_cyto_stain import (
     create_stain,
@@ -17,7 +17,12 @@ from app.crud.nongyne_cyto_stain import (
 from app.schemas.nongyne_cyto_stain import NongyneStainCreate, NongyneStainUpdate
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 
-from tests.factories import make_bare_nongyne_case, make_anatomical_pathology_test
+from tests.factories import (
+    make_bare_nongyne_case,
+    make_anatomical_pathology_test,
+    make_system_setting,
+    clear_system_settings,
+)
 
 
 def _test_id(db) -> int:
@@ -91,6 +96,7 @@ class TestAutoCreateDefaultStain:
     def test_returns_empty_list_when_no_pap_routine_test_exists(self, db, admin_user):
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        clear_system_settings(db)
 
         result = auto_create_default_stain(db, case.id, count=2)
 
@@ -100,12 +106,39 @@ class TestAutoCreateDefaultStain:
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         pap_test = make_anatomical_pathology_test(db, system_code="PAP_ROUTINE", category="Cytology")
+        clear_system_settings(db)
 
         result = auto_create_default_stain(db, case.id, count=3)
 
         assert len(result) == 3
         assert all(s.test_id == pap_test.id for s in result)
         assert sorted(s.slide_no for s in result) == [1, 2, 3]
+
+    def test_uses_admin_configured_default_when_set(self, db, admin_user):
+        """The admin's SystemSetting.default_non_gyne_test_id must win even
+        though a PAP_ROUTINE test also exists — mirrors Gyne's regression
+        test for the same bug class."""
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        configured_test = make_anatomical_pathology_test(db, name="Custom NonGyne Default")
+        make_anatomical_pathology_test(db, system_code="PAP_ROUTINE", name="PAP Routine")
+        make_system_setting(db, default_non_gyne_test_id=configured_test.id)
+
+        result = auto_create_default_stain(db, case.id, count=1)
+
+        assert len(result) == 1
+        assert result[0].test_id == configured_test.id
+
+    def test_falls_back_to_pap_routine_when_setting_has_no_test_id(self, db, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        pap_test = make_anatomical_pathology_test(db, system_code="PAP_ROUTINE", name="PAP Routine")
+        make_system_setting(db, default_non_gyne_test_id=None)
+
+        result = auto_create_default_stain(db, case.id, count=1)
+
+        assert len(result) == 1
+        assert result[0].test_id == pap_test.id
 
 
 class TestCreateStainRun:

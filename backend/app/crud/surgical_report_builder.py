@@ -512,6 +512,8 @@ def prepare_report_data(
         db_case.diagnosis_mode or "individual",
         spec_data,
         settings.show_specimen_name if settings else True,
+        cumulative_sort_direction="desc" if (settings.cumulative_report_newest_first if settings else True) else "asc",
+        is_cumulative=settings.is_cumulative_report if settings else True,
     )
 
     final_pathologist_name = "Not Specified"

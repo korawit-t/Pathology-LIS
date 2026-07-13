@@ -108,8 +108,8 @@ const WorkflowTab: React.FC = () => {
     .filter((t) => t.category === "Cytology")
     .map((t) => ({ label: t.name, value: t.id }));
 
-  const surgicalOptions = masterTests
-    .filter((t) => t.category === "Surgical" || t.category === "Histochem")
+  const nonGyneOptions = masterTests
+    .filter((t) => t.category === "Cytology")
     .map((t) => ({ label: t.name, value: t.id }));
 
   const load = async () => {
@@ -166,14 +166,14 @@ const WorkflowTab: React.FC = () => {
           </SettingRow>
 
           <SettingRow
-            title="Default Surgical H&E Test"
-            description="The baseline test automatically generated for surgical specimen cases (e.g., H&E Stain)."
+            title="Default Non-Gyne Cytology Test"
+            description="The baseline test that will be automatically generated when registering a Non-Gyne Cytology case (e.g., PAP Stain)."
           >
-            <Form.Item name="default_surgical_test_id" noStyle>
+            <Form.Item name="default_non_gyne_test_id" noStyle>
               <Select
                 placeholder="Select test"
                 style={{ width: 220 }}
-                options={surgicalOptions}
+                options={nonGyneOptions}
                 showSearch
                 optionFilterProp="label"
                 allowClear

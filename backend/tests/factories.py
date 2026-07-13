@@ -220,9 +220,21 @@ def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
 def make_pending_nongyne_report(db, registrar_id: int, pathologist_id: int):
     """Case + current NongyneDiagnosis + a real NongyneCytoReport in
     PENDING_APPROVAL, with a 'primary' NongyneReportSigner already signed.
-    Unlike Gyne, publish_nongyne_report always creates the report in
-    PENDING_APPROVAL — no QC/abnormal branch to work around. Returns
-    (case, report)."""
+
+    publish_nongyne_report only routes to PENDING_APPROVAL when
+    enable_non_gyne_approve_system is on (mirrors Surgical's
+    enable_approve_system) — force it here without wiping any other settings
+    a calling test may have already configured (unlike make_system_setting,
+    which deletes and recreates the whole row).
+
+    Returns (case, report)."""
+    existing_settings = db.query(SystemSetting).first()
+    if existing_settings:
+        existing_settings.enable_non_gyne_approve_system = True
+        db.commit()
+    else:
+        make_system_setting(db, enable_non_gyne_approve_system=True)
+
     case = make_bare_nongyne_case(db, registrar_id=registrar_id)
     create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis"))
     report = publish_nongyne_report(
