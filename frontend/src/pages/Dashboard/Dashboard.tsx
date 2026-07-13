@@ -83,7 +83,10 @@ const Dashboard: React.FC = () => {
 
     fetchUser();
     SystemSettingService.getSettings()
-      .then((s) => setEnabledFlags({ nongyne_slide_dispatch_enabled: s.nongyne_slide_dispatch_enabled ?? true }))
+      .then((s) => setEnabledFlags({
+        nongyne_slide_dispatch_enabled: s.nongyne_slide_dispatch_enabled ?? true,
+        enable_tissue_processing_workflow: s.enable_tissue_processing_workflow ?? true,
+      }))
       .catch(() => {});
   }, [navigate]);
 

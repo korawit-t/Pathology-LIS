@@ -66,6 +66,9 @@ class SystemSetting(Base):
     require_all_gyne_sign = Column(Boolean, default=False) # Gyne (Pathologist + Cytotechnologist)
     require_all_non_gyne_sign = Column(Boolean, default=False) # Non-Gyne
     nongyne_slide_dispatch_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    # On: block must pass Tissue Processing -> Embedding -> Sectioning before staining.
+    # Off: block is stainable immediately after grossing; those 3 menu items are hidden.
+    enable_tissue_processing_workflow = Column(Boolean, default=True, nullable=False, server_default="true")
     # 10% QC review: review every N-th NILM case per cytotechnologist (0 = disabled)
     nilm_review_every_n = Column(Integer, default=10)
     # 🚩 ตั้งค่าการรันเลข Case (เช่น S26-00001)
