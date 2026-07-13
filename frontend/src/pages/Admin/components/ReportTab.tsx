@@ -37,7 +37,7 @@ const ReportTab = () => {
     <Form form={form} layout="vertical">
       <Card variant="outlined">
         <Row gutter={24}>
-          <Col span={12}>
+          <Col span={24}>
             <Form.Item
               name="show_specimen_name"
               label="Show Specimen Name in Header"
@@ -46,11 +46,6 @@ const ReportTab = () => {
               <Switch />
             </Form.Item>
             <Text type="secondary">On: A: Appendix &nbsp;|&nbsp; Off: A:</Text>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="accession_no_format" label="Accession No. Format">
-              <Input placeholder="{year}-{no}" style={{ width: 200 }} />
-            </Form.Item>
           </Col>
         </Row>
         <Divider />
@@ -107,6 +102,17 @@ const ReportTab = () => {
         </Form.Item>
         <Text type="secondary">
           Show previous diagnosis history in the latest report
+        </Text>
+        <Form.Item
+          name="cumulative_report_newest_first"
+          label="Newest Round First"
+          valuePropName="checked"
+          style={{ marginTop: 16 }}
+        >
+          <Switch />
+        </Form.Item>
+        <Text type="secondary">
+          On: most recent Addendum/Revised round shown first &nbsp;|&nbsp; Off: oldest round first (Surgical Pathology only)
         </Text>
       </Card>
 

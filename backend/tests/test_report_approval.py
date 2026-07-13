@@ -9,9 +9,10 @@ a real DB session.
 
 process_nongyne_report_approval's REJECT branch used to set the report back
 to PENDING_APPROVAL instead of DRAFT (a copy-paste divergence from the
-Surgical/Gyne siblings, which both correctly revert to DRAFT). Since
-publish_nongyne_report always creates reports directly in PENDING_APPROVAL,
-that made reject a functional no-op. TestNongyneApproval::test_reject_moves_to_draft
+Surgical/Gyne siblings, which both correctly revert to DRAFT). Since the
+tests in this file force enable_non_gyne_approve_system=True (via
+make_pending_nongyne_report) so reports reliably land in PENDING_APPROVAL,
+that bug made reject a functional no-op here. TestNongyneApproval::test_reject_moves_to_draft
 is the regression test for the fix.
 """
 
@@ -304,6 +305,37 @@ class TestGyneApproval:
         db.refresh(report)
         assert report.status == GyneReportStatus.PENDING_APPROVAL
 
+    def test_approve_blocked_when_require_all_gyne_sign_and_cosigner_unsigned(
+        self, db, admin_user, pathologist_user
+    ):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        cosigner, _ = _make_user(db, f"gcosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
+        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        add_gyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
+        make_system_setting(db, require_all_gyne_sign=True)
+
+        with pytest.raises(HTTPException) as exc:
+            process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
+        assert exc.value.status_code == 400
+        db.refresh(report)
+        assert report.status == GyneReportStatus.PENDING_APPROVAL
+
+    def test_approve_publishes_once_all_required_gyne_signers_signed(
+        self, db, admin_user, pathologist_user
+    ):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        cosigner, _ = _make_user(db, f"gcosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
+        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        add_gyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
+        make_system_setting(db, require_all_gyne_sign=True)
+        process_gyne_cosign(db, report.id, cosigner, _req("APPROVE", agreement="agree"))
+
+        result = process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
+
+        assert result.status == GyneReportStatus.PUBLISHED
+
 
 class TestNongyneApproval:
     def test_approve_publishes_case_and_report(self, db, admin_user, pathologist_user):
@@ -419,3 +451,34 @@ class TestNongyneApproval:
         assert signer.signed_at is not None
         db.refresh(report)
         assert report.status == NongyneReportStatus.PENDING_APPROVAL
+
+    def test_approve_blocked_when_require_all_non_gyne_sign_and_cosigner_unsigned(
+        self, db, admin_user, pathologist_user
+    ):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        cosigner, _ = _make_user(db, f"ncosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
+        case, report = make_pending_nongyne_report(db, registrar.id, path1.id)
+        add_nongyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
+        make_system_setting(db, require_all_non_gyne_sign=True)
+
+        with pytest.raises(HTTPException) as exc:
+            process_nongyne_report_approval(db, report.id, path1, _req("APPROVE"))
+        assert exc.value.status_code == 400
+        db.refresh(report)
+        assert report.status == NongyneReportStatus.PENDING_APPROVAL
+
+    def test_approve_publishes_once_all_required_non_gyne_signers_signed(
+        self, db, admin_user, pathologist_user
+    ):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        cosigner, _ = _make_user(db, f"ncosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
+        case, report = make_pending_nongyne_report(db, registrar.id, path1.id)
+        add_nongyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
+        make_system_setting(db, require_all_non_gyne_sign=True)
+        process_nongyne_cosign(db, report.id, cosigner, _req("APPROVE", agreement="agree"))
+
+        result = process_nongyne_report_approval(db, report.id, path1, _req("APPROVE"))
+
+        assert result.status == NongyneReportStatus.PUBLISHED

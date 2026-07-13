@@ -77,20 +77,26 @@ def auto_create_default_stain(db: Session, case_id: int, count: int = 1):
     สร้างสไลด์โดยดึง Stain จาก Master Data อัตโนมัติ (ใช้ System Code ถ้ามี)
     count = จำนวนสไลด์ที่จะสร้าง (slide_no วิ่งจาก 1..count)
     """
-    # 🚩 ค้นหาด้วยคำว่า PAP_ROUTINE เหมือนใน Gyne ไปก่อน หาก Non-Gyne มีค่าตั้งต้นเฉพาะให้เพิ่มที่นี่
-    pap_test = (
-        db.query(AnatomicalPathologyTest)
-        .filter(AnatomicalPathologyTest.system_code == "PAP_ROUTINE")
-        .first()
-    )
+    setting = db.query(SystemSetting).first()
 
-    if not pap_test:
+    test_id = None
+    if setting and setting.default_non_gyne_test_id:
+        test_id = setting.default_non_gyne_test_id
+    else:
+        pap_test = (
+            db.query(AnatomicalPathologyTest)
+            .filter(AnatomicalPathologyTest.system_code == "PAP_ROUTINE")
+            .first()
+        )
+        test_id = pap_test.id if pap_test else None
+
+    if test_id is None:
         return []
 
     db_objs = [
         NongyneCytologyStain(
             case_id=case_id,
-            test_id=pap_test.id,
+            test_id=test_id,
             slide_no=slide_no,
             status="pending",
         )

@@ -76,9 +76,11 @@ class TestAutoCreateDefaultStain:
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
         clear_system_settings(db)
         # Ensure no PAP_ROUTINE row survives from an earlier test — delete any
-        # stains referencing it first (FK), since other tests' stains may
-        # still point at a PAP_ROUTINE row created earlier in this session.
+        # stains referencing it first (FK), since other tests' stains (Gyne
+        # and NonGyne both share this globally-unique system_code) may still
+        # point at a PAP_ROUTINE row created earlier in this session.
         from app.models.anatomical_pathology_test import AnatomicalPathologyTest
+        from app.models.nongyne_cyto_stain import NongyneCytologyStain
         pap_test_ids = [
             row.id for row in db.query(AnatomicalPathologyTest.id).filter(
                 AnatomicalPathologyTest.system_code == "PAP_ROUTINE"
@@ -86,6 +88,9 @@ class TestAutoCreateDefaultStain:
         ]
         if pap_test_ids:
             db.query(GyneCytologyStain).filter(GyneCytologyStain.test_id.in_(pap_test_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(NongyneCytologyStain).filter(NongyneCytologyStain.test_id.in_(pap_test_ids)).delete(
                 synchronize_session=False
             )
             db.query(AnatomicalPathologyTest).filter(

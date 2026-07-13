@@ -1,5 +1,5 @@
 # app/models/system_setting.py
-from sqlalchemy import Column, Float, Integer, String, Text, Boolean, JSON, ForeignKey
+from sqlalchemy import Column, Float, Integer, String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -32,6 +32,8 @@ class SystemSetting(Base):
 
     # --- Report Settings ---
     is_cumulative_report = Column(Boolean, default=True)
+    # 🚩 ลำดับรอบใน cumulative report: True = ล่าสุดก่อน (desc), False = เก่าก่อน (asc)
+    cumulative_report_newest_first = Column(Boolean, default=True, nullable=False, server_default="true")
     # 🚩 เพิ่มฟิลด์ควบคุมการแสดงชื่อชิ้นเนื้อ (A: Appendix vs A:)
     show_specimen_name = Column(Boolean, default=True)
     # 🚩 เพิ่มฟิลด์สำหรับจัดการ Footer หรือ ลายน้ำ (Watermark)
@@ -71,8 +73,6 @@ class SystemSetting(Base):
     enable_tissue_processing_workflow = Column(Boolean, default=True, nullable=False, server_default="true")
     # 10% QC review: review every N-th NILM case per cytotechnologist (0 = disabled)
     nilm_review_every_n = Column(Integer, default=10)
-    # 🚩 ตั้งค่าการรันเลข Case (เช่น S26-00001)
-    accession_no_format = Column(String, default="{year}-{no}")
     surgical_accession_prefix = Column(String, default="S", nullable=False)
     gyne_accession_prefix = Column(String, default="C", nullable=False)
     nongyne_accession_prefix = Column(String, default="N", nullable=False)
@@ -98,10 +98,6 @@ class SystemSetting(Base):
     sticker_qr_offset_x_cm = Column(Float, default=0.0, nullable=False)
     sticker_qr_offset_y_cm = Column(Float, default=0.0, nullable=False)
 
-    # --- Advanced Settings ---
-    # 🚩 ใช้ JSON สำหรับเก็บค่าตั้งค่าเล็กๆ น้อยๆ ที่อาจจะเพิ่มในอนาคตโดยไม่ต้องแก้ DB Schema
-    config_options = Column(JSON, nullable=True)
-
     # --- AI / Tumor Registry ---
     tumor_registry_enabled = Column(Boolean, default=False, nullable=False)
     tumor_registry_llm_profile_id = Column(Integer, ForeignKey("llm_profiles.id"), nullable=True)
@@ -116,7 +112,6 @@ class SystemSetting(Base):
     grossing_assist_system_prompt = Column(Text, nullable=True)
 
     # --- Default Test Selection ---
-    # --- Default Test Selection ---
     # 🚩 ต้องใส่ ForeignKey("ชื่อตารางใน_db.id") ลงไปในคอลัมน์ ID ด้วย
     default_gyne_test_id = Column(
         Integer, ForeignKey("anatomical_pathology_tests.id"), nullable=True
@@ -124,14 +119,7 @@ class SystemSetting(Base):
     default_non_gyne_test_id = Column(
         Integer, ForeignKey("anatomical_pathology_tests.id"), nullable=True
     )
-    default_surgical_test_id = Column(
-        Integer, ForeignKey("anatomical_pathology_tests.id"), nullable=True
-    )
 
-    # 🚩 สร้าง Relationship ให้ครบทั้ง 3 สาย และระบุ foreign_keys ให้ชัดเจน
-    default_surgical_test = relationship(
-        "AnatomicalPathologyTest", foreign_keys=[default_surgical_test_id]
-    )
     default_gyne_test = relationship(
         "AnatomicalPathologyTest", foreign_keys=[default_gyne_test_id]
     )

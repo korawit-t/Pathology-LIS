@@ -8,7 +8,6 @@ def get_all_settings(db: Session):
     return (
         db.query(SystemSetting)
         .options(
-            joinedload(SystemSetting.default_surgical_test),
             joinedload(SystemSetting.default_gyne_test),
             joinedload(SystemSetting.default_non_gyne_test),
         )
@@ -23,7 +22,6 @@ def get_settings(db: Session, hospital_slug: str = "master"):
         db.query(SystemSetting)
         .filter(SystemSetting.hospital_slug == hospital_slug)
         .options(
-            joinedload(SystemSetting.default_surgical_test),
             joinedload(SystemSetting.default_gyne_test),
             joinedload(SystemSetting.default_non_gyne_test),
         )

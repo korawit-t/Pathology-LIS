@@ -1,12 +1,5 @@
-from pydantic import ConfigDict, BaseModel, model_validator
-from typing import Optional, Any, Dict
-
-
-class TestSimpleResponse(BaseModel):
-    id: int
-    name: str
-
-    model_config = ConfigDict(from_attributes=True)
+from pydantic import ConfigDict, BaseModel
+from typing import Optional
 
 
 class SystemSettingBase(BaseModel):
@@ -21,6 +14,7 @@ class SystemSettingBase(BaseModel):
 
     # --- Report Settings ---
     is_cumulative_report: bool = True
+    cumulative_report_newest_first: bool = True
     show_specimen_name: bool = True  # 🚩 เพิ่มฟิลด์นี้
     report_footer_text: Optional[str] = None
     surgical_report_footer: Optional[str] = None
@@ -44,7 +38,6 @@ class SystemSettingBase(BaseModel):
     require_all_pathologists_sign: Optional[bool] = None
     require_all_gyne_sign: Optional[bool] = None
     require_all_non_gyne_sign: Optional[bool] = None
-    accession_no_format: str = "{year}-{no}"
     surgical_accession_prefix: str = "S"
     gyne_accession_prefix: str = "C"
     nongyne_accession_prefix: str = "N"
@@ -58,8 +51,6 @@ class SystemSettingBase(BaseModel):
     surgical_express_tat_days: Optional[int] = None
     non_gyne_express_tat_days: Optional[int] = None
     gyne_express_tat_days: Optional[int] = None
-
-    config_options: Optional[Dict[str, Any]] = None
 
     # --- Sticker / Label Print Settings ---
     sticker_width_cm: Optional[float] = 2.0
@@ -86,7 +77,6 @@ class SystemSettingBase(BaseModel):
     # 🚩 เพิ่มฟิลด์ Default Test IDs เพื่อเชื่อมกับ Master Data
     default_gyne_test_id: Optional[int] = None
     default_non_gyne_test_id: Optional[int] = None
-    default_surgical_test_id: Optional[int] = None
 
     # --- AI / Tumor Registry ---
     tumor_registry_enabled: bool = False
@@ -121,7 +111,6 @@ class SystemSettingUpdate(SystemSettingBase):
     surgical_tat_days: Optional[int] = None
     non_gyne_tat_days: Optional[int] = None
     gyne_tat_days: Optional[int] = None
-    accession_no_format: Optional[str] = None
     idle_timeout_minutes: Optional[int] = None
     idle_warning_minutes: Optional[int] = None
 
@@ -138,7 +127,6 @@ class SystemSettingUpdate(SystemSettingBase):
     # 🚩 เพิ่มส่วน Default IDs ใน Update Schema
     default_gyne_test_id: Optional[int] = None
     default_non_gyne_test_id: Optional[int] = None
-    default_surgical_test_id: Optional[int] = None
 
     sticker_width_cm: Optional[float] = None
     sticker_height_cm: Optional[float] = None
@@ -156,20 +144,5 @@ class SystemSettingUpdate(SystemSettingBase):
 
 class SystemSettingResponse(SystemSettingBase):
     id: int
-    default_surgical_test_id: Optional[int]
-
-    # 🚩 ต้องมีฟิลด์นี้! เพื่อให้ Pydantic ยอมรับข้อมูลที่ joinedload มาจาก SQL
-    # ชื่อฟิลด์ต้องตรงกับ relationship ใน Model (น่าจะชื่อ default_surgical_test)
-    default_surgical_test: Optional[TestSimpleResponse] = None
-
-    # ฟิลด์ที่จะส่งไปให้ Frontend
-    default_surgical_test_name: Optional[str] = None
-
-    @model_validator(mode="after")
-    def get_test_name(self):
-        # ตอนนี้ self.default_surgical_test จะมีข้อมูลแล้ว (ไม่เป็น None)
-        if self.default_surgical_test:
-            self.default_surgical_test_name = self.default_surgical_test.name
-        return self
 
     model_config = ConfigDict(from_attributes=True)

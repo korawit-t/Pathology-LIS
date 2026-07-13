@@ -2,7 +2,8 @@
 test_gyne_cyto_report_router.py's approach (neither the router nor
 app/crud/nongyne_cyto_report.py had any test coverage before this file).
 Unlike Gyne, there is no QC-review workflow here — publish_nongyne_report
-always lands the report in PENDING_APPROVAL directly (see
+lands the report in PENDING_APPROVAL only when enable_non_gyne_approve_system
+is on (mirrors Surgical's enable_approve_system; see
 tests.factories.make_pending_nongyne_report's docstring), so there's no
 complete-review endpoint/test class to mirror."""
 

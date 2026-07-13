@@ -1,16 +1,17 @@
-"""Integration tests for the 5 CRUD-layer HIS-export enqueue trigger points
+"""Integration tests for the 6 CRUD-layer HIS-export enqueue trigger points
 (see CLAUDE.md's HIS export section / app/his_export/README.md). Verifies:
   1. surgical direct-publish (finalize_and_snapshot_orchestrator)
   2. surgical senior-approval (process_report_approval)
   3. gyne direct-publish (publish_gyne_report)
   4. gyne QC-review agree (complete_gyne_review)
-  5. nongyne senior-approval (process_nongyne_report_approval)
-and the negative case: publish_nongyne_report() alone must NOT enqueue,
-since it never reaches PUBLISHED by itself (it always routes to
-pending_approval — process_nongyne_report_approval is the only terminal
-point for that domain).
+  5. nongyne direct-publish (publish_nongyne_report, enable_non_gyne_approve_system off)
+  6. nongyne senior-approval (process_nongyne_report_approval)
+Nongyne now mirrors Surgical: publish_nongyne_report() only routes to
+PENDING_APPROVAL (and only enqueues later, via senior-approval) when
+enable_non_gyne_approve_system is on — when it's off, publish itself is the
+terminal PUBLISHED transition and must enqueue immediately (site 5).
 
-Sites 4 and 5 also regression-test a staleness bug found during review: the
+Sites 4 and 6 also regression-test a staleness bug found during review: the
 enqueue call must run AFTER each domain's signers_snapshot sync, not before
 it, or the exported payload would miss the signature that was just recorded."""
 
@@ -156,11 +157,8 @@ class TestGyneCompleteReviewTrigger:
         assert _logs_for(db, "GyneCytoReport", report.id) == []
 
 
-class TestNongyneApprovalTrigger:
-    def test_publish_alone_does_not_enqueue(self, db, admin_user, pathologist_user, monkeypatch):
-        """publish_nongyne_report() always routes to pending_approval and
-        never reaches PUBLISHED by itself — confirms it must NOT be a
-        trigger point (process_nongyne_report_approval is the only one)."""
+class TestNongyneDirectPublishTrigger:
+    def test_publish_without_approval_system_enqueues_once(self, db, admin_user, pathologist_user, monkeypatch):
         _enable_export(monkeypatch)
         from app.crud.nongyne_diagnosis import create_nongyne_diagnosis
         from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
@@ -168,6 +166,36 @@ class TestNongyneApprovalTrigger:
 
         registrar, _ = admin_user
         pathologist, _ = pathologist_user
+        make_system_setting(db, enable_non_gyne_approve_system=False)
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis"))
+
+        report = publish_nongyne_report(
+            db, case.id,
+            signers=[{"user_id": pathologist.id, "role": "primary"}],
+            current_user_id=pathologist.id,
+        )
+
+        assert report.status.value == "published"
+        logs = _logs_for(db, "NongyneCytoReport", report.id)
+        assert len(logs) == 1
+
+
+class TestNongyneApprovalTrigger:
+    def test_publish_alone_does_not_enqueue_when_approval_required(
+        self, db, admin_user, pathologist_user, monkeypatch
+    ):
+        """When enable_non_gyne_approve_system is on, publish_nongyne_report()
+        routes to pending_approval and must NOT enqueue by itself —
+        process_nongyne_report_approval is the terminal point in that case."""
+        _enable_export(monkeypatch)
+        from app.crud.nongyne_diagnosis import create_nongyne_diagnosis
+        from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
+        from tests.factories import make_bare_nongyne_case
+
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        make_system_setting(db, enable_non_gyne_approve_system=True)
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis"))
 

@@ -39,7 +39,6 @@ def get_public_settings(slug: str = "master", db: Session = Depends(get_db)):
         db.query(SystemSettingModel)
         .filter(SystemSettingModel.hospital_slug == slug)
         .options(
-            joinedload(SystemSettingModel.default_surgical_test),
             joinedload(SystemSettingModel.default_gyne_test),
             joinedload(SystemSettingModel.default_non_gyne_test),
         )
