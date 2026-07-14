@@ -753,7 +753,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
             {/* ── Card 1: Specimen fields ── */}
             <StyledCard styles={{ body: { padding: "24px" } }}>
               <Row gutter={16}>
-                <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <Form.Item
                     name="specimen_type"
                     label="Specimen Type"
@@ -769,7 +769,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                     </Select>
                   </Form.Item>
                 </Col>
-                <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <Form.Item
                     name="collection_site"
                     label="Collection Site"
@@ -781,13 +781,18 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                     />
                   </Form.Item>
                 </Col>
-                <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <Form.Item
                     name="received_volume_ml"
                     label="Volume (ml)"
                     style={{ marginBottom: 0 }}
                   >
                     <Input placeholder="e.g. 50" disabled={isFormLocked} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={6}>
+                  <Form.Item label="Number of Slides" style={{ marginBottom: 0 }}>
+                    <Input value={caseData?.slide_count ?? "—"} disabled />
                   </Form.Item>
                 </Col>
               </Row>
