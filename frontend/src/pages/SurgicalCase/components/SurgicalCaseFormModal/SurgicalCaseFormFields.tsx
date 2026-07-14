@@ -112,9 +112,20 @@ const SurgicalCaseFormFields: React.FC<SurgicalCaseFormFieldsProps> = ({
         </Col>
       </Row>
 
-      {/* Row: Collection Date / Registration Date */}
+      {/* Row: Clinical History / Diagnosis + Collection Date / Registration Date */}
       <Row gutter={16} align="bottom">
-        <Col span={editingId ? 12 : 24}>
+        <Col span={editingId ? 8 : 12}>
+          <Form.Item
+            name="clinical_diagnosis"
+            label="Clinical History / Diagnosis"
+          >
+            <Input.TextArea
+              rows={1}
+              placeholder="Relevant clinical history, provisional diagnosis, etc."
+            />
+          </Form.Item>
+        </Col>
+        <Col span={editingId ? 8 : 12}>
           <Form.Item name="collect_at" label="Collection Date/Time">
             <DatePicker
               showTime
@@ -124,7 +135,7 @@ const SurgicalCaseFormFields: React.FC<SurgicalCaseFormFieldsProps> = ({
           </Form.Item>
         </Col>
         {editingId && (
-          <Col span={12}>
+          <Col span={8}>
             <Form.Item name="registered_at" label="Registration Date">
               <DatePicker showTime style={{ width: "100%" }} disabled />
             </Form.Item>
