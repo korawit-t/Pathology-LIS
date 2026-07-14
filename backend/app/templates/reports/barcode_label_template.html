@@ -64,7 +64,7 @@
       }
 
       .barcode-area {
-        text-align: center;
+        text-align: right;
         margin: 6px 0;
       }
 
@@ -77,16 +77,16 @@
       }
 
       .barcode-text {
-        font-size: 11px;
+        font-size: 14px;
         font-weight: 700;
         text-align: center;
         color: #1a202c;
-        letter-spacing: 1.5px;
-        margin-top: 2px;
+        letter-spacing: 2px;
+        margin-top: 3px;
       }
 
       .barcode-type-label {
-        font-size: 8px;
+        font-size: 9px;
         color: #94a3b8;
         text-align: center;
         text-transform: uppercase;
@@ -98,23 +98,30 @@
     <div class="label-grid">
       {% for item in labels %}
       <div class="label-card">
-        <table style="width: 100%; border-collapse: collapse;">
+        <table
+          style="width: 100%; border-collapse: collapse; table-layout: fixed"
+        >
           <tr>
-            <td style="vertical-align: top; width: 45%;">
+            <td style="vertical-align: top; width: 35%">
               <div class="accession">{{ item.accession_no }}</div>
-              <div class="patient-name">{{ item.patient_title or '' }}{{ item.patient_name }}{% if item.patient_ln %} {{ item.patient_ln }}{% endif %}</div>
+              <div class="patient-name">
+                {{ item.patient_title or '' }}{{ item.patient_name }}{% if
+                item.patient_ln %} {{ item.patient_ln }}{% endif %}
+              </div>
               <div class="patient-info">
-                HN: <b>{{ item.patient_hn }}</b> |
-                {{ item.patient_gender }} |
+                HN: <b>{{ item.patient_hn }}</b> | {{ item.patient_gender }} |
                 Age: {{ item.patient_age_display or item.patient_age }}
               </div>
               <div class="patient-info">
                 Hospital: {{ item.hospital_name or '-' }}
               </div>
             </td>
-            <td style="vertical-align: middle; text-align: center; width: 55%;">
+            <td style="vertical-align: middle; text-align: center; width: 65%">
               <div class="barcode-area">
-                <img src="{{ item.barcode_svg | safe }}" style="width: {{ item.barcode_width_mm }}mm; height: {{ item.barcode_height_mm }}mm;">
+                <img
+                  src="{{ item.barcode_svg | safe }}"
+                  style="width: {{ item.barcode_width_mm }}mm; height: {{ item.barcode_height_mm }}mm;"
+                />
               </div>
               <div class="barcode-text">{{ item.barcode_value }}</div>
               <div class="barcode-type-label">{{ item.barcode_type }}</div>

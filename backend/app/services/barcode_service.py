@@ -8,12 +8,15 @@ import base64
 from barcode.codex import Code39
 from barcode.writer import SVGWriter
 
-# Code 39 X-dimension (narrow bar width). 0.33mm (~13 mil) is a standard,
-# scanner-safe width for CCD/laser barcode readers used by HIS integrations,
-# and keeps a ~12-15 char barcode (visit-type prefix + case-type code + VN/AN)
-# within a printable label width.
-_MODULE_WIDTH_MM = 0.33
-_MODULE_HEIGHT_MM = 15
+# Code 39 X-dimension (narrow bar width). 0.36mm (~14 mil) is still within
+# the standard scanner-safe range for CCD/laser barcode readers used by HIS
+# integrations. Sized against the widest realistic barcode value (14-char
+# visit-type prefix + case-type code + VN/AN) so it stays under the
+# barcode-area column width in barcode_label_template.html with margin to
+# spare - if this is raised further, re-check that fit (see that template's
+# .barcode-area img comment) or the label column will silently downscale it.
+_MODULE_WIDTH_MM = 1.3
+_MODULE_HEIGHT_MM = 24
 _QUIET_ZONE_MM = 6.5  # Code 39 spec minimum quiet zone; python-barcode's own default.
 
 _SVG_SIZE_RE = re.compile(r'width="([\d.]+)mm"\s+height="([\d.]+)mm"')
