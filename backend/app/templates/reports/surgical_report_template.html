@@ -349,8 +349,21 @@
   <body>
     {% if barcode_svg %}
     <div class="footer-barcode">
-      <img src="{{ barcode_svg | safe }}" style="height: 25px; display: block; margin: 0 auto;">
-      <div style="font-size: 7px; color: #475569; font-weight: bold; margin-top: 1px; letter-spacing: 0.5px;">{{ patient_hn if barcode_value == patient_hn else accession_no }}</div>
+      <img
+        src="{{ barcode_svg | safe }}"
+        style="height: 32px; display: block; margin: 0 auto"
+      />
+      <div
+        style="
+          font-size: 8px;
+          color: #475569;
+          font-weight: bold;
+          margin-top: 1px;
+          letter-spacing: 0.5px;
+        "
+      >
+        {{ patient_hn if barcode_value == patient_hn else accession_no }}
+      </div>
     </div>
     {% endif %}
 
@@ -414,7 +427,8 @@
                 <td style="width: 35%">
                   <div class="label">Patient Name</div>
                   <div class="patient-name">
-                    {{ patient_title or '' }}{{ patient_name or '' }}{% if patient_ln %} {{ patient_ln }}{% endif %}
+                    {{ patient_title or '' }}{{ patient_name or '' }}{% if
+                    patient_ln %} {{ patient_ln }}{% endif %}
                   </div>
                   <div style="font-size: 11px; margin-top: 2px">
                     HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age: {{
@@ -466,8 +480,8 @@
                       style="width: 55px; display: inline-block"
                       >Collected:</span
                     ><span class="value"
-                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if
-                      collect_at else '-' }}</span
+                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at
+                      else '-' }}</span
                     >
                   </div>
                   <div>
@@ -538,47 +552,67 @@
                 <span class="badge badge-pending">PENDING</span>
                 {% else %}
                 <span class="badge badge-final">FINAL REPORT</span>
-                {% endif %}
-                {% if has_malignancy %}
+                {% endif %} {% if has_malignancy %}
                 <span class="badge badge-malignancy">MALIGNANCY</span>
-                {% endif %}
-                {% if has_critical %}
+                {% endif %} {% if has_critical %}
                 <span class="badge badge-critical">CRITICAL</span>
                 {% endif %}
               </div>
-              <div style="font-size: 15px; color: #0f172a; line-height: 1.5; word-wrap: break-word;">
+              <div
+                style="
+                  font-size: 15px;
+                  color: #0f172a;
+                  line-height: 1.5;
+                  word-wrap: break-word;
+                "
+              >
                 {{ diagnosis_summary | safe }}
               </div>
             </div>
 
             {% if show_icd_o_in_report and icd_o_data %}
             <div class="section-header">ICD-O CODING</div>
-            <table class="content-inner-table" style="width:100%; font-size:13px; margin-bottom:8px;">
+            <table
+              class="content-inner-table"
+              style="width: 100%; font-size: 13px; margin-bottom: 8px"
+            >
               {% if icd_o_data.topography_code %}
               <tr>
-                <td style="width:130px; color:#595959; padding:3px 8px 3px 0;">Topography</td>
-                <td><strong>{{ icd_o_data.topography_code }}</strong>{% if icd_o_data.topography_desc %} — {{ icd_o_data.topography_desc }}{% endif %}</td>
+                <td
+                  style="width: 130px; color: #595959; padding: 3px 8px 3px 0"
+                >
+                  Topography
+                </td>
+                <td>
+                  <strong>{{ icd_o_data.topography_code }}</strong>{% if
+                  icd_o_data.topography_desc %} — {{ icd_o_data.topography_desc
+                  }}{% endif %}
+                </td>
               </tr>
-              {% endif %}
-              {% if icd_o_data.morphology_code %}
+              {% endif %} {% if icd_o_data.morphology_code %}
               <tr>
-                <td style="color:#595959; padding:3px 8px 3px 0;">Morphology</td>
-                <td><strong>{{ icd_o_data.morphology_code }}</strong>{% if icd_o_data.morphology_desc %} — {{ icd_o_data.morphology_desc }}{% endif %}</td>
+                <td style="color: #595959; padding: 3px 8px 3px 0">
+                  Morphology
+                </td>
+                <td>
+                  <strong>{{ icd_o_data.morphology_code }}</strong>{% if
+                  icd_o_data.morphology_desc %} — {{ icd_o_data.morphology_desc
+                  }}{% endif %}
+                </td>
               </tr>
-              {% endif %}
-              {% if icd_o_data.grade %}
+              {% endif %} {% if icd_o_data.grade %}
               <tr>
-                <td style="color:#595959; padding:3px 8px 3px 0;">Grade</td>
+                <td style="color: #595959; padding: 3px 8px 3px 0">Grade</td>
                 <td>{{ icd_o_data.grade }}</td>
               </tr>
-              {% endif %}
-              {% if icd_o_data.pt or icd_o_data.pn or icd_o_data.pm %}
+              {% endif %} {% if icd_o_data.pt or icd_o_data.pn or icd_o_data.pm
+              %}
               <tr>
-                <td style="color:#595959; padding:3px 8px 3px 0;">Staging</td>
+                <td style="color: #595959; padding: 3px 8px 3px 0">Staging</td>
                 <td>
-                  {% if icd_o_data.pt %}pT: {{ icd_o_data.pt }}{% endif %}
-                  {% if icd_o_data.pn %}  pN: {{ icd_o_data.pn }}{% endif %}
-                  {% if icd_o_data.pm %}  pM: {{ icd_o_data.pm }}{% endif %}
+                  {% if icd_o_data.pt %}pT: {{ icd_o_data.pt }}{% endif %} {% if
+                  icd_o_data.pn %} pN: {{ icd_o_data.pn }}{% endif %} {% if
+                  icd_o_data.pm %} pM: {{ icd_o_data.pm }}{% endif %}
                 </td>
               </tr>
               {% endif %}
@@ -593,7 +627,10 @@
                   <div class="micro-image-grid" style="margin-top: 10px">
                     {% for img in gross_images %}
                     <div class="micro-image-item">
-                      <img src="{{ img.base64 | safe }}" style="display: block" />
+                      <img
+                        src="{{ img.base64 | safe }}"
+                        style="display: block"
+                      />
                       <div
                         class="img-caption"
                         style="
@@ -609,7 +646,6 @@
                   </div>
                   <div style="clear: both"></div>
                   {% endif %}
-
                 </td>
               </tr>
             </table>
@@ -625,7 +661,8 @@
                     <div class="micro-image-item">
                       <img src="{{ img.base64 | safe }}" />
                       <div class="micro-info-box">
-                        <b style="color: var(--primary-dark)">Specimen {{ img.label }}</b
+                        <b style="color: var(--primary-dark)"
+                          >Specimen {{ img.label }}</b
                         ><br />
                         Stain: {{ img.stain }} | Mag: {{ img.mag }} {% if
                         img.desc %}
