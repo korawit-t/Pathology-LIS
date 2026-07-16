@@ -67,6 +67,7 @@ class NongyneCytoReport(Base):
 
     # --- Diagnostic Flags ---
     has_malignancy = Column(Boolean, default=False, nullable=False, index=True)
+    has_critical = Column(Boolean, default=False, nullable=False, index=True)
 
     # --- Metadata & Responsibility ---
     report_type = Column(Enum(NongyneReportType, values_callable=lambda x: [e.value for e in x]), default=NongyneReportType.FINAL, nullable=False)

@@ -239,6 +239,7 @@ def prepare_nongyne_report_data(db: Session, case_id: int):
         "diagnosis": diagnosis_html,
         "comment": db_diag.comment if db_diag else None,
         "has_malignancy": db_case.has_malignancy or False,
+        "has_critical": db_case.has_critical or False,
 
         "pathologist_id": pathologist_id,
         "pathologist_name": pathologist_name,

@@ -37,6 +37,7 @@ class NongyneCytoReportBase(BaseModel):
     diagnosis: Optional[str] = None
     comment: Optional[str] = None
     has_malignancy: bool = False
+    has_critical: bool = False
 
     pathologist_name: Optional[str] = None
 

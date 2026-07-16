@@ -27,6 +27,8 @@ import {
   FileTextOutlined,
   LockOutlined,
   WarningOutlined,
+  ExclamationCircleOutlined,
+  AlertOutlined,
   CameraOutlined,
   DeleteOutlined,
   PlusOutlined,
@@ -259,6 +261,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
           specimen_type: caseRes.specimen_type,
           collection_site: caseRes.collection_site,
           received_volume_ml: caseRes.received_volume_ml,
+          has_malignancy: caseRes.has_malignancy ?? false,
+          has_critical: caseRes.has_critical ?? false,
         });
       })
       .catch((e) => logger.error(e));
@@ -324,6 +328,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site,
         received_volume_ml,
+        has_malignancy,
+        has_critical,
         signers: _signers,
         ...diagnosisValues
       } = values;
@@ -333,6 +339,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site: collection_site ?? null,
         received_volume_ml: received_volume_ml ?? null,
+        has_malignancy: has_malignancy ?? false,
+        has_critical: has_critical ?? false,
         ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
       });
       setCaseData((prev) => ({
@@ -341,6 +349,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site,
         received_volume_ml,
+        has_malignancy,
+        has_critical,
       }));
 
       if (diagnosis) {
@@ -380,6 +390,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site,
         received_volume_ml,
+        has_malignancy,
+        has_critical,
         signers: _s,
         ...diagnosisValues
       } = values;
@@ -389,6 +401,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site: collection_site ?? null,
         received_volume_ml: received_volume_ml ?? null,
+        has_malignancy: has_malignancy ?? false,
+        has_critical: has_critical ?? false,
         pathologist_id: selectedPathologistId,
         ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
         is_screened: true,
@@ -425,6 +439,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site,
         received_volume_ml,
+        has_malignancy,
+        has_critical,
         signers: _s,
         ...diagnosisValues
       } = values;
@@ -433,6 +449,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         specimen_type,
         collection_site: collection_site ?? null,
         received_volume_ml: received_volume_ml ?? null,
+        has_malignancy: has_malignancy ?? false,
+        has_critical: has_critical ?? false,
         ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
       });
       if (diagnosis) {
@@ -513,6 +531,15 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                   style={{ margin: 0 }}
                 >
                   Malignancy
+                </Tag>
+              )}
+              {caseData?.has_critical && (
+                <Tag
+                  color="gold"
+                  icon={<AlertOutlined />}
+                  style={{ margin: 0 }}
+                >
+                  Critical
                 </Tag>
               )}
               {isFormLocked && (
@@ -794,6 +821,74 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                   <Form.Item label="Number of Slides" style={{ marginBottom: 0 }}>
                     <Input value={caseData?.slide_count ?? "—"} disabled />
                   </Form.Item>
+                </Col>
+              </Row>
+            </StyledCard>
+
+            {/* ── Diagnostic Flags ── */}
+            <StyledCard styles={{ body: { padding: "16px 24px" } }}>
+              <Row gutter={16}>
+                <Col xs={24} sm={12}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 12px",
+                      background: "#fff1f0",
+                      borderRadius: "8px",
+                      border: "1px solid #ffa39e",
+                    }}
+                  >
+                    <Space>
+                      <ExclamationCircleOutlined style={{ color: "#cf1322" }} />
+                      <Text strong style={{ color: "#cf1322", fontSize: "13px" }}>
+                        Malignancy
+                      </Text>
+                    </Space>
+                    <Form.Item
+                      name="has_malignancy"
+                      valuePropName="checked"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch
+                        disabled={isFormLocked}
+                        checkedChildren="Yes"
+                        unCheckedChildren="No"
+                      />
+                    </Form.Item>
+                  </div>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 12px",
+                      background: "#fffbe6",
+                      borderRadius: "8px",
+                      border: "1px solid #ffe58f",
+                    }}
+                  >
+                    <Space>
+                      <AlertOutlined style={{ color: "#d48806" }} />
+                      <Text strong style={{ color: "#d48806", fontSize: "13px" }}>
+                        Critical Case
+                      </Text>
+                    </Space>
+                    <Form.Item
+                      name="has_critical"
+                      valuePropName="checked"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch
+                        disabled={isFormLocked}
+                        checkedChildren="Yes"
+                        unCheckedChildren="No"
+                      />
+                    </Form.Item>
+                  </div>
                 </Col>
               </Row>
             </StyledCard>

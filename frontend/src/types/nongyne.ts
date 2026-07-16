@@ -70,6 +70,7 @@ export interface NongyneCytologyCase {
 
   // สรุปผลเบื้องต้น
   has_malignancy?: boolean;
+  has_critical?: boolean;
   is_express: boolean;
   is_rose: boolean;
   is_satisfied_specimen: boolean;
@@ -126,6 +127,7 @@ export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCr
   is_screened?: boolean;
   is_reported?: boolean;
   has_malignancy?: boolean;
+  has_critical?: boolean;
   is_pending?: boolean;
   pending_reason?: string;
   is_out_lab_consult?: boolean;

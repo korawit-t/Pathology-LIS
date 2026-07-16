@@ -88,6 +88,7 @@ class NongyneCytologyCase(Base):
     # --- 5. Results Summary ---
     # สำหรับกรองรวดเร็ว
     has_malignancy = Column(Boolean, index=True, nullable=True)
+    has_critical = Column(Boolean, default=False, nullable=True)
     is_satisfied_specimen = Column(Boolean, default=True, comment="Specimen adequacy")
 
     # --- 6. Quality Assessment ---
