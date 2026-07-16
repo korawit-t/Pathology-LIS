@@ -29,7 +29,7 @@
     "@types/dompurify": "^3.2.0",
     "antd": "^6.0.1",
     "axios": "^1.13.2",
-    "bwip-js": "^4.10.1",
+    "bwip-js": "^4.11.2",
     "dompurify": "^3.4.1",
     "fontkit": "^2.0.4",
     "jsbarcode": "^3.12.1",
