@@ -37,6 +37,47 @@ class TestRbac:
         assert r.json()["case_id"] == case.id
 
 
+class TestDiagnosticFlags:
+    """has_malignancy/has_critical are set via a PATCH to the case (nongyne
+    diagnosis form), then must round-trip through GET /nongyne-cytology/{id}
+    (NongyneCytologyCaseResponse previously omitted both fields entirely, so
+    a saved value could never be read back) and flow into the published
+    report snapshot the same way is_pending already does."""
+
+    def test_case_update_and_get_round_trip_both_flags(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+
+        r = pathologist_client.patch(
+            f"/nongyne-cytology/{case.id}",
+            json={"has_malignancy": True, "has_critical": True},
+        )
+        assert r.status_code == 200
+        assert r.json()["has_malignancy"] is True
+        assert r.json()["has_critical"] is True
+
+        r = pathologist_client.get(f"/nongyne-cytology/{case.id}")
+        assert r.status_code == 200
+        assert r.json()["has_malignancy"] is True
+        assert r.json()["has_critical"] is True
+
+    def test_publish_snapshots_both_flags_onto_report(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis"))
+
+        pathologist_client.patch(
+            f"/nongyne-cytology/{case.id}",
+            json={"has_malignancy": True, "has_critical": True},
+        )
+
+        r = pathologist_client.post(f"/nongyne-cyto-reports/{case.id}/publish", json={})
+
+        assert r.status_code == 200
+        assert r.json()["has_malignancy"] is True
+        assert r.json()["has_critical"] is True
+
+
 class TestReadEndpoints:
     def test_list_pagination_shape(self, db, pathologist_client, admin_user, pathologist_user):
         registrar, _ = admin_user

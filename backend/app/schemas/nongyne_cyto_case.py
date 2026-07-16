@@ -110,6 +110,7 @@ class NongyneCytologyCaseUpdate(BaseModel):
     is_express: Optional[bool] = None
     is_rose: Optional[bool] = None
     has_malignancy: Optional[bool] = None
+    has_critical: Optional[bool] = None
     is_satisfied_specimen: Optional[bool] = None
     is_screened: Optional[bool] = None
     is_reported: Optional[bool] = None
@@ -145,6 +146,8 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     is_reported: bool = False
     is_pending: bool = False
     pending_reason: Optional[str] = None
+    has_malignancy: Optional[bool] = None
+    has_critical: Optional[bool] = None
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
