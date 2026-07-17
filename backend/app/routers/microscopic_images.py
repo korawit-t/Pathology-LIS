@@ -78,17 +78,22 @@ async def get_microscopic_image(
     path: str,
     _user=Depends(get_current_user),
 ):
-    # ป้องกันการใช้ ../ เพื่อเจาะออกไปนอก storage
-    if ".." in path or path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Path ไม่ถูกต้อง")
-
     # ตรวจสอบ prefix เพื่อความปลอดภัย
     if not path.startswith("microscopic_images/"):
         raise HTTPException(
             status_code=403, detail="สิทธิ์การเข้าถึงจำกัดเฉพาะภาพ microscopic"
         )
 
-    file_path = STORAGE_DIR / path
+    # 🔒 path-traversal protection: resolve + containment check, mirroring
+    # app/routers/storage.py — a plain ".." substring blocklist doesn't
+    # canonicalize symlinks or (on the on-prem Windows deploy) drive-letter
+    # absolute paths, both of which pathlib's resolve()/relative_to() catch.
+    resolved_storage_dir = STORAGE_DIR.resolve()
+    file_path = (STORAGE_DIR / path).resolve()
+    try:
+        file_path.relative_to(resolved_storage_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path ไม่ถูกต้อง")
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="ไม่พบไฟล์ภาพ")
