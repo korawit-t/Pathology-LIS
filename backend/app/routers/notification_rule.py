@@ -1,4 +1,5 @@
 # app/routers/notification_rule.py
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
@@ -10,6 +11,8 @@ from app.models.notification_channel import NotificationChannel
 from app.dependencies.auth import get_current_active_user
 from app.services.notification_service import send_real_notification
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class TriggerEventBody(BaseModel):
@@ -67,8 +70,12 @@ async def trigger_event(event_key: str, body: TriggerEventBody, db: Session = De
         try:
             result = await send_real_notification(platform=ch.platform, credentials=creds, data=body.data)
             results.append(result)
-        except Exception as e:
-            results.append({"error": str(e), "channel": ch.name})
+        except Exception:
+            # Don't return str(e) to the client — e.g. the Slack send path
+            # raises with the webhook URL embedded in the message, and that
+            # URL *is* the channel's secret. Log full detail server-side only.
+            logger.error("Notification send failed for channel %s (%s)", ch.name, ch.platform, exc_info=True)
+            results.append({"error": "Failed to send notification", "channel": ch.name})
 
     return {"success": True, "detail": f"Sent to {len(results)} channel(s)", "results": results}
 
