@@ -27,6 +27,7 @@ import {
   DownloadOutlined,
 } from "@ant-design/icons";
 import { exportToCsv } from "../../utils/exportCsv";
+import { stripHtmlToText } from "../../utils/sanitize";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import api from "../../services/httpClient";
@@ -450,7 +451,7 @@ const CytoHistoCorrelationReport: React.FC = () => {
                   { header: "Cytology Accession", key: "cytology_accession_no" },
                   { header: "Case Type", key: "case_type" },
                   { header: "Surgical Accession", key: "surgical_accession_no" },
-                  { header: "Cytology Diagnosis", key: "cytology_diagnosis_snapshot", render: (v) => v ? String(v).replace(/<[^>]+>/g, "") : "" },
+                  { header: "Cytology Diagnosis", key: "cytology_diagnosis_snapshot", render: (v) => v ? stripHtmlToText(String(v)) : "" },
                   { header: "Histology Diagnosis", key: "histology_diagnosis", render: (v) => String(v ?? "") },
                   { header: "Result", key: "correlation_result" },
                   { header: "Comment", key: "comment", render: (v) => String(v ?? "") },
