@@ -28,7 +28,7 @@
     "@tiptap/starter-kit": "^3.13.0",
     "@types/dompurify": "^3.2.0",
     "antd": "^6.0.1",
-    "axios": "^1.13.2",
+    "axios": "^1.18.0",
     "bwip-js": "^4.11.2",
     "dompurify": "^3.4.1",
     "fontkit": "^2.0.4",
