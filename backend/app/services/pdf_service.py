@@ -1,19 +1,19 @@
 import os
 import io
+import json
 import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
-from typing import List, Optional
-
-logger = logging.getLogger(__name__)
 
 try:
-    from pypdf import PdfWriter, PdfReader
+    from pypdf import PdfWriter
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 # กำหนด Path พื้นฐาน
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,10 +41,9 @@ def _resolve_template(template_name: str) -> str:
 
 
 def generate_pdf_blob(
-    report_data: dict, 
-    template_name: str = "reports/surgical_report_template.html", 
+    report_data: dict,
+    template_name: str = "reports/surgical_report_template.html",
     is_preview: bool = False,
-    prepend_pdfs: Optional[List[str]] = None
 ) -> bytes:
     """
     แปลงข้อมูล report_data เป็นไฟล์ PDF (Binary)
@@ -78,25 +77,47 @@ def generate_pdf_blob(
     pdf_io = io.BytesIO()
     font_config = FontConfiguration()
     HTML(string=html_content, base_url=TEMPLATE_DIR).write_pdf(pdf_io, font_config=font_config)
-    main_pdf_bytes = pdf_io.getvalue()
+    return pdf_io.getvalue()
 
-    # 5. รวมไฟล์ (Merge) ถ้ามีการแนบ prepend_pdfs
-    if prepend_pdfs and PYPDF_AVAILABLE:
-        # Check which files actually exist on disk
-        valid_pdfs = [p for p in prepend_pdfs if os.path.exists(p)]
-        
-        if valid_pdfs:
-            merged_io = io.BytesIO()
-            writer = PdfWriter()
-            
-            for pdf_path in valid_pdfs:
-                writer.append(pdf_path)
-                    
-            writer.append(io.BytesIO(main_pdf_bytes))
-            writer.write(merged_io)
-            return merged_io.getvalue()
 
-    return main_pdf_bytes
+def generate_consult_cover_pdf(report_data: dict) -> bytes:
+    """Render the external-consult cover sheet (hospital header + patient
+    info + one full-page image per consult PDF page + approver/date) — call
+    after generate_pdf_blob() so report_data["font_path"] is already
+    populated."""
+    raw = report_data.get("consult_pdf_thumbnail_snapshot")
+    try:
+        thumbnails = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        # Backward-compat: reports finalized before multi-page support stored
+        # a single data-URI string here, not a JSON array.
+        thumbnails = [raw] if raw else []
+
+    cover_data = {**report_data, "consult_pdf_thumbnails": thumbnails}
+
+    template = env.get_template(_resolve_template("reports/consult_cover_template.html"))
+    html_content = template.render(**cover_data)
+
+    pdf_io = io.BytesIO()
+    font_config = FontConfiguration()
+    HTML(string=html_content, base_url=TEMPLATE_DIR).write_pdf(pdf_io, font_config=font_config)
+    return pdf_io.getvalue()
+
+
+def prepend_consult_cover(main_pdf_bytes: bytes, report_data: dict) -> bytes:
+    """If this report has an approved external consult PDF thumbnail, render
+    the cover sheet and merge it in front of the main report."""
+    if not report_data.get("consult_pdf_thumbnail_snapshot") or not PYPDF_AVAILABLE:
+        return main_pdf_bytes
+
+    cover_bytes = generate_consult_cover_pdf(report_data)
+
+    writer = PdfWriter()
+    writer.append(io.BytesIO(cover_bytes))
+    writer.append(io.BytesIO(main_pdf_bytes))
+    merged_io = io.BytesIO()
+    writer.write(merged_io)
+    return merged_io.getvalue()
 
 
 def check_fonts() -> dict:

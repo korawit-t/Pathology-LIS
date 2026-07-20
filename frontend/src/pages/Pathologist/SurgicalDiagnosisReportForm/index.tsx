@@ -110,6 +110,7 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [consultPdfBlobUrl, setConsultPdfBlobUrl] = useState<string | null>(null);
   const [consultPdfPreviewLoading, setConsultPdfPreviewLoading] = useState(false);
   const [consultPdfDeleting, setConsultPdfDeleting] = useState(false);
+  const [consultApproving, setConsultApproving] = useState(false);
 
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
@@ -419,7 +420,19 @@ const handleOpenFinalizeModal = async () => {
     }
   };
 
-  const handleSignOffFromConsultPopup = () => {
+  const handleSignOffFromConsultPopup = async () => {
+    if (!caseId) return;
+    setConsultApproving(true);
+    try {
+      await SurgicalCaseService.approveConsultPdf(Number(caseId));
+      message.success("Consult PDF reviewed and approved");
+      refresh();
+    } catch {
+      message.error("Failed to record consult approval");
+      return;
+    } finally {
+      setConsultApproving(false);
+    }
     setConsultPdfPopupOpen(false);
     handleOpenFinalizeModal();
   };
@@ -1280,7 +1293,7 @@ const handleOpenFinalizeModal = async () => {
               </Button>
             )}
             <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
-              PDF will appear as the first page of the printed report.
+              A thumbnail of this PDF's first page and your sign-off will appear on the printed report's first page. The full consult PDF stays downloadable separately.
             </Typography.Text>
           </>
         ) : (
@@ -1292,6 +1305,12 @@ const handleOpenFinalizeModal = async () => {
               description="Review it below, then Sign Off to complete this consult round."
               style={{ marginBottom: 12 }}
             />
+            {surgicalCase?.consult_pdf_approved_at && (
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+                Approved by {surgicalCase.consult_pdf_approver_name || "—"} on{" "}
+                {dayjs(surgicalCase.consult_pdf_approved_at).format("DD/MM/YYYY HH:mm")}
+              </Typography.Text>
+            )}
             <div
               style={{
                 height: 420,
@@ -1324,6 +1343,7 @@ const handleOpenFinalizeModal = async () => {
                 type="primary"
                 onClick={handleSignOffFromConsultPopup}
                 disabled={isConsultFinalizeLocked}
+                loading={consultApproving}
                 style={{ backgroundColor: "#722ed1", borderColor: "#722ed1" }}
                 block
               >

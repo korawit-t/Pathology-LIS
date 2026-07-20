@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root {
+        --primary: {{ (primary_color or '#0056b3') | safe }};
+        --primary-dark: {{ (primary_color_dark or '#003a8c') | safe }};
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-SemiBold.ttf");
+        font-weight: 600;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-ExtraBold.ttf");
+        font-weight: 800;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Italic.ttf");
+        font-weight: 400;
+        font-style: italic;
+      }
+      @page {
+        size: A4;
+        margin: 0.8cm 1cm 1.5cm 1cm;
+      }
+      body {
+        font-family: "Sarabun", sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #1a202c;
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+      .header-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .info-bar {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 0px;
+        border-collapse: collapse;
+      }
+      .info-bar td {
+        padding: 8px 10px;
+        border-right: 1px solid #e2e8f0;
+        vertical-align: top;
+      }
+      .label {
+        font-size: 9px;
+        color: #64748b;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .value {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .patient-name {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        color: #002766;
+        line-height: 1.4;
+      }
+      .report-container {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      thead {
+        display: table-header-group;
+      }
+      .consult-page-break {
+        page-break-before: always;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="report-container">
+      <thead>
+        <tr>
+          <td>
+            <table class="header-table">
+              <tr>
+                <td style="width: 50px; vertical-align: middle">
+                  {% if report_logo_url_snapshot %}
+                  <img
+                    src="{{ report_logo_url_snapshot | safe }}"
+                    style="max-height: 48px; max-width: 120px; display: block"
+                  />
+                  {% else %}
+                  <div
+                    style="
+                      width: 42px;
+                      height: 42px;
+                      background: var(--primary);
+                      color: white;
+                      border-radius: 4px;
+                      line-height: 42px;
+                      text-align: center;
+                      font-weight: bold;
+                    "
+                  >
+                    LAB
+                  </div>
+                  {% endif %}
+                </td>
+                <td style="padding-left: 15px; vertical-align: middle">
+                  <div
+                    style="
+                      font-size: 20px;
+                      font-weight: 800;
+                      color: var(--primary);
+                      line-height: 1;
+                    "
+                  >
+                    {{ lab_name_en_snapshot | safe }}
+                  </div>
+                </td>
+                <td
+                  style="
+                    text-align: right;
+                    vertical-align: middle;
+                    font-size: 9px;
+                    color: #1a202c;
+                    line-height: 1.2;
+                  "
+                >
+                  {{ lab_address_snapshot | safe }}
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+
+            <table class="info-bar">
+              <tr>
+                <td style="width: 35%">
+                  <div class="label">Patient Name</div>
+                  <div class="patient-name">
+                    {{ patient_title or '' }}{{ patient_name or '' }}{% if
+                    patient_ln %} {{ patient_ln }}{% endif %}
+                  </div>
+                  <div style="font-size: 11px; margin-top: 2px">
+                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age:
+                    {{ patient_age_display }}
+                  </div>
+                </td>
+                <td style="width: 40%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Accession:</span
+                    ><span class="value" style="color: var(--primary)"
+                      >{{ accession_no }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Physician:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ clinician_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Hospital:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ hospital_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Dept:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ department_name or '-' }}</span
+                    >
+                  </div>
+                </td>
+                <td style="width: 25%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Collected:</span
+                    ><span class="value"
+                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at
+                      else '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Received:</span
+                    ><span class="value"
+                      >{{ registered_at.strftime('%d/%m/%Y %H:%M') if
+                      registered_at else '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Reported:</span
+                    ><span class="value"
+                      >{{ reported_at.strftime('%d/%m/%Y %H:%M') if
+                      reported_at else '-' }}</span
+                    >
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+          </td>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>
+            <div
+              style="
+                text-align: center;
+                margin-bottom: 12px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #1a202c;
+                letter-spacing: 1px;
+              "
+            >
+              EXTERNAL CONSULT REPORT
+              {% if consult_pdf_thumbnails|length > 1 %}
+              ({{ consult_pdf_thumbnails|length }} pages)
+              {% endif %}
+            </div>
+
+            {% for thumb in consult_pdf_thumbnails %}
+            <div
+              class="{% if not loop.first %}consult-page-break{% endif %}"
+              style="text-align: center"
+            >
+              <img
+                src="{{ thumb | safe }}"
+                style="max-width: 100%; max-height: 800px; width: auto; height: auto; display: inline-block; border: 1px solid #e8e8e8"
+              />
+              {% if consult_pdf_approved_by_snapshot %}
+              <div
+                style="
+                  font-size: 11px;
+                  color: #475569;
+                  margin-top: 10px;
+                  text-align: center;
+                "
+              >
+                <i
+                  >Consult reviewed by: {{ consult_pdf_approved_by_snapshot }}
+                  {% if consult_pdf_approved_at_snapshot %} on {{
+                  consult_pdf_approved_at_snapshot.strftime('%d/%m/%Y %H:%M')
+                  }}{% endif %}</i
+                >
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

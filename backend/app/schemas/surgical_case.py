@@ -91,6 +91,8 @@ class SurgicalCaseUpdate(BaseModel):
     consult_pdf_path: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
+    consult_pdf_approved_by_id: Optional[int] = None
+    consult_pdf_approved_at: Optional[datetime] = None
     report_at: Optional[datetime] = None
     discard_status: Optional[bool] = None
 
@@ -124,10 +126,16 @@ class SurgicalCaseResponse(SurgicalCaseBase):
     consult_pdf_path: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
+    consult_pdf_approved_by_id: Optional[int] = None
+    consult_pdf_approved_at: Optional[datetime] = None
 
     # Computed: whether any block on this case has ever had an IHC stain
     # ordered (see get_cases in crud/surgical_case.py — not a stored column).
     has_ihc: bool = False
+
+    # Computed: display name of the consult PDF approver (see get_case in
+    # crud/surgical_case.py — not a stored column).
+    consult_pdf_approver_name: Optional[str] = None
 
     has_malignancy: Optional[bool] = None
     has_critical: Optional[bool] = None

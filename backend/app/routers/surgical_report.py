@@ -313,18 +313,13 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Case not found")
 
     # 2. ส่งข้อมูลให้ PDF Service เพื่อสร้างไฟล์ Binary
-    from app.services.pdf_service import generate_pdf_blob
-    from app.models.surgical_case import SurgicalCase
-    
-    case_obj = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
-    prepend_pdfs = []
-    if case_obj and case_obj.consult_pdf_path:
-        prepend_pdfs.append(case_obj.consult_pdf_path)
+    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
-    pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=True, prepend_pdfs=prepend_pdfs if prepend_pdfs else None)
+    pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=True)
+    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
 
     # 3. ส่งกลับเป็น StreamingResponse เพื่อให้หน้าบ้านเปิดดูได้
     return StreamingResponse(
@@ -376,11 +371,7 @@ def get_latest_finalized_report_pdf(
 
     report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M:%S")
 
-    from app.services.pdf_service import generate_pdf_blob
-
-    prepend_pdfs = []
-    if report.consult_pdf_path_snapshot:
-        prepend_pdfs.append(report.consult_pdf_path_snapshot)
+    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
@@ -389,8 +380,8 @@ def get_latest_finalized_report_pdf(
         report_data,
         template_name=active_template,
         is_preview=False,
-        prepend_pdfs=prepend_pdfs if prepend_pdfs else None,
     )
+    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
 
     return StreamingResponse(
         io.BytesIO(pdf_blob),
@@ -447,17 +438,13 @@ def get_historical_report_pdf(
     report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M:%S")
 
     # 4. ส่งให้ PDF Service
-    from app.services.pdf_service import generate_pdf_blob
-
-    # 🚩 ใช้ consult_pdf_path_snapshot จาก Report (ไม่ดึงจาก Case เพื่อรักษาความถูกต้องของ Snapshot)
-    prepend_pdfs = []
-    if report.consult_pdf_path_snapshot:
-        prepend_pdfs.append(report.consult_pdf_path_snapshot)
+    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
-    pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=is_preview_mode, prepend_pdfs=prepend_pdfs if prepend_pdfs else None)
+    pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=is_preview_mode)
+    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
 
     return StreamingResponse(
         io.BytesIO(pdf_blob),

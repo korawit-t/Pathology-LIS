@@ -98,6 +98,9 @@ export interface SurgicalCase {
   consult_pdf_path?: string;
   consult_report_out_at?: string | null;
   consult_pdf_received_at?: string | null;
+  consult_pdf_approved_by_id?: number | null;
+  consult_pdf_approved_at?: string | null;
+  consult_pdf_approver_name?: string | null;
   has_malignancy?: boolean | null;
   has_critical: boolean;
   is_pending: boolean;
@@ -191,6 +194,9 @@ export interface SurgicalCaseUpdatePayload extends Partial<SurgicalCaseCreatePay
   consult_pdf_path?: string;
   consult_report_out_at?: string | null;
   consult_pdf_received_at?: string | null;
+  consult_pdf_approved_by_id?: number | null;
+  consult_pdf_approved_at?: string | null;
+  consult_pdf_approver_name?: string | null;
   has_malignancy?: boolean;
   has_critical?: boolean;
   is_pending?: boolean;
