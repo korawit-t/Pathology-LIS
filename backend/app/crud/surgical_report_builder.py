@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import base64
 import io
+import json
 import logging
 import re
 from PIL import Image
@@ -19,6 +20,12 @@ from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.models.tumor_registry import TumorRegistry
 from app.crud.organization import resolve_lab_header
+
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError:
+    FITZ_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +83,46 @@ def get_image_base64_from_path(file_path: str, max_width: int = 1024):
     except Exception as e:
         logger.error("Error encoding image: %s", e)
         return None
+
+
+def get_consult_pdf_thumbnails_base64(pdf_path: str, max_width: int = 1000, dpi: int = 150) -> list:
+    """
+    Rasterize every page of an external consult PDF into base64 JPEG data
+    URIs, for embedding on the generated consult cover sheet (one page's
+    worth of image per PDF page — not a small thumbnail, sized generously
+    so it stays sharp). Returns [] if the file is missing/unreadable.
+    """
+    if not FITZ_AVAILABLE or not pdf_path or not os.path.exists(pdf_path):
+        return []
+
+    doc = None
+    try:
+        doc = fitz.open(pdf_path)
+        pages = []
+        zoom = dpi / 72.0
+        for page in doc:
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+            if img.width > max_width:
+                ratio = max_width / float(img.width)
+                new_height = int(float(img.height) * ratio)
+                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=75, optimize=True)
+
+            encoded_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            pages.append(f"data:image/jpeg;base64,{encoded_string}")
+
+        return pages
+
+    except Exception as e:
+        logger.error("Error rasterizing consult PDF pages: %s", e)
+        return []
+    finally:
+        if doc is not None:
+            doc.close()
 
 
 def _calculate_patient_age(birth_date: date, ref_date: date = None) -> dict:
@@ -583,6 +630,10 @@ def prepare_report_data(
     is_pending_val = overrides.get("is_pending", db_case.is_pending)
     pending_reason_val = overrides.get("pending_reason", db_case.pending_reason if db_case.is_pending else None)
 
+    consult_thumbnails = (
+        get_consult_pdf_thumbnails_base64(db_case.consult_pdf_path) if db_case.consult_pdf_path else []
+    )
+
     return {
         "case_id": db_case.id,
         "accession_no": db_case.accession_no,
@@ -628,6 +679,9 @@ def prepare_report_data(
         "published_at": published_at_value,
         "reported_at": local_now(),
         "consult_pdf_path_snapshot": db_case.consult_pdf_path,
+        "consult_pdf_thumbnail_snapshot": json.dumps(consult_thumbnails) if consult_thumbnails else None,
+        "consult_pdf_approved_by_snapshot": (db_case.consult_pdf_approver.report_name or db_case.consult_pdf_approver.full_name) if db_case.consult_pdf_approver else None,
+        "consult_pdf_approved_at_snapshot": db_case.consult_pdf_approved_at,
         "primary_color": primary_color,
         "primary_color_dark": primary_color_dark,
         "show_icd_o_in_report": settings.show_icd_o_in_report if settings else False,
