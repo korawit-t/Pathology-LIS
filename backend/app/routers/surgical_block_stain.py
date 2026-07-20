@@ -7,6 +7,15 @@ from io import BytesIO
 
 def _nk(s: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
+
+
+def _pad_block_code(code: str) -> str:
+    """Zero-pad the trailing block number for stickers: A1 -> A01, A11 -> A11."""
+    m = re.match(r"^([A-Za-z]*)(\d+)$", code or "")
+    if not m:
+        return code or ""
+    letters, digits = m.groups()
+    return f"{letters}{digits.zfill(2)}"
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 from pydantic import BaseModel
@@ -263,7 +272,7 @@ def print_stain_run_stickers(
         print_data.append(
             {
                 "accession_no": detail.accession_no or "N/A",
-                "block_code": detail.block_code or "N/A",
+                "block_code": _pad_block_code(detail.block_code) or "N/A",
                 "stain_display": stain_display,
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
@@ -413,7 +422,7 @@ def print_quick_stickers(
         data_to_print.append(
             {
                 "accession_no": case.accession_no if case else "N/A",
-                "block_code": block.block_code if block else "N/A",
+                "block_code": _pad_block_code(block.block_code) if block else "N/A",
                 "stain_display": order.test.name if order.test else "Unknown",
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
