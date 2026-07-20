@@ -34,7 +34,7 @@
     "fontkit": "^2.0.4",
     "jsbarcode": "^3.12.1",
     "jszip": "^3.10.1",
-    "konva": "^10.2.0",
+    "konva": "^10.3.0",
     "lodash": "^4.17.21",
     "openseadragon": "^6.0.2",
     "pdfmake": "^0.2.20",
