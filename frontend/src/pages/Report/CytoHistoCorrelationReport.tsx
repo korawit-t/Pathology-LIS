@@ -35,6 +35,8 @@ import type { CorrelationRecord } from "../../services/cytoHistoCorrelationServi
 import GyneDiagnosisService from "../../services/gyneDiagnosisService";
 import NongyneReportService from "../../services/nongyneReportService";
 import SurgicalReportService from "../../services/surgicalReportService";
+import SurgicalCaseCorrelationService from "../../services/surgicalCaseCorrelationService";
+import type { SurgicalCaseCorrelationRecord } from "../../services/surgicalCaseCorrelationService";
 import logger from "../../utils/logger";
 
 const { Text } = Typography;
@@ -84,13 +86,18 @@ interface GroupCaseRow {
 const PAGE_SIZE = 20;
 
 const CytoHistoCorrelationReport: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"gyne" | "nongyne">("gyne");
+  const [activeTab, setActiveTab] = useState<"gyne" | "nongyne" | "surgical">("gyne");
   const [data, setData] = useState<CorrelationRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [resultFilter, setResultFilter] = useState<string | null>(null);
+
+  const [surgData, setSurgData] = useState<SurgicalCaseCorrelationRecord[]>([]);
+  const [surgTotal, setSurgTotal] = useState(0);
+  const [surgLoading, setSurgLoading] = useState(false);
+  const [surgPage, setSurgPage] = useState(1);
 
   const [summary, setSummary] = useState<CorrelationSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -200,6 +207,26 @@ const CytoHistoCorrelationReport: React.FC = () => {
     }
   }, [resultFilter, dateRange, activeTab]);
 
+  const fetchSurgData = useCallback(async (p = 1, result = resultFilter, range = dateRange) => {
+    setSurgLoading(true);
+    try {
+      const params: Record<string, unknown> = { skip: (p - 1) * PAGE_SIZE, limit: PAGE_SIZE };
+      if (result) params.result = result;
+      if (range) {
+        params.start_date = range[0].format("YYYY-MM-DD");
+        params.end_date = range[1].format("YYYY-MM-DD");
+      }
+      const res = await SurgicalCaseCorrelationService.list(params);
+      setSurgData(res.items);
+      setSurgTotal(res.total);
+      setSurgPage(p);
+    } catch (err) {
+      logger.error("CytoHistoCorrelationReport surgical fetch", err);
+    } finally {
+      setSurgLoading(false);
+    }
+  }, [resultFilter, dateRange]);
+
   // Summary counts from loaded data (approximation for current page; real totals need a stats endpoint)
   const counts = RESULT_OPTIONS.reduce((acc, o) => {
     acc[o.value] = data.filter((r) => r.correlation_result === o.value).length;
@@ -207,6 +234,13 @@ const CytoHistoCorrelationReport: React.FC = () => {
   }, {} as Record<string, number>);
   const agreeRate = data.length > 0 ? Math.round((counts.agree / data.length) * 100) : 0;
   const discrepancyRate = data.length > 0 ? Math.round(((counts.minor_discrepancy + counts.major_discrepancy) / data.length) * 100) : 0;
+
+  const surgCounts = RESULT_OPTIONS.reduce((acc, o) => {
+    acc[o.value] = surgData.filter((r) => r.correlation_result === o.value).length;
+    return acc;
+  }, {} as Record<string, number>);
+  const surgAgreeRate = surgData.length > 0 ? Math.round((surgCounts.agree / surgData.length) * 100) : 0;
+  const surgDiscrepancyRate = surgData.length > 0 ? Math.round(((surgCounts.minor_discrepancy + surgCounts.major_discrepancy) / surgData.length) * 100) : 0;
 
   const columns = [
     {
@@ -326,8 +360,96 @@ const CytoHistoCorrelationReport: React.FC = () => {
     },
   ];
 
+  const surgColumns = [
+    {
+      title: "Current Case",
+      key: "from_case",
+      width: 170,
+      render: (r: SurgicalCaseCorrelationRecord) => (
+        <div>
+          <Text strong style={{ color: "#722ed1", display: "block" }}>{r.from_accession_no}</Text>
+          {r.from_report_id && (
+            <Tooltip title="View Report PDF">
+              <Button
+                type="link"
+                size="small"
+                icon={<FilePdfOutlined style={{ color: "#ff4d4f" }} />}
+                loading={previewLoadingKey === `sfrom-${r.id}`}
+                style={{ padding: 0, fontSize: 12 }}
+                onClick={() =>
+                  openPdf(
+                    `sfrom-${r.id}`,
+                    () => SurgicalReportService.getReportPdf(r.from_report_id!),
+                    `Surgical Report — ${r.from_accession_no}`,
+                  )
+                }
+              >
+                Report PDF
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "Linked Case",
+      key: "to_case",
+      width: 170,
+      render: (r: SurgicalCaseCorrelationRecord) => (
+        <div>
+          <Text strong style={{ color: "#1677ff", display: "block" }}>{r.to_accession_no}</Text>
+          {r.to_report_id && (
+            <Tooltip title="View Report PDF">
+              <Button
+                type="link"
+                size="small"
+                icon={<FilePdfOutlined style={{ color: "#ff4d4f" }} />}
+                loading={previewLoadingKey === `sto-${r.id}`}
+                style={{ padding: 0, fontSize: 12 }}
+                onClick={() =>
+                  openPdf(
+                    `sto-${r.id}`,
+                    () => SurgicalReportService.getReportPdf(r.to_report_id!),
+                    `Surgical Report — ${r.to_accession_no}`,
+                  )
+                }
+              >
+                Report PDF
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "Result",
+      dataIndex: "correlation_result",
+      key: "result",
+      width: 160,
+      render: (v: string) => <ResultTag value={v} />,
+    },
+    {
+      title: "Comment",
+      dataIndex: "comment",
+      key: "comment",
+      width: 180,
+      render: (v: string) => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text> : null,
+    },
+    {
+      title: "Recorded By",
+      key: "by",
+      width: 160,
+      render: (r: SurgicalCaseCorrelationRecord) => (
+        <div>
+          <Text style={{ fontSize: 12, display: "block" }}>{r.correlated_by?.full_name ?? "—"}</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(r.correlated_at).format("DD/MM/YYYY HH:mm")}</Text>
+        </div>
+      ),
+    },
+  ];
+
   const handleTabChange = (key: string) => {
-    const tab = key as "gyne" | "nongyne";
+    const tab = key as "gyne" | "nongyne" | "surgical";
     setActiveTab(tab);
     setData([]);
     setTotal(0);
@@ -335,6 +457,9 @@ const CytoHistoCorrelationReport: React.FC = () => {
     setResultFilter(null);
     setDateRange(null);
     setPage(1);
+    setSurgData([]);
+    setSurgTotal(0);
+    setSurgPage(1);
   };
 
   const tabContent = (tab: "gyne" | "nongyne") => (
@@ -487,14 +612,114 @@ const CytoHistoCorrelationReport: React.FC = () => {
     </div>
   );
 
+  const surgTabContent = () => (
+    <div>
+      {/* Filters */}
+      <Space wrap style={{ marginBottom: 16 }}>
+        <RangePicker
+          value={dateRange}
+          onChange={(v) => setDateRange(v as [Dayjs, Dayjs] | null)}
+          format="DD/MM/YYYY"
+          placeholder={["Start date", "End date"]}
+        />
+        <Select
+          allowClear
+          placeholder="All results"
+          style={{ width: 180 }}
+          value={resultFilter}
+          onChange={setResultFilter}
+          options={RESULT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+        />
+        <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchSurgData(1, resultFilter, dateRange)}>
+          Search
+        </Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { setDateRange(null); setResultFilter(null); setSurgData([]); setSurgTotal(0); }}>
+          Reset
+        </Button>
+      </Space>
+
+      {/* Summary cards */}
+      {surgData.length > 0 && (
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col xs={12} sm={6}>
+            <Card size="small" bordered={false} style={{ background: "#f6ffed", border: "1px solid #b7eb8f" }}>
+              <Statistic title="Agree" value={surgCounts.agree} valueStyle={{ color: "#52c41a" }}
+                suffix={<Text type="secondary" style={{ fontSize: 13 }}>({surgAgreeRate}%)</Text>} />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card size="small" bordered={false} style={{ background: "#fff7e6", border: "1px solid #ffd591" }}>
+              <Statistic title="Minor Discrepancy" value={surgCounts.minor_discrepancy} valueStyle={{ color: "#fa8c16" }} />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card size="small" bordered={false} style={{ background: "#fff1f0", border: "1px solid #ffa39e" }}>
+              <Statistic title="Major Discrepancy" value={surgCounts.major_discrepancy} valueStyle={{ color: "#cf1322" }}
+                suffix={<Text type="secondary" style={{ fontSize: 13 }}>({surgDiscrepancyRate}%)</Text>} />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card size="small" bordered={false} style={{ background: "#fafafa", border: "1px solid #d9d9d9" }}>
+              <Statistic title="No Follow-up" value={surgCounts.no_follow_up} />
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {surgData.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() =>
+              exportToCsv(
+                `surgical-case-correlation-p${surgPage}`,
+                surgData as unknown as Record<string, unknown>[],
+                [
+                  { header: "Current Case", key: "from_accession_no" },
+                  { header: "Linked Case", key: "to_accession_no" },
+                  { header: "Result", key: "correlation_result" },
+                  { header: "Comment", key: "comment", render: (v) => String(v ?? "") },
+                  { header: "Recorded By", key: "correlated_by", render: (_v, row) => (row.correlated_by as { full_name?: string } | null)?.full_name ?? "" },
+                  { header: "Recorded At", key: "correlated_at", render: (v) => v ? dayjs(v as string).format("DD/MM/YYYY HH:mm") : "" },
+                ],
+              )
+            }
+          >
+            Export CSV (หน้านี้)
+          </Button>
+        </div>
+      )}
+      <Table
+        dataSource={surgData}
+        columns={surgColumns}
+        rowKey="id"
+        loading={surgLoading}
+        bordered
+        size="middle"
+        pagination={{
+          current: surgPage,
+          pageSize: PAGE_SIZE,
+          total: surgTotal,
+          showTotal: (t) => `Total ${t} records`,
+          onChange: (p) => fetchSurgData(p),
+        }}
+        onChange={(pagination: TablePaginationConfig) => {
+          if (pagination.current) fetchSurgData(pagination.current);
+        }}
+        locale={{ emptyText: "Use the filters above and click Search to load records." }}
+      />
+    </div>
+  );
+
   return (
     <div>
       <Tabs
         activeKey={activeTab}
         onChange={handleTabChange}
         items={[
-          { key: "gyne",    label: "Gyne Cytology",     children: tabContent("gyne")    },
-          { key: "nongyne", label: "Non-Gyne Cytology",  children: tabContent("nongyne") },
+          { key: "gyne",     label: "Gyne Cytology",     children: tabContent("gyne")    },
+          { key: "nongyne",  label: "Non-Gyne Cytology",  children: tabContent("nongyne") },
+          { key: "surgical", label: "Surgical Biopsy",    children: surgTabContent()      },
         ]}
       />
 

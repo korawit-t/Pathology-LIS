@@ -155,15 +155,13 @@ def print_nongyne_run_stickers(
         order.printed_by_id = current_user.id
 
         case = order.case
-        patient = case.patient if case else None
-        patient_name = patient.name or "" if patient else ""
-        patient_ln = patient.ln or "" if patient else ""
         print_data.append({
             "accession_no": (case.accession_no if case else None) or "N/A",
-            "block_code": patient_name,
-            "stain_display": patient_ln,
+            "block_code": f"#{order.slide_no}" if order.slide_no else "",
+            "stain_display": order.test.name if order.test else "",
             "reg_date": str(case.registered_at) if case and case.registered_at else None,
             "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
+            "hn": case.hn if case else None,
             "_slide_no": order.slide_no or 0,
         })
 

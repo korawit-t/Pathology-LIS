@@ -29,6 +29,7 @@ import CytoHistoCorrelationService, {
 import type { SurgicalCase } from "../../../../types/surgical";
 import type { User } from "../../../../types/user";
 import logger from "../../../../utils/logger";
+import { sanitizeHtml } from "../../../../utils/sanitize";
 
 const { Text } = Typography;
 
@@ -220,9 +221,14 @@ const CytoHistoCorrelationCard: React.FC<Props> = ({ surgicalCase, currentUser, 
                 <Text style={{ fontSize: 10, color: "#722ed1", fontWeight: 700, letterSpacing: 0.5 }}>
                   CYTOLOGY DX
                 </Text>
-                <div style={{ color: item.cytology_diagnosis ? "#1a202c" : "#bfbfbf", fontSize: 13, whiteSpace: "pre-wrap", marginTop: 1 }}>
-                  {item.cytology_diagnosis || "No diagnosis recorded yet"}
-                </div>
+                {item.cytology_diagnosis ? (
+                  <div
+                    style={{ color: "#1a202c", fontSize: 13, marginTop: 1 }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.cytology_diagnosis) }}
+                  />
+                ) : (
+                  <div style={{ color: "#bfbfbf", fontSize: 13, marginTop: 1 }}>No diagnosis recorded yet</div>
+                )}
               </div>
             </div>
 

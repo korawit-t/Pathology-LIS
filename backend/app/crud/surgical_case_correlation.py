@@ -26,6 +26,40 @@ def _serialize(c: SurgicalCaseCorrelation) -> dict:
     }
 
 
+def list_correlations(db: Session, skip: int = 0, limit: int = 20,
+                       result: str = None, start_date=None, end_date=None) -> dict:
+    from app.models.surgical_report import SurgicalReport
+    from sqlalchemy import func
+
+    q = db.query(SurgicalCaseCorrelation)
+    if result:
+        q = q.filter(SurgicalCaseCorrelation.correlation_result == result)
+    if start_date:
+        q = q.filter(SurgicalCaseCorrelation.correlated_at >= start_date)
+    if end_date:
+        from datetime import datetime, time
+        q = q.filter(SurgicalCaseCorrelation.correlated_at <= datetime.combine(end_date, time.max))
+    total = q.count()
+    rows = q.order_by(SurgicalCaseCorrelation.correlated_at.desc()).offset(skip).limit(limit).all()
+
+    case_ids = {r.from_case_id for r in rows} | {r.to_case_id for r in rows}
+    report_map: dict[int, int] = {}
+    if case_ids:
+        subq = (db.query(SurgicalReport.case_id, func.max(SurgicalReport.id).label("max_id"))
+                .filter(SurgicalReport.case_id.in_(case_ids),
+                        SurgicalReport.status == "published")
+                .group_by(SurgicalReport.case_id).subquery())
+        report_map = {row.case_id: row.max_id for row in db.query(subq).all()}
+
+    def _with_reports(c: SurgicalCaseCorrelation) -> dict:
+        base = _serialize(c)
+        base["from_report_id"] = report_map.get(c.from_case_id)
+        base["to_report_id"] = report_map.get(c.to_case_id)
+        return base
+
+    return {"items": [_with_reports(r) for r in rows], "total": total}
+
+
 def get_by_case(db: Session, case_id: int) -> list[dict]:
     rows = (
         db.query(SurgicalCaseCorrelation)
