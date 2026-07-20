@@ -80,14 +80,11 @@ def generate_pdf_blob(
     return pdf_io.getvalue()
 
 
-def _resolve_consult_thumbnails(report_data: dict) -> list:
-    """Return the per-page consult PDF thumbnails for this report.
-
-    Falls back to rasterizing consult_pdf_path_snapshot on the fly for
-    reports finalized before the consult_pdf_thumbnail_snapshot column
-    existed (pre 2026-07-20) — those rows have thumbnail_snapshot=NULL but
-    still reference the original uploaded consult PDF via path_snapshot.
-    """
+def generate_consult_cover_pdf(report_data: dict) -> bytes:
+    """Render the external-consult cover sheet (hospital header + patient
+    info + one full-page image per consult PDF page + approver/date) — call
+    after generate_pdf_blob() so report_data["font_path"] is already
+    populated."""
     raw = report_data.get("consult_pdf_thumbnail_snapshot")
     try:
         thumbnails = json.loads(raw) if raw else []
@@ -96,18 +93,6 @@ def _resolve_consult_thumbnails(report_data: dict) -> list:
         # a single data-URI string here, not a JSON array.
         thumbnails = [raw] if raw else []
 
-    if not thumbnails and report_data.get("consult_pdf_path_snapshot"):
-        from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64
-        thumbnails = get_consult_pdf_thumbnails_base64(report_data["consult_pdf_path_snapshot"])
-
-    return thumbnails
-
-
-def generate_consult_cover_pdf(report_data: dict, thumbnails: list) -> bytes:
-    """Render the external-consult cover sheet (hospital header + patient
-    info + one full-page image per consult PDF page + approver/date) — call
-    after generate_pdf_blob() so report_data["font_path"] is already
-    populated."""
     cover_data = {**report_data, "consult_pdf_thumbnails": thumbnails}
 
     template = env.get_template(_resolve_template("reports/consult_cover_template.html"))
@@ -120,16 +105,12 @@ def generate_consult_cover_pdf(report_data: dict, thumbnails: list) -> bytes:
 
 
 def prepend_consult_cover(main_pdf_bytes: bytes, report_data: dict) -> bytes:
-    """If this report has an external consult PDF, render the cover sheet
-    and merge it in front of the main report."""
-    if not PYPDF_AVAILABLE:
+    """If this report has an approved external consult PDF thumbnail, render
+    the cover sheet and merge it in front of the main report."""
+    if not report_data.get("consult_pdf_thumbnail_snapshot") or not PYPDF_AVAILABLE:
         return main_pdf_bytes
 
-    thumbnails = _resolve_consult_thumbnails(report_data)
-    if not thumbnails:
-        return main_pdf_bytes
-
-    cover_bytes = generate_consult_cover_pdf(report_data, thumbnails)
+    cover_bytes = generate_consult_cover_pdf(report_data)
 
     writer = PdfWriter()
     writer.append(io.BytesIO(cover_bytes))
