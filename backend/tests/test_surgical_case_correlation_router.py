@@ -33,6 +33,25 @@ class TestRbac:
 
 
 class TestCrudWiring:
+    def test_list_reachable(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        case_a = make_bare_case(db, registrar_id=registrar.id)
+        case_b = make_bare_case(db, registrar_id=registrar.id)
+
+        pathologist_client.post(
+            "/surgical-case-correlations",
+            json={
+                "from_case_id": case_a.id, "to_case_id": case_b.id,
+                "from_accession_no": case_a.accession_no, "to_accession_no": case_b.accession_no,
+                "correlation_result": "agree",
+            },
+        )
+
+        r = pathologist_client.get("/surgical-case-correlations")
+
+        assert r.status_code == 200
+        assert r.json()["total"] >= 1
+
     def test_create_update_delete(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
         case_a = make_bare_case(db, registrar_id=registrar.id)

@@ -14,7 +14,7 @@ import {
   PrinterOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { printGyneStickers, toStickerSlide } from "./PrintStickerGyne/utils/generateGyneStickers";
+import { executePrint } from "../Stain/PrintStickerHE/utils/generateHEStickers";
 import PageContainer from "../../components/Layout/PageContainer";
 import GyneStainService from "../../services/gyneStainService";
 import { GyneStainRun, GyneStainRunDetail, GyneStainStatus } from "../../types/gyne-stain";
@@ -89,15 +89,11 @@ const GyneStainRunDetailView: React.FC<Props> = ({ initialRun, onBack }) => {
   const isCompleted = run?.status?.toLowerCase() === "completed";
 
   const handlePrintStickers = async () => {
-    const details = run.details.filter((d) => d.stain_order);
-    const slides = details.map((d) => toStickerSlide(d.stain_order!));
-    printGyneStickers(slides);
     try {
-      await Promise.all(
-        details.map((d) => GyneStainService.update(d.stain_id, { is_printed: true }))
-      );
+      const blob = await GyneStainService.printRunStickers(run.id);
+      executePrint(blob);
     } catch {
-      message.error("ไม่สามารถอัปเดตสถานะการพิมพ์ได้");
+      message.error("ไม่สามารถพิมพ์สติกเกอร์ได้");
     }
   };
 

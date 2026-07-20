@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from typing import Optional
+from datetime import date
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_WRITE_REPORT
@@ -13,6 +15,19 @@ router = APIRouter(
     prefix="/surgical-case-correlations",
     tags=["Surgical Case Correlation"],
 )
+
+
+@router.get("")
+def list_correlations(
+    skip: int = 0,
+    limit: int = 20,
+    result: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return crud.list_correlations(db, skip=skip, limit=limit, result=result, start_date=start_date, end_date=end_date)
 
 
 @router.get("/by-case/{case_id}")

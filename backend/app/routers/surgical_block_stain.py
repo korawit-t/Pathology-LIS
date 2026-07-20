@@ -267,6 +267,7 @@ def print_stain_run_stickers(
                 "stain_display": stain_display,
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
+                "hn": case.hn if case else None,
             }
         )
 
@@ -416,6 +417,7 @@ def print_quick_stickers(
                 "stain_display": order.test.name if order.test else "Unknown",
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
+                "hn": case.hn if case else None,
             }
         )
 

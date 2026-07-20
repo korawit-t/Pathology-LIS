@@ -43,7 +43,8 @@ def generate_slide_sticker_pdf(
     font_block: int = 7,
     font_stain: int = 6,
     font_hospital: int = 6,
-    font_date: int = 6,
+    font_date: int = 5,
+    font_hn: int = 5,
     margin_top_cm: float = 0.0,
     qr_scale: float = 1.0,
     qr_offset_x_cm: float = 0.0,
@@ -71,22 +72,26 @@ def generate_slide_sticker_pdf(
 
     # Row positions — computed from top so layout is flush regardless of sticker height.
     # margin_top_cm is absolute (cm), always added regardless of sticker size.
-    TOP_GAP   = 0.05 * sh * cm + margin_top_cm * cm
-    ROW_STEP  = 0.38 * sh * cm   # vertical spacing between rows
+    TOP_GAP = 0.05 * sh * cm + margin_top_cm * cm
+    ROW_STEP = (
+        0.24 * sh * cm
+    )  # vertical spacing between rows (TEST: tightened to fit row 5)
 
-    row1_y = sticker_h - TOP_GAP - 0.20 * sh * cm   # ascent buffer for Row 1 font
+    row1_y = sticker_h - TOP_GAP - 0.20 * sh * cm  # ascent buffer for Row 1 font
     row2_y = row1_y - ROW_STEP
     row3_y = row2_y - ROW_STEP
     row4_y = row3_y - ROW_STEP
+    row5_y = row4_y - ROW_STEP  # TEST: extra row for HN
 
     # Center QR in the lower text area (row3–row4) so it stays below the date row
     qr_y = (row4_y + row1_y - qr_size) / 2 - ROW_STEP + qr_offset_y_cm * cm
 
     for item in items:
-        accession_no  = item.get("accession_no", "")
-        block_code    = item.get("block_code", "")
+        accession_no = item.get("accession_no", "")
+        block_code = item.get("block_code", "")
         stain_display = item.get("stain_display", "")
         hospital_code = item.get("hospital_code", "")
+        hn = item.get("hn", "")
         reg_date = _fmt_date(item.get("reg_date"))
 
         qr_data = f"{accession_no}{block_code}"
@@ -114,6 +119,11 @@ def generate_slide_sticker_pdf(
             date_font_pt = max(4, round(font_date * size_scale))
             c.setFont("Sarabun", date_font_pt)
             c.drawString(text_x, row4_y, reg_date)
+
+        # Row 5: HN (TEST)
+        if hn:
+            c.setFont("Sarabun", max(4, round(font_hn * size_scale)))
+            c.drawString(text_x, row5_y, f"HN: {hn}")
 
         # QR code spans rows 4–5 on the right
         _draw_qr(c, qr_data, qr_x, qr_y, qr_size)
