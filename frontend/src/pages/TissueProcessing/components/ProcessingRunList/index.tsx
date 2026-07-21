@@ -297,6 +297,11 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
                   dataIndex: "accession_no", // 🌟 มั่นใจว่าตรงกับ key ใน Object ที่เราสร้างใน reduce
                   render: (text: string) => <Text strong>{text}</Text>,
                   width: 150,
+                  sorter: (a: GroupedAccession, b: GroupedAccession) =>
+                    a.accession_no.localeCompare(b.accession_no, undefined, {
+                      numeric: true,
+                    }),
+                  defaultSortOrder: "ascend",
                 },
                 {
                   title: "Blocks in this Case",
