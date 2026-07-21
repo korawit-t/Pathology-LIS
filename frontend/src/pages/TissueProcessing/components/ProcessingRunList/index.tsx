@@ -120,7 +120,10 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
     );
 
     // 🌟 แก้จาก groups เป็น grouped ให้ชื่อตรงกับด้านบน
-    return Object.values(grouped);
+    // เรียง Accession No. จากน้อยไปมาก
+    return Object.values(grouped).sort((a, b) =>
+      a.accession_no.localeCompare(b.accession_no, undefined, { numeric: true }),
+    );
   }, [selectedRunDetails]);
 
   // เรียกใช้ Columns จากไฟล์แยก
