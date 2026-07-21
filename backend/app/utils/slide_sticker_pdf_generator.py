@@ -123,7 +123,7 @@ def generate_slide_sticker_pdf(
         # Row 5: HN (TEST)
         if hn:
             c.setFont("Sarabun", max(4, round(font_hn * size_scale)))
-            c.drawString(text_x, row5_y, f"HN: {hn}")
+            c.drawString(text_x, row5_y, f"HN {hn}")
 
         # QR code spans rows 4–5 on the right
         _draw_qr(c, qr_data, qr_x, qr_y, qr_size)
