@@ -43,8 +43,8 @@ def generate_slide_sticker_pdf(
     font_block: int = 7,
     font_stain: int = 6,
     font_hospital: int = 6,
-    font_date: int = 5,
-    font_hn: int = 5,
+    font_date: int = 7,
+    font_hn: int = 7,
     margin_top_cm: float = 0.0,
     qr_scale: float = 1.0,
     qr_offset_x_cm: float = 0.0,
@@ -74,7 +74,7 @@ def generate_slide_sticker_pdf(
     # margin_top_cm is absolute (cm), always added regardless of sticker size.
     TOP_GAP = 0.05 * sh * cm + margin_top_cm * cm
     ROW_STEP = (
-        0.24 * sh * cm
+        0.30 * sh * cm
     )  # vertical spacing between rows (TEST: tightened to fit row 5)
 
     row1_y = sticker_h - TOP_GAP - 0.20 * sh * cm  # ascent buffer for Row 1 font
