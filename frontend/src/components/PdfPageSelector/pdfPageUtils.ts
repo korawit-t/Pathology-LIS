@@ -1,14 +1,28 @@
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 import { PDFDocument } from "pdf-lib";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 
-// Bundled locally (not a CDN) — this app is deployed LAN-only inside hospital
-// networks with no guaranteed internet access.
-GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+// pdfjs-dist is loaded lazily (not statically imported) for two reasons:
+// its module init touches browser-only canvas APIs (breaks under jsdom in
+// tests), and most page-loads never actually open a PDF picker, so there's
+// no reason to pull in the library + worker until one is dropped.
+let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
+function loadPdfjs() {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import("pdfjs-dist").then((pdfjs) => {
+      // Bundled locally (not a CDN) — this app is deployed LAN-only inside
+      // hospital networks with no guaranteed internet access.
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
+      return pdfjs;
+    });
+  }
+  return pdfjsPromise;
+}
 
 export async function getPdfPageCount(file: File): Promise<number> {
+  const { getDocument } = await loadPdfjs();
   const buffer = await file.arrayBuffer();
   const loadingTask = getDocument({ data: buffer });
   const doc = await loadingTask.promise;
@@ -28,6 +42,7 @@ export interface LoadedPdf {
  * on demand (e.g. thumbnails now, a bigger preview later) without re-parsing
  * the whole file each time. Caller must call `destroy()` when done. */
 export async function loadPdfDocument(file: File): Promise<LoadedPdf> {
+  const { getDocument } = await loadPdfjs();
   const buffer = await file.arrayBuffer();
   const loadingTask = getDocument({ data: buffer });
   const doc = await loadingTask.promise;
