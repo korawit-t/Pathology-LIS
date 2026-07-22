@@ -16,6 +16,10 @@ export interface ConsultPdfPanelProps {
   onDelete: (caseId: number) => Promise<unknown>;
   onGetBlob: (caseId: number) => Promise<Blob>;
   onRefresh: () => void;
+  /** Override copy for non-"subspecialty consult" reuse (e.g. out-lab Molecular results). */
+  panelTitle?: string;
+  emptyStateMessage?: string;
+  receivedStateMessage?: string;
 }
 
 /**
@@ -36,6 +40,9 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
   onDelete,
   onGetBlob,
   onRefresh,
+  panelTitle = "Out-Lab Consult PDF",
+  emptyStateMessage = "This case has been sent for external consultation. Please upload the consult report PDF once received.",
+  receivedStateMessage = "Consult report PDF received.",
 }) => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [receivedAt, setReceivedAt] = useState<Dayjs>(dayjs());
@@ -122,7 +129,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
       <Space align="center" style={{ marginBottom: 12 }}>
         <InboxOutlined style={{ color: "#722ed1", fontSize: 16 }} />
         <Text strong style={{ color: "#722ed1" }}>
-          Out-Lab Consult PDF
+          {panelTitle}
         </Text>
         {consultStatus && (
           <Text type="secondary" style={{ fontSize: 12 }}>
@@ -136,7 +143,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
           <Alert
             type="info"
             showIcon
-            message="This case has been sent for external consultation. Please upload the consult report PDF once received."
+            message={emptyStateMessage}
             style={{ marginBottom: 16 }}
           />
           <div>
@@ -195,7 +202,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
           <Alert
             type="success"
             showIcon
-            message="Consult report PDF received."
+            message={receivedStateMessage}
             description="Review it below before signing off this consult round."
             style={{ marginBottom: 12 }}
           />

@@ -1,7 +1,7 @@
 import api from "./httpClient";
 
 export interface UnifiedCaseItem {
-  case_type: "surgical" | "gyne" | "nongyne";
+  case_type: "surgical" | "gyne" | "nongyne" | "molecular";
   id: number;
   accession_no: string;
   hn: string | null;

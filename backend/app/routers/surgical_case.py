@@ -635,6 +635,7 @@ def get_immuno_stats(
     """Count distinct cases with pending IHC or Special Stain block stains."""
     from app.models.surgical_block import SurgicalBlock
     from app.models.surgical_block_stain import SurgicalBlockStain
+    from app.models.molecular_case import MolecularCase
 
     def _count(category_filter, is_external=None):
         q = (
@@ -662,7 +663,12 @@ def get_immuno_stats(
         "pending_special_stain_internal": _count("Histochem", is_external=False),
         "pending_ihc_outlab": _count("IHC", is_external=True),
         "pending_special_stain_outlab": _count("Histochem", is_external=True),
-        "pending_molecular_outlab": _count("Molecular", is_external=True),
+        "pending_molecular_outlab": (
+            db.query(func.count(MolecularCase.id))
+            .filter(MolecularCase.status == "pending", MolecularCase.is_cancelled == False)  # noqa: E712
+            .scalar()
+            or 0
+        ),
     }
 
 

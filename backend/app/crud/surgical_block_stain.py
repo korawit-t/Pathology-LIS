@@ -54,11 +54,11 @@ def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
         case.status = "stained"
 
 
-def create_stain(db: Session, obj_in: StainCreate):
+def create_stain(db: Session, obj_in: StainCreate, registrar_id: int | None = None):
     """
     สร้างรายการย้อมใหม่ (สามารถระบุเลข slide_no เองหรือให้ระบบรันต่อก็ได้)
     """
-    db_obj = SurgicalBlockStain(**obj_in.model_dump())
+    db_obj = SurgicalBlockStain(**obj_in.model_dump(exclude={"assist_pathologist_id"}))
     db.add(db_obj)
     db.flush()
 
@@ -76,6 +76,20 @@ def create_stain(db: Session, obj_in: StainCreate):
                             case.status = "pending immuno"
                         elif ap_test.category == "Histochem" and case.status != "pending immuno":
                             case.status = "pending special stains"
+
+        # Ordering a Molecular-category test spawns its own M26- case, with this
+        # Surgical case as parent — see app/his_export/README.md-style feature docs
+        # in the plan; registrar_id is required since the case needs a creator.
+        if ap_test and ap_test.category == "Molecular" and registrar_id is not None:
+            from app.crud.molecular_case import create_molecular_case_from_stain
+
+            create_molecular_case_from_stain(
+                db,
+                stain=db_obj,
+                ap_test=ap_test,
+                registrar_id=registrar_id,
+                assist_pathologist_id=obj_in.assist_pathologist_id,
+            )
 
     db.commit()
     db.refresh(db_obj)
@@ -130,7 +144,7 @@ def get_unprinted_stains(db: Session):
     )
 
 
-def delete_stain(db: Session, stain_id: int) -> bool:
+def delete_stain(db: Session, stain_id: int, actor_id: int | None = None) -> bool:
     """
     ลบรายการย้อมสไลด์ (Stain) ตาม ID
     """
@@ -147,6 +161,15 @@ def delete_stain(db: Session, stain_id: int) -> bool:
             specimen = db.get(SurgicalSpecimen, block.specimen_id)
             if specimen:
                 case_id = specimen.case_id
+
+        # If this stain had auto-spawned a Molecular case (category=Molecular
+        # order — see create_stain above), resolve it before the stain itself
+        # is gone: hard-delete if untouched, otherwise soft-cancel to keep
+        # the accession/audit trail. Must run before db.delete(db_obj) since
+        # MolecularCase.stain_id is ON DELETE SET NULL — the lookup below
+        # would no longer find it once the stain row is actually removed.
+        from app.crud.molecular_case import cancel_or_delete_molecular_case_for_stain
+        cancel_or_delete_molecular_case_for_stain(db, stain_id=stain_id, actor_id=actor_id)
 
         db.delete(db_obj)
         db.flush()

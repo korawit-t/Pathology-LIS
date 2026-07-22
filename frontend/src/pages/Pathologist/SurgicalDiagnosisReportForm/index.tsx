@@ -19,6 +19,7 @@ import {
   DatePicker,
   Table,
   Tag,
+  Tooltip,
 } from "antd";
 import {
   FileTextOutlined,
@@ -1485,20 +1486,34 @@ const handleOpenFinalizeModal = async () => {
                 {
                   title: "",
                   key: "actions",
-                  width: 36,
+                  width: 64,
                   render: (_: unknown, record) =>
                     record.status === "draft" ? (
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        loading={deletingReportId === record.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteDraftReport(record.id);
-                        }}
-                      />
+                      <Space size={4}>
+                        <Tooltip title="Continue Editing">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsAddendumMode(true);
+                              setCompletedCasePopupOpen(false);
+                            }}
+                          />
+                        </Tooltip>
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          loading={deletingReportId === record.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDraftReport(record.id);
+                          }}
+                        />
+                      </Space>
                     ) : null,
                 },
               ]}

@@ -138,7 +138,9 @@ const DetailModal: React.FC<DetailModalProps> = ({
                   size="small"
                   icon={<FileSearchOutlined />}
                   loading={loadingPdfKey === `modal-${report.id}`}
-                  onClick={() => onViewPdf(row!.type, report.id, `modal-${report.id}`)}
+                  // DetailModal is never opened for a "molecular" row (see
+                  // openDetailModal's guard in UnifiedAccession/index.tsx).
+                  onClick={() => onViewPdf(row!.type as "surgical" | "gyne" | "nongyne", report.id, `modal-${report.id}`)}
                 >
                   View PDF
                 </Button>

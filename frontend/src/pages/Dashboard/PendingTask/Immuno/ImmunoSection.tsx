@@ -38,7 +38,7 @@ const ImmunoSection: React.FC<ImmunoSectionProps> = ({ tatOverdue = {}, tatWarni
           )}
           <CompactStatRow label="IHC" value={stats.pendingIHCOutlab} color="#2f54eb" onClick={() => nav("outlab")} hideZero={hideZero} />
           <CompactStatRow label="Special Stain" value={stats.pendingSpecialStainOutlab} color="#2f54eb" onClick={() => nav("outlab")} hideZero={hideZero} />
-          <CompactStatRow label="Molecular" value={stats.pendingMolecularOutlab} color="#2f54eb" onClick={() => nav("outlab")} hideZero={hideZero} />
+          <CompactStatRow label="Molecular" value={stats.pendingMolecularOutlab} color="#2f54eb" onClick={() => nav("molecular-cases")} hideZero={hideZero} />
         </Spin>
       </Card>
     </Col>

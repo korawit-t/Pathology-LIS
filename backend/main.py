@@ -55,6 +55,7 @@ from app.routers import (
     internal_consult,
     surgical_block_event,
     ihc,
+    molecular_case,
     cyto_histo_correlation,
     surgical_case_correlation,
     tumor_registry,
@@ -254,6 +255,7 @@ app.include_router(internal_consult.router)
 app.include_router(slide_block_release.router)
 app.include_router(surgical_block_event.router)
 app.include_router(ihc.router)
+app.include_router(molecular_case.router)
 app.include_router(cyto_histo_correlation.router)
 app.include_router(surgical_case_correlation.router)
 app.include_router(tumor_registry.router)

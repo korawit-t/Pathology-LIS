@@ -7,6 +7,7 @@ import {
   InboxOutlined,
   QuestionCircleOutlined,
   GlobalOutlined,
+  ExperimentOutlined,
 } from "@ant-design/icons";
 import { Typography } from "antd";
 import dayjs from "dayjs";
@@ -52,6 +53,11 @@ import AllTabContent from "./AllTabContent";
 import OutlabTabContent from "./OutlabTabContent";
 import DetailModal from "./DetailModal";
 import GuideModal from "./GuideModal";
+import MolecularCaseFormModal from "../MolecularCase/MolecularCaseFormModal";
+import MolecularCaseTable from "../MolecularCase/MolecularCaseTable";
+import MolecularCaseDetailPage from "../MolecularCase/MolecularCaseDetailPage";
+import MolecularPrintPreviewModal, { MolecularStickerData } from "../MolecularCase/MolecularPrintPreviewModal";
+import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 
 const DEFAULT_DATE_FROM = dayjs().subtract(1, "month").format("YYYY-MM-DD");
 const DEFAULT_DATE_TO = dayjs().format("YYYY-MM-DD");
@@ -217,6 +223,9 @@ const UnifiedAccession: React.FC = () => {
   const [gynePrint, setGynePrint] = useState<{ open: boolean; data: GyneCytologyCase | null }>({ open: false, data: null });
   const [ngModal, setNgModal] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
   const [ngPrint, setNgPrint] = useState<{ open: boolean; data: NongyneCytologyCase | null }>({ open: false, data: null });
+  const [molecularFormState, setMolecularFormState] = useState<{ open: boolean; editingId: number | null }>({ open: false, editingId: null });
+  const [selectedMolecularCaseId, setSelectedMolecularCaseId] = useState<number | null>(null);
+  const [molecularPrint, setMolecularPrint] = useState<{ open: boolean; data: MolecularStickerData | null }>({ open: false, data: null });
 
   // ---- PDF preview ----
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -248,6 +257,21 @@ const UnifiedAccession: React.FC = () => {
   const [printLoadingKey, setPrintLoadingKey] = useState<string | null>(null);
 
   const openPrintFromRow = useCallback(async (row: UnifiedRow) => {
+    if (row.type === "molecular") {
+      // UnifiedRow already carries everything the sticker needs (accession_no,
+      // hn, patient_name, specimen→test name, registered_at) — no extra fetch.
+      setMolecularPrint({
+        open: true,
+        data: {
+          accession_no: row.accession_no,
+          hn: row.hn,
+          patient_name: row.patient_name,
+          test_name: row.specimen,
+          registered_at: row.registered_at,
+        },
+      });
+      return;
+    }
     const key = `${row.type}-${row.id}`;
     setPrintLoadingKey(key);
     try {
@@ -299,6 +323,13 @@ const UnifiedAccession: React.FC = () => {
   }, []);
 
   const openDetailModal = useCallback(async (row: UnifiedRow) => {
+    // Molecular has its own dedicated result/edit page — not the shared
+    // Surgical/Gyne/Nongyne DetailModal (reports/outlab-runs/consult-runs
+    // don't apply the same way to a Molecular case).
+    if (row.type === "molecular") {
+      setSelectedMolecularCaseId(row.id);
+      return;
+    }
     setDetailModal({ open: true, row });
     setModalReports([]); setModalCaseData(null);
     setModalOutlabRuns([]); setModalConsultRuns([]);
@@ -366,7 +397,11 @@ const UnifiedAccession: React.FC = () => {
   const openEditModal = useCallback((row: UnifiedRow) => {
     if (row.type === "surgical") setSurgModal({ open: true, id: row.id });
     else if (row.type === "gyne") setGyneModal({ open: true, id: row.id });
-    else setNgModal({ open: true, id: row.id });
+    else if (row.type === "nongyne") setNgModal({ open: true, id: row.id });
+    // Molecular: no separate "edit demographics" entry point from the All tab —
+    // route to the same result/detail page as "View detail" (the dedicated
+    // Molecular tab's own Edit action covers demographic edits for standalone cases).
+    else setSelectedMolecularCaseId(row.id);
   }, []);
 
   // ---- Out Lab tab ----
@@ -415,6 +450,40 @@ const UnifiedAccession: React.FC = () => {
   const outlabPendingCount = useMemo(
     () => outlabRuns.filter((r) => r.status !== "completed").length,
     [outlabRuns],
+  );
+
+  // ---- Molecular tab ----
+  const [molecularCases, setMolecularCases] = useState<MolecularCaseResponse[]>([]);
+  const [molecularLoading, setMolecularLoading] = useState(false);
+  const [molecularSearch, setMolecularSearch] = useState("");
+
+  const loadMolecularCases = useCallback(async () => {
+    setMolecularLoading(true);
+    try {
+      setMolecularCases(await MolecularCaseService.getAll({ limit: 200 }));
+    } catch {
+      message.error("Failed to load Molecular cases");
+    } finally {
+      setMolecularLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (activeTab === "molecular") loadMolecularCases(); }, [activeTab, loadMolecularCases]);
+
+  const molecularFilteredCases = useMemo(() => {
+    const q = molecularSearch.trim().toLowerCase();
+    if (!q) return molecularCases;
+    return molecularCases.filter((c) =>
+      (c.accession_no || "").toLowerCase().includes(q) ||
+      (c.parent_case_accession_no || "").toLowerCase().includes(q) ||
+      (c.hn || "").toLowerCase().includes(q) ||
+      (c.patient_name || "").toLowerCase().includes(q),
+    );
+  }, [molecularCases, molecularSearch]);
+
+  const molecularPendingCount = useMemo(
+    () => molecularCases.filter((c) => c.status === "pending").length,
+    [molecularCases],
   );
 
   // ---- Filter handlers ----
@@ -468,6 +537,13 @@ const UnifiedAccession: React.FC = () => {
       >
         New Non-Gyne
       </Button>
+      <Button
+        icon={<ExperimentOutlined />}
+        style={{ background: "#722ed1", borderColor: "#531dab", color: "#fff" }}
+        onClick={() => setMolecularFormState({ open: true, editingId: null })}
+      >
+        New Molecular
+      </Button>
     </Space>
   );
 
@@ -478,6 +554,7 @@ const UnifiedAccession: React.FC = () => {
     gyne: { placeholder: "Search by Accession No., HN, or Patient name", value: gyneTabSearch, onChange: setGyneTabSearch },
     nongyne: { placeholder: "Search by Accession No., HN, or Patient name", value: ngTabSearch, onChange: setNgTabSearch },
     outlab: { placeholder: "Search by Run No., Accession No., Lab, or Patient", value: outlabSearch, onChange: setOutlabSearch },
+    molecular: { placeholder: "Search by Accession No., HN, or Patient name", value: molecularSearch, onChange: setMolecularSearch },
   };
   const activeSearch = tabSearchConfig[activeTab];
   const tabBarExtraContent = activeSearch ? (
@@ -603,7 +680,50 @@ const UnifiedAccession: React.FC = () => {
         />
       ),
     },
+    {
+      key: "molecular",
+      label: (
+        <Space size={6} style={{ fontSize: 15 }}>
+          <ExperimentOutlined />
+          <span>Molecular</span>
+          {molecularPendingCount > 0 && <Badge count={molecularPendingCount} size="small" />}
+        </Space>
+      ),
+      children: (
+        <MolecularCaseTable
+          dataSource={molecularFilteredCases}
+          loading={molecularLoading}
+          onSelectCase={setSelectedMolecularCaseId}
+          onEditCase={(id) => setMolecularFormState({ open: true, editingId: id })}
+          onPrintCase={(record) =>
+            setMolecularPrint({
+              open: true,
+              data: {
+                accession_no: record.accession_no,
+                hn: record.hn,
+                patient_name: record.patient_name,
+                test_name: record.test_name,
+                registered_at: record.registered_at,
+              },
+            })
+          }
+        />
+      ),
+    },
   ];
+
+  if (selectedMolecularCaseId != null) {
+    return (
+      <MolecularCaseDetailPage
+        caseId={selectedMolecularCaseId}
+        canEnterResult={false}
+        onBack={() => {
+          setSelectedMolecularCaseId(null);
+          loadMolecularCases();
+        }}
+      />
+    );
+  }
 
   return (
     <PageContainer
@@ -702,6 +822,24 @@ const UnifiedAccession: React.FC = () => {
         open={ngPrint.open}
         data={ngPrint.data}
         onCancel={() => setNgPrint({ open: false, data: null })}
+      />
+
+      <MolecularPrintPreviewModal
+        open={molecularPrint.open}
+        data={molecularPrint.data}
+        onCancel={() => setMolecularPrint({ open: false, data: null })}
+      />
+
+      <MolecularCaseFormModal
+        open={molecularFormState.open}
+        editingId={molecularFormState.editingId}
+        onCancel={() => setMolecularFormState({ open: false, editingId: null })}
+        onSuccess={() => {
+          setMolecularFormState({ open: false, editingId: null });
+          reloadSurg();
+          reloadUnified();
+          loadMolecularCases();
+        }}
       />
 
       <GuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />

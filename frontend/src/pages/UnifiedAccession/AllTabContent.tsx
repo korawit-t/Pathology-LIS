@@ -18,7 +18,7 @@ import dayjs from "dayjs";
 import AccessionTag from "../../components/AccessionTag";
 import { SurgicalWorkflowProgress } from "../../components/SurgicalWorkflowProgress";
 import WorkflowBadge from "./WorkflowBadge";
-import { SURGICAL_STATUS_MAP, CYTO_STATUS, statusTag } from "./constants";
+import { SURGICAL_STATUS_MAP, CYTO_STATUS, MOLECULAR_STATUS_MAP, statusTag } from "./constants";
 import { UnifiedRow } from "./types";
 import { calculateTATProgress } from "../../utils/tatUtils";
 import type { SystemSetting } from "../../types/system";
@@ -77,7 +77,9 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
             <div style={{ marginTop: 3 }}>
               <Space size={3} wrap>
                 {r.consult && (
-                  <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", marginInlineEnd: 0 }}>Consult</Tag>
+                  <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", marginInlineEnd: 0 }}>
+                    {r.type === "molecular" ? "Outlab" : "Consult"}
+                  </Tag>
                 )}
                 {r.has_pending_ihc && (
                   <Tag color="geekblue" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", marginInlineEnd: 0 }}>IHC</Tag>
@@ -147,6 +149,14 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
               is_reported: r.wf_reported,
             }}
           />
+        ) : r.type === "molecular" ? (
+          // No gross/process/screen pipeline for Molecular — just pending vs. reported.
+          <WorkflowBadge
+            label="RP"
+            isDone={!!r.wf_reported}
+            color="green"
+            tooltip={r.wf_reported ? "Reported" : "Pending Report"}
+          />
         ) : (
           <Space size={10}>
             <WorkflowBadge
@@ -170,7 +180,10 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
       width: 130,
       fixed: "right" as const,
       render: (s: string, r: UnifiedRow) =>
-        statusTag(s, r.type === "surgical" ? SURGICAL_STATUS_MAP : CYTO_STATUS),
+        statusTag(
+          s,
+          r.type === "surgical" ? SURGICAL_STATUS_MAP : r.type === "molecular" ? MOLECULAR_STATUS_MAP : CYTO_STATUS,
+        ),
     },
     {
       title: "Due Date",
@@ -180,6 +193,12 @@ const AllTabContent: React.FC<AllTabContentProps> = ({
       render: (_: unknown, r: UnifiedRow) => {
         if (r.status === "signed out" || r.status === "published" || r.status === "cancelled")
           return <CheckCircleOutlined style={{ color: "#52c41a", fontSize: 16 }} />;
+        // Molecular has no configured turnaround-time expectations yet —
+        // just show a checkmark once reported, otherwise a dash (no TAT calc).
+        if (r.type === "molecular")
+          return r.status === "reported"
+            ? <CheckCircleOutlined style={{ color: "#52c41a", fontSize: 16 }} />
+            : <Text type="secondary">—</Text>;
         const labType = r.type === "surgical" ? "surgical" : r.type === "gyne" ? "gyne" : "non_gyne";
         const tat = calculateTATProgress(r.registered_at, labType, settings, !!r.is_express, holidays);
         if (!tat) return <Text type="secondary">—</Text>;
