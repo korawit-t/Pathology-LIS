@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import uuid
 from datetime import datetime
@@ -481,9 +482,10 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
         "collect_at": fields["collect_at"],
         "registered_at": case.registered_at,
         "reported_at": case.reported_at,
+        "consult_pdf_thumbnail_snapshot": json.dumps(thumbnails),
     }
 
-    cover_bytes = generate_consult_cover_pdf(report_data, thumbnails)
+    cover_bytes = generate_consult_cover_pdf(report_data)
 
     writer = PdfWriter()
     writer.append(io.BytesIO(cover_bytes))
