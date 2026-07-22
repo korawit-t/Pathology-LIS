@@ -20,7 +20,6 @@ import {
   Table,
   Tag,
   Tooltip,
-  Segmented,
 } from "antd";
 import {
   FileTextOutlined,
@@ -112,7 +111,6 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [popupUploadFile, setPopupUploadFile] = useState<File | null>(null);
   const popupPdfPage = usePdfPageSelector(popupSourcePdfFile, setPopupUploadFile);
   const showPopupPagePicker = !!popupSourcePdfFile && !!popupPdfPage.pageCount && popupPdfPage.pageCount > 1;
-  const showPopupPagePreview = showPopupPagePicker && popupPdfPage.mode === "select";
   const [popupReceivedAt, setPopupReceivedAt] = useState<Dayjs>(dayjs());
   const [popupUploading, setPopupUploading] = useState(false);
   const consultPdfPopupShownRef = useRef(false);
@@ -1243,7 +1241,7 @@ const handleOpenFinalizeModal = async () => {
         }
         onCancel={() => setConsultPdfPopupOpen(false)}
         footer={null}
-        width={surgicalCase?.consult_pdf_path ? 720 : (showPopupPagePreview ? 860 : 520)}
+        width={surgicalCase?.consult_pdf_path ? 720 : (showPopupPagePicker ? 860 : 520)}
         maskClosable={false}
       >
         {!surgicalCase?.consult_pdf_path ? (
@@ -1255,7 +1253,7 @@ const handleOpenFinalizeModal = async () => {
               style={{ marginBottom: 16 }}
             />
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              <div style={{ flex: showPopupPagePreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+              <div style={{ flex: showPopupPagePicker ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
                 <div>
                   <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
                     Report Received Date / Time:
@@ -1292,33 +1290,20 @@ const handleOpenFinalizeModal = async () => {
                     Max 10 MB · PDF only
                   </p>
                 </Upload.Dragger>
-                {showPopupPagePicker && (
+                {showPopupPagePicker && popupPdfPage.pageCount && (
                   <div style={{ marginTop: 12 }}>
-                    <Segmented
-                      block
-                      value={popupPdfPage.mode}
-                      onChange={(v) => popupPdfPage.setMode(v as "all" | "select")}
-                      options={[
-                        { label: `Upload All Pages (${popupPdfPage.pageCount})`, value: "all" },
-                        { label: "Select Pages", value: "select" },
-                      ]}
+                    <PdfPageThumbnailStrip
+                      pageCount={popupPdfPage.pageCount}
+                      selectedPages={popupPdfPage.selectedPages}
+                      thumbnails={popupPdfPage.thumbnails}
+                      loadingThumbnails={popupPdfPage.loadingThumbnails}
+                      previewPageNo={popupPdfPage.previewPageNo}
+                      onHoverPage={popupPdfPage.ensurePreview}
+                      onTogglePage={popupPdfPage.togglePage}
+                      onSelectAll={popupPdfPage.selectAll}
+                      onClearAll={popupPdfPage.clearAll}
+                      maxHeight={340}
                     />
-                    {popupPdfPage.mode === "select" && popupPdfPage.pageCount && (
-                      <div style={{ marginTop: 12 }}>
-                        <PdfPageThumbnailStrip
-                          pageCount={popupPdfPage.pageCount}
-                          selectedPages={popupPdfPage.selectedPages}
-                          thumbnails={popupPdfPage.thumbnails}
-                          loadingThumbnails={popupPdfPage.loadingThumbnails}
-                          previewPageNo={popupPdfPage.previewPageNo}
-                          onHoverPage={popupPdfPage.ensurePreview}
-                          onTogglePage={popupPdfPage.togglePage}
-                          onSelectAll={popupPdfPage.selectAll}
-                          onClearAll={popupPdfPage.clearAll}
-                          maxHeight={340}
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
                 {popupUploadFile && (
@@ -1337,7 +1322,7 @@ const handleOpenFinalizeModal = async () => {
                   A thumbnail of this PDF's first page and your sign-off will appear on the printed report's first page. The full consult PDF stays downloadable separately.
                 </Typography.Text>
               </div>
-              {showPopupPagePreview && (
+              {showPopupPagePicker && (
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <PdfPagePreviewPane
                     previewPageNo={popupPdfPage.previewPageNo}

@@ -9,7 +9,6 @@ import {
   Tabs,
   Badge,
   Modal,
-  Segmented,
   Upload,
   message,
 } from "antd";
@@ -50,7 +49,6 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
   const [uploading, setUploading] = useState(false);
   const pdfPage = usePdfPageSelector(sourceFile, setFile);
   const showPicker = !!sourceFile && !!pdfPage.pageCount && pdfPage.pageCount > 1;
-  const showPreview = showPicker && pdfPage.mode === "select";
 
   useEffect(() => {
     if (!open) {
@@ -89,10 +87,10 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
       okText="Confirm Upload"
       cancelText="Cancel"
       okButtonProps={{ disabled: !file, loading: uploading }}
-      width={showPreview ? 860 : 480}
+      width={showPicker ? 860 : 480}
     >
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: showPreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+        <div style={{ flex: showPicker ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
           <div style={{ marginBottom: 12 }}>
             <Text type="secondary">
               Patient: <Text strong>{caseData?.patient?.name}</Text> | HN: <Text strong>{caseData?.hn}</Text>
@@ -115,37 +113,24 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
             <p className="ant-upload-text">Click or drag PDF to upload</p>
             <p className="ant-upload-hint">Only PDF files accepted (max 20 MB)</p>
           </Dragger>
-          {showPicker && (
+          {showPicker && pdfPage.pageCount && (
             <div style={{ marginTop: 12 }}>
-              <Segmented
-                block
-                value={pdfPage.mode}
-                onChange={(v) => pdfPage.setMode(v as "all" | "select")}
-                options={[
-                  { label: `Upload All Pages (${pdfPage.pageCount})`, value: "all" },
-                  { label: "Select Pages", value: "select" },
-                ]}
+              <PdfPageThumbnailStrip
+                pageCount={pdfPage.pageCount}
+                selectedPages={pdfPage.selectedPages}
+                thumbnails={pdfPage.thumbnails}
+                loadingThumbnails={pdfPage.loadingThumbnails}
+                previewPageNo={pdfPage.previewPageNo}
+                onHoverPage={pdfPage.ensurePreview}
+                onTogglePage={pdfPage.togglePage}
+                onSelectAll={pdfPage.selectAll}
+                onClearAll={pdfPage.clearAll}
+                maxHeight={340}
               />
-              {pdfPage.mode === "select" && pdfPage.pageCount && (
-                <div style={{ marginTop: 12 }}>
-                  <PdfPageThumbnailStrip
-                    pageCount={pdfPage.pageCount}
-                    selectedPages={pdfPage.selectedPages}
-                    thumbnails={pdfPage.thumbnails}
-                    loadingThumbnails={pdfPage.loadingThumbnails}
-                    previewPageNo={pdfPage.previewPageNo}
-                    onHoverPage={pdfPage.ensurePreview}
-                    onTogglePage={pdfPage.togglePage}
-                    onSelectAll={pdfPage.selectAll}
-                    onClearAll={pdfPage.clearAll}
-                    maxHeight={340}
-                  />
-                </div>
-              )}
             </div>
           )}
         </div>
-        {showPreview && (
+        {showPicker && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <PdfPagePreviewPane
               previewPageNo={pdfPage.previewPageNo}

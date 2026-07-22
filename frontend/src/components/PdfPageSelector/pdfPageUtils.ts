@@ -21,18 +21,6 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
-export async function getPdfPageCount(file: File): Promise<number> {
-  const { getDocument } = await loadPdfjs();
-  const buffer = await file.arrayBuffer();
-  const loadingTask = getDocument({ data: buffer });
-  const doc = await loadingTask.promise;
-  try {
-    return doc.numPages;
-  } finally {
-    await loadingTask.destroy();
-  }
-}
-
 export interface LoadedPdf {
   doc: PDFDocumentProxy;
   destroy: () => Promise<void>;
