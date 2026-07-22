@@ -747,7 +747,6 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const pdfPage = usePdfPageSelector(sourcePdfFile, setUploadFile);
   const showPagePicker = !!sourcePdfFile && !!pdfPage.pageCount && pdfPage.pageCount > 1;
-  const showPagePreview = showPagePicker && pdfPage.mode === "select";
   const [uploadReceivedAt, setUploadReceivedAt] = useState<Dayjs>(dayjs());
   const [uploading, setUploading] = useState(false);
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
@@ -1101,10 +1100,10 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
         open={!!uploadTarget}
         onCancel={() => setUploadTarget(null)}
         footer={null}
-        width={showPagePreview ? 860 : 480}
+        width={showPagePicker ? 860 : 480}
       >
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <div style={{ flex: showPagePreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+          <div style={{ flex: showPagePicker ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
             <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
               Report Received Date / Time:
             </Typography.Text>
@@ -1132,33 +1131,20 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
               <p className="ant-upload-text">Click or drag PDF to upload</p>
               <p className="ant-upload-hint" style={{ fontSize: 11 }}>Max 10 MB · PDF only</p>
             </Upload.Dragger>
-            {showPagePicker && (
+            {showPagePicker && pdfPage.pageCount && (
               <div style={{ marginTop: 12 }}>
-                <Segmented
-                  block
-                  value={pdfPage.mode}
-                  onChange={(v) => pdfPage.setMode(v as "all" | "select")}
-                  options={[
-                    { label: `Upload All Pages (${pdfPage.pageCount})`, value: "all" },
-                    { label: "Select Pages", value: "select" },
-                  ]}
+                <PdfPageThumbnailStrip
+                  pageCount={pdfPage.pageCount}
+                  selectedPages={pdfPage.selectedPages}
+                  thumbnails={pdfPage.thumbnails}
+                  loadingThumbnails={pdfPage.loadingThumbnails}
+                  previewPageNo={pdfPage.previewPageNo}
+                  onHoverPage={pdfPage.ensurePreview}
+                  onTogglePage={pdfPage.togglePage}
+                  onSelectAll={pdfPage.selectAll}
+                  onClearAll={pdfPage.clearAll}
+                  maxHeight={340}
                 />
-                {pdfPage.mode === "select" && pdfPage.pageCount && (
-                  <div style={{ marginTop: 12 }}>
-                    <PdfPageThumbnailStrip
-                      pageCount={pdfPage.pageCount}
-                      selectedPages={pdfPage.selectedPages}
-                      thumbnails={pdfPage.thumbnails}
-                      loadingThumbnails={pdfPage.loadingThumbnails}
-                      previewPageNo={pdfPage.previewPageNo}
-                      onHoverPage={pdfPage.ensurePreview}
-                      onTogglePage={pdfPage.togglePage}
-                      onSelectAll={pdfPage.selectAll}
-                      onClearAll={pdfPage.clearAll}
-                      maxHeight={340}
-                    />
-                  </div>
-                )}
               </div>
             )}
             {uploadFile && (
@@ -1174,7 +1160,7 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
               </Button>
             )}
           </div>
-          {showPagePreview && (
+          {showPagePicker && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <PdfPagePreviewPane
                 previewPageNo={pdfPage.previewPageNo}

@@ -33,7 +33,7 @@ const PdfPageThumbnailStrip: React.FC<PdfPageThumbnailStripProps> = ({
   maxHeight = 380,
 }) => (
   <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 4, marginBottom: 8 }}>
       <Space>
         <Button
           size="small"

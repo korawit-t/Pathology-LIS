@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   extractPdfPages,
-  getPdfPageCount,
   loadPdfDocument,
   renderAllPdfThumbnails,
   renderPdfPage,
@@ -14,8 +13,6 @@ const PREVIEW_SCALE = 1.4;
 export interface UsePdfPageSelectorResult {
   /** null while inspecting, or for single-page/unparsable PDFs (no picker UI needed). */
   pageCount: number | null;
-  mode: "all" | "select";
-  setMode: (mode: "all" | "select") => void;
   selectedPages: number[];
   thumbnails: string[];
   loadingThumbnails: boolean;
@@ -29,19 +26,20 @@ export interface UsePdfPageSelectorResult {
 }
 
 /**
- * Drives the "upload all pages vs. select pages" flow: inspects the dropped
- * PDF, lazily renders thumbnails + an on-demand higher-res preview per page,
- * and calls `onReady` with whatever File should actually be uploaded (the
- * original file, a page-subset PDF built client-side, or null once every
- * page is deselected). Presentation is left to the caller — see
- * PdfPageThumbnailStrip / PdfPagePreviewPane for the pieces this pairs with.
+ * Drives the "select which pages to upload" flow: inspects the dropped PDF,
+ * and — if it has more than one page — renders thumbnails (all pre-selected,
+ * so leaving everything checked reproduces "upload the whole file") plus an
+ * on-demand higher-res preview per page. Calls `onReady` with whatever File
+ * should actually be uploaded (the original file, a page-subset PDF built
+ * client-side, or null once every page is deselected). Presentation is left
+ * to the caller — see PdfPageThumbnailStrip / PdfPagePreviewPane for the
+ * pieces this pairs with.
  */
 export function usePdfPageSelector(
   file: File | null,
   onReady: (finalFile: File | null) => void,
 ): UsePdfPageSelectorResult {
   const [pageCount, setPageCount] = useState<number | null>(null);
-  const [mode, setModeState] = useState<"all" | "select">("all");
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loadingThumbnails, setLoadingThumbnails] = useState(false);
@@ -50,46 +48,6 @@ export function usePdfPageSelector(
   const [previewLoading, setPreviewLoading] = useState(false);
   const requestIdRef = useRef(0);
   const docRef = useRef<LoadedPdf | null>(null);
-
-  // Reset and re-inspect whenever a new file is dropped.
-  useEffect(() => {
-    const requestId = ++requestIdRef.current;
-    docRef.current?.destroy();
-    docRef.current = null;
-    setPageCount(null);
-    setModeState("all");
-    setSelectedPages([]);
-    setThumbnails([]);
-    setPreviewPageNo(null);
-    setPreviewCache({});
-
-    if (!file) {
-      onReady(null);
-      return;
-    }
-
-    getPdfPageCount(file)
-      .then((count) => {
-        if (requestIdRef.current !== requestId) return;
-        if (count <= 1) {
-          onReady(file);
-          return;
-        }
-        setPageCount(count);
-        setSelectedPages(Array.from({ length: count }, (_, i) => i + 1));
-        onReady(file);
-      })
-      .catch((err) => {
-        logger.error("Failed to inspect PDF page count:", err);
-        if (requestIdRef.current !== requestId) return;
-        // Don't block the upload just because preview parsing failed.
-        onReady(file);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file]);
-
-  // Free the parsed document on unmount too.
-  useEffect(() => () => { docRef.current?.destroy(); }, []);
 
   const ensurePreview = (pageNo: number) => {
     setPreviewPageNo(pageNo);
@@ -108,30 +66,59 @@ export function usePdfPageSelector(
       });
   };
 
-  const setMode = (value: "all" | "select") => {
-    setModeState(value);
-    if (value === "select" && thumbnails.length === 0 && file) {
-      const requestId = requestIdRef.current;
-      setLoadingThumbnails(true);
-      loadPdfDocument(file)
-        .then(async (loaded) => {
-          if (requestIdRef.current !== requestId) {
-            await loaded.destroy();
-            return;
-          }
-          docRef.current = loaded;
-          const thumbs = await renderAllPdfThumbnails(loaded.doc);
-          if (requestIdRef.current !== requestId) return;
-          setThumbnails(thumbs);
-          ensurePreview(1);
-        })
-        .catch((err) => logger.error("Failed to render PDF thumbnails:", err))
-        .finally(() => {
-          if (requestIdRef.current !== requestId) return;
-          setLoadingThumbnails(false);
-        });
+  // Inspect + (if multi-page) render thumbnails whenever a new file is dropped.
+  useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    docRef.current?.destroy();
+    docRef.current = null;
+    setPageCount(null);
+    setSelectedPages([]);
+    setThumbnails([]);
+    setPreviewPageNo(null);
+    setPreviewCache({});
+
+    if (!file) {
+      onReady(null);
+      return;
     }
-  };
+
+    setLoadingThumbnails(true);
+    loadPdfDocument(file)
+      .then(async (loaded) => {
+        if (requestIdRef.current !== requestId) {
+          await loaded.destroy();
+          return;
+        }
+        if (loaded.doc.numPages <= 1) {
+          await loaded.destroy();
+          onReady(file);
+          return;
+        }
+        docRef.current = loaded;
+        const count = loaded.doc.numPages;
+        setPageCount(count);
+        setSelectedPages(Array.from({ length: count }, (_, i) => i + 1));
+        onReady(file);
+        const thumbs = await renderAllPdfThumbnails(loaded.doc);
+        if (requestIdRef.current !== requestId) return;
+        setThumbnails(thumbs);
+        ensurePreview(1);
+      })
+      .catch((err) => {
+        logger.error("Failed to inspect/render PDF:", err);
+        if (requestIdRef.current !== requestId) return;
+        // Don't block the upload just because preview parsing failed.
+        onReady(file);
+      })
+      .finally(() => {
+        if (requestIdRef.current !== requestId) return;
+        setLoadingThumbnails(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  // Free the parsed document on unmount too.
+  useEffect(() => () => { docRef.current?.destroy(); }, []);
 
   const applySelection = (pages: number[]) => {
     setSelectedPages(pages);
@@ -163,8 +150,6 @@ export function usePdfPageSelector(
 
   return {
     pageCount,
-    mode,
-    setMode,
     selectedPages,
     thumbnails,
     loadingThumbnails,
