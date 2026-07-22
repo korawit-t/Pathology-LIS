@@ -148,7 +148,7 @@ class TestCoverSheet:
         assert r.status_code == 200
         reader = PdfReader(io.BytesIO(r.content))
         cover_text = reader.pages[0].extract_text()
-        assert "reviewed by" in cover_text.lower()
+        assert "digitally signed by" in cover_text.lower()
 
 
 class TestClinicianVisibilityGate:
