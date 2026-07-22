@@ -9,6 +9,7 @@ import {
   Tabs,
   Badge,
   Modal,
+  Segmented,
   Upload,
   message,
 } from "antd";
@@ -22,6 +23,9 @@ import {
 } from "@ant-design/icons";
 import PageContainer from "../../../components/Layout/PageContainer";
 import ReportPreviewModal from "../../../components/ReportPreviewModal";
+import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPageSelector";
+import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
+import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
 import type { GyneCytologyCase } from "../../../types/gyne-cytology";
 import dayjs from "dayjs";
@@ -41,11 +45,18 @@ interface UploadModalProps {
 }
 
 const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose, onSuccess }) => {
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const pdfPage = usePdfPageSelector(sourceFile, setFile);
+  const showPicker = !!sourceFile && !!pdfPage.pageCount && pdfPage.pageCount > 1;
+  const showPreview = showPicker && pdfPage.mode === "select";
 
   useEffect(() => {
-    if (!open) setFile(null);
+    if (!open) {
+      setSourceFile(null);
+      setFile(null);
+    }
   }, [open]);
 
   const handleConfirm = async () => {
@@ -78,30 +89,73 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
       okText="Confirm Upload"
       cancelText="Cancel"
       okButtonProps={{ disabled: !file, loading: uploading }}
-      width={480}
+      width={showPreview ? 860 : 480}
     >
-      <div style={{ marginBottom: 12 }}>
-        <Text type="secondary">
-          Patient: <Text strong>{caseData?.patient?.name}</Text> | HN: <Text strong>{caseData?.hn}</Text>
-        </Text>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <div style={{ flex: showPreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary">
+              Patient: <Text strong>{caseData?.patient?.name}</Text> | HN: <Text strong>{caseData?.hn}</Text>
+            </Text>
+          </div>
+          <Dragger
+            accept=".pdf"
+            maxCount={1}
+            showUploadList={!!sourceFile}
+            beforeUpload={(f: UploadFile) => {
+              setSourceFile(f as unknown as File);
+              return false;
+            }}
+            onRemove={() => { setSourceFile(null); setFile(null); }}
+            fileList={sourceFile ? [{ uid: "1", name: sourceFile.name, status: "done" }] : []}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined style={{ color: "#1677ff", fontSize: 40 }} />
+            </p>
+            <p className="ant-upload-text">Click or drag PDF to upload</p>
+            <p className="ant-upload-hint">Only PDF files accepted (max 20 MB)</p>
+          </Dragger>
+          {showPicker && (
+            <div style={{ marginTop: 12 }}>
+              <Segmented
+                block
+                value={pdfPage.mode}
+                onChange={(v) => pdfPage.setMode(v as "all" | "select")}
+                options={[
+                  { label: `Upload All Pages (${pdfPage.pageCount})`, value: "all" },
+                  { label: "Select Pages", value: "select" },
+                ]}
+              />
+              {pdfPage.mode === "select" && pdfPage.pageCount && (
+                <div style={{ marginTop: 12 }}>
+                  <PdfPageThumbnailStrip
+                    pageCount={pdfPage.pageCount}
+                    selectedPages={pdfPage.selectedPages}
+                    thumbnails={pdfPage.thumbnails}
+                    loadingThumbnails={pdfPage.loadingThumbnails}
+                    previewPageNo={pdfPage.previewPageNo}
+                    onHoverPage={pdfPage.ensurePreview}
+                    onTogglePage={pdfPage.togglePage}
+                    onSelectAll={pdfPage.selectAll}
+                    onClearAll={pdfPage.clearAll}
+                    maxHeight={340}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {showPreview && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <PdfPagePreviewPane
+              previewPageNo={pdfPage.previewPageNo}
+              previewSrc={pdfPage.previewSrc}
+              previewLoading={pdfPage.previewLoading}
+              minHeight={420}
+            />
+          </div>
+        )}
       </div>
-      <Dragger
-        accept=".pdf"
-        maxCount={1}
-        showUploadList={!!file}
-        beforeUpload={(f: UploadFile) => {
-          setFile(f as unknown as File);
-          return false;
-        }}
-        onRemove={() => setFile(null)}
-        fileList={file ? [{ uid: "1", name: (file as File).name, status: "done" }] : []}
-      >
-        <p className="ant-upload-drag-icon">
-          <InboxOutlined style={{ color: "#1677ff", fontSize: 40 }} />
-        </p>
-        <p className="ant-upload-text">Click or drag PDF to upload</p>
-        <p className="ant-upload-hint">Only PDF files accepted (max 20 MB)</p>
-      </Dragger>
     </Modal>
   );
 };

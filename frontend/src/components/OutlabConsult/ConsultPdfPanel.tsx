@@ -4,6 +4,7 @@ import type { UploadFile } from "antd";
 import { DeleteOutlined, ExclamationCircleOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import StyledCard from "../Layout/StyledCard";
+import PdfPageSelector from "../PdfPageSelector/PdfPageSelector";
 
 const { Text } = Typography;
 
@@ -44,6 +45,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
   emptyStateMessage = "This case has been sent for external consultation. Please upload the consult report PDF once received.",
   receivedStateMessage = "Consult report PDF received.",
 }) => {
+  const [sourcePdfFile, setSourcePdfFile] = useState<File | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [receivedAt, setReceivedAt] = useState<Dayjs>(dayjs());
   const [uploading, setUploading] = useState(false);
@@ -90,6 +92,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
     try {
       await onUpload(caseId, uploadFile, receivedAt.toISOString());
       message.success("Consult PDF uploaded successfully");
+      setSourcePdfFile(null);
       setUploadFile(null);
       setJustUploaded(true);
       onRefresh();
@@ -161,17 +164,17 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
           <Upload.Dragger
             accept="application/pdf"
             maxCount={1}
-            showUploadList={!!uploadFile}
-            fileList={uploadFile ? [{ uid: "1", name: uploadFile.name, status: "done" } as UploadFile] : []}
+            showUploadList={!!sourcePdfFile}
+            fileList={sourcePdfFile ? [{ uid: "1", name: sourcePdfFile.name, status: "done" } as UploadFile] : []}
             beforeUpload={(file) => {
               if (file.size > 10 * 1024 * 1024) {
                 message.error("File must be under 10 MB");
                 return Upload.LIST_IGNORE;
               }
-              setUploadFile(file);
+              setSourcePdfFile(file);
               return false;
             }}
-            onRemove={() => setUploadFile(null)}
+            onRemove={() => { setSourcePdfFile(null); setUploadFile(null); }}
             style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
           >
             <p className="ant-upload-drag-icon">
@@ -184,6 +187,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
               Max 10 MB · PDF only
             </p>
           </Upload.Dragger>
+          <PdfPageSelector file={sourcePdfFile} onReady={setUploadFile} />
           {uploadFile && (
             <Button
               type="primary"

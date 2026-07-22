@@ -20,6 +20,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Segmented,
 } from "antd";
 import {
   FileTextOutlined,
@@ -60,6 +61,9 @@ import ReportStationSettingsModal from "./components/ReportStationSettingsModal"
 import CaseFlagManager from "./components/CaseFlagManager";
 import CytoHistoCorrelationCard from "./components/CytoHistoCorrelationCard";
 import SurgicalReportNavigator from "./components/SurgicalReportNavigator";
+import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPageSelector";
+import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
+import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 import styles from "../../../styles/LayoutWidget.module.css";
 import StyledCard from "../../../components/Layout/StyledCard";
 import UserService, { UserPreferences } from "../../../services/userService";
@@ -104,7 +108,11 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const [consultPdfPopupOpen, setConsultPdfPopupOpen] = useState(false);
+  const [popupSourcePdfFile, setPopupSourcePdfFile] = useState<File | null>(null);
   const [popupUploadFile, setPopupUploadFile] = useState<File | null>(null);
+  const popupPdfPage = usePdfPageSelector(popupSourcePdfFile, setPopupUploadFile);
+  const showPopupPagePicker = !!popupSourcePdfFile && !!popupPdfPage.pageCount && popupPdfPage.pageCount > 1;
+  const showPopupPagePreview = showPopupPagePicker && popupPdfPage.mode === "select";
   const [popupReceivedAt, setPopupReceivedAt] = useState<Dayjs>(dayjs());
   const [popupUploading, setPopupUploading] = useState(false);
   const consultPdfPopupShownRef = useRef(false);
@@ -412,6 +420,7 @@ const handleOpenFinalizeModal = async () => {
       message.success("Consult PDF uploaded successfully");
       // Keep the popup open — it switches to Preview/Sign Off once
       // surgicalCase.consult_pdf_path comes back truthy from refresh().
+      setPopupSourcePdfFile(null);
       setPopupUploadFile(null);
       refresh();
     } catch {
@@ -1234,7 +1243,7 @@ const handleOpenFinalizeModal = async () => {
         }
         onCancel={() => setConsultPdfPopupOpen(false)}
         footer={null}
-        width={surgicalCase?.consult_pdf_path ? 720 : 520}
+        width={surgicalCase?.consult_pdf_path ? 720 : (showPopupPagePreview ? 860 : 520)}
         maskClosable={false}
       >
         {!surgicalCase?.consult_pdf_path ? (
@@ -1245,57 +1254,100 @@ const handleOpenFinalizeModal = async () => {
               message="This case has been sent for external consultation. Please upload the consult report PDF."
               style={{ marginBottom: 16 }}
             />
-            <div>
-              <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
-                Report Received Date / Time:
-              </Typography.Text>
-              <DatePicker
-                showTime={{ format: "HH:mm" }}
-                format="DD/MM/YYYY HH:mm"
-                value={popupReceivedAt}
-                onChange={(d) => d && setPopupReceivedAt(d)}
-                style={{ width: "100%", marginBottom: 12 }}
-              />
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              <div style={{ flex: showPopupPagePreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+                <div>
+                  <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
+                    Report Received Date / Time:
+                  </Typography.Text>
+                  <DatePicker
+                    showTime={{ format: "HH:mm" }}
+                    format="DD/MM/YYYY HH:mm"
+                    value={popupReceivedAt}
+                    onChange={(d) => d && setPopupReceivedAt(d)}
+                    style={{ width: "100%", marginBottom: 12 }}
+                  />
+                </div>
+                <Upload.Dragger
+                  accept="application/pdf"
+                  maxCount={1}
+                  beforeUpload={(file) => {
+                    if (file.size > 10 * 1024 * 1024) {
+                      message.error("File must be under 10 MB");
+                      return Upload.LIST_IGNORE;
+                    }
+                    setPopupSourcePdfFile(file);
+                    return false;
+                  }}
+                  onRemove={() => { setPopupSourcePdfFile(null); setPopupUploadFile(null); }}
+                  style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
+                >
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined style={{ color: "#722ed1" }} />
+                  </p>
+                  <p className="ant-upload-text" style={{ color: "#722ed1" }}>
+                    Click or drag PDF to upload
+                  </p>
+                  <p className="ant-upload-hint" style={{ fontSize: 11 }}>
+                    Max 10 MB · PDF only
+                  </p>
+                </Upload.Dragger>
+                {showPopupPagePicker && (
+                  <div style={{ marginTop: 12 }}>
+                    <Segmented
+                      block
+                      value={popupPdfPage.mode}
+                      onChange={(v) => popupPdfPage.setMode(v as "all" | "select")}
+                      options={[
+                        { label: `Upload All Pages (${popupPdfPage.pageCount})`, value: "all" },
+                        { label: "Select Pages", value: "select" },
+                      ]}
+                    />
+                    {popupPdfPage.mode === "select" && popupPdfPage.pageCount && (
+                      <div style={{ marginTop: 12 }}>
+                        <PdfPageThumbnailStrip
+                          pageCount={popupPdfPage.pageCount}
+                          selectedPages={popupPdfPage.selectedPages}
+                          thumbnails={popupPdfPage.thumbnails}
+                          loadingThumbnails={popupPdfPage.loadingThumbnails}
+                          previewPageNo={popupPdfPage.previewPageNo}
+                          onHoverPage={popupPdfPage.ensurePreview}
+                          onTogglePage={popupPdfPage.togglePage}
+                          onSelectAll={popupPdfPage.selectAll}
+                          onClearAll={popupPdfPage.clearAll}
+                          maxHeight={340}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {popupUploadFile && (
+                  <Button
+                    type="primary"
+                    icon={<UploadOutlined />}
+                    onClick={handlePopupUpload}
+                    loading={popupUploading}
+                    style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
+                    block
+                  >
+                    Upload Report PDF
+                  </Button>
+                )}
+                <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
+                  A thumbnail of this PDF's first page and your sign-off will appear on the printed report's first page. The full consult PDF stays downloadable separately.
+                </Typography.Text>
+              </div>
+              {showPopupPagePreview && (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <PdfPagePreviewPane
+                    previewPageNo={popupPdfPage.previewPageNo}
+                    previewSrc={popupPdfPage.previewSrc}
+                    previewLoading={popupPdfPage.previewLoading}
+                    minHeight={420}
+                  />
+                </div>
+              )}
             </div>
-            <Upload.Dragger
-              accept="application/pdf"
-              maxCount={1}
-              beforeUpload={(file) => {
-                if (file.size > 10 * 1024 * 1024) {
-                  message.error("File must be under 10 MB");
-                  return Upload.LIST_IGNORE;
-                }
-                setPopupUploadFile(file);
-                return false;
-              }}
-              onRemove={() => setPopupUploadFile(null)}
-              style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
-            >
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined style={{ color: "#722ed1" }} />
-              </p>
-              <p className="ant-upload-text" style={{ color: "#722ed1" }}>
-                Click or drag PDF to upload
-              </p>
-              <p className="ant-upload-hint" style={{ fontSize: 11 }}>
-                Max 10 MB · PDF only
-              </p>
-            </Upload.Dragger>
-            {popupUploadFile && (
-              <Button
-                type="primary"
-                icon={<UploadOutlined />}
-                onClick={handlePopupUpload}
-                loading={popupUploading}
-                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
-                block
-              >
-                Upload Report PDF
-              </Button>
-            )}
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
-              A thumbnail of this PDF's first page and your sign-off will appear on the printed report's first page. The full consult PDF stays downloadable separately.
-            </Typography.Text>
           </>
         ) : (
           <>
