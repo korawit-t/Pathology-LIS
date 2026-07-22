@@ -154,6 +154,21 @@ def delete_stain(db: Session, stain_id: int, actor_id: int | None = None) -> boo
     if not db_obj:
         return False
 
+    # If this stain had auto-spawned a Molecular case that's already been
+    # reported (a signed-off clinical result), block the delete outright —
+    # cancelling that side-effect-of-a-different-action is too destructive.
+    # The user must explicitly cancel the Molecular case itself first.
+    from app.crud.molecular_case import (
+        cancel_or_delete_molecular_case_for_stain,
+        get_reported_molecular_case_for_stain,
+    )
+    blocking_case = get_reported_molecular_case_for_stain(db, stain_id)
+    if blocking_case:
+        raise ValueError(
+            f"Cannot delete: linked Molecular case {blocking_case.accession_no} has "
+            "already been reported. Cancel that case explicitly first."
+        )
+
     try:
         block = db.get(SurgicalBlock, db_obj.block_id)
         case_id = None
@@ -168,7 +183,6 @@ def delete_stain(db: Session, stain_id: int, actor_id: int | None = None) -> boo
         # the accession/audit trail. Must run before db.delete(db_obj) since
         # MolecularCase.stain_id is ON DELETE SET NULL — the lookup below
         # would no longer find it once the stain row is actually removed.
-        from app.crud.molecular_case import cancel_or_delete_molecular_case_for_stain
         cancel_or_delete_molecular_case_for_stain(db, stain_id=stain_id, actor_id=actor_id)
 
         db.delete(db_obj)

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { Table, Tag, Button, Space, Typography, message, Divider } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
+import { sanitizeHtml } from "../../../utils/sanitize";
 import ReportPreviewModal from "../../../components/ReportPreviewModal";
 import { MolecularCaseService, MolecularCaseResponse } from "../../../services/molecularCaseService";
 import type { ReportHistoryHandle } from "./SurgicalReportHistory";
@@ -52,7 +53,9 @@ const MolecularReportHistory = forwardRef<ReportHistoryHandle>((_, ref) => {
   const handleViewPdf = async (row: MolecularCaseResponse) => {
     setPreviewLoadingId(row.id);
     try {
-      const blob = await MolecularCaseService.getOutlabPdfBlob(row.id);
+      const blob = row.outlab_pdf_path
+        ? await MolecularCaseService.getOutlabPdfBlob(row.id)
+        : await MolecularCaseService.getResultPdfBlob(row.id);
       const url = URL.createObjectURL(blob);
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
       setPdfUrl(url);
@@ -118,7 +121,7 @@ const MolecularReportHistory = forwardRef<ReportHistoryHandle>((_, ref) => {
       width: 110,
       fixed: "right" as const,
       render: (_: unknown, r: MolecularCaseResponse) =>
-        r.outlab_pdf_path ? (
+        r.outlab_pdf_path || r.status === "reported" ? (
           <Button
             type="primary"
             ghost
@@ -155,7 +158,13 @@ const MolecularReportHistory = forwardRef<ReportHistoryHandle>((_, ref) => {
           expandedRowRender: (r) => (
             <div style={{ background: "#fafafa", padding: 20, borderRadius: 8, border: "1px solid #f0f0f0" }}>
               <Divider plain style={{ margin: "0 0 12px" }}>Result</Divider>
-              <Text style={{ whiteSpace: "pre-wrap" }}>{r.result_text || "No free-text result recorded."}</Text>
+              {r.result_text ? (
+                <div
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(r.result_text) /* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml */ }}
+                />
+              ) : (
+                <Text type="secondary">No result recorded.</Text>
+              )}
             </div>
           ),
         }}

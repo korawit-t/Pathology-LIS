@@ -263,7 +263,12 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
       await SurgicalBlockStainService.deleteStain(stainId);
       setStains((prev) => prev.filter((s) => s.id !== stainId));
       message.success("Stain order removed.");
-    } catch { message.error("Failed to remove stain."); } finally { setDeletingId(null); }
+    } catch (err: unknown) {
+      // 400 = backend blocked it (e.g. linked Molecular case already
+      // reported) — surface that specific reason instead of a generic error.
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      message.error(axiosErr?.response?.data?.detail || "Failed to remove stain.");
+    } finally { setDeletingId(null); }
   };
 
   const handleOrder = async () => {

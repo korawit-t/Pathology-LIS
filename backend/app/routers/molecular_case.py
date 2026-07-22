@@ -45,11 +45,13 @@ def list_molecular_cases(
     parent_case_id: Optional[int] = None,
     stain_id: Optional[int] = None,
     search: Optional[str] = None,
+    clinician: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     return molecular_crud.get_molecular_cases(
         db, skip=skip, limit=limit, status=status, is_outlab=is_outlab,
         parent_case_id=parent_case_id, stain_id=stain_id, search=search,
+        clinician=clinician,
     )
 
 
@@ -139,3 +141,13 @@ def delete_outlab_pdf(case_id: int, db: Session = Depends(get_db)):
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")
     return case
+
+
+# --- Free-text result PDF (live-generated, no snapshot table) ---
+
+@router.get("/{case_id}/result-pdf", dependencies=[Depends(CAN_READ_REPORT)])
+def download_result_pdf(case_id: int, db: Session = Depends(get_db)):
+    pdf_bytes = molecular_crud.get_molecular_result_pdf(db, case_id)
+    if pdf_bytes is None:
+        raise HTTPException(status_code=404, detail="Molecular case not found")
+    return Response(content=pdf_bytes, media_type="application/pdf")

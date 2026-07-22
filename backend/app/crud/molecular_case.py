@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 
@@ -19,8 +20,12 @@ from app.utils.file_handler import validate_and_sanitize
 from app.utils.time import local_now
 from app.crud.organization import resolve_lab_header
 from app.crud.system_setting import get_settings as get_system_settings
-from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64, STORAGE_BASE
-from app.services.pdf_service import generate_consult_cover_pdf
+from app.crud.surgical_report_builder import (
+    get_consult_pdf_thumbnails_base64,
+    STORAGE_BASE,
+    _calculate_patient_age,
+)
+from app.services.pdf_service import generate_consult_cover_pdf, generate_pdf_blob
 
 try:
     from pypdf import PdfWriter
@@ -30,6 +35,20 @@ except ImportError:
 
 UPLOAD_MOLECULAR_DIR = os.path.join(os.getcwd(), "uploads", "molecular")
 os.makedirs(UPLOAD_MOLECULAR_DIR, exist_ok=True)
+
+
+def _is_blank_rich_text(html: str | None) -> bool:
+    """result_text is now rich HTML from the same TipTap editor Surgical's
+    diagnosis fields use (see SimpleTiptapEditor.tsx) — an "empty" editor
+    still emits "<p></p>", which is truthy as a plain string. Mirrors the
+    frontend's stripHtmlToText()-then-trim() emptiness check (used for
+    GrossEditView's own rich-text field) so a stray empty paragraph can't
+    pass finalize validation as if it were a real result."""
+    if not html:
+        return True
+    text = re.sub(r"<[^>]*>", "", html)
+    text = text.replace("&nbsp;", "").strip()
+    return not text
 
 
 def _darken_hex(hex_color: str, factor: float = 0.65) -> str:
@@ -145,6 +164,7 @@ def _base_query(db: Session):
         selectinload(MolecularCase.patient).selectinload(Patient.title),
         selectinload(MolecularCase.ap_test),
         selectinload(MolecularCase.assist_pathologist),
+        selectinload(MolecularCase.reported_by),
     )
 
 
@@ -199,6 +219,11 @@ def _to_response_dict(case: MolecularCase) -> dict:
             if case.assist_pathologist
             else None
         ),
+        "reported_by_name": (
+            (case.reported_by.full_name or case.reported_by.username)
+            if case.reported_by
+            else None
+        ),
         "is_cancelled": case.is_cancelled,
         "cancelled_at": case.cancelled_at,
         "cancel_reason": case.cancel_reason,
@@ -226,6 +251,7 @@ def get_molecular_cases(
     parent_case_id: int | None = None,
     stain_id: int | None = None,
     search: str | None = None,
+    clinician: str | None = None,
 ) -> list[dict]:
     query = _base_query(db).filter(MolecularCase.is_cancelled == False)  # noqa: E712
     if status:
@@ -236,11 +262,12 @@ def get_molecular_cases(
         query = query.filter(MolecularCase.parent_case_id == parent_case_id)
     if stain_id is not None:
         query = query.filter(MolecularCase.stain_id == stain_id)
+    if search or clinician:
+        query = query.outerjoin(SurgicalCase, MolecularCase.parent_case_id == SurgicalCase.id)
     if search:
         s = f"%{search.strip()}%"
         query = (
-            query.outerjoin(SurgicalCase, MolecularCase.parent_case_id == SurgicalCase.id)
-            .outerjoin(
+            query.outerjoin(
                 Patient,
                 or_(Patient.id == MolecularCase.patient_id, Patient.id == SurgicalCase.patient_id),
             )
@@ -253,6 +280,14 @@ def get_molecular_cases(
                     Patient.name.ilike(s),
                     Patient.ln.ilike(s),
                 )
+            )
+        )
+    if clinician:
+        c = f"%{clinician.strip()}%"
+        query = query.filter(
+            or_(
+                MolecularCase.clinician_name.ilike(c),
+                SurgicalCase.clinician_name.ilike(c),
             )
         )
 
@@ -274,6 +309,25 @@ def get_molecular_case(db: Session, case_id: int) -> dict | None:
 
 def _get_case_obj(db: Session, case_id: int) -> MolecularCase | None:
     return db.query(MolecularCase).filter(MolecularCase.id == case_id).first()
+
+
+def get_reported_molecular_case_for_stain(db: Session, stain_id: int) -> MolecularCase | None:
+    """Used by crud.surgical_block_stain.delete_stain() to BLOCK deleting a
+    stain order whose Molecular case has already been reported — a signed-off
+    clinical result. Undoing that should require explicitly cancelling the
+    Molecular case itself (its own Cancel action), not happen as a side
+    effect of removing an unrelated stain-order row. Still-pending cases (or
+    already-cancelled ones) are not blocking — those fall through to
+    cancel_or_delete_molecular_case_for_stain's hard-delete/soft-cancel path."""
+    return (
+        db.query(MolecularCase)
+        .filter(
+            MolecularCase.stain_id == stain_id,
+            MolecularCase.status == "reported",
+            MolecularCase.is_cancelled == False,  # noqa: E712
+        )
+        .first()
+    )
 
 
 def cancel_or_delete_molecular_case_for_stain(db: Session, stain_id: int, actor_id: int | None) -> None:
@@ -331,7 +385,7 @@ def finalize_molecular_case(db: Session, case_id: int, reported_by_id: int, resu
         return None
     if result_text is not None:
         case.result_text = result_text
-    if not (case.result_text or case.outlab_pdf_path):
+    if _is_blank_rich_text(case.result_text) and not case.outlab_pdf_path:
         raise ValueError("A result summary or an out-lab PDF is required before finalizing.")
     case.status = "reported"
     case.reported_by_id = reported_by_id
@@ -493,3 +547,106 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
     merged_io = io.BytesIO()
     writer.write(merged_io)
     return merged_io.getvalue()
+
+
+def _build_molecular_report_data(db: Session, case: MolecularCase) -> dict:
+    """Assembles the report_data dict for the free-text result PDF (see
+    get_molecular_result_pdf) — mirrors get_outlab_pdf_with_cover's
+    data-gathering (same _resolve_display_fields reuse, same inline
+    lab-header/logo-URL resolution) but has no out-lab PDF/thumbnails
+    involved, and adds the free-text result content fields instead."""
+    fields = _resolve_display_fields(case)
+    patient = fields["patient"]
+    title = getattr(patient, "title", None) if patient else None
+    hospital = fields["hospital"]
+    department = fields["department"]
+
+    settings = get_system_settings(db)
+    lab_name_en, lab_address, logo_path = resolve_lab_header(hospital, settings)
+    logo_url = None
+    if logo_path:
+        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
+        logo_url = full.as_uri() if full.exists() else None
+
+    primary_color = settings.report_primary_color if settings else None
+    font_path = STORAGE_BASE.parent / "assets" / "fonts"
+
+    # Freeze age as of registration, same convention Surgical uses, rather
+    # than the live patient.age_display property (which would drift with
+    # wall-clock time on every re-render of an old case).
+    age_info = (
+        _calculate_patient_age(patient.birth_date, ref_date=case.registered_at.date())
+        if patient and patient.birth_date and case.registered_at
+        else {"display": "-"}
+    )
+
+    return {
+        "font_path": font_path.as_uri(),
+        "primary_color": primary_color,
+        "primary_color_dark": _darken_hex(primary_color) if primary_color else None,
+        "report_logo_url_snapshot": logo_url,
+        "lab_name_en_snapshot": lab_name_en,
+        "lab_address_snapshot": lab_address,
+        "patient_title": title.title if title else "",
+        "patient_name": patient.name if patient else "",
+        "patient_ln": patient.ln if patient else "",
+        "patient_hn": fields["hn"],
+        "patient_gender": patient.gender if patient else "",
+        "patient_age_display": age_info["display"],
+        "accession_no": case.accession_no,
+        "clinician_name": fields["clinician_name"],
+        "hospital_name": hospital.name if hospital else None,
+        "department_name": department.name if department else None,
+        "collect_at": fields["collect_at"],
+        "registered_at": case.registered_at,
+        "reported_at": case.reported_at,
+        "test_name": case.ap_test.name if case.ap_test else None,
+        "result_text": case.result_text,
+        "assist_pathologist_name": (
+            (case.assist_pathologist.full_name or case.assist_pathologist.username)
+            if case.assist_pathologist
+            else None
+        ),
+        "reported_by_name": (
+            (case.reported_by.full_name or case.reported_by.username)
+            if case.reported_by
+            else None
+        ),
+        "status": case.status,
+        "is_preview": case.status != "reported",
+    }
+
+
+def get_molecular_result_pdf(db: Session, case_id: int) -> bytes | None:
+    """Live-generated PDF of a Molecular case's free-text in-house result —
+    regenerated fresh on every call from the current row, same as
+    get_outlab_pdf_with_cover; Molecular has no snapshot/versioning table to
+    freeze a report against (unlike Surgical's surgical_reports), matching
+    its deliberately single-signer, no-addendum design. Always renders
+    something (a "no result yet" placeholder pre-finalize) rather than 404ing
+    on missing content — only 404s if the case itself doesn't exist."""
+    case = (
+        db.query(MolecularCase)
+        .options(
+            selectinload(MolecularCase.parent_case).selectinload(SurgicalCase.patient).selectinload(Patient.title),
+            selectinload(MolecularCase.parent_case).selectinload(SurgicalCase.hospital),
+            selectinload(MolecularCase.parent_case).selectinload(SurgicalCase.department),
+            selectinload(MolecularCase.patient).selectinload(Patient.title),
+            selectinload(MolecularCase.hospital),
+            selectinload(MolecularCase.department),
+            selectinload(MolecularCase.ap_test),
+            selectinload(MolecularCase.assist_pathologist),
+            selectinload(MolecularCase.reported_by),
+        )
+        .filter(MolecularCase.id == case_id)
+        .first()
+    )
+    if not case:
+        return None
+
+    report_data = _build_molecular_report_data(db, case)
+    return generate_pdf_blob(
+        report_data,
+        template_name="reports/molecular_report_template.html",
+        is_preview=report_data["is_preview"],
+    )

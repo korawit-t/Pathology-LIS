@@ -29,6 +29,7 @@ export interface MolecularCaseResponse {
   registered_at?: string | null;
   reported_by_id?: number | null;
   reported_at?: string | null;
+  reported_by_name?: string | null;
   assist_pathologist_id?: number | null;
   assist_pathologist_name?: string | null;
   is_cancelled: boolean;
@@ -99,6 +100,7 @@ export interface MolecularCaseListParams {
   parent_case_id?: number;
   stain_id?: number;
   search?: string;
+  clinician?: string;
 }
 
 export const MolecularCaseService = {
@@ -136,4 +138,7 @@ export const MolecularCaseService = {
 
   getOutlabPdfBlob: (caseId: number): Promise<Blob> =>
     api.get(`/molecular-cases/${caseId}/outlab-pdf`, { responseType: "blob" }).then((r) => r.data),
+
+  getResultPdfBlob: (caseId: number): Promise<Blob> =>
+    api.get(`/molecular-cases/${caseId}/result-pdf`, { responseType: "blob" }).then((r) => r.data),
 };

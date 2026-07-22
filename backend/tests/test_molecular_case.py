@@ -82,6 +82,18 @@ class TestMolecularCaseFinalize:
         resp = pathologist_client.post(f"/molecular-cases/{mcase['id']}/finalize", json={})
         assert resp.status_code == 400
 
+    def test_finalize_with_only_a_blank_rich_text_paragraph_fails(self, db, pathologist_client, admin_user):
+        """result_text is now rich HTML from the same TipTap editor Surgical's
+        diagnosis fields use — an "empty" editor still emits "<p></p>", which
+        must not count as a real result (see _is_blank_rich_text)."""
+        case, _ = _order_molecular_test(db, pathologist_client, admin_user)
+        mcase = pathologist_client.get("/molecular-cases", params={"parent_case_id": case.id}).json()[0]
+
+        resp = pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "<p>&nbsp;</p>"}
+        )
+        assert resp.status_code == 400
+
     def test_outlab_pdf_upload_allows_finalize_without_free_text(self, db, pathologist_client, admin_user):
         case, _ = _order_molecular_test(db, pathologist_client, admin_user, is_external=True)
         mcase = pathologist_client.get("/molecular-cases", params={"parent_case_id": case.id}).json()[0]
@@ -344,17 +356,35 @@ class TestMolecularCaseCascadeOnStainDeletion:
         assert body["cancel_reason"] == "Parent stain order was deleted"
         assert body["result_text"] == "draft finding"
 
-    def test_deleting_stain_soft_cancels_already_reported_molecular_case(self, db, pathologist_client, admin_user):
+    def test_deleting_stain_is_blocked_when_molecular_case_already_reported(self, db, pathologist_client, admin_user):
+        """A reported Molecular case is a signed-off clinical result — deleting
+        its parent stain order must not be allowed to silently cancel it as a
+        side effect. The user has to cancel the Molecular case explicitly."""
         case, stain = _order_molecular_test(db, pathologist_client, admin_user)
         mcase = pathologist_client.get("/molecular-cases", params={"parent_case_id": case.id}).json()[0]
         pathologist_client.post(f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "EGFR wild-type"})
 
         resp = pathologist_client.delete(f"/surgical-block-stains/{stain['id']}")
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 400
+        assert mcase["accession_no"] in resp.json()["detail"]
 
+        # Nothing changed — stain still exists, case still reported and not cancelled.
         refetched = pathologist_client.get(f"/molecular-cases/{mcase['id']}").json()
-        assert refetched["is_cancelled"] is True
+        assert refetched["is_cancelled"] is False
         assert refetched["status"] == "reported"
+
+    def test_deleting_stain_still_soft_cancels_a_reported_case_after_it_is_itself_cancelled(
+        self, db, pathologist_client, admin_user
+    ):
+        """Once the Molecular case has been explicitly cancelled (regardless of
+        its prior status), deleting the parent stain is no longer blocked."""
+        case, stain = _order_molecular_test(db, pathologist_client, admin_user)
+        mcase = pathologist_client.get("/molecular-cases", params={"parent_case_id": case.id}).json()[0]
+        pathologist_client.post(f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "EGFR wild-type"})
+        pathologist_client.post(f"/molecular-cases/{mcase['id']}/cancel", json={"cancel_reason": "duplicate order"})
+
+        resp = pathologist_client.delete(f"/surgical-block-stains/{stain['id']}")
+        assert resp.status_code == 200, resp.text
 
     def test_deleting_stain_with_no_molecular_case_is_unaffected(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
@@ -438,3 +468,96 @@ class TestMolecularCaseAssistPathologist:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["assist_pathologist_id"] == new_assist_pathologist.id
+
+
+class TestMolecularCaseClinicianFilter:
+    def test_clinician_filter_matches_standalone_case_own_clinician_name(self, db, pathologist_client):
+        patient = make_patient(db, name="Clinician Filter Patient")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="BRCA1/2 Panel")
+
+        created = pathologist_client.post(
+            "/molecular-cases",
+            json={"patient_id": patient.id, "ap_test_id": ap_test.id, "clinician_name": "Dr. Somchai Uniquename"},
+        ).json()
+
+        resp = pathologist_client.get("/molecular-cases", params={"clinician": "Somchai Uniquename"})
+        assert resp.status_code == 200
+        assert any(c["id"] == created["id"] for c in resp.json())
+
+        resp_miss = pathologist_client.get("/molecular-cases", params={"clinician": "no-such-clinician-xyz"})
+        assert all(c["id"] != created["id"] for c in resp_miss.json())
+
+    def test_clinician_filter_matches_parent_linked_case_via_parent_clinician_name(
+        self, db, pathologist_client, admin_user
+    ):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.clinician_name = "Dr. Parent Uniquename"
+        db.commit()
+        block = make_block(db, specimen.id)
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="JAK2 Mutation")
+
+        resp = pathologist_client.post(
+            "/surgical-block-stains", json={"block_id": block.id, "test_id": ap_test.id, "slide_no": 1}
+        )
+        assert resp.status_code == 200, resp.text
+
+        listed = pathologist_client.get("/molecular-cases", params={"clinician": "Parent Uniquename"})
+        assert resp.status_code == 200
+        assert any(c["parent_case_id"] == case.id for c in listed.json())
+
+
+class TestMolecularCaseResultPdf:
+    def test_result_pdf_renders_placeholder_before_finalize(self, db, pathologist_client, admin_user):
+        import io as _io
+        from pypdf import PdfReader
+
+        patient = make_patient(db, name="Result Pdf Patient")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="TP53 Sequencing")
+        created = pathologist_client.post(
+            "/molecular-cases", json={"patient_id": patient.id, "ap_test_id": ap_test.id}
+        ).json()
+
+        resp = pathologist_client.get(f"/molecular-cases/{created['id']}/result-pdf")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content.startswith(b"%PDF")
+
+        reader = PdfReader(_io.BytesIO(resp.content))
+        text = reader.pages[0].extract_text() or ""
+        assert created["accession_no"] in text
+        assert "No result recorded yet" in text
+
+    def test_result_pdf_renders_result_text_and_reporter_after_finalize(
+        self, db, pathologist_client, pathologist_user, admin_user
+    ):
+        import io as _io
+        from pypdf import PdfReader
+
+        reporter, _ = pathologist_user
+        patient = make_patient(db, name="Finalized Result Patient")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="KIT Mutation Analysis")
+        created = pathologist_client.post(
+            "/molecular-cases", json={"patient_id": patient.id, "ap_test_id": ap_test.id}
+        ).json()
+
+        finalize = pathologist_client.post(
+            f"/molecular-cases/{created['id']}/finalize",
+            json={"result_text": "<p>KIT exon 11 mutation detected — <strong>unique marker XYZ123</strong></p>"},
+        )
+        assert finalize.status_code == 200, finalize.text
+
+        resp = pathologist_client.get(f"/molecular-cases/{created['id']}/result-pdf")
+        assert resp.status_code == 200
+        reader = PdfReader(_io.BytesIO(resp.content))
+        text = reader.pages[0].extract_text() or ""
+        assert created["accession_no"] in text
+        # Rendered as real HTML (rich text from the same TipTap editor Surgical
+        # uses) — tags themselves must not leak into the extracted text.
+        assert "unique marker XYZ123" in text
+        assert "<p>" not in text and "<strong>" not in text
+        assert (reporter.full_name or reporter.username) in text
+
+    def test_result_pdf_404s_for_nonexistent_case(self, pathologist_client):
+        resp = pathologist_client.get("/molecular-cases/999999999/result-pdf")
+        assert resp.status_code == 404

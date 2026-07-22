@@ -88,6 +88,7 @@ class MolecularCaseResponse(BaseModel):
     registered_at: Optional[datetime] = None
     reported_by_id: Optional[int] = None
     reported_at: Optional[datetime] = None
+    reported_by_name: Optional[str] = None
     assist_pathologist_id: Optional[int] = None
     assist_pathologist_name: Optional[str] = None
     is_cancelled: bool

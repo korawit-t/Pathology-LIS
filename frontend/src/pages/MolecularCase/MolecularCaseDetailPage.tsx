@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Button, Popconfirm, Select, Space, Switch, Tag, Typography, Input, Spin, message } from "antd";
-import { ExclamationCircleOutlined } from "@ant-design/icons";
+import { Button, Popconfirm, Select, Space, Switch, Tag, Typography, Spin, message } from "antd";
+import { ExclamationCircleOutlined, FileSearchOutlined } from "@ant-design/icons";
 
 import PageContainer from "../../components/Layout/PageContainer";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
+import ReportPreviewModal from "../../components/ReportPreviewModal";
+import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 import UserService from "../../services/userService";
 import type { User } from "../../types/user";
 
 const { Text } = Typography;
-const { TextArea } = Input;
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "gold",
@@ -34,6 +35,9 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
   const [finalizing, setFinalizing] = useState(false);
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [savingAssistPathologist, setSavingAssistPathologist] = useState(false);
+  const [resultPdfUrl, setResultPdfUrl] = useState<string | null>(null);
+  const [resultPdfModalOpen, setResultPdfModalOpen] = useState(false);
+  const [loadingResultPdf, setLoadingResultPdf] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +61,12 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
       .then(setPathologists)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (resultPdfUrl) URL.revokeObjectURL(resultPdfUrl);
+    };
+  }, [resultPdfUrl]);
 
   const isLocked = !!record && (record.status === "reported" || record.is_cancelled);
 
@@ -105,6 +115,22 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
       message.error(axiosErr?.response?.data?.detail || "Failed to finalize");
     } finally {
       setFinalizing(false);
+    }
+  };
+
+  const previewResultPdf = async () => {
+    if (!record) return;
+    setLoadingResultPdf(true);
+    try {
+      const blob = await MolecularCaseService.getResultPdfBlob(record.id);
+      const url = URL.createObjectURL(blob);
+      if (resultPdfUrl) URL.revokeObjectURL(resultPdfUrl);
+      setResultPdfUrl(url);
+      setResultPdfModalOpen(true);
+    } catch {
+      message.error("Failed to load result PDF");
+    } finally {
+      setLoadingResultPdf(false);
     }
   };
 
@@ -174,15 +200,25 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
 
           {canEnterResult && (
             <div>
-              <Text style={{ display: "block", marginBottom: 6 }}>
-                {record.is_outlab ? "Result summary (optional — PDF above is the primary result)" : "Result"}
-              </Text>
-              <TextArea
-                rows={6}
+              <Space align="center" style={{ marginBottom: 6, width: "100%", justifyContent: "space-between" }}>
+                <Text>
+                  {record.is_outlab ? "Result summary (optional — PDF above is the primary result)" : "Result"}
+                </Text>
+                <Button
+                  size="small"
+                  icon={<FileSearchOutlined />}
+                  loading={loadingResultPdf}
+                  onClick={previewResultPdf}
+                >
+                  Preview PDF
+                </Button>
+              </Space>
+              <SimpleTiptapEditor
                 value={resultDraft}
                 disabled={isLocked}
-                onChange={(e) => setResultDraft(e.target.value)}
-                placeholder="Free-text molecular findings, e.g. EGFR exon 19 deletion detected, VAF 12%"
+                onChange={setResultDraft}
+                placeholder="Molecular findings, e.g. EGFR exon 19 deletion detected, VAF 12%"
+                style={{ minHeight: "160px" }}
               />
             </div>
           )}
@@ -213,6 +249,11 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
           )}
         </Space>
       )}
+      <ReportPreviewModal
+        open={resultPdfModalOpen}
+        pdfUrl={resultPdfUrl}
+        onCancel={() => setResultPdfModalOpen(false)}
+      />
     </PageContainer>
   );
 };
