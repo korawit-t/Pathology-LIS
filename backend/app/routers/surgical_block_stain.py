@@ -158,7 +158,11 @@ def delete_outlab_run(run_id: int, db: Session = Depends(get_db)):
     return {"message": "Outlab run deleted successfully"}
 
 @router.post("", response_model=StainResponse)
-def create_stain(obj_in: StainCreate, db: Session = Depends(get_db)):
+def create_stain(
+    obj_in: StainCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     from app.models.anatomical_pathology_test import AnatomicalPathologyTest
     # Auto-fill test_id for recut orders using the stable system_code
     if obj_in.is_recut and obj_in.test_id is None:
@@ -169,7 +173,7 @@ def create_stain(obj_in: StainCreate, db: Session = Depends(get_db)):
         )
         if he_recut:
             obj_in = obj_in.model_copy(update={"test_id": he_recut.id})
-    return crud.create_stain(db, obj_in=obj_in)
+    return crud.create_stain(db, obj_in=obj_in, registrar_id=current_user.id)
 
 
 @router.post("/batch-run")
@@ -200,8 +204,8 @@ def update_stain(
 
 
 @router.delete("/{stain_id}")
-def delete_stain(stain_id: int, db: Session = Depends(get_db)):
-    success = crud.delete_stain(db, stain_id=stain_id)
+def delete_stain(stain_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    success = crud.delete_stain(db, stain_id=stain_id, actor_id=current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Stain not found")
     return {"message": "Deleted successfully"}

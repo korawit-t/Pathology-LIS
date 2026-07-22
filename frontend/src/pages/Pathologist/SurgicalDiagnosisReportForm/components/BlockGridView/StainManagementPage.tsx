@@ -38,6 +38,7 @@ import {
 import StainPanelService, { StainPanel } from "../../../../../services/stainPanelService";
 import dayjs from "dayjs";
 import SurgicalBlockStainService from "../../../../../services/surgicalBlockStainService";
+import { MolecularCaseService, MolecularCaseResponse } from "../../../../../services/molecularCaseService";
 import AnatomicalPathologyTestService, { AnatomicalPathologyTest } from "../../../../../services/anatomicalTestService";
 import NotificationRuleService from "../../../../../services/notificationRuleService";
 import { SurgicalBlock } from "../../../../../types/surgical";
@@ -286,6 +287,26 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
       if (ihcItems.length > 0) notifyTasks.push(NotificationRuleService.triggerEvent("stain_order_ihc", { ...baseInfo, tests: ihcItems.map((s) => s.name).join(", "), count: String(ihcItems.length) }));
       if (specialItems.length > 0) notifyTasks.push(NotificationRuleService.triggerEvent("stain_order_special", { ...baseInfo, tests: specialItems.map((s) => s.name).join(", "), count: String(specialItems.length) }));
       Promise.allSettled(notifyTasks).then((rs) => rs.forEach((r) => { if (r.status === "rejected") logger.warn("Notification trigger failed:", r.reason); }));
+
+      // Ordering a Molecular test auto-creates its own M26- case server-side
+      // (see crud/surgical_block_stain.py::create_stain) — look up its
+      // accession by the stain id we just got back and surface it, since the
+      // generic "Ordered N stain(s)" toast above gives no hint this happened.
+      const molecularOrders = staged
+        .map((item, index) => ({ item, result: results[index] }))
+        .filter(({ item }) => item.category === "Molecular");
+      if (molecularOrders.length > 0) {
+        Promise.allSettled(
+          molecularOrders.map(({ result }) => MolecularCaseService.getAll({ stain_id: result.id })),
+        ).then((settled) => {
+          const accessions = settled
+            .filter((r): r is PromiseFulfilledResult<MolecularCaseResponse[]> => r.status === "fulfilled")
+            .flatMap((r) => r.value)
+            .map((c) => c.accession_no)
+            .filter(Boolean);
+          if (accessions.length > 0) message.success(`Molecular case(s) created: ${accessions.join(", ")}`);
+        });
+      }
     } catch (err) { logger.error("Order Error:", err); message.error("Failed to order stains. Please try again."); } finally { setSubmitting(false); }
   };
 
@@ -310,7 +331,18 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
     { title: "Status", dataIndex: "status", key: "status", width: 80, render: (status) => <Tag color={STATUS_COLOR[status] ?? "default"} style={{ fontSize: 11, margin: 0, textTransform: "capitalize" }}>{status}</Tag> },
     {
       title: "", key: "action", width: 36, render: (_, s) => s.status === "pending" ? (
-        <Popconfirm title={`Remove "${s.test?.name || s.stain_name}"?`} okText="Remove" okButtonProps={{ danger: true }} cancelText="Cancel" onConfirm={() => handleDelete(s.id)}>
+        <Popconfirm
+          title={`Remove "${s.test?.name || s.stain_name}"?`}
+          description={
+            s.test?.category === "Molecular"
+              ? "This test has its own Molecular case (M26-...). Removing the order will cancel or delete that case too."
+              : undefined
+          }
+          okText="Remove"
+          okButtonProps={{ danger: true }}
+          cancelText="Cancel"
+          onConfirm={() => handleDelete(s.id)}
+        >
           <Button type="text" danger icon={<DeleteOutlined />} size="small" loading={deletingId === s.id} />
         </Popconfirm>
       ) : null,

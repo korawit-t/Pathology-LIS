@@ -76,6 +76,7 @@ class SystemSetting(Base):
     surgical_accession_prefix = Column(String, default="S", nullable=False)
     gyne_accession_prefix = Column(String, default="C", nullable=False)
     nongyne_accession_prefix = Column(String, default="N", nullable=False)
+    molecular_accession_prefix = Column(String, default="M", nullable=False)
 
     # --- Barcode Settings ---
     barcode_opd_prefix = Column(String, default="2")

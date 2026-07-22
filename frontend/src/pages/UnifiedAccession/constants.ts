@@ -19,6 +19,12 @@ export const CYTO_STATUS: Record<string, { color: string; label: string }> = {
   cancelled: { color: "error", label: "Cancelled" },
 };
 
+export const MOLECULAR_STATUS_MAP: Record<string, { color: string; label: string }> = {
+  pending: { color: "gold", label: "Pending" },
+  reported: { color: "green", label: "Reported" },
+  cancelled: { color: "error", label: "Cancelled" },
+};
+
 export const STAIN_STATUS_COLOR: Record<string, string> = {
   pending: "default",
   stained: "blue",
@@ -30,6 +36,7 @@ export const TYPE_TAG: Record<string, { color: string; label: string }> = {
   surgical: { color: CASE_TYPE_COLOR.surgical, label: "Surgical" },
   gyne: { color: CASE_TYPE_COLOR.gyne, label: "Gyne" },
   nongyne: { color: CASE_TYPE_COLOR.nongyne, label: "Non-Gyne" },
+  molecular: { color: CASE_TYPE_COLOR.molecular, label: "Molecular" },
 };
 
 export const statusTag = (

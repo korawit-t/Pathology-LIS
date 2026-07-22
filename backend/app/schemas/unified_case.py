@@ -4,7 +4,7 @@ from typing import List, Optional
 
 
 class UnifiedCaseItem(BaseModel):
-    case_type: str  # "surgical" | "gyne" | "nongyne"
+    case_type: str  # "surgical" | "gyne" | "nongyne" | "molecular"
     id: int
     accession_no: str
     hn: Optional[str] = None

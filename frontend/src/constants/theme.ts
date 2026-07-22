@@ -1,9 +1,10 @@
 // ─── Case-type brand colors ───────────────────────────────────────────────────
 // Change here → propagates to AccessionTag, section headers, type badges, etc.
 export const CASE_TYPE_COLOR = {
-  surgical: "#1890ff",   // blue
-  gyne:     "#52c41a",   // green
-  nongyne:  "#fa8c16",   // orange
+  surgical:  "#1890ff",   // blue
+  gyne:      "#52c41a",   // green
+  nongyne:   "#fa8c16",   // orange
+  molecular: "#722ed1",   // purple
 } as const;
 
 // Accession prefix → color (mirrors CASE_TYPE_COLOR by letter prefix)
@@ -11,6 +12,7 @@ export const ACCESSION_PREFIX_COLOR: Record<string, string> = {
   S: CASE_TYPE_COLOR.surgical,
   C: CASE_TYPE_COLOR.gyne,
   N: CASE_TYPE_COLOR.nongyne,
+  M: CASE_TYPE_COLOR.molecular,
 };
 
 // ─── Workflow / pipeline stage colors ─────────────────────────────────────────

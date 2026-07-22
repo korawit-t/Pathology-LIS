@@ -22,6 +22,10 @@ export interface StainRequest {
   created_at: string;
   is_recut?: boolean;
   recut_note?: string | null;
+  // Molecular-category orders only — assisting/requesting pathologist for
+  // the auto-spawned Molecular case (defaults server-side to the ordering
+  // pathologist when omitted).
+  assist_pathologist_id?: number | null;
 }
 
 // --- สำหรับการสร้างรอบการย้อม (Create Payload) ---
