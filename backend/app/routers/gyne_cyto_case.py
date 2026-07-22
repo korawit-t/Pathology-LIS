@@ -1,6 +1,6 @@
 import os
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Response
 from app.utils.file_handler import validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -496,10 +496,14 @@ def get_outlab_test_result(
         raise HTTPException(status_code=403, detail="This result is awaiting pathologist sign-off.")
     if not os.path.exists(case.out_lab_result_pdf_path):
         raise HTTPException(status_code=404, detail="Result file not found on server.")
-    return FileResponse(
-        path=case.out_lab_result_pdf_path,
-        filename=f"{case.accession_no}_outlab_test.pdf",
+    # Same lab-header + patient/accession cover sheet as the Surgical
+    # external-consult / Molecular out-lab-pdf cover sheet — regenerated
+    # fresh on every request, also shows who signed off and when.
+    pdf_bytes = crud.get_outlab_test_result_with_cover(db, case_id)
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{case.accession_no}_outlab_test.pdf"'},
     )
 
 

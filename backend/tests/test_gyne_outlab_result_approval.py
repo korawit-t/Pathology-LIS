@@ -13,13 +13,31 @@ Tests here that need more than one identity re-login that single `client`
 fixture sequentially via `_login_as` instead of combining `*_client` fixtures.
 """
 
+import io
+
 import pytest
+from pypdf import PdfReader
 
 from app.crud.gyne_cyto_case import get_gyne_cases
 from app.crud.report_archive import get_gyne_archive
 from tests.factories import make_bare_gyne_case
 
 VALID_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< >>\nendobj\n%%EOF"
+
+
+def _make_valid_pdf_bytes() -> bytes:
+    """A minimal but genuinely parseable one-page PDF — VALID_PDF above is
+    enough to satisfy the upload's magic-byte check but not enough for pypdf
+    to actually parse/merge (no xref/trailer), so it can't exercise the
+    cover-sheet merge path. Mirrors test_molecular_case.py's helper of the
+    same name for the same reason."""
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
 
 def _login_as(client, user_and_password):
@@ -29,10 +47,10 @@ def _login_as(client, user_and_password):
     return client
 
 
-def _upload(client, case_id, filename="result.pdf"):
+def _upload(client, case_id, filename="result.pdf", content=VALID_PDF):
     return client.post(
         f"/gyne-cytology/{case_id}/outlab-test-result",
-        files={"file": (filename, VALID_PDF, "application/pdf")},
+        files={"file": (filename, content, "application/pdf")},
     )
 
 
@@ -99,6 +117,38 @@ class TestApproveOutlabTestResult:
         db.refresh(outlab_case)
         assert outlab_case.outlab_result_approved_by_id is not None
         assert outlab_case.outlab_result_approved_at is not None
+
+
+class TestCoverSheet:
+    """View PDF should match Surgical's external-consult / Molecular's
+    out-lab-pdf cover sheet: lab header + patient/accession info + who
+    signed off, prepended in front of the original uploaded PDF."""
+
+    def test_download_prepends_cover_sheet_with_accession(self, client, admin_user, outlab_case):
+        _login_as(client, admin_user)
+        _upload(client, outlab_case.id, content=_make_valid_pdf_bytes())
+
+        r = client.get(f"/gyne-cytology/{outlab_case.id}/outlab-test-result")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/pdf"
+
+        reader = PdfReader(io.BytesIO(r.content))
+        assert len(reader.pages) >= 2  # cover page + original upload
+        cover_text = reader.pages[0].extract_text()
+        assert outlab_case.accession_no in cover_text
+
+    def test_cover_shows_approver_once_signed_off(self, client, admin_user, pathologist_user, outlab_case):
+        _login_as(client, admin_user)
+        _upload(client, outlab_case.id, content=_make_valid_pdf_bytes())
+
+        _login_as(client, pathologist_user)
+        client.post(f"/gyne-cytology/{outlab_case.id}/outlab-test-result/approve")
+
+        r = client.get(f"/gyne-cytology/{outlab_case.id}/outlab-test-result")
+        assert r.status_code == 200
+        reader = PdfReader(io.BytesIO(r.content))
+        cover_text = reader.pages[0].extract_text()
+        assert "reviewed by" in cover_text.lower()
 
 
 class TestClinicianVisibilityGate:
