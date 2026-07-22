@@ -32,6 +32,7 @@ import MySlideDispatches from "./components/MySlideDispatches";
 import MyReadyStains from "./components/MyReadyStains";
 import MyWorkloadSummary from "./components/MyWorkloadSummary";
 import MyConsultCases from "./components/MyConsultCases";
+import MyOutlabApprovals from "./components/MyOutlabApprovals";
 import InternalConsultWorklistPanel from "../../components/InternalConsult/InternalConsultWorklistPanel";
 import PageContainer from "../../components/Layout/PageContainer";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -58,6 +59,7 @@ const PathologistPage: React.FC<{
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
   const [pendingConsultCount, setPendingConsultCount] = useState(0);
   const [externalConsultCount, setExternalConsultCount] = useState(0);
+  const [outlabApprovalCount, setOutlabApprovalCount] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const { overdueCases: tatCases, loading: tatLoading } = useMyTatStatus(user?.id);
 
@@ -247,6 +249,20 @@ const renderWorklist = (
       ),
       children: (
         <MyConsultCases pathologistId={user?.id} onSelectCase={(id) => onSelectCase(id, "surgical")} onCountChange={setExternalConsultCount} />
+      ),
+    },
+    {
+      key: "outlab-approval",
+      forceRender: true,
+      label: (
+        <span>
+          <FilePdfOutlined style={{ marginRight: 6 }} />
+          Approve Outlab{" "}
+          <Badge count={outlabApprovalCount} size="small" color="blue" />
+        </span>
+      ),
+      children: (
+        <MyOutlabApprovals pathologistId={user?.id} onSelectCase={(id) => onSelectCase(id, "gyne")} onCountChange={setOutlabApprovalCount} />
       ),
     },
     {

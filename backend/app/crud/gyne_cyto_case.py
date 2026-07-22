@@ -84,7 +84,7 @@ def get_gyne_case(db: Session, case_id: int):
     """
     ดึงข้อมูลเคสเดียว พร้อมโหลดข้อมูลที่เกี่ยวข้องทั้งหมด (Eager Loading)
     """
-    return (
+    case = (
         db.query(GyneCytologyCase)
         .options(
             selectinload(GyneCytologyCase.patient).selectinload(Patient.title),
@@ -94,10 +94,20 @@ def get_gyne_case(db: Session, case_id: int):
             selectinload(GyneCytologyCase.hospital),
             selectinload(GyneCytologyCase.department),
             selectinload(GyneCytologyCase.medical_scheme),
+            selectinload(GyneCytologyCase.outlab_result_approver),
         )
         .filter(GyneCytologyCase.id == case_id)
         .first()
     )
+    if case:
+        # Not a stored column — computed display name for the outlab-result
+        # approver, mirrors consult_pdf_approver_name on SurgicalCase.
+        case.outlab_result_approver_name = (
+            (case.outlab_result_approver.report_name or case.outlab_result_approver.full_name)
+            if case.outlab_result_approver
+            else None
+        )
+    return case
 
 
 def get_gyne_cases(
@@ -116,6 +126,7 @@ def get_gyne_cases(
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
     has_out_lab_result: bool = None,
+    outlab_result_approved: bool = None,
     consult_status: str = None,
     exclude_consult_status: str = None,
     is_reported: bool = None,
@@ -215,6 +226,12 @@ def get_gyne_cases(
             query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.isnot(None))
         else:
             query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.is_(None))
+
+    if outlab_result_approved is not None:
+        if outlab_result_approved:
+            query = query.filter(GyneCytologyCase.outlab_result_approved_at.isnot(None))
+        else:
+            query = query.filter(GyneCytologyCase.outlab_result_approved_at.is_(None))
 
     if consult_status:
         query = query.filter(GyneCytologyCase.consult_status == consult_status)
@@ -341,6 +358,19 @@ def update_gyne_case(
     except Exception as e:
         db.rollback()
         raise e
+
+
+def approve_outlab_test_result(db: Session, case: GyneCytologyCase, approved_by_id: int) -> None:
+    case.outlab_result_approved_by_id = approved_by_id
+    case.outlab_result_approved_at = local_now()
+    db.commit()
+
+
+def clear_outlab_result_approval(db: Session, case: GyneCytologyCase) -> None:
+    """Reset sign-off on re-upload — a replaced PDF needs fresh review."""
+    case.outlab_result_approved_by_id = None
+    case.outlab_result_approved_at = None
+    db.commit()
 
 
 def delete_gyne_case(db: Session, case_id: int):
