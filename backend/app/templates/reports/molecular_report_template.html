@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root {
+        --primary: {{ (primary_color or '#0056b3') | safe }};
+        --primary-dark: {{ (primary_color_dark or '#003a8c') | safe }};
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-SemiBold.ttf");
+        font-weight: 600;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-ExtraBold.ttf");
+        font-weight: 800;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Italic.ttf");
+        font-weight: 400;
+        font-style: italic;
+      }
+      @page {
+        size: A4;
+        margin: 0.8cm 1cm 1.5cm 1cm;
+      }
+      body {
+        font-family: "Sarabun", sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #1a202c;
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+      .header-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .info-bar {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 0px;
+        border-collapse: collapse;
+      }
+      .info-bar td {
+        padding: 8px 10px;
+        border-right: 1px solid #e2e8f0;
+        vertical-align: top;
+      }
+      .label {
+        font-size: 9px;
+        color: #64748b;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .value {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .patient-name {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        color: #002766;
+        line-height: 1.4;
+      }
+      .report-container {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      thead {
+        display: table-header-group;
+      }
+      .section-header {
+        font-weight: 800;
+        font-size: 10.5px;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 4px 12px;
+        border-left: 4px solid var(--primary);
+        margin-top: 12px;
+      }
+      .badge-container {
+        float: right;
+        margin: 0 0 6px 8px;
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border: 1.5px solid transparent;
+      }
+      .badge-final {
+        background: #def7ec;
+        color: #03543f;
+        border: 1px solid #84e1bc;
+      }
+      .badge-pending {
+        background: #e1effe;
+        color: #1e429f;
+        border: 1px solid #a4cafe;
+      }
+      .result-box {
+        position: relative;
+        border: 1.5px solid var(--primary);
+        border-radius: 4px;
+        background: #fff;
+        margin: 5px 15px;
+        padding: 6px 15px 15px;
+        min-height: 60px;
+      }
+      .result-text {
+        font-size: 13px;
+        color: #0f172a;
+        line-height: 1.6;
+        word-wrap: break-word;
+      }
+      .result-text p,
+      .result-text h1,
+      .result-text h2,
+      .result-text h3 {
+        margin: 0 0 8px;
+        padding: 0;
+      }
+      .result-text p:empty {
+        display: none;
+      }
+      .result-text ul,
+      .result-text ol {
+        margin: 0 0 8px;
+        padding-left: 1.5em;
+      }
+      .watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-45deg);
+        font-size: 150px;
+        font-weight: 900;
+        color: rgba(0, 0, 0, 0.03);
+        z-index: 9999;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="report-container">
+      <thead>
+        <tr>
+          <td>
+            <table class="header-table">
+              <tr>
+                <td style="width: 50px; vertical-align: middle">
+                  {% if report_logo_url_snapshot %}
+                  <img
+                    src="{{ report_logo_url_snapshot | safe }}"
+                    style="max-height: 48px; max-width: 120px; display: block"
+                  />
+                  {% else %}
+                  <div
+                    style="
+                      width: 42px;
+                      height: 42px;
+                      background: var(--primary);
+                      color: white;
+                      border-radius: 4px;
+                      line-height: 42px;
+                      text-align: center;
+                      font-weight: bold;
+                    "
+                  >
+                    LAB
+                  </div>
+                  {% endif %}
+                </td>
+                <td style="padding-left: 15px; vertical-align: middle">
+                  <div
+                    style="
+                      font-size: 20px;
+                      font-weight: 800;
+                      color: var(--primary);
+                      line-height: 1;
+                    "
+                  >
+                    {{ lab_name_en_snapshot | safe }}
+                  </div>
+                </td>
+                <td
+                  style="
+                    text-align: right;
+                    vertical-align: middle;
+                    font-size: 9px;
+                    color: #1a202c;
+                    line-height: 1.2;
+                  "
+                >
+                  {{ lab_address_snapshot | safe }}
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+
+            <table class="info-bar">
+              <tr>
+                <td style="width: 35%">
+                  <div class="label">Patient Name</div>
+                  <div class="patient-name">
+                    {{ patient_title or '' }}{{ patient_name or '' }}{% if
+                    patient_ln %} {{ patient_ln }}{% endif %}
+                  </div>
+                  <div style="font-size: 11px; margin-top: 2px">
+                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age:
+                    {{ patient_age_display }}
+                  </div>
+                </td>
+                <td style="width: 40%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Accession:</span
+                    ><span class="value" style="color: var(--primary)"
+                      >{{ accession_no }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Physician:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ clinician_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Hospital:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ hospital_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Dept:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ department_name or '-' }}</span
+                    >
+                  </div>
+                </td>
+                <td style="width: 25%">
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Test:</span
+                    ><span class="value" style="font-size: 10px"
+                      >{{ test_name or '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Collected:</span
+                    ><span class="value"
+                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at
+                      else '-' }}</span
+                    >
+                  </div>
+                  <div>
+                    <span
+                      class="label"
+                      style="width: 55px; display: inline-block"
+                      >Reported:</span
+                    ><span class="value"
+                      >{{ reported_at.strftime('%d/%m/%Y %H:%M') if
+                      reported_at else '-' }}</span
+                    >
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <div style="height: 10px"></div>
+          </td>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>
+            <div
+              style="
+                text-align: center;
+                margin-bottom: 8px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #1a202c;
+                letter-spacing: 1px;
+              "
+            >
+              MOLECULAR PATHOLOGY REPORT
+            </div>
+
+            <div class="section-header">RESULT</div>
+
+            <div class="result-box">
+              <div class="badge-container">
+                {% if is_preview %}
+                <span class="badge badge-pending">PRELIMINARY</span>
+                {% else %}
+                <span class="badge badge-final">FINAL</span>
+                {% endif %}
+              </div>
+              <div class="result-text">
+                {{ result_text | safe if result_text else "No result recorded yet." }}
+              </div>
+            </div>
+
+            <div
+              style="
+                margin-top: 40px;
+                text-align: center;
+                border-top: 1px dashed #cbd5e1;
+                padding-top: 10px;
+              "
+            >
+              <span style="font-size: 9px; color: #94a3b8; letter-spacing: 1px"
+                >Assist Pathologist: {{ assist_pathologist_name or '-' }} |
+                Reported by: {{ reported_by_name or '-' }}</span
+              >
+              <br />
+              <span style="font-size: 9px; color: #94a3b8; letter-spacing: 1px"
+                >*** END OF REPORT - ELECTRONICALLY VERIFIED ***</span
+              >
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if is_preview %}
+    <div class="watermark">PREVIEW</div>
+    {% endif %}
+  </body>
+</html>

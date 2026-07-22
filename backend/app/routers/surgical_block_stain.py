@@ -205,7 +205,10 @@ def update_stain(
 
 @router.delete("/{stain_id}")
 def delete_stain(stain_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    success = crud.delete_stain(db, stain_id=stain_id, actor_id=current_user.id)
+    try:
+        success = crud.delete_stain(db, stain_id=stain_id, actor_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not success:
         raise HTTPException(status_code=404, detail="Stain not found")
     return {"message": "Deleted successfully"}
