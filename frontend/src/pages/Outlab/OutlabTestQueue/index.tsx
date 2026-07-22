@@ -10,6 +10,8 @@ import {
   Badge,
   Modal,
   Upload,
+  Select,
+  Alert,
   message,
 } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
@@ -19,6 +21,9 @@ import {
   FilePdfOutlined,
   InboxOutlined,
   ReloadOutlined,
+  UserSwitchOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons";
 import PageContainer from "../../../components/Layout/PageContainer";
 import ReportPreviewModal from "../../../components/ReportPreviewModal";
@@ -26,6 +31,7 @@ import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPa
 import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
 import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
+import UserService from "../../../services/userService";
 import type { GyneCytologyCase } from "../../../types/gyne-cytology";
 import dayjs from "dayjs";
 import logger from "../../../utils/logger";
@@ -40,7 +46,7 @@ interface UploadModalProps {
   open: boolean;
   caseData: GyneCytologyCase | null;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (updatedCase: GyneCytologyCase) => void;
 }
 
 const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose, onSuccess }) => {
@@ -61,9 +67,9 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
     if (!file || !caseData) return;
     setUploading(true);
     try {
-      await GyneCytologyCaseService.uploadOutlabTestResult(caseData.id, file);
+      const updated = await GyneCytologyCaseService.uploadOutlabTestResult(caseData.id, file);
       message.success("อัปโหลดผลตรวจสำเร็จ");
-      onSuccess();
+      onSuccess(updated);
       onClose();
     } catch (err) {
       logger.error("Upload outlab test result error", err);
@@ -145,6 +151,81 @@ const UploadResultModal: React.FC<UploadModalProps> = ({ open, caseData, onClose
   );
 };
 
+// ── Assign Pathologist Modal ───────────────────────────────────────────────────
+// Shown right after an upload if the case has no pathologist assigned yet —
+// a pathologist must sign off before the result becomes visible to clinicians,
+// so someone needs to own that review.
+
+interface AssignPathologistModalProps {
+  open: boolean;
+  caseId?: number;
+  accessionNo?: string;
+  onDone: () => void;
+}
+
+const AssignPathologistModal: React.FC<AssignPathologistModalProps> = ({ open, caseId, accessionNo, onDone }) => {
+  const [pathologists, setPathologists] = useState<{ value: number; label: string }[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelected(null);
+    UserService.getUsers({ role: "pathologist" })
+      .then((users) => setPathologists(users.map((u) => ({ value: u.id, label: u.full_name || u.username }))))
+      .catch(() => message.error("Failed to load pathologist list"));
+  }, [open]);
+
+  const handleConfirm = async () => {
+    if (!selected || !caseId) return;
+    setSaving(true);
+    try {
+      await GyneCytologyCaseService.update(caseId, { pathologist_id: selected });
+      message.success("Pathologist assigned — case is now in their sign-off worklist");
+      onDone();
+    } catch {
+      message.error("Failed to assign pathologist");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={
+        <Space>
+          <UserSwitchOutlined style={{ color: "#1677ff" }} />
+          <span>Assign Pathologist — {accessionNo}</span>
+        </Space>
+      }
+      open={open}
+      closable={false}
+      maskClosable={false}
+      onOk={handleConfirm}
+      okText="Assign"
+      okButtonProps={{ disabled: !selected, loading: saving }}
+      cancelButtonProps={{ style: { display: "none" } }}
+      width={420}
+    >
+      <Alert
+        type="info"
+        showIcon
+        message="This case has no pathologist assigned yet. Pick one to route this result for sign-off before it becomes visible to clinicians."
+        style={{ marginBottom: 16 }}
+      />
+      <Select
+        style={{ width: "100%" }}
+        placeholder="Select pathologist"
+        value={selected ?? undefined}
+        onChange={setSelected}
+        showSearch
+        optionFilterProp="label"
+        options={pathologists}
+      />
+    </Modal>
+  );
+};
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const OutlabTestQueuePage: React.FC = () => {
@@ -159,6 +240,7 @@ const OutlabTestQueuePage: React.FC = () => {
   const [search, setSearch] = useState("");
 
   const [uploadModal, setUploadModal] = useState<{ open: boolean; case: GyneCytologyCase | null }>({ open: false, case: null });
+  const [assignPathologistFor, setAssignPathologistFor] = useState<GyneCytologyCase | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [previewFilename, setPreviewFilename] = useState<string | undefined>();
@@ -204,6 +286,11 @@ const OutlabTestQueuePage: React.FC = () => {
   useEffect(() => { fetchPending(1, search); fetchUploaded(1, search); }, [fetchPending, fetchUploaded]);
 
   const refresh = () => { fetchPending(pendingPage, search); fetchUploaded(uploadedPage, search); };
+
+  const handleUploadSuccess = (updatedCase: GyneCytologyCase) => {
+    refresh();
+    if (!updatedCase.pathologist_id) setAssignPathologistFor(updatedCase);
+  };
 
   const handleViewPDF = async (c: GyneCytologyCase) => {
     setViewLoadingId(c.id);
@@ -282,6 +369,17 @@ const OutlabTestQueuePage: React.FC = () => {
 
   const uploadedColumns = [
     ...baseColumns,
+    {
+      title: "Sign-off Status",
+      key: "outlab_result_approved",
+      width: 160,
+      render: (c: GyneCytologyCase) =>
+        c.outlab_result_approved_at ? (
+          <Tag color="success" icon={<CheckCircleOutlined />}>Approved</Tag>
+        ) : (
+          <Tag color="warning" icon={<ClockCircleOutlined />}>Awaiting Sign-off</Tag>
+        ),
+    },
     {
       title: "Action",
       key: "action",
@@ -375,7 +473,13 @@ const OutlabTestQueuePage: React.FC = () => {
         open={uploadModal.open}
         caseData={uploadModal.case}
         onClose={() => setUploadModal({ open: false, case: null })}
-        onSuccess={refresh}
+        onSuccess={handleUploadSuccess}
+      />
+      <AssignPathologistModal
+        open={!!assignPathologistFor}
+        caseId={assignPathologistFor?.id}
+        accessionNo={assignPathologistFor?.accession_no}
+        onDone={() => { setAssignPathologistFor(null); refresh(); }}
       />
       <ReportPreviewModal open={previewOpen} pdfUrl={pdfUrl} onCancel={() => setPreviewOpen(false)} filename={previewFilename} />
     </PageContainer>

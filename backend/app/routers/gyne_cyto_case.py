@@ -18,6 +18,7 @@ from app.schemas.gyne_cyto_case import (
 from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
+from app.core.roles import CAN_APPROVE_OUTLAB_RESULT
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
@@ -59,6 +60,7 @@ def read_cases(
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
     has_out_lab_result: Optional[bool] = Query(None),
+    outlab_result_approved: Optional[bool] = Query(None),
     consult_status: str = None,
     exclude_consult_status: Optional[str] = Query(None),
     is_reported: bool = None,
@@ -100,6 +102,7 @@ def read_cases(
         is_out_lab_consult=is_out_lab_consult,
         is_out_lab=is_out_lab,
         has_out_lab_result=has_out_lab_result,
+        outlab_result_approved=outlab_result_approved,
         consult_status=consult_status,
         exclude_consult_status=exclude_consult_status,
         is_reported=is_reported,
@@ -446,7 +449,35 @@ async def upload_outlab_test_result(
     updated = crud.update_gyne_case(db, case, GyneCytologyCaseUpdate(
         out_lab_result_pdf_path=file_path,
     ))
+    # A (re-)uploaded PDF always needs fresh pathologist sign-off.
+    crud.clear_outlab_result_approval(db, updated)
     return updated
+
+
+@router.post("/{case_id}/outlab-test-result/approve", dependencies=[Depends(CAN_APPROVE_OUTLAB_RESULT)])
+def approve_outlab_test_result_endpoint(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
+    case = crud.get_gyne_case(db, case_id=case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
+    if not case.out_lab_result_pdf_path:
+        raise HTTPException(status_code=400, detail="No outlab test result uploaded to approve")
+
+    crud.approve_outlab_test_result(db, case, current_user.id)
+    display_name = current_user.report_name or current_user.full_name
+    return {
+        "outlab_result_approved_by": display_name,
+        "outlab_result_approved_at": case.outlab_result_approved_at.isoformat(),
+    }
+
+
+# Clinicians only ever get to see a signed-off result — staff/pathologists
+# can still preview the file pre-approval (that's how they review it).
+CLINICIAN_FACING_ROLES = {"register", "hospital", "clinician"}
 
 
 @router.get("/{case_id}/outlab-test-result")
@@ -460,6 +491,9 @@ def get_outlab_test_result(
         raise HTTPException(status_code=404, detail="Case not found")
     if not case.out_lab_result_pdf_path:
         raise HTTPException(status_code=404, detail="No outlab test result uploaded for this case.")
+    user_roles = current_user.roles if isinstance(current_user.roles, list) else []
+    if CLINICIAN_FACING_ROLES.intersection(user_roles) and not case.outlab_result_approved_at:
+        raise HTTPException(status_code=403, detail="This result is awaiting pathologist sign-off.")
     if not os.path.exists(case.out_lab_result_pdf_path):
         raise HTTPException(status_code=404, detail="Result file not found on server.")
     return FileResponse(

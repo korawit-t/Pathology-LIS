@@ -54,6 +54,9 @@ export interface GyneCytologyCase {
   is_out_lab_consult: boolean;
   is_out_lab: boolean;
   out_lab_result_pdf_path: string | null;
+  outlab_result_approved_by_id?: number | null;
+  outlab_result_approved_at?: string | null;
+  outlab_result_approver_name?: string | null;
   consult_status: "pending" | "processing" | "received" | string;
   consult_pdf_path?: string | null;
   consult_reason?: string | null;
