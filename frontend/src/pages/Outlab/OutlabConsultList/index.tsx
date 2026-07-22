@@ -24,6 +24,9 @@ import OutlabConsultRunService, {
 import api from "../../../services/httpClient";
 import { useAuth } from "../../../hooks/useAuth";
 import logger from "../../../utils/logger";
+import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPageSelector";
+import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
+import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 
 const { Text, Title } = Typography;
 
@@ -740,7 +743,11 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
   const [editingValue, setEditingValue] = useState("");
   const [savingRunId, setSavingRunId] = useState<number | null>(null);
   const [uploadTarget, setUploadTarget] = useState<FlatCase | null>(null);
+  const [sourcePdfFile, setSourcePdfFile] = useState<File | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const pdfPage = usePdfPageSelector(sourcePdfFile, setUploadFile);
+  const showPagePicker = !!sourcePdfFile && !!pdfPage.pageCount && pdfPage.pageCount > 1;
+  const showPagePreview = showPagePicker && pdfPage.mode === "select";
   const [uploadReceivedAt, setUploadReceivedAt] = useState<Dayjs>(dayjs());
   const [uploading, setUploading] = useState(false);
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
@@ -807,6 +814,7 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       // show "Awaiting Result" right after this succeeds. That's expected.
       message.success("Consult PDF uploaded — awaiting pathologist sign-off");
       setUploadTarget(null);
+      setSourcePdfFile(null);
       setUploadFile(null);
       fetchRuns();
     } catch {
@@ -1022,6 +1030,7 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
               icon={<UploadOutlined />}
               onClick={() => {
                 setUploadTarget(d);
+                setSourcePdfFile(null);
                 setUploadFile(null);
                 setUploadReceivedAt(dayjs());
               }}
@@ -1092,47 +1101,90 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
         open={!!uploadTarget}
         onCancel={() => setUploadTarget(null)}
         footer={null}
-        width={480}
+        width={showPagePreview ? 860 : 480}
       >
-        <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
-          Report Received Date / Time:
-        </Typography.Text>
-        <DatePicker
-          showTime={{ format: "HH:mm" }}
-          format="DD/MM/YYYY HH:mm"
-          value={uploadReceivedAt}
-          onChange={(d) => d && setUploadReceivedAt(d)}
-          style={{ width: "100%", marginBottom: 12 }}
-        />
-        <Upload.Dragger
-          accept="application/pdf"
-          maxCount={1}
-          beforeUpload={(file) => {
-            if (file.size > 10 * 1024 * 1024) {
-              message.error("File must be under 10 MB");
-              return Upload.LIST_IGNORE;
-            }
-            setUploadFile(file);
-            return false;
-          }}
-          onRemove={() => setUploadFile(null)}
-        >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">Click or drag PDF to upload</p>
-          <p className="ant-upload-hint" style={{ fontSize: 11 }}>Max 10 MB · PDF only</p>
-        </Upload.Dragger>
-        {uploadFile && (
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            onClick={handleUploadConsultPdf}
-            loading={uploading}
-            block
-            style={{ marginTop: 12 }}
-          >
-            Upload Report PDF
-          </Button>
-        )}
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div style={{ flex: showPagePreview ? "0 0 380px" : "1 1 auto", minWidth: 0 }}>
+            <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
+              Report Received Date / Time:
+            </Typography.Text>
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="DD/MM/YYYY HH:mm"
+              value={uploadReceivedAt}
+              onChange={(d) => d && setUploadReceivedAt(d)}
+              style={{ width: "100%", marginBottom: 12 }}
+            />
+            <Upload.Dragger
+              accept="application/pdf"
+              maxCount={1}
+              beforeUpload={(file) => {
+                if (file.size > 10 * 1024 * 1024) {
+                  message.error("File must be under 10 MB");
+                  return Upload.LIST_IGNORE;
+                }
+                setSourcePdfFile(file);
+                return false;
+              }}
+              onRemove={() => { setSourcePdfFile(null); setUploadFile(null); }}
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Click or drag PDF to upload</p>
+              <p className="ant-upload-hint" style={{ fontSize: 11 }}>Max 10 MB · PDF only</p>
+            </Upload.Dragger>
+            {showPagePicker && (
+              <div style={{ marginTop: 12 }}>
+                <Segmented
+                  block
+                  value={pdfPage.mode}
+                  onChange={(v) => pdfPage.setMode(v as "all" | "select")}
+                  options={[
+                    { label: `Upload All Pages (${pdfPage.pageCount})`, value: "all" },
+                    { label: "Select Pages", value: "select" },
+                  ]}
+                />
+                {pdfPage.mode === "select" && pdfPage.pageCount && (
+                  <div style={{ marginTop: 12 }}>
+                    <PdfPageThumbnailStrip
+                      pageCount={pdfPage.pageCount}
+                      selectedPages={pdfPage.selectedPages}
+                      thumbnails={pdfPage.thumbnails}
+                      loadingThumbnails={pdfPage.loadingThumbnails}
+                      previewPageNo={pdfPage.previewPageNo}
+                      onHoverPage={pdfPage.ensurePreview}
+                      onTogglePage={pdfPage.togglePage}
+                      onSelectAll={pdfPage.selectAll}
+                      onClearAll={pdfPage.clearAll}
+                      maxHeight={340}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {uploadFile && (
+              <Button
+                type="primary"
+                icon={<UploadOutlined />}
+                onClick={handleUploadConsultPdf}
+                loading={uploading}
+                block
+                style={{ marginTop: 12 }}
+              >
+                Upload Report PDF
+              </Button>
+            )}
+          </div>
+          {showPagePreview && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <PdfPagePreviewPane
+                previewPageNo={pdfPage.previewPageNo}
+                previewSrc={pdfPage.previewSrc}
+                previewLoading={pdfPage.previewLoading}
+                minHeight={420}
+              />
+            </div>
+          )}
+        </div>
       </Modal>
 
       <ReportPreviewModal
