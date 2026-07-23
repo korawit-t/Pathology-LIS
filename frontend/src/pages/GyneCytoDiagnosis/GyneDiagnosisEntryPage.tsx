@@ -311,19 +311,6 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         if (values[key] === undefined) values[key] = null;
       }
       sanitizeSigners(values);
-      const isRequireAllSign = systemSettings?.require_all_gyne_sign;
-
-      if (isRequireAllSign && diagnosis && !isRevision) {
-        const hasExistingSignatures = diagnosis.signers?.some(
-          (s) => !!s.signed_at,
-        );
-        if (hasExistingSignatures && values.signers) {
-          values.signers = (values.signers as GyneSigner[]).map((s) => ({
-            ...s,
-            signed_at: null,
-          }));
-        }
-      }
 
       if (diagnosis && isRevision) {
         // Reset all signatures — revision starts unsigned
