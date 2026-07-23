@@ -145,6 +145,8 @@ class OutlabRunDetailResponse(BaseModel):
     block_id: Optional[int] = None
     received_at: Optional[datetime] = None
     received_by_id: Optional[int] = None
+    is_hosxp_keyed: bool = False
+    hosxp_keyed_at: Optional[datetime] = None
     stain_order: Optional[StainResponse] = None
 
     @model_validator(mode="after")
