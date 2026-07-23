@@ -101,6 +101,15 @@ def create_outlab_run(
 def read_outlab_runs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_outlab_runs(db, skip=skip, limit=limit)
 
+@router.get("/outlab-runs/pending-by-hn")
+def read_pending_outlab_by_hn(db: Session = Depends(get_db)):
+    """Not-yet-HosXP-keyed outlab items grouped by patient HN, in one query.
+    Backs the Today's Patients tab — replaces an earlier client-side loop
+    that fetched all outlab runs then did an N+1 /surgical-cases?search=
+    lookup per accession number. Mirrors the same definition of "pending"
+    used by the scheduled_notifications worker (get_unkeyed_outlab_by_hn)."""
+    return crud.get_unkeyed_outlab_by_hn(db)
+
 @router.patch("/outlab-runs/{run_id}", response_model=OutlabRunResponse)
 def update_outlab_run(
     run_id: int,

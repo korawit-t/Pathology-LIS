@@ -1,21 +1,19 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TodayPatientsTab } from "./OutlabManagement";
 import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../services/surgicalCaseService";
 import HisService from "../../services/hisService";
 
 vi.mock("../../services/surgicalBlockStainService", () => ({
-  default: { getOutlabRuns: vi.fn(), toggleHosxpKeyed: vi.fn() },
+  default: { getPendingOutlabByHn: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
-vi.mock("../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
 vi.mock("../../services/hisService", () => ({ default: { getVisitsToday: vi.fn() } }));
 
-const unkeyedDetail = (overrides = {}) => ({
+const pendingItem = (overrides = {}) => ({
   id: 1,
   accession_no: "S26-00001",
   block_code: "A1",
-  is_hosxp_keyed: false,
-  stain_order: { test: { name: "HPV" } },
+  stain_name: "HPV",
+  destination_lab: "Lab A",
   ...overrides,
 });
 
@@ -25,7 +23,7 @@ beforeEach(() => {
 
 describe("TodayPatientsTab", () => {
   it("shows the all-clear message when nothing is pending", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([]);
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({});
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
@@ -33,10 +31,9 @@ describe("TodayPatientsTab", () => {
   });
 
   it("excludes patients who did not visit today", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "Jaidee" } }] });
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": { patient_name: "Somchai Jaidee", items: [pendingItem()] },
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-999"] }); // someone else visited, not HN-001
     render(<TodayPatientsTab refreshTrigger={0} />);
 
@@ -44,33 +41,11 @@ describe("TodayPatientsTab", () => {
     expect(screen.queryByText("HN-001")).not.toBeInTheDocument();
   });
 
-  it("skips patients whose HN can't be resolved from the accession number, without calling the HIS visit check", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [] }); // no matching case found
-    render(<TodayPatientsTab refreshTrigger={0} />);
-
-    expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
-    expect(HisService.getVisitsToday).not.toHaveBeenCalled();
-  });
-
   it("lists a patient who visited today and still has unkeyed stains, sorted by patient name", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      {
-        run_no: "OUT-001",
-        destination_lab: "Lab A",
-        details: [unkeyedDetail({ id: 1, accession_no: "S26-00001" }), unkeyedDetail({ id: 2, accession_no: "S26-00002" })],
-      },
-    ]);
-    SurgicalCaseService.getCases.mockImplementation(({ search }) =>
-      Promise.resolve({
-        items: [{
-          hn: search === "S26-00001" ? "HN-A" : "HN-B",
-          patient: { name: search === "S26-00001" ? "Zebra" : "Amara", ln: "" },
-        }],
-      }),
-    );
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-A": { patient_name: "Zebra", items: [pendingItem({ id: 1, accession_no: "S26-00001" })] },
+      "HN-B": { patient_name: "Amara", items: [pendingItem({ id: 2, accession_no: "S26-00002" })] },
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-A", "HN-B"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
@@ -80,10 +55,9 @@ describe("TodayPatientsTab", () => {
   });
 
   it("shows the pending-outlab alert for patients who visited today", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": { patient_name: "Somchai", items: [pendingItem()] },
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
@@ -96,10 +70,9 @@ describe("TodayPatientsTab", () => {
     // initial (empty) dataSource — since `rows` loads asynchronously, real
     // rows always rendered collapsed. Expand state is now seeded from every
     // fresh fetch instead, via controlled expandedRowKeys.
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail({ id: 1, block_code: "A1" })] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": { patient_name: "Somchai", items: [pendingItem({ id: 1, block_code: "A1" })] },
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
@@ -108,14 +81,12 @@ describe("TodayPatientsTab", () => {
   });
 
   it("removes just the keyed item, keeping the row if other items remain", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      {
-        run_no: "OUT-001",
-        destination_lab: "Lab A",
-        details: [unkeyedDetail({ id: 1, block_code: "A1" }), unkeyedDetail({ id: 2, block_code: "A2" })],
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": {
+        patient_name: "Somchai",
+        items: [pendingItem({ id: 1, block_code: "A1" }), pendingItem({ id: 2, block_code: "A2" })],
       },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     SurgicalBlockStainService.toggleHosxpKeyed.mockResolvedValue({});
     render(<TodayPatientsTab refreshTrigger={0} />);
@@ -130,14 +101,12 @@ describe("TodayPatientsTab", () => {
   });
 
   it("removes the whole patient row after Key All", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      {
-        run_no: "OUT-001",
-        destination_lab: "Lab A",
-        details: [unkeyedDetail({ id: 1 }), unkeyedDetail({ id: 2, block_code: "A2" })],
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": {
+        patient_name: "Somchai",
+        items: [pendingItem({ id: 1 }), pendingItem({ id: 2, block_code: "A2" })],
       },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
+    });
     HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     SurgicalBlockStainService.toggleHosxpKeyed.mockResolvedValue({});
     render(<TodayPatientsTab refreshTrigger={0} />);

@@ -184,6 +184,25 @@ const SurgicalBlockStainService = {
     return res.data;
   },
 
+  /**
+   * Not-yet-HosXP-keyed outlab items grouped by HN, in one backend query —
+   * used by TodayPatientsTab instead of fetching all runs + an N+1
+   * per-accession case-search loop.
+   */
+  getPendingOutlabByHn: async (): Promise<Record<string, {
+    patient_name: string;
+    items: {
+      id: number;
+      accession_no: string | null;
+      block_code: string | null;
+      stain_name: string;
+      destination_lab: string | null;
+    }[];
+  }>> => {
+    const res = await api.get("/surgical-block-stains/outlab-runs/pending-by-hn");
+    return res.data;
+  },
+
   deleteOutlabRun: async (id: number): Promise<void> => {
     await api.delete(`/surgical-block-stains/outlab-runs/${id}`);
   },

@@ -1420,56 +1420,26 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. All outlab runs → unkeyed detail items
-      const runs = await SurgicalBlockStainService.getOutlabRuns({ limit: 500 });
-      const unkeyedDetails = runs.flatMap((run) =>
-        (run.details || [])
-          .filter((d) => !d.is_hosxp_keyed)
-          .map((d) => ({ ...d, run_no: run.run_no, destination_lab: run.destination_lab }))
-      );
-
-      if (unkeyedDetails.length === 0) { setRows([]); return; }
-
-      // 2. Resolve HN for each accession number
-      const accNos = [...new Set(unkeyedDetails.map((d) => d.accession_no).filter(Boolean))];
-      const caseResults = await Promise.all(
-        accNos.map((acc) =>
-          SurgicalCaseService.getCases({ search: acc, limit: 1 }).catch(() => ({ items: [] }))
-        )
-      );
-      const accToCase = {};
-      accNos.forEach((acc, i) => {
-        const c = caseResults[i]?.items?.[0];
-        if (c) {
-          accToCase[acc] = {
-            hn: c.hn || "-",
-            patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "-",
-          };
-        }
-      });
-
-      // 3. Group unkeyed items by HN
-      const byHn = {};
-      unkeyedDetails.forEach((d) => {
-        const info = accToCase[d.accession_no];
-        if (!info || info.hn === "-") return;
-        if (!byHn[info.hn]) byHn[info.hn] = { hn: info.hn, patient_name: info.patient_name, items: [] };
-        byHn[info.hn].items.push(d);
-      });
+      // 1. Not-yet-HosXP-keyed outlab items, already grouped by HN in one
+      // backend query — replaces the old "fetch all runs, then N+1
+      // /surgical-cases?search= per accession number" pattern, which was
+      // the slow part of this tab (each search was a leading-wildcard ILIKE
+      // full-table-scan, once per pending accession number).
+      const byHn = await SurgicalBlockStainService.getPendingOutlabByHn();
 
       if (Object.keys(byHn).length === 0) { setRows([]); return; }
 
-      // 4. Which of these HNs actually visited (checked in) today — one
+      // 2. Which of these HNs actually visited (checked in) today — one
       // batched HOSxP query (vn_stat), not a per-HN appointment lookup:
       // an appointment can be scheduled and never show up, so this checks
       // actual arrival instead.
       const { hns: visitingHns } = await HisService.getVisitsToday().catch(() => ({ hns: [] }));
       const visitingSet = new Set(visitingHns);
 
-      // 5. Keep only patients who actually visited TODAY
-      const result = Object.values(byHn)
-        .filter((entry) => visitingSet.has(entry.hn))
-        .map((entry) => ({ key: entry.hn, ...entry }));
+      // 3. Keep only patients who actually visited TODAY
+      const result = Object.entries(byHn)
+        .filter(([hn]) => visitingSet.has(hn))
+        .map(([hn, entry]) => ({ key: hn, hn, ...entry }));
 
       result.sort((a, b) => a.patient_name.localeCompare(b.patient_name));
       setRows(result);
@@ -1603,9 +1573,8 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
                 },
                 {
                   title: "Stain",
-                  render: (_, d) => (
-                    <Tag color="purple">{d.stain_order?.test?.name || "Unknown"}</Tag>
-                  ),
+                  dataIndex: "stain_name",
+                  render: (t) => <Tag color="purple">{t || "Unknown"}</Tag>,
                 },
                 {
                   title: "Destination Lab",
