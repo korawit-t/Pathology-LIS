@@ -36,6 +36,11 @@ PREDEFINED_EVENTS = [
         "label": "ส่ง Consult นอกโรงพยาบาล",
         "template": "📤 ส่ง Consult นอกโรงพยาบาล\nCase: {id_case}\nAccession: {accession_no}\nผู้ส่ง: {sender}\nห้องแล็บ: {lab_name}",
     },
+    {
+        "event_key": "gyne_qc_random_review",
+        "label": "สุ่มตรวจ QC (Gyne Cytology)",
+        "template": "🎲 สุ่มตรวจ QC (NILM)\nCase: {id_case}\nHN: {hn} | {name}\nCytotech: {cytotech}\nกรุณาตรวจสอบและ Sign-out",
+    },
 ]
 
 

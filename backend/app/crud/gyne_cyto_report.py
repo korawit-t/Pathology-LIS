@@ -21,6 +21,7 @@ from typing import List
 import base64
 from pathlib import Path
 from app.crud import his_export_log as his_export_crud
+from app.services.notification_service import notify_event
 
 _BKK = ZoneInfo("Asia/Bangkok")
 
@@ -391,6 +392,15 @@ def publish_gyne_report(
                         db_case.review_reason = "random_10pct"
                         db_case.status = "pending_review"
                         flagged_for_review = True
+
+                        cytotech = db.query(User).filter(User.id == ct_user_id).first()
+                        notify_event(db, "gyne_qc_random_review", {
+                            "hn": db_report.patient_hn or "-",
+                            "name": db_report.patient_name or "-",
+                            "id_case": db_report.accession_no or "-",
+                            "accession_no": db_report.accession_no or "-",
+                            "cytotech": cytotech.full_name if cytotech else "-",
+                        })
 
             if not flagged_for_review:
                 # NILM not sampled (or QC disabled) → publish directly
