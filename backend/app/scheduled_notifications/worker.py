@@ -86,7 +86,7 @@ async def _check_outlab_pending_visit_today(rule, channels: List[NotificationCha
     now_dt = local_now()
     today_iso = now_dt.date().isoformat()
     breaches = [
-        {"hn": hn, "name": info["patient_name"], "pending_count": str(len(info["detail_ids"]))}
+        {"hn": hn, "name": info["patient_name"], "pending_count": str(len(info["items"]))}
         for hn, info in by_hn.items()
         if hn in visiting_hns
     ]

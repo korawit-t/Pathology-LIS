@@ -14,6 +14,8 @@ from app.crud.surgical_block_stain import (
     receive_outlab_run_details,
     delete_outlab_run,
     get_additional_stains_by_case,
+    get_unkeyed_outlab_by_hn,
+    toggle_hosxp_keyed,
     _recompute_outlab_run_status,
 )
 from app.schemas.surgical_block_stain import StainCreate, StainUpdate, OutlabRunCreate
@@ -253,3 +255,55 @@ class TestGetAdditionalStainsByCaseIHCInterpreted:
 
         group = next(g for g in groups if g["case_id"] == case.id)
         assert group["ihc_interpreted"] is False
+
+
+class TestGetUnkeyedOutlabByHn:
+    """Backs both the scheduled_notifications worker and the Today's
+    Patients tab's /outlab-runs/pending-by-hn endpoint (replacing an earlier
+    client-side N+1 loop over /surgical-cases?search=)."""
+
+    def test_groups_unkeyed_items_by_hn_excluding_keyed_ones(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.hn = f"HN-{uuid.uuid4().hex[:8]}"
+        db.commit()
+        block = make_block(db, specimen.id)
+        test = make_anatomical_pathology_test(db, category="IHC", name="CK7")
+        stain_unkeyed = make_block_stain(db, block.id, test_id=test.id, status="sent")
+        stain_keyed = make_block_stain(db, block.id, test_id=test.id, status="sent")
+
+        run = create_outlab_run(
+            db,
+            OutlabRunCreate(destination_lab="Reference Lab", stain_ids=[stain_unkeyed.id, stain_keyed.id]),
+            user_id=registrar.id,
+        )
+        keyed_detail = db.query(SurgicalOutlabRunDetail).filter(
+            SurgicalOutlabRunDetail.outlab_run_id == run.id,
+            SurgicalOutlabRunDetail.stain_id == stain_keyed.id,
+        ).first()
+        toggle_hosxp_keyed(db, detail_id=keyed_detail.id, keyed=True)
+
+        by_hn = get_unkeyed_outlab_by_hn(db)
+
+        assert case.hn in by_hn
+        entry = by_hn[case.hn]
+        assert entry["patient_name"]
+        assert len(entry["items"]) == 1  # keyed one excluded
+        item = entry["items"][0]
+        assert item["accession_no"] == case.accession_no
+        assert item["block_code"] == block.block_code
+        assert item["stain_name"] == "CK7"
+        assert item["destination_lab"] == "Reference Lab"
+
+    def test_excludes_cases_with_no_hn(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        # case.hn left unset (None) — factory default
+        block = make_block(db, specimen.id)
+        test = make_anatomical_pathology_test(db, category="IHC", name="CK20")
+        stain = make_block_stain(db, block.id, test_id=test.id, status="sent")
+        create_outlab_run(db, OutlabRunCreate(destination_lab="Lab", stain_ids=[stain.id]), user_id=registrar.id)
+
+        by_hn = get_unkeyed_outlab_by_hn(db)
+
+        assert None not in by_hn

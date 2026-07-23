@@ -467,21 +467,26 @@ def create_outlab_run(db: Session, obj_in: OutlabRunCreate, user_id: int):
     return db_run
 
 def get_unkeyed_outlab_by_hn(db: Session) -> dict:
-    """Group not-yet-HosXP-keyed outlab run details by patient HN.
-
-    Mirrors the grouping logic in frontend TodayPatientsTab.fetchData (steps
-    1-3) so the scheduled_notifications worker and that manual tab agree on
-    what counts as "pending". Returns {hn: {"patient_name": str, "detail_ids": [int, ...]}}.
+    """Group not-yet-HosXP-keyed outlab run details by patient HN, in one
+    query — shared by the Today's Patients tab (via its own HTTP endpoint,
+    replacing an earlier client-side N+1 loop over /surgical-cases?search=)
+    and the scheduled_notifications worker, so both agree on what counts as
+    "pending". Returns:
+    {hn: {"patient_name": str, "items": [{"id", "accession_no", "block_code",
+    "stain_name", "destination_lab"}, ...]}}.
     """
     details = (
         db.query(SurgicalOutlabRunDetail)
         .options(
+            joinedload(SurgicalOutlabRunDetail.stain_order)
+            .joinedload(SurgicalBlockStain.test),
             joinedload(SurgicalOutlabRunDetail.stain_order)
             .joinedload(SurgicalBlockStain.block)
             .joinedload(SurgicalBlock.specimen)
             .joinedload(SurgicalSpecimen.case)
             .joinedload(SurgicalCase.patient)
             .joinedload(Patient.title),
+            joinedload(SurgicalOutlabRunDetail.outlab_run),
         )
         .filter(SurgicalOutlabRunDetail.is_hosxp_keyed.is_(False))
         .all()
@@ -506,8 +511,14 @@ def get_unkeyed_outlab_by_hn(db: Session) -> dict:
                 name_parts.append(patient.ln)
         patient_name = " ".join(p for p in name_parts if p) or "-"
 
-        entry = by_hn.setdefault(hn, {"patient_name": patient_name, "detail_ids": []})
-        entry["detail_ids"].append(detail.id)
+        entry = by_hn.setdefault(hn, {"patient_name": patient_name, "items": []})
+        entry["items"].append({
+            "id": detail.id,
+            "accession_no": case.accession_no,
+            "block_code": stain.block.block_code,
+            "stain_name": stain.test.name if stain.test else "Unknown",
+            "destination_lab": detail.outlab_run.destination_lab if detail.outlab_run else None,
+        })
 
     return by_hn
 
