@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -42,6 +44,7 @@ from app.routers import (
     external_lab,
     notification_channel,
     notification_rule,
+    scheduled_notification_rule,
     block_storage,
     slide_storage,
     cyto_workload,
@@ -67,7 +70,35 @@ from app.routers import (
 from app.middleware.audit_middleware import AuditContextMiddleware
 from app.services.audit_service import register_audit_listeners
 from app.core.config import IS_PRODUCTION
-from app.his_export.worker import export_worker_lifespan
+from app.his_export.worker import run_forever as run_his_export_worker
+from app.scheduled_notifications.worker import run_forever as run_scheduled_notifications_worker
+
+import logging as _logging
+_lifespan_logger = _logging.getLogger(__name__)
+
+
+# Runs both of this app's in-process background poll loops (outbound HIS
+# export delivery + scheduled/time-based notification checks) as two asyncio
+# tasks under FastAPI's single lifespan slot. Each worker module keeps its own
+# unchanged run_forever(); this function just owns their combined lifecycle
+# (project has no Celery/APScheduler/Redis — see app/his_export/README.md).
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    export_task = asyncio.create_task(run_his_export_worker())
+    sched_notif_task = asyncio.create_task(run_scheduled_notifications_worker())
+    try:
+        yield
+    finally:
+        for task in (export_task, sched_notif_task):
+            task.cancel()
+        for task in (export_task, sched_notif_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                _lifespan_logger.exception("Background worker raised during shutdown")
+
 
 # C5: disable Swagger / ReDoc / OpenAPI schema in production so the full
 # endpoint map is not publicly reachable (SECURITY_AUDIT.md §C5).
@@ -78,7 +109,7 @@ app = FastAPI(
     redoc_url=None if IS_PRODUCTION else "/redoc",
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
     redirect_slashes=True,
-    lifespan=export_worker_lifespan,
+    lifespan=app_lifespan,
 )
 
 register_audit_listeners()
@@ -242,6 +273,7 @@ app.include_router(nongyne_cyto_stain.router)
 app.include_router(external_lab.router)
 app.include_router(notification_channel.router)
 app.include_router(notification_rule.router)
+app.include_router(scheduled_notification_rule.router)
 app.include_router(block_storage.router)
 app.include_router(slide_storage.router)
 app.include_router(cyto_workload.router)

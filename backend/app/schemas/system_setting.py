@@ -1,5 +1,5 @@
 from pydantic import ConfigDict, BaseModel
-from typing import Optional
+from typing import List, Optional
 
 
 class SystemSettingBase(BaseModel):
@@ -51,6 +51,9 @@ class SystemSettingBase(BaseModel):
     surgical_express_tat_days: Optional[int] = None
     non_gyne_express_tat_days: Optional[int] = None
     gyne_express_tat_days: Optional[int] = None
+
+    # --- Scheduled Notification Check Times ---
+    scheduled_notification_times: Optional[List[str]] = None
 
     # --- Sticker / Label Print Settings ---
     sticker_width_cm: Optional[float] = 2.0

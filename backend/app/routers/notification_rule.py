@@ -8,7 +8,7 @@ from app.db.database import get_db
 from app.schemas.notification_rule import NotificationRuleResponse, NotificationRuleUpdate
 from app.crud import notification_rule as crud_rule
 from app.models.notification_channel import NotificationChannel
-from app.dependencies.auth import get_current_active_user
+from app.core.roles import CAN_MANAGE_SETTINGS
 from app.services.notification_service import send_real_notification
 from pydantic import BaseModel
 
@@ -22,7 +22,7 @@ class TriggerEventBody(BaseModel):
 router = APIRouter(
     prefix="/notification-rules",
     tags=["Notification Rules"],
-    dependencies=[Depends(get_current_active_user)],
+    dependencies=[Depends(CAN_MANAGE_SETTINGS)],
 )
 
 

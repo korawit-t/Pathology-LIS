@@ -466,6 +466,52 @@ def create_outlab_run(db: Session, obj_in: OutlabRunCreate, user_id: int):
     db.refresh(db_run)
     return db_run
 
+def get_unkeyed_outlab_by_hn(db: Session) -> dict:
+    """Group not-yet-HosXP-keyed outlab run details by patient HN.
+
+    Mirrors the grouping logic in frontend TodayPatientsTab.fetchData (steps
+    1-3) so the scheduled_notifications worker and that manual tab agree on
+    what counts as "pending". Returns {hn: {"patient_name": str, "detail_ids": [int, ...]}}.
+    """
+    details = (
+        db.query(SurgicalOutlabRunDetail)
+        .options(
+            joinedload(SurgicalOutlabRunDetail.stain_order)
+            .joinedload(SurgicalBlockStain.block)
+            .joinedload(SurgicalBlock.specimen)
+            .joinedload(SurgicalSpecimen.case)
+            .joinedload(SurgicalCase.patient)
+            .joinedload(Patient.title),
+        )
+        .filter(SurgicalOutlabRunDetail.is_hosxp_keyed.is_(False))
+        .all()
+    )
+
+    by_hn: dict = {}
+    for detail in details:
+        stain = detail.stain_order
+        if not stain or not stain.block or not stain.block.specimen or not stain.block.specimen.case:
+            continue
+        case = stain.block.specimen.case
+        hn = case.hn
+        if not hn:
+            continue
+        patient = case.patient
+        name_parts = []
+        if patient:
+            if patient.title:
+                name_parts.append(patient.title.title)
+            name_parts.append(patient.name)
+            if patient.ln:
+                name_parts.append(patient.ln)
+        patient_name = " ".join(p for p in name_parts if p) or "-"
+
+        entry = by_hn.setdefault(hn, {"patient_name": patient_name, "detail_ids": []})
+        entry["detail_ids"].append(detail.id)
+
+    return by_hn
+
+
 def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
     runs = (
         db.query(SurgicalOutlabRun)

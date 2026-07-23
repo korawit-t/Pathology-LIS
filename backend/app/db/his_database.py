@@ -46,3 +46,16 @@ def get_his_db():
 def is_his_configured() -> bool:
     """Check if HIS database is configured."""
     return HIS_DATABASE_URL is not None and HIS_DATABASE_URL.strip() != ""
+
+
+def get_his_session_direct():
+    """Open a HIS session directly (not as a FastAPI dependency generator).
+
+    For callers outside a request/response cycle — e.g. the
+    scheduled_notifications background worker — that need to open and close
+    their own session. Returns None if HIS is not configured; caller is
+    responsible for closing the returned session.
+    """
+    if _HisSessionLocal is None:
+        return None
+    return _HisSessionLocal()

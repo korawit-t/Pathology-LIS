@@ -1,10 +1,10 @@
 """Router-level tests for app/routers/notification_channel.py.
 
-RBAC note: every route (including create/update/delete, and reading a
-channel's raw `credentials` — webhook URLs / API tokens) only requires
-`get_current_active_user`, i.e. ANY authenticated, active user regardless of
-role. Documented as-is below; see the RBAC-consistency note reported at the
-end of the app/routers/ batch.
+RBAC: every route is gated by CAN_MANAGE_SETTINGS (admin, lab_manager,
+pathologist, senior_pathologist) — backfilled alongside the new
+scheduled_notification_rule router so the whole notification feature area
+(event rules, scheduled rules, channels) is consistently gated; previously
+these routes only required get_current_active_user (any authenticated role).
 
 send_test_notification/send_real_notification (real network calls) are
 mocked at the router's own import location rather than re-mocking httpx —
@@ -23,18 +23,23 @@ def _channel_in(**overrides):
     return fields
 
 
-class TestAnyAuthenticatedUser:
-    def test_clinician_can_read_full_credentials(self, db, clinician_client):
+class TestRoleGate:
+    def test_clinician_is_forbidden(self, db, clinician_client):
         channel = create_channel(db, NotificationChannelCreate(**_channel_in()))
-        r = clinician_client.get(f"/notification-channels/{channel.id}")
+        assert clinician_client.get(f"/notification-channels/{channel.id}").status_code == 403
+        assert clinician_client.post("/notification-channels", json=_channel_in()).status_code == 403
+
+    def test_lab_manager_can_read_full_credentials(self, db, lab_manager_client):
+        channel = create_channel(db, NotificationChannelCreate(**_channel_in()))
+        r = lab_manager_client.get(f"/notification-channels/{channel.id}")
         assert r.status_code == 200
         assert r.json()["credentials"] == {"channel_access_token": "secret-token"}
 
-    def test_clinician_can_create_update_delete(self, clinician_client):
-        created = clinician_client.post("/notification-channels", json=_channel_in()).json()
-        updated = clinician_client.put(f"/notification-channels/{created['id']}", json={"name": "Renamed"})
+    def test_lab_manager_can_create_update_delete(self, lab_manager_client):
+        created = lab_manager_client.post("/notification-channels", json=_channel_in()).json()
+        updated = lab_manager_client.put(f"/notification-channels/{created['id']}", json={"name": "Renamed"})
         assert updated.status_code == 200
-        deleted = clinician_client.delete(f"/notification-channels/{created['id']}")
+        deleted = lab_manager_client.delete(f"/notification-channels/{created['id']}")
         assert deleted.status_code == 204
 
 

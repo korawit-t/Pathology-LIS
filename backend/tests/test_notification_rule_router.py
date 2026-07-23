@@ -1,5 +1,6 @@
 """Router-level tests for app/routers/notification_rule.py — same
-any-authenticated-user RBAC note as notification_channel."""
+CAN_MANAGE_SETTINGS RBAC gate as notification_channel (see that file's
+docstring)."""
 
 from unittest.mock import patch
 
@@ -11,13 +12,17 @@ import app.routers.notification_rule as notification_rule_router
 
 
 class TestReadAndUpdate:
-    def test_clinician_can_read_rules(self, clinician_client):
-        r = clinician_client.get("/notification-rules")
+    def test_clinician_is_forbidden(self, clinician_client):
+        assert clinician_client.get("/notification-rules").status_code == 403
+        assert clinician_client.put("/notification-rules/some_custom_event", json={"is_active": True}).status_code == 403
+
+    def test_lab_manager_can_read_rules(self, lab_manager_client):
+        r = lab_manager_client.get("/notification-rules")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_clinician_can_upsert_a_rule(self, clinician_client):
-        r = clinician_client.put("/notification-rules/some_custom_event", json={"is_active": True})
+    def test_lab_manager_can_upsert_a_rule(self, lab_manager_client):
+        r = lab_manager_client.put("/notification-rules/some_custom_event", json={"is_active": True})
         assert r.status_code == 200
         assert r.json()["is_active"] is True
 
