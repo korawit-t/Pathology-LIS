@@ -5,12 +5,64 @@ Supports different case types: surgical, gyne (PAP), nongyne.
 """
 
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.his_adapters import HisAdapterBase
 from app.schemas.his import HisPatientResult
+
+
+def get_hns_with_visit_today(his_db: Session) -> List[str]:
+    """All HNs with a visit recorded today, per HOSxP's vn_stat table
+    (vstdate = actual visit date, distinct from a merely-scheduled oapp
+    appointment). Single batched query with no HN filter — used to check
+    "is this patient actually at the hospital today" across many candidate
+    HNs at once, rather than looping a per-HN appointment lookup."""
+    rows = his_db.execute(
+        text("SELECT hn FROM vn_stat WHERE DATE(vstdate) = CURRENT_DATE")
+    ).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+def get_appointments(his_db: Session, hn: str) -> List[Dict]:
+    """Fetch upcoming appointments for a patient from HOSxP's oapp table.
+
+    Extracted from routers/his.py so both the /his/appointments endpoint and
+    the scheduled_notifications background worker (which isn't inside a
+    request/response cycle and can't use the router directly) share one
+    definition of this query.
+    """
+    rows = his_db.execute(
+        text("""
+            SELECT o.oapp_id, o.hn, o.nextdate, o.nexttime, o.note,
+                   o.doctor, o.clinic, o.depcode, o.contact_point, o.app_cause,
+                   k.department
+            FROM oapp o
+            LEFT JOIN kskdepartment k ON k.depcode = o.depcode
+            WHERE o.hn = :hn
+            ORDER BY o.nextdate DESC
+            LIMIT 20
+        """),
+        {"hn": hn},
+    ).fetchall()
+
+    return [
+        {
+            "oapp_id": r[0],
+            "hn": r[1],
+            "nextdate": str(r[2]) if r[2] else None,
+            "nexttime": str(r[3]) if r[3] else None,
+            "note": r[4],
+            "doctor": r[5],
+            "clinic": r[6],
+            "depcode": r[7],
+            "contact_point": r[8],
+            "app_cause": r[9],
+            "department": r[10],
+        }
+        for r in rows
+    ]
 
 
 def _load_form_names() -> dict:

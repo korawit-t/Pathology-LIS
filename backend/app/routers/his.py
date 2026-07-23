@@ -5,13 +5,14 @@ Configure via HIS_TYPE in .env
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from typing import List, Optional
 from datetime import date
 
 from app.db.his_database import get_his_db, is_his_configured
 from app.schemas.his import HisPatientResult
 from app.his_adapters import get_his_adapter
+from app.his_adapters.hosxp import get_appointments as hosxp_get_appointments
+from app.his_adapters.hosxp import get_hns_with_visit_today as hosxp_get_hns_with_visit_today
 from app.dependencies.auth import get_current_user
 
 router = APIRouter(
@@ -68,36 +69,21 @@ def get_appointments(
         raise HTTPException(status_code=503, detail="HIS not configured")
 
     try:
-        rows = his_db.execute(
-            text("""
-                SELECT o.oapp_id, o.hn, o.nextdate, o.nexttime, o.note,
-                       o.doctor, o.clinic, o.depcode, o.contact_point, o.app_cause,
-                       k.department
-                FROM oapp o
-                LEFT JOIN kskdepartment k ON k.depcode = o.depcode
-                WHERE o.hn = :hn
-                ORDER BY o.nextdate DESC
-                LIMIT 20
-            """),
-            {"hn": hn},
-        ).fetchall()
+        return hosxp_get_appointments(his_db, hn)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"HIS query failed: {str(e)}")
 
-        return [
-            {
-                "oapp_id": r[0],
-                "hn": r[1],
-                "nextdate": str(r[2]) if r[2] else None,
-                "nexttime": str(r[3]) if r[3] else None,
-                "note": r[4],
-                "doctor": r[5],
-                "clinic": r[6],
-                "depcode": r[7],
-                "contact_point": r[8],
-                "app_cause": r[9],
-                "department": r[10],
-            }
-            for r in rows
-        ]
+
+@router.get("/visits-today")
+def get_visits_today(his_db: Session = Depends(get_his_db)):
+    """All HNs with an actual visit recorded today (vn_stat), for the
+    "pending outlab + patient is here today" checks — replaces per-HN
+    appointment lookups with one batched query."""
+    if not is_his_configured() or his_db is None:
+        raise HTTPException(status_code=503, detail="HIS not configured")
+
+    try:
+        return {"hns": hosxp_get_hns_with_visit_today(his_db)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"HIS query failed: {str(e)}")
 

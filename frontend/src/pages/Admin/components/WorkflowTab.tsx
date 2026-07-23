@@ -29,6 +29,11 @@ import AnatomicalPathologyTestService, { AnatomicalPathologyTest } from "../../.
 
 const { Text, Title } = Typography;
 
+const CHECK_TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const t = `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 === 0 ? "00" : "30"}`;
+  return { label: t, value: t };
+});
+
 const SettingRow = ({ title, description, children, icon }: { title: string; description?: string; children: React.ReactNode; icon?: React.ReactNode }) => (
   <Row
     gutter={[16, 16]}
@@ -396,6 +401,27 @@ const WorkflowTab: React.FC = () => {
               </Space>
             </SettingRow>
           </div>
+        </div>
+
+        {/* Section 3: Scheduled notification check interval */}
+        <div style={{ marginBottom: 40 }}>
+          <Title level={5} style={{ marginBottom: 24 }}>
+            <ClockCircleOutlined /> Scheduled Alerts
+          </Title>
+
+          <SettingRow
+            title="Check Times"
+            description="Times of day (Asia/Bangkok) the background worker evaluates scheduled notification rules (configured under System Settings → Scheduled Alerts) — e.g. patient visited today with outlab result still pending. A changed list takes effect on the worker's next wake-up, no restart needed."
+          >
+            <Form.Item name="scheduled_notification_times" style={{ marginBottom: 0 }}>
+              <Select
+                mode="multiple"
+                options={CHECK_TIME_OPTIONS}
+                style={{ minWidth: 280 }}
+                placeholder="e.g. 09:00, 11:00, 13:00, 15:00"
+              />
+            </Form.Item>
+          </SettingRow>
         </div>
 
         <Alert

@@ -1,20 +1,14 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import dayjs from "dayjs";
 import { TodayPatientsTab } from "./OutlabManagement";
 import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
 import SurgicalCaseService from "../../services/surgicalCaseService";
 import HisService from "../../services/hisService";
 
-// Only Date is frozen (see beforeEach) so the "today"/"urgent (within 2h)"
-// branches are deterministic. Faking ALL timers was tried and timed out every
-// async fetch/waitFor (the promise-chain fetch pipeline needs real timers), so
-// we fake Date alone — that keeps timeIn()/today() from drifting or wrapping
-// past midnight while leaving setTimeout/Promise untouched.
 vi.mock("../../services/surgicalBlockStainService", () => ({
   default: { getOutlabRuns: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
 vi.mock("../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
-vi.mock("../../services/hisService", () => ({ default: { getAppointments: vi.fn() } }));
+vi.mock("../../services/hisService", () => ({ default: { getVisitsToday: vi.fn() } }));
 
 const unkeyedDetail = (overrides = {}) => ({
   id: 1,
@@ -25,23 +19,8 @@ const unkeyedDetail = (overrides = {}) => ({
   ...overrides,
 });
 
-const today = () => dayjs().format("YYYY-MM-DD");
-const timeIn = (minutes) => dayjs().add(minutes, "minute").format("HH:mm:ss");
-const timeAgo = (minutes) => dayjs().subtract(minutes, "minute").format("HH:mm:ss");
-
 beforeEach(() => {
   vi.clearAllMocks();
-  // Freeze ONLY Date (leave setTimeout/Promise real) so dayjs()-derived "now"
-  // is deterministic without breaking the component's async fetch pipeline —
-  // faking all timers made every waitFor time out. A fixed mid-day clock stops
-  // timeIn(30)/timeIn(180) from wrapping past midnight, which otherwise flaked
-  // the "urgent (within 2h)" branch when the suite ran near 23:30–23:59.
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date(2026, 0, 15, 10, 0, 0)); // 2026-01-15 10:00 local
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("TodayPatientsTab", () => {
@@ -50,23 +29,22 @@ describe("TodayPatientsTab", () => {
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
+    expect(HisService.getVisitsToday).not.toHaveBeenCalled();
   });
 
-  it("excludes patients whose only appointment is not today", async () => {
+  it("excludes patients who did not visit today", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
       { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
     ]);
     SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "Jaidee" } }] });
-    HisService.getAppointments.mockResolvedValue([
-      { nextdate: dayjs().add(1, "day").format("YYYY-MM-DD"), nexttime: "09:00:00", department: "OPD" },
-    ]);
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-999"] }); // someone else visited, not HN-001
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
     expect(screen.queryByText("HN-001")).not.toBeInTheDocument();
   });
 
-  it("skips patients whose HN can't be resolved from the accession number", async () => {
+  it("skips patients whose HN can't be resolved from the accession number, without calling the HIS visit check", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
       { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
     ]);
@@ -74,10 +52,10 @@ describe("TodayPatientsTab", () => {
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
-    expect(HisService.getAppointments).not.toHaveBeenCalled();
+    expect(HisService.getVisitsToday).not.toHaveBeenCalled();
   });
 
-  it("lists a patient with a today appointment and unkeyed stains, earliest time first", async () => {
+  it("lists a patient who visited today and still has unkeyed stains, sorted by patient name", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
       {
         run_no: "OUT-001",
@@ -89,54 +67,28 @@ describe("TodayPatientsTab", () => {
       Promise.resolve({
         items: [{
           hn: search === "S26-00001" ? "HN-A" : "HN-B",
-          patient: { name: search === "S26-00001" ? "Late" : "Early", ln: "" },
+          patient: { name: search === "S26-00001" ? "Zebra" : "Amara", ln: "" },
         }],
       }),
     );
-    HisService.getAppointments.mockImplementation((hn) =>
-      Promise.resolve([{ nextdate: today(), nexttime: hn === "HN-A" ? timeIn(300) : timeIn(120), department: "OPD" }]),
-    );
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-A", "HN-B"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     await waitFor(() => expect(screen.getByText("HN-A")).toBeInTheDocument());
     const hnCells = screen.getAllByText(/^HN-/).map((el) => el.textContent);
-    expect(hnCells).toEqual(["HN-B", "HN-A"]); // earlier appt (Early) sorts before later one (Late)
+    expect(hnCells).toEqual(["HN-B", "HN-A"]); // "Amara" sorts before "Zebra"
   });
 
-  it("shows the urgent alert when a patient arrives within 2 hours", async () => {
+  it("shows the pending-outlab alert for patients who visited today", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
       { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
     ]);
     SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeIn(30), department: "OPD" }]);
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
-    expect(await screen.findByText(/arriving within 2 hours/i)).toBeInTheDocument();
-  });
-
-  it("does not flag an appointment more than 2 hours away as urgent", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeIn(180), department: "OPD" }]);
-    render(<TodayPatientsTab refreshTrigger={0} />);
-
-    await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
-    expect(screen.queryByText(/arriving within 2 hours/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/have appointments today/i)).toBeInTheDocument();
-  });
-
-  it("excludes an appointment that has already passed from the urgent count", async () => {
-    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
-      { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail()] },
-    ]);
-    SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeAgo(30), department: "OPD" }]);
-    render(<TodayPatientsTab refreshTrigger={0} />);
-
-    await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
-    expect(screen.queryByText(/arriving within 2 hours/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/still have pending outlab stains/i)).toBeInTheDocument();
+    expect(screen.getByText("HN-001")).toBeInTheDocument();
   });
 
   it("rows load already expanded, without needing a manual click", async () => {
@@ -148,7 +100,7 @@ describe("TodayPatientsTab", () => {
       { run_no: "OUT-001", destination_lab: "Lab A", details: [unkeyedDetail({ id: 1, block_code: "A1" })] },
     ]);
     SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeIn(30), department: "OPD" }]);
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     render(<TodayPatientsTab refreshTrigger={0} />);
 
     await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
@@ -164,7 +116,7 @@ describe("TodayPatientsTab", () => {
       },
     ]);
     SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeIn(30), department: "OPD" }]);
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     SurgicalBlockStainService.toggleHosxpKeyed.mockResolvedValue({});
     render(<TodayPatientsTab refreshTrigger={0} />);
     await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
@@ -186,7 +138,7 @@ describe("TodayPatientsTab", () => {
       },
     ]);
     SurgicalCaseService.getCases.mockResolvedValue({ items: [{ hn: "HN-001", patient: { name: "Somchai", ln: "" } }] });
-    HisService.getAppointments.mockResolvedValue([{ nextdate: today(), nexttime: timeIn(30), department: "OPD" }]);
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
     SurgicalBlockStainService.toggleHosxpKeyed.mockResolvedValue({});
     render(<TodayPatientsTab refreshTrigger={0} />);
     await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());

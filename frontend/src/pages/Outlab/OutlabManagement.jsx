@@ -34,7 +34,6 @@ import {
   HourglassOutlined,
   FileSearchOutlined,
   BellOutlined,
-  WarningOutlined,
   EditOutlined,
 } from "@ant-design/icons";
 import { useReactToPrint } from "react-to-print";
@@ -1417,7 +1416,6 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
   // fetch keeps rows expanded by default while still letting the user
   // manually collapse one via the row's own expand toggle if they want.
   const [expandedKeys, setExpandedKeys] = useState([]);
-  const today = dayjs().format("YYYY-MM-DD");
 
   const fetchData = async () => {
     setLoading(true);
@@ -1459,34 +1457,21 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
         byHn[info.hn].items.push(d);
       });
 
-      // 4. Fetch today's appointments for each HN (in parallel)
-      const hns = Object.keys(byHn);
-      const apptResults = await Promise.all(
-        hns.map((hn) => HisService.getAppointments(hn).catch(() => []))
-      );
+      if (Object.keys(byHn).length === 0) { setRows([]); return; }
 
-      // 5. Keep only patients with an appointment TODAY
-      const result = [];
-      hns.forEach((hn, i) => {
-        const todayAppts = (apptResults[i] || []).filter(
-          (a) => a.nextdate && dayjs(a.nextdate).format("YYYY-MM-DD") === today
-        );
-        if (todayAppts.length === 0) return;
-        const earliest = [...todayAppts].sort((a, b) =>
-          (a.nexttime || "").localeCompare(b.nexttime || "")
-        )[0];
-        result.push({
-          key: hn,
-          hn,
-          patient_name: byHn[hn].patient_name,
-          appointments: todayAppts,
-          earliest_time: earliest?.nexttime?.substring(0, 5) || "-",
-          clinic: earliest?.department || earliest?.contact_point || "-",
-          items: byHn[hn].items,
-        });
-      });
+      // 4. Which of these HNs actually visited (checked in) today — one
+      // batched HOSxP query (vn_stat), not a per-HN appointment lookup:
+      // an appointment can be scheduled and never show up, so this checks
+      // actual arrival instead.
+      const { hns: visitingHns } = await HisService.getVisitsToday().catch(() => ({ hns: [] }));
+      const visitingSet = new Set(visitingHns);
 
-      result.sort((a, b) => a.earliest_time.localeCompare(b.earliest_time));
+      // 5. Keep only patients who actually visited TODAY
+      const result = Object.values(byHn)
+        .filter((entry) => visitingSet.has(entry.hn))
+        .map((entry) => ({ key: entry.hn, ...entry }));
+
+      result.sort((a, b) => a.patient_name.localeCompare(b.patient_name));
       setRows(result);
       setExpandedKeys(result.map((r) => r.key));
     } catch {
@@ -1523,34 +1508,7 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
 
   useEffect(() => { fetchData(); }, [refreshTrigger]);
 
-  const urgentCount = rows.filter((r) => {
-    if (r.earliest_time === "-") return false;
-    const [h, m] = r.earliest_time.split(":").map(Number);
-    const apptMinutes = h * 60 + m;
-    const nowMinutes = dayjs().hour() * 60 + dayjs().minute();
-    return apptMinutes - nowMinutes <= 120 && apptMinutes >= nowMinutes;
-  }).length;
-
   const columns = [
-    {
-      title: "Appt. Time",
-      dataIndex: "earliest_time",
-      key: "time",
-      width: 100,
-      render: (t) => {
-        const [h, m] = (t || "").split(":").map(Number);
-        const apptMinutes = h * 60 + m;
-        const nowMinutes = dayjs().hour() * 60 + dayjs().minute();
-        const isUrgent = apptMinutes - nowMinutes <= 120 && apptMinutes >= nowMinutes;
-        const isPast = apptMinutes < nowMinutes;
-        return (
-          <Text strong style={{ color: isPast ? "#8c8c8c" : isUrgent ? "#ff4d4f" : "#1890ff", fontSize: 15 }}>
-            {isPast ? <s>{t}</s> : t}
-            {isUrgent && <WarningOutlined style={{ marginLeft: 4, color: "#ff4d4f" }} />}
-          </Text>
-        );
-      },
-    },
     {
       title: "HN",
       dataIndex: "hn",
@@ -1562,12 +1520,6 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
       title: "Patient",
       dataIndex: "patient_name",
       key: "patient_name",
-    },
-    {
-      title: "Clinic",
-      dataIndex: "clinic",
-      key: "clinic",
-      render: (t) => <Text type="secondary">{t}</Text>,
     },
     {
       title: "Pending Stains",
@@ -1598,29 +1550,25 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
     <>
       {rows.length > 0 ? (
         <Alert
-          type={urgentCount > 0 ? "error" : "warning"}
+          type="warning"
           showIcon
           icon={<BellOutlined />}
           style={{ marginBottom: 16 }}
-          message={
-            urgentCount > 0
-              ? `⚠ ${urgentCount} patient(s) arriving within 2 hours — key in results now!`
-              : `${rows.length} patient(s) have appointments today with pending outlab stains`
-          }
+          message={`${rows.length} patient(s) here today still have pending outlab stains — key in results now!`}
         />
       ) : !loading ? (
         <Alert
           type="success"
           showIcon
           icon={<CheckCircleOutlined />}
-          message="No patients coming today with pending outlab stains — all clear!"
+          message="No patients here today with pending outlab stains — all clear!"
           style={{ marginBottom: 16 }}
         />
       ) : null}
 
       <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Text type="secondary">
-          Showing patients with appointments on <Text strong>{dayjs().format("DD/MM/YYYY")}</Text> who have unkeyed outlab stains
+          Showing patients who visited on <Text strong>{dayjs().format("DD/MM/YYYY")}</Text> who have unkeyed outlab stains
         </Text>
         <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>Refresh</Button>
       </div>
@@ -1631,14 +1579,6 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
         rowKey="key"
         loading={loading}
         pagination={false}
-        rowClassName={(r) => {
-          const [h, m] = (r.earliest_time || "").split(":").map(Number);
-          const apptMinutes = h * 60 + m;
-          const nowMinutes = dayjs().hour() * 60 + dayjs().minute();
-          return apptMinutes - nowMinutes <= 120 && apptMinutes >= nowMinutes
-            ? "today-patient-urgent"
-            : "";
-        }}
         expandable={{
           expandedRowKeys: expandedKeys,
           onExpandedRowsChange: (keys) => setExpandedKeys(keys),
@@ -1693,14 +1633,8 @@ export const TodayPatientsTab = ({ refreshTrigger }) => {
           ),
           rowExpandable: () => true,
         }}
-        locale={{ emptyText: loading ? " " : "No patients with today's appointments found" }}
+        locale={{ emptyText: loading ? " " : "No patients here today with pending outlab stains" }}
       />
-
-      <style>{`
-        .today-patient-urgent td {
-          background-color: #fff1f0 !important;
-        }
-      `}</style>
     </>
   );
 };

@@ -102,6 +102,9 @@ export interface SystemSetting {
   grossing_assist_enabled?: boolean;
   grossing_assist_llm_profile_id?: number | null;
   grossing_assist_system_prompt?: string | null;
+
+  // --- Scheduled Notification Check Times ---
+  scheduled_notification_times?: string[];
 }
 
 /**

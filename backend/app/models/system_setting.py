@@ -1,5 +1,5 @@
 # app/models/system_setting.py
-from sqlalchemy import Column, Float, Integer, String, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Float, Integer, String, Text, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -29,6 +29,17 @@ class SystemSetting(Base):
     surgical_express_tat_days = Column(Integer, default=3)  # ปกติด่วนมักจะ 1-2 วัน
     non_gyne_express_tat_days = Column(Integer, default=3)
     gyne_express_tat_days = Column(Integer, default=3)
+
+    # --- Scheduled Notification Check Times ---
+    # Specific times of day (HH:MM, Asia/Bangkok) the scheduled_notifications
+    # worker wakes up and evaluates active rules, instead of a fixed poll
+    # interval — e.g. aligned with clinic session times. Read fresh each cycle
+    # by app/scheduled_notifications/worker.py, so a change here takes effect
+    # on the loop's next wake-up without a process restart.
+    scheduled_notification_times = Column(
+        JSON, nullable=True,
+        default=lambda: ["09:00", "11:00", "13:00", "15:00"],
+    )
 
     # --- Report Settings ---
     is_cumulative_report = Column(Boolean, default=True)
