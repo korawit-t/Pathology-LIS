@@ -140,6 +140,7 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     id: int
     status: str
     registered_at: datetime
+    report_at: Optional[datetime] = None
     registrar_id: int
     is_express: bool = False
     is_out_lab_consult: bool = False
