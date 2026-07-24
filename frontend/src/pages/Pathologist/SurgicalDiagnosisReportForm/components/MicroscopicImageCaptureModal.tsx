@@ -17,6 +17,8 @@ import {
   Row,
   Col,
   Input,
+  Switch,
+  Tooltip,
 } from "antd";
 import {
   CameraOutlined,
@@ -83,7 +85,35 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
 
   const [showEditor, setShowEditor] = useState(false); // 🌟 ใช้เปิด/ปิด Image Editor
 
-  const capture = useCallback(() => {
+  const [hqMode, setHqMode] = useState(false);
+  const [hqSupported, setHqSupported] = useState(false);
+
+  useEffect(() => {
+    setHqSupported("ImageCapture" in window);
+  }, []);
+
+  const capture = useCallback(async () => {
+    if (hqMode && hqSupported) {
+      const track = webcamRef.current?.stream?.getVideoTracks()[0];
+      if (!track) {
+        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
+        return;
+      }
+      try {
+        const imageCapture = new ImageCapture(track);
+        const blob = await imageCapture.takePhoto();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImageSrc(reader.result as string);
+          setShowEditor(true); // 🌟 เปิดหน้า Editor
+          message.success("ถ่ายภาพความละเอียดสูงสำเร็จ");
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        message.error("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ลองปิดโหมด HQ แล้วถ่ายใหม่");
+      }
+      return;
+    }
     if (webcamRef.current) {
       const image = webcamRef.current.getScreenshot();
       if (image) {
@@ -92,7 +122,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         message.success("บันทึกภาพตัวอย่างสำเร็จ");
       }
     }
-  }, [webcamRef]);
+  }, [hqMode, hqSupported]);
 
   // 🚩 ฟังก์ชันจัดการการเลือกไฟล์จากเครื่อง
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -158,19 +188,42 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   return (
     <Modal
       title={
-        <Space>
-          {/* 🚩 เปลี่ยน Icon ตามโหมด */}
-          {editingImage ? (
-            <EditOutlined style={{ color: "#52c41a" }} />
-          ) : (
-            <CameraOutlined style={{ color: "#1890ff" }} />
+        <div>
+          <Space>
+            {/* 🚩 เปลี่ยน Icon ตามโหมด */}
+            {editingImage ? (
+              <EditOutlined style={{ color: "#52c41a" }} />
+            ) : (
+              <CameraOutlined style={{ color: "#1890ff" }} />
+            )}
+            <Text strong>
+              {editingImage
+                ? "Edit Microscopic Image Info"
+                : "Microscopic Image Capture"}
+            </Text>
+          </Space>
+          {!editingImage && (
+            <div style={{ marginTop: 4 }}>
+              <Tooltip
+                title={
+                  hqSupported
+                    ? undefined
+                    : "เบราว์เซอร์นี้ไม่รองรับการถ่ายภาพความละเอียดสูง"
+                }
+              >
+                <Switch
+                  size="small"
+                  checked={hqMode}
+                  onChange={setHqMode}
+                  disabled={!hqSupported}
+                />
+              </Tooltip>
+              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                ถ่ายภาพความละเอียดสูง (HQ)
+              </Text>
+            </div>
           )}
-          <Text strong>
-            {editingImage
-              ? "Edit Microscopic Image Info"
-              : "Microscopic Image Capture"}
-          </Text>
-        </Space>
+        </div>
       }
       open={open}
       onCancel={onClose}
