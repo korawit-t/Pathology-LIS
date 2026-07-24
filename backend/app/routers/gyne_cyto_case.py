@@ -2,6 +2,7 @@ import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Response
 from app.utils.file_handler import validate_and_sanitize
+from app.utils.time import local_now
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Any, Optional
@@ -448,6 +449,7 @@ async def upload_outlab_test_result(
     from app.schemas.gyne_cyto_case import GyneCytologyCaseUpdate
     updated = crud.update_gyne_case(db, case, GyneCytologyCaseUpdate(
         out_lab_result_pdf_path=file_path,
+        out_lab_result_uploaded_at=local_now(),
     ))
     # A (re-)uploaded PDF always needs fresh pathologist sign-off.
     crud.clear_outlab_result_approval(db, updated)
