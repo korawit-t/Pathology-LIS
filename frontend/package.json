@@ -20,7 +20,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@lexical/rich-text": "^0.38.2",
     "@tiptap/extension-bullet-list": "^3.13.0",
-    "@tiptap/extension-ordered-list": "^3.27.3",
+    "@tiptap/extension-ordered-list": "^3.28.0",
     "@tiptap/extension-placeholder": "^3.14.0",
     "@tiptap/extension-strike": "^3.27.3",
     "@tiptap/extension-text-style": "^3.13.0",
