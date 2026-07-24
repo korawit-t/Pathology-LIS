@@ -222,14 +222,13 @@ const PathologistGyneDiagnosisPage: React.FC<
     }
   }, [isRevision, caseData?.review_result, currentUser, form]);
 
-  // Sync isAbnormal from selected category
+  // Sync isAbnormal from selected category — Unsatisfactory specimens also
+  // force pathologist review, same as abnormal (LSIL/HSIL+) categories.
   useEffect(() => {
-    if (!selectedCat1) return;
     const cat = mainCategories.find((c) => c.id === selectedCat1);
-    if (cat) {
-      setIsAbnormal(cat.code?.startsWith("3") ?? false);
-    }
-  }, [selectedCat1, mainCategories]);
+    const categoryAbnormal = cat?.code?.startsWith("3") ?? false;
+    setIsAbnormal(categoryAbnormal || isUnsatisfactoryAdequacy);
+  }, [selectedCat1, mainCategories, isUnsatisfactoryAdequacy]);
 
   useEffect(() => {
     if (!caseId || !diagnosis) return;

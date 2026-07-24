@@ -46,6 +46,7 @@ export interface GyneCytologyCase {
   registered_at: string;
   screened_at: string | null;
   reported_at: string | null;
+  report_at: string | null;
 
   // สรุปผลเบื้องต้น (เพื่อใช้ในหน้า Dashboard)
   bethesda_category?: string;

@@ -193,6 +193,20 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
         ),
     },
     {
+      title: "Cytotech Signed",
+      dataIndex: "report_at",
+      key: "report_at",
+      width: 110,
+      render: (date: string) =>
+        date ? (
+          <Tooltip title={dayjs(date).format("DD/MM/YYYY HH:mm")}>
+            <Text style={{ fontSize: 12 }}>{dayjs(date).format("DD/MM/YY")}</Text>
+          </Tooltip>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        ),
+    },
+    {
       title: "Case Status",
       dataIndex: "status",
       key: "status",
