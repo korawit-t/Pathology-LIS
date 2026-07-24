@@ -16,6 +16,7 @@ PREDEFINED_SCHEDULED_RULE_TYPES = [
         "template": (
             "🔔 แจ้งเตือนผลย้อมนอกค้างคีย์\n"
             "HN: {hn} | {name}\n"
+            "Case: {case_id}\n"
             "รายการค้างคีย์: {pending_count} รายการ"
         ),
     },
