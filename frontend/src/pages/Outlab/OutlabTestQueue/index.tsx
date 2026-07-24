@@ -370,6 +370,13 @@ const OutlabTestQueuePage: React.FC = () => {
   const uploadedColumns = [
     ...baseColumns,
     {
+      title: "Uploaded",
+      key: "out_lab_result_uploaded_at",
+      width: 120,
+      render: (c: GyneCytologyCase) =>
+        c.out_lab_result_uploaded_at ? dayjs(c.out_lab_result_uploaded_at).format("DD/MM/YYYY") : "—",
+    },
+    {
       title: "Sign-off Status",
       key: "outlab_result_approved",
       width: 160,

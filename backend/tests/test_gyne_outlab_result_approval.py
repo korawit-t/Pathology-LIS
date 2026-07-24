@@ -74,6 +74,23 @@ class TestUploadOutlabTestResult:
         assert outlab_case.outlab_result_approved_at is None
         assert outlab_case.outlab_result_approved_by_id is None
 
+    def test_upload_sets_uploaded_at(self, admin_client, db, outlab_case):
+        r = _upload(admin_client, outlab_case.id)
+        assert r.status_code == 200
+
+        db.refresh(outlab_case)
+        assert outlab_case.out_lab_result_uploaded_at is not None
+
+    def test_reupload_refreshes_uploaded_at(self, admin_client, db, outlab_case):
+        _upload(admin_client, outlab_case.id)
+        db.refresh(outlab_case)
+        first_uploaded_at = outlab_case.out_lab_result_uploaded_at
+
+        _upload(admin_client, outlab_case.id, filename="result2.pdf")
+        db.refresh(outlab_case)
+        assert outlab_case.out_lab_result_uploaded_at is not None
+        assert outlab_case.out_lab_result_uploaded_at >= first_uploaded_at
+
     def test_reupload_clears_prior_approval(self, client, db, admin_user, pathologist_user, outlab_case):
         _login_as(client, admin_user)
         _upload(client, outlab_case.id)
