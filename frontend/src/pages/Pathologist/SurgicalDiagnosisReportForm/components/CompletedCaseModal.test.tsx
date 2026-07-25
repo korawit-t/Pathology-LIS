@@ -1,6 +1,5 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
-import { Modal } from "antd";
 import CompletedCaseModal from "./CompletedCaseModal";
 import SurgicalReportService from "../../../../services/surgicalReportService";
 import type { SurgicalCase } from "../../../../types/surgical";
@@ -88,13 +87,6 @@ beforeEach(() => {
   globalThis.URL.revokeObjectURL = vi.fn();
   mockGetReportPdf.mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
   mockDeleteReport.mockResolvedValue({});
-});
-
-// Modal.confirm mounts its own React root outside the render tree, so RTL's
-// automatic unmount never removes it — a dialog left open by one test would
-// otherwise be the one the next test's queries find.
-afterEach(() => {
-  Modal.destroyAll();
 });
 
 describe("CompletedCaseModal", () => {
