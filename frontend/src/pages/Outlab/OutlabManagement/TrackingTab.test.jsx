@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { TrackingTab } from "./OutlabManagement";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import SystemSettingService from "../../services/systemSettingService";
+import { TrackingTab } from "./TrackingTab";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import SystemSettingService from "../../../services/systemSettingService";
 
-vi.mock("../../services/surgicalBlockStainService", () => ({
+vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: {
     getOutlabRuns: vi.fn(),
     receiveOutlabRunDetails: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("../../services/surgicalBlockStainService", () => ({
     updateOutlabRun: vi.fn(),
   },
 }));
-vi.mock("../../services/systemSettingService", () => ({ default: { getPublicSettings: vi.fn() } }));
+vi.mock("../../../services/systemSettingService", () => ({ default: { getPublicSettings: vi.fn() } }));
 
 const makeRun = (overrides = {}) => ({
   id: 1,
@@ -84,6 +84,25 @@ describe("TrackingTab", () => {
     );
   });
 
+  it("shows an error and still refetches when receiving fails", async () => {
+    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([makeRun()]);
+    SurgicalBlockStainService.receiveOutlabRunDetails.mockRejectedValue(new Error("network error"));
+    render(<TrackingTab refreshTrigger={0} />);
+    await waitFor(() => expect(screen.getByText("OUT-001")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("OUT-001")); // expandRowByClick
+    expect(await screen.findByText("Slides in this run:")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    fireEvent.click(screen.getByRole("button", { name: /Receive selected \(2\)/i }));
+
+    expect(await screen.findByText("Failed to record selected slide returns")).toBeInTheDocument();
+    // Matches CaseViewTab's original behavior, now shared via useReceiveOutlabSlides:
+    // the UI always refetches after a receive attempt, even a failed one, so it
+    // reflects the server's true state rather than trusting local optimism.
+    await waitFor(() => expect(SurgicalBlockStainService.getOutlabRuns).toHaveBeenCalledTimes(2));
+  });
+
   it("deletes a sent run via the confirm popup", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([makeRun({ id: 1, status: "sent" })]);
     SurgicalBlockStainService.deleteOutlabRun.mockResolvedValue({});
@@ -107,7 +126,7 @@ describe("TrackingTab", () => {
     // picking the one with no placeholder (the inline tracking-number editor).
     const input = (await screen.findAllByRole("textbox")).find((el) => !el.placeholder);
     fireEvent.change(input, { target: { value: "TRACK-123" } });
-    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(SurgicalBlockStainService.updateOutlabRun).toHaveBeenCalledWith(1, { tracking_number: "TRACK-123" }),

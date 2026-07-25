@@ -1,15 +1,15 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
-import { PendingQueueTab } from "./OutlabManagement";
-import SurgicalBlockService from "../../services/surgicalBlockService";
-import SurgicalCaseService from "../../services/surgicalCaseService";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import api from "../../services/httpClient";
+import { PendingQueueTab } from "./PendingQueueTab";
+import SurgicalBlockService from "../../../services/surgicalBlockService";
+import SurgicalCaseService from "../../../services/surgicalCaseService";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import api from "../../../services/httpClient";
 
-vi.mock("../../services/surgicalBlockService", () => ({ default: { getBlocks: vi.fn() } }));
-vi.mock("../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
-vi.mock("../../services/surgicalBlockStainService", () => ({ default: { createOutlabRun: vi.fn() } }));
-vi.mock("../../services/httpClient", () => ({ default: { get: vi.fn() } }));
-vi.mock("../../hooks/useAuth", () => ({ useAuth: () => ({ user: { full_name: "Dr. Test" } }) }));
+vi.mock("../../../services/surgicalBlockService", () => ({ default: { getBlocks: vi.fn() } }));
+vi.mock("../../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
+vi.mock("../../../services/surgicalBlockStainService", () => ({ default: { createOutlabRun: vi.fn() } }));
+vi.mock("../../../services/httpClient", () => ({ default: { get: vi.fn() } }));
+vi.mock("../../../hooks/useAuth", () => ({ useAuth: () => ({ user: { full_name: "Dr. Test" } }) }));
 
 const externalPendingStain = (overrides = {}) => ({
   id: 1,
