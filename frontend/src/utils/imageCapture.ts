@@ -1,3 +1,17 @@
+export const DEFAULT_VIDEO_CONSTRAINTS = {
+  width: 1920,
+  height: 1080,
+  facingMode: "environment",
+} as const;
+
+export const HQ_UNSUPPORTED_TOOLTIP =
+  "This browser doesn't support high-quality capture";
+
+export const HQ_CAPTURE_FALLBACK_WARNING =
+  "High-quality capture failed, using video frame instead";
+
+export const CAMERA_NOT_FOUND_ERROR = "Camera not found, please try again";
+
 /**
  * Detects support for both the ImageCapture constructor AND takePhoto() —
  * some browsers (e.g. Firefox behind a flag) expose the constructor without

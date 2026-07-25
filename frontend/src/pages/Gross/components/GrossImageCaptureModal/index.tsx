@@ -1,15 +1,13 @@
-import React, { useRef, useState, useCallback, useEffect, FC } from "react";
+import React, { useRef, useState, FC } from "react";
 import {
   Modal,
   Button,
-  message,
+  App,
   Space,
   Typography,
   Divider,
   Select,
-  Switch,
-  Tooltip,
-} from "antd"; // 🌟 เพิ่ม Select
+} from "antd";
 import {
   CameraOutlined,
   RedoOutlined,
@@ -18,29 +16,21 @@ import {
   FileImageOutlined,
 } from "@ant-design/icons";
 import Webcam from "react-webcam";
-import { ImageEditor } from "./ImageEditor"; // 🌟 นำเข้า ImageEditor
+import { ImageEditor } from "../../../../components/ImageEditor";
 import styles from "./GrossImageCaptureModal.module.css";
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
-import { isImageCaptureSupported, captureHighResPhoto } from "../../../../utils/imageCapture";
-import { getDataUrlByteSize, oversizeMessage } from "../../../../utils/imageUpload";
-import { MAX_IMAGE_UPLOAD_BYTES } from "../../../../constants/upload.constants";
+import { HqCaptureToggle } from "../../../../components/HqCaptureToggle";
+import { DEFAULT_VIDEO_CONSTRAINTS } from "../../../../utils/imageCapture";
+import { useImageCapture } from "../../../../hooks/useImageCapture";
 
 const { Text } = Typography;
 
 interface GrossImageCaptureModalProps {
   open: boolean;
   onClose: () => void;
-  // 🌟 เพิ่ม specimens เข้ามาเพื่อสร้าง Dropdown
   specimens: Specimen[];
-  // 🌟 ปรับ onCaptureAndUpload ให้รับ specimenId ด้วย
   onCaptureAndUpload: (imageSrc: string, specimenId: number | null) => void;
 }
-
-const videoConstraints = {
-  width: 1920,
-  height: 1080,
-  facingMode: "environment",
-};
 
 const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   open,
@@ -48,94 +38,26 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   specimens,
   onCaptureAndUpload,
 }) => {
+  const { message } = App.useApp();
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [selectedSpecimenId, setSelectedSpecimenId] = useState<number | null>(
     null,
-  ); // 🌟 เก็บ ID ที่เลือก
-
-  const [showEditor, setShowEditor] = useState(false); // 🌟 ใช้เปิด/ปิด Image Editor
-
-  const [hqMode, setHqMode] = useState(false);
-  const [hqSupported, setHqSupported] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-
-  useEffect(() => {
-    setHqSupported(isImageCaptureSupported());
-  }, []);
-
-  // ตรวจขนาดไฟล์ทันทีหลังถ่าย/เลือกไฟล์ ก่อนเปิด Editor — กันไม่ให้เสียเวลา
-  // crop/annotate ไปกับไฟล์ที่ท้ายที่สุดอัปโหลดไม่ได้
-  const finalizeCapture = useCallback(
-    async (dataUrl: string, successMessage: string) => {
-      const bytes = await getDataUrlByteSize(dataUrl);
-      if (bytes > MAX_IMAGE_UPLOAD_BYTES) {
-        message.error(oversizeMessage(bytes));
-        return;
-      }
-      setImageSrc(dataUrl);
-      setShowEditor(true); // 🌟 เปิดหน้า Editor
-      message.success(successMessage);
-    },
-    []
   );
 
-  // 🌟 ฟังก์ชันจัดการเมื่อเลือกไฟล์จากเครื่อง
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-        message.error(oversizeMessage(file.size));
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        finalizeCapture(reader.result as string, "เลือกไฟล์ภาพสำเร็จ");
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  const [showEditor, setShowEditor] = useState(false);
 
-  // 🌟 ฟังก์ชันเปิดหน้าต่างเลือกไฟล์
+  const onCaptured = (dataUrl: string) => {
+    setImageSrc(dataUrl);
+    setShowEditor(true);
+  };
+  const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
+    useImageCapture(webcamRef, onCaptured);
+
   const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
-
-  const captureViaScreenshot = useCallback(() => {
-    if (webcamRef.current) {
-      const image = webcamRef.current.getScreenshot();
-      if (image) {
-        finalizeCapture(image, "บันทึกภาพชั่วคราวแล้ว");
-      }
-    }
-  }, [webcamRef, finalizeCapture]);
-
-  const capture = useCallback(async () => {
-    if (hqMode && hqSupported) {
-      const track = webcamRef.current?.stream?.getVideoTracks()[0];
-      if (!track) {
-        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
-        return;
-      }
-      setCapturing(true);
-      try {
-        const blob = await captureHighResPhoto(track);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          finalizeCapture(reader.result as string, "ถ่ายภาพความละเอียดสูงสำเร็จ");
-        };
-        reader.readAsDataURL(blob);
-      } catch {
-        message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
-        captureViaScreenshot();
-      } finally {
-        setCapturing(false);
-      }
-      return;
-    }
-    captureViaScreenshot();
-  }, [hqMode, hqSupported, captureViaScreenshot, finalizeCapture]);
 
   const retake = () => {
     setImageSrc(null);
@@ -144,10 +66,9 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
 
   const handleUpload = () => {
     if (!imageSrc) {
-      message.error("กรุณาถ่ายภาพก่อนทำการอัปโหลด");
+      message.error("Please capture an image before uploading");
       return;
     }
-    // ส่งทั้งรูปและ ID ของชิ้นเนื้อกลับไป
     onCaptureAndUpload(imageSrc, selectedSpecimenId);
     setImageSrc(null);
     setShowEditor(false);
@@ -168,25 +89,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
             <CameraOutlined />
             <span>Gross Image Capture</span>
           </Space>
-          <div style={{ marginTop: 4 }}>
-            <Tooltip
-              title={
-                hqSupported
-                  ? undefined
-                  : "เบราว์เซอร์นี้ไม่รองรับการถ่ายภาพความละเอียดสูง"
-              }
-            >
-              <Switch
-                size="small"
-                checked={hqMode}
-                onChange={setHqMode}
-                disabled={!hqSupported}
-              />
-            </Tooltip>
-            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              ถ่ายภาพความละเอียดสูง (HQ)
-            </Text>
-          </div>
+          <HqCaptureToggle hqMode={hqMode} hqSupported={hqSupported} onChange={setHqMode} />
         </div>
       }
       open={open}
@@ -196,7 +99,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
       destroyOnClose
       footer={[
         <Button key="cancel" icon={<CloseOutlined />} onClick={onClose}>
-          ยกเลิก
+          Cancel
         </Button>,
         <Button
           key="retake"
@@ -205,28 +108,26 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           onClick={retake}
           disabled={!imageSrc}
         >
-          ถ่ายใหม่
+          Retake
         </Button>,
-
-        // 🌟 เพิ่มปุ่มเลือกไฟล์จากเครื่อง
         <Button
           key="browse"
           icon={<FileImageOutlined />}
           onClick={triggerFileInput}
           disabled={!!imageSrc}
         >
-          เลือกจากไฟล์
+          Select File
         </Button>,
 
         <Button
           key="capture"
           type="primary"
           icon={<CameraOutlined />}
-          onClick={capture}
+          onClick={() => capture("Image captured successfully")}
           loading={capturing}
           disabled={!!imageSrc || capturing}
         >
-          กดถ่ายรูป
+          Capture
         </Button>,
         <Button
           key="upload"
@@ -239,10 +140,10 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           }}
           icon={<UploadOutlined />}
           onClick={handleUpload}
-          // 🚩 บังคับต้องมีทั้งรูปภาพ และ เลือกชิ้นเนื้อ
+          // Require both an image and a selected specimen
           disabled={!imageSrc || !selectedSpecimenId}
         >
-          ยืนยันและอัปโหลด
+          Confirm & Upload
         </Button>,
       ]}
       styles={{ body: { padding: showEditor ? 0 : 24 } }}
@@ -255,22 +156,21 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
         />
       ) : (
         <div className={styles.container}>
-          {/* 🌟 ส่วนเลือกชิ้นเนื้อ (เพิ่มใหม่) */}
-          {/* 🌟 Input File แบบซ่อน */}
+          {/* Hidden file input */}
           <input
             type="file"
             ref={fileInputRef}
             style={{ display: "none" }}
             accept="image/*"
-            onChange={handleFileChange}
+            onChange={(e) => handleFileChange(e, "File selected successfully")}
           />
 
           <div style={{ marginBottom: 16, textAlign: "center" }}>
             <Space>
-              <Text strong>ภาพถ่ายของชิ้นเนื้อ:</Text>
+              <Text strong>Specimen photo:</Text>
               <Select
                 style={{ width: 300 }}
-                placeholder="กรุณาเลือกชิ้นเนื้อ (ระบุ Relation)"
+                placeholder="Select a specimen (Relation)"
                 value={selectedSpecimenId}
                 onChange={(value) => setSelectedSpecimenId(value)}
                 allowClear
@@ -299,7 +199,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
                 audio={false}
                 ref={webcamRef}
                 screenshotFormat="image/jpeg"
-                videoConstraints={videoConstraints}
+                videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />
             )}
@@ -308,8 +208,8 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           <Divider plain>
             <Text type="secondary">
               {imageSrc
-                ? "ตรวจสอบรูปภาพและชิ้นเนื้อที่เลือกก่อนอัปโหลด"
-                : "ปรับตำแหน่งชิ้นเนื้อให้ชัดเจน"}
+                ? "Review the image and selected specimen before uploading"
+                : "Position the specimen clearly"}
             </Text>
           </Divider>
         </div>

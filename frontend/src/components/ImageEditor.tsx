@@ -17,7 +17,6 @@ import {
   MinusOutlined
 } from "@ant-design/icons";
 import useImage from "use-image";
-import styles from "./GrossImageCaptureModal.module.css";
 
 const { Text } = Typography;
 

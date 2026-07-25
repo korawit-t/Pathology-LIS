@@ -9,10 +9,9 @@ import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
 
 export const useGrossImages = (activeCase: unknown) => {
   const [grossImages, setGrossImages] = useState<GrossImage[]>([]);
-  const [loading, setLoading] = useState(false); // 🚩 เพิ่ม Loading ใน Hook
+  const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
 
-  // ดึงรูปของทุกชิ้นเนื้อ (ย้ายมาจากหน้าหลัก)
   const fetchImagesAllSpecimens = async (specimens: { id: number }[]) => {
     if (!specimens || specimens.length === 0) return;
     setLoading(true);
@@ -36,7 +35,7 @@ export const useGrossImages = (activeCase: unknown) => {
     currentSpecimens: { id: number }[],
   ) => {
     if (!specimenId) {
-      message.warning("กรุณาเลือกชิ้นเนื้อก่อนอัปโหลดรูปภาพ");
+      message.warning("Please select a specimen before uploading an image");
       return;
     }
 
@@ -49,20 +48,19 @@ export const useGrossImages = (activeCase: unknown) => {
         return;
       }
 
-      const timestamp = dayjs().format("HHmmss_SSS"); // 🚩 ใช้ millisecond กันซ้ำ
+      const timestamp = dayjs().format("HHmmss_SSS"); // millisecond precision avoids filename collisions
       const fileName = `gross_${specimenId}_${timestamp}.jpg`;
 
       const formData = new FormData();
       formData.append("file", blob, fileName);
 
       await GrossImageService.uploadImage(specimenId, formData);
-      message.success("อัปโหลดรูปภาพสำเร็จ");
+      message.success("Image uploaded successfully");
 
-      // 🚩 สั่ง Refresh จากใน Hook เลย
       await fetchImagesAllSpecimens(currentSpecimens);
     } catch (err) {
       logger.error(err);
-      message.error("อัปโหลดล้มเหลว");
+      message.error("Upload failed");
     }
   };
 
@@ -70,16 +68,16 @@ export const useGrossImages = (activeCase: unknown) => {
     try {
       await GrossImageService.deleteImage(imageId);
       setGrossImages((prev) => prev.filter((img) => img.id !== imageId));
-      message.success("ลบรูปภาพสำเร็จ");
+      message.success("Image deleted successfully");
     } catch (error) {
-      message.error("ลบรูปภาพไม่สำเร็จ");
+      message.error("Failed to delete image");
     }
   };
 
   return {
     grossImages,
     setGrossImages,
-    grossLoading: loading, // ส่ง loading ออกไปใช้
+    grossLoading: loading,
     handleCaptureAndUpload,
     handleDeleteImage,
     fetchImagesAllSpecimens,

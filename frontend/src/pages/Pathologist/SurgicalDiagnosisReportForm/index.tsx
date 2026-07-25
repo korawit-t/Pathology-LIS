@@ -715,29 +715,26 @@ const handleOpenFinalizeModal = async () => {
   ) => {
     try {
       if (editingImage) {
-        // 🚩 กรณีแก้ไข (Update) - ใช้ข้อมูลจาก metadata ตรงๆ
         await MicroscopicImageService.updateImage(editingImage.id, {
           magnification: metadata.magnification,
           stain: metadata.stain,
           description: metadata.description,
         });
-        message.success("อัปเดตข้อมูลรูปภาพสำเร็จ");
+        message.success("Image info updated successfully");
       } else {
-        // 🚩 กรณีอัปโหลดใหม่ (Upload)
         const response = await fetch(imageSrc);
         const blob = await response.blob();
 
-        // ✅ เพิ่มการตรวจขนาดไฟล์
         if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
           message.error(oversizeMessage(blob.size));
           return;
         }
 
-        // ✅ สร้างชื่อไฟล์ที่มี Timestamp เพื่อไม่ให้ชื่อใน UI ซ้ำกัน
+        // Timestamp keeps generated filenames unique in the UI
         const timestamp = new Date()
           .toISOString()
           .replace(/[-:T.]/g, "")
-          .slice(8, 14); // ได้ HHmmss
+          .slice(8, 14); // HHmmss
         const fileName = `micro_${specimenId}_${timestamp}.jpg`;
 
         const file = new File([blob], fileName, { type: "image/jpeg" });
@@ -749,14 +746,14 @@ const handleOpenFinalizeModal = async () => {
         formData.append("description", metadata.description || "");
 
         await MicroscopicImageService.uploadImage(specimenId, formData);
-        message.success("อัปโหลดรูปภาพสำเร็จ");
+        message.success("Image uploaded successfully");
       }
 
       fetchMicroImages();
       setIsMicroModalOpen(false);
-      setEditingImage(null); // 🚩 อย่าลืม Reset state การแก้ไข
+      setEditingImage(null);
     } catch (error) {
-      message.error("ดำเนินการล้มเหลว");
+      message.error("Operation failed");
       logger.error(error);
     }
   };
