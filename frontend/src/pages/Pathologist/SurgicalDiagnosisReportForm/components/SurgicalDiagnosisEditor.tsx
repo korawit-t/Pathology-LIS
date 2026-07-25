@@ -5,7 +5,6 @@ import {
   Row,
   Col,
   Space,
-  FormInstance,
   Tabs,
   Tooltip,
   Button,
@@ -38,7 +37,6 @@ const { Text } = Typography;
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 interface SurgicalDiagnosisEditorProps {
-  form: FormInstance;
   isLocked: boolean;
   hasOriginalSigned: boolean;
   specimen: SurgicalSpecimen;
@@ -55,7 +53,6 @@ interface SurgicalDiagnosisEditorProps {
 }
 
 const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
-  form,
   isLocked,
   specimen,
   allSpecimens,
@@ -69,6 +66,7 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
   isAIGenerating = false,
   wsiSlides = [],
 }) => {
+  const form = Form.useFormInstance();
   const getFieldName = (field: string) => ["diagnoses", specimen.id, field];
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const isFocusedWithin = useRef(false);

@@ -44,7 +44,6 @@ import SecureImage from "../../../../components/SecureImage";
 import { SurgicalCase, SurgicalSpecimen } from "../../../../types/surgical";
 import type { User } from "../../../../types/user";
 import type { GrossImage, MicroscopicImage } from "../../../../types/image";
-import type { FormInstance } from "antd";
 import type { WsiFile } from "../../../../types/system";
 
 const { Text } = Typography;
@@ -52,7 +51,6 @@ const { Text } = Typography;
 interface SpecimenIntegratedWorkblockProps {
   specimen: SurgicalSpecimen;
   surgicalCase: SurgicalCase;
-  form: FormInstance;
   isLocked: boolean;
   hasOriginalSigned: boolean;
   pathologists: User[];
@@ -135,7 +133,6 @@ const SpecimenIntegratedWorkblock: React.FC<
 > = ({
   specimen,
   surgicalCase,
-  form,
   isLocked,
   hasOriginalSigned,
   pathologists,
@@ -150,6 +147,7 @@ const SpecimenIntegratedWorkblock: React.FC<
   isAIGenerating,
   wsiSlides,
 }) => {
+  const form = Form.useFormInstance();
   const specimenSlides = (wsiSlides ?? []).filter((s) => {
     if (s.parsed_block?.startsWith(specimen.specimen_label)) return true;
     const confirmedLink = s.slide_links.find((l) => l.status === "confirmed");
@@ -334,7 +332,6 @@ const SpecimenIntegratedWorkblock: React.FC<
                 {/* 1. Header: Specimen Name & Examiner Info */}
 
                 <SurgicalDiagnosisEditor
-                  form={form}
                   specimen={specimen}
                   allSpecimens={surgicalCase.specimens ?? []}
                   isLocked={isLocked}

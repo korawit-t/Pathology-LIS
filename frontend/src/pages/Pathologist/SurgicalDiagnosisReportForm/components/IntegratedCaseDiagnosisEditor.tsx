@@ -17,7 +17,6 @@ import {
 } from "@ant-design/icons";
 import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../../SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
-import type { FormInstance } from "antd";
 import type { SurgicalCase } from "../../../../types/surgical";
 
 const { Text } = Typography;
@@ -25,7 +24,6 @@ const { Text } = Typography;
 interface IntegratedCaseDiagnosisEditorProps {
   surgicalCase: SurgicalCase;
   isLocked: boolean;
-  form: FormInstance;
   diagnosisMode: "integrated" | "clean";
   onAIGenerate?: () => void;
   isAIGenerating?: boolean;
@@ -33,7 +31,8 @@ interface IntegratedCaseDiagnosisEditorProps {
 
 const IntegratedCaseDiagnosisEditor: React.FC<
   IntegratedCaseDiagnosisEditorProps
-> = ({ surgicalCase, isLocked, form, diagnosisMode, onAIGenerate, isAIGenerating = false }) => {
+> = ({ surgicalCase, isLocked, diagnosisMode, onAIGenerate, isAIGenerating = false }) => {
+  const form = Form.useFormInstance();
   const isCleanMode = diagnosisMode === "clean";
   const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
 
