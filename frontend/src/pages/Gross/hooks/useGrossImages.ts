@@ -4,6 +4,8 @@ import dayjs from "dayjs";
 import GrossImageService from "../../../services/grossImageService";
 import { GrossImage } from "../../../types/image";
 import logger from "../../../utils/logger";
+import { oversizeMessage } from "../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
 
 export const useGrossImages = (activeCase: unknown) => {
   const [grossImages, setGrossImages] = useState<GrossImage[]>([]);
@@ -38,16 +40,12 @@ export const useGrossImages = (activeCase: unknown) => {
       return;
     }
 
-    const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
     try {
       const res = await fetch(imageSrc);
       const blob = await res.blob();
 
-      if (blob.size > MAX_FILE_SIZE) {
-        message.error(
-          `ไฟล์ใหญ่เกินไป (${(blob.size / (1024 * 1024)).toFixed(2)} MB). จำกัด 5MB`,
-        );
+      if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(blob.size));
         return;
       }
 

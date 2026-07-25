@@ -33,6 +33,8 @@ import { ImageEditor } from "../../Gross/components/GrossImageCaptureModal/Image
 import NongyneCaseImageService, { NongyneCaseImage } from "../../../services/nongyneCaseImageService";
 import styles from "../../Pathologist/SurgicalDiagnosisReportForm/components/MicroscopicImageCaptureModal.module.css";
 import { isImageCaptureSupported, captureHighResPhoto } from "../../../utils/imageCapture";
+import { getDataUrlByteSize, oversizeMessage } from "../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
 
 const { Text } = Typography;
 
@@ -73,6 +75,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
 
   const [hqMode, setHqMode] = useState(false);
   const [hqSupported, setHqSupported] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
     setHqSupported(isImageCaptureSupported());
@@ -92,13 +95,24 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
     }
   }, [editingImage, open]);
 
+  // ตรวจขนาดไฟล์ทันทีหลังถ่าย/เลือกไฟล์ ก่อนเปิด Editor — กันไม่ให้เสียเวลา
+  // crop/annotate ไปกับไฟล์ที่ท้ายที่สุดอัปโหลดไม่ได้
+  const finalizeCapture = useCallback(async (dataUrl: string) => {
+    const bytes = await getDataUrlByteSize(dataUrl);
+    if (bytes > MAX_IMAGE_UPLOAD_BYTES) {
+      message.error(oversizeMessage(bytes));
+      return;
+    }
+    setImageSrc(dataUrl);
+    setShowEditor(true);
+  }, [message]);
+
   const captureViaScreenshot = useCallback(() => {
     const image = webcamRef.current?.getScreenshot();
     if (image) {
-      setImageSrc(image);
-      setShowEditor(true);
+      finalizeCapture(image);
     }
-  }, []);
+  }, [finalizeCapture]);
 
   const capture = useCallback(async () => {
     if (hqMode && hqSupported) {
@@ -107,34 +121,35 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
         message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
         return;
       }
+      setCapturing(true);
       try {
         const blob = await captureHighResPhoto(track);
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImageSrc(reader.result as string);
-          setShowEditor(true);
+          finalizeCapture(reader.result as string);
         };
         reader.readAsDataURL(blob);
       } catch {
         message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
         captureViaScreenshot();
+      } finally {
+        setCapturing(false);
       }
       return;
     }
     captureViaScreenshot();
-  }, [hqMode, hqSupported, captureViaScreenshot, message]);
+  }, [hqMode, hqSupported, captureViaScreenshot, finalizeCapture, message]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      message.error("File too large (max 10 MB)");
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      message.error(oversizeMessage(file.size));
       return;
     }
     const reader = new FileReader();
     reader.onloadend = () => {
-      setImageSrc(reader.result as string);
-      setShowEditor(true);
+      finalizeCapture(reader.result as string);
     };
     reader.readAsDataURL(file);
   };
@@ -168,8 +183,8 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
     try {
       setUploading(true);
       const blob = await (await fetch(imageSrc)).blob();
-      if (blob.size > 10 * 1024 * 1024) {
-        message.error(`File too large (${(blob.size / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
+      if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(blob.size));
         return;
       }
       const ts = new Date().toISOString().replace(/[-:T.]/g, "").slice(8, 14);
@@ -258,7 +273,8 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
             type="primary"
             icon={<CameraOutlined />}
             onClick={capture}
-            disabled={!!imageSrc}
+            loading={capturing}
+            disabled={!!imageSrc || capturing}
           >
             Capture
           </Button>

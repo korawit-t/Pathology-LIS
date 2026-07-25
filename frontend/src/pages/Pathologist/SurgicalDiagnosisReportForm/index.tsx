@@ -74,6 +74,8 @@ import AIGeneratePreviewModal from "./components/AIGeneratePreviewModal";
 import { useAuth } from "../../../hooks/useAuth";
 import logger from "../../../utils/logger";
 import type { User } from "../../../types/user";
+import { oversizeMessage } from "../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
 import type { SurgicalReport } from "../../../types/surgicalReport";
 import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
@@ -711,8 +713,6 @@ const handleOpenFinalizeModal = async () => {
     specimenId: number,
     metadata: Pick<MicroscopicImage, "magnification" | "stain" | "description">,
   ) => {
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
     try {
       if (editingImage) {
         // 🚩 กรณีแก้ไข (Update) - ใช้ข้อมูลจาก metadata ตรงๆ
@@ -728,10 +728,8 @@ const handleOpenFinalizeModal = async () => {
         const blob = await response.blob();
 
         // ✅ เพิ่มการตรวจขนาดไฟล์
-        if (blob.size > MAX_FILE_SIZE) {
-          message.error(
-            `ไฟล์ใหญ่เกินไป (${(blob.size / (1024 * 1024)).toFixed(2)} MB). จำกัดที่ 5MB`,
-          );
+        if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
+          message.error(oversizeMessage(blob.size));
           return;
         }
 
