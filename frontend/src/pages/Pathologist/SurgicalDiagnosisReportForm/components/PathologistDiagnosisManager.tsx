@@ -17,13 +17,11 @@ import {
   InfoCircleOutlined,
 } from "@ant-design/icons";
 import StyledCard from "../../../../components/Layout/StyledCard";
-import type { FormInstance } from "antd";
 import type { User } from "../../../../types/user";
 
 const { Title } = Typography;
 
 interface PathologistDiagnosisManagerProps {
-  form: FormInstance;
   pathologists: User[];
   defaultPathologistId?: number;
   isLocked?: boolean;
@@ -32,13 +30,13 @@ interface PathologistDiagnosisManagerProps {
 }
 
 const PathologistDiagnosisManager: React.FC<PathologistDiagnosisManagerProps> = ({
-  form,
   pathologists,
   defaultPathologistId,
   isLocked,
   namePath,
   settings,
 }) => {
+  const form = Form.useFormInstance();
   const isRequireAllSign = settings?.require_all_pathologists_sign ?? true;
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Form,
   Input,
@@ -273,6 +273,11 @@ const handleOpenFinalizeModal = async () => {
     handleCompleteWorkflow,
     setSurgicalCase,
   } = useSurgicalReport(caseId, user, form);
+
+  const pathologistOptions = useMemo(
+    () => pathologists.map((p) => ({ value: p.id, label: p.full_name || "" })),
+    [pathologists],
+  );
 
   const { isConsultEditorLocked, isConsultFinalizeLocked, isEditorLocked, isFinalizeLocked } =
     getConsultLockState({
@@ -1004,7 +1009,6 @@ const handleOpenFinalizeModal = async () => {
                   >
                     {/* 🚩 1. แถบคอนโทรล (ติดขอบบน) */}
                     <ReportMasterControl
-                      form={form}
                       reports={allDiagnoses || []}
                       diagnosisMode={diagnosisMode}
                       setDiagnosisMode={setDiagnosisMode}
@@ -1029,7 +1033,6 @@ const handleOpenFinalizeModal = async () => {
                         <IntegratedCaseDiagnosisEditor
                           surgicalCase={surgicalCase}
                           isLocked={isEditorLocked}
-                          form={form}
                           diagnosisMode={diagnosisMode}
                           onAIGenerate={handleAIGenerate}
                           isAIGenerating={isAIGenerating}
@@ -1047,7 +1050,6 @@ const handleOpenFinalizeModal = async () => {
                           key={spec.id}
                           specimen={spec}
                           surgicalCase={surgicalCase}
-                          form={form}
                           isLocked={isEditorLocked}
                           hasOriginalSigned={hasOriginalSigned}
                           pathologists={pathologists}
@@ -1073,7 +1075,6 @@ const handleOpenFinalizeModal = async () => {
                     <Col xs={24} lg={14}>
                       <div style={{ height: "100%" }}>
                         <PathologistDiagnosisManager
-                          form={form}
                           pathologists={pathologists}
                           defaultPathologistId={
                             surgicalCase?.pathologist_id || user?.id
@@ -1094,7 +1095,7 @@ const handleOpenFinalizeModal = async () => {
                             (r: SurgicalReport) => ["draft", "pending", "pending_approval"].includes(r.status)
                           )?.id}
                           currentUserId={user?.id}
-                          pathologists={pathologists.map((p: any) => ({ value: p.id ?? p.value, label: p.full_name ?? p.label }))}
+                          pathologists={pathologistOptions}
                           tumorRegistryEnabled={settings?.tumor_registry_enabled ?? false}
                           tumorRegistryAiEnabled={!!(settings?.tumor_registry_llm_profile_id)}
                         />
@@ -1613,7 +1614,7 @@ const handleOpenFinalizeModal = async () => {
         reportId={surgicalCase?.reports?.find(
           (r: SurgicalReport) => r.status === "draft"
         )?.id}
-        pathologists={pathologists.map((p: any) => ({ value: p.id ?? p.value, label: p.full_name ?? p.label }))}
+        pathologists={pathologistOptions}
         currentUserId={user?.id}
         senderName={user?.full_name}
       />

@@ -22,7 +22,6 @@ import {
 } from "@ant-design/icons";
 import Title from "antd/es/typography/Title";
 import { SurgicalDiagnosis } from "../../../../types/surgicalDiagnosis";
-import type { FormInstance } from "antd";
 import type { SurgicalSpecimen } from "../../../../types/surgical";
 
 const { Text } = Typography;
@@ -190,7 +189,6 @@ interface ReportMasterControlProps {
   compact?: boolean;
   specimens: SurgicalSpecimen[];
   showSpecimenName: boolean;
-  form: FormInstance;
 }
 
 const ReportMasterControl: React.FC<ReportMasterControlProps> = ({
@@ -201,8 +199,8 @@ const ReportMasterControl: React.FC<ReportMasterControlProps> = ({
   hasOriginalSigned,
   specimens = [],
   showSpecimenName,
-  form,
 }) => {
+  const form = Form.useFormInstance();
   // --- Logic การหา Order ล่าสุด ---
   const maxOrder = reports.length > 0 ? Math.max(...reports.map((r) => r.diagnosis_order ?? 0)) : 0;
   const maxOrderAllSigned = maxOrder > 0 && reports.filter((r) => (r.diagnosis_order ?? 0) === maxOrder).every((r) => r.status === "signed");
