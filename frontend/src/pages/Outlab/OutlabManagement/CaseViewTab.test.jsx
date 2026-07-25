@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { CaseViewTab } from "./OutlabManagement";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../services/surgicalCaseService";
+import { CaseViewTab } from "./CaseViewTab";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import SurgicalCaseService from "../../../services/surgicalCaseService";
 
-vi.mock("../../services/surgicalBlockStainService", () => ({
+vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: { getOutlabRuns: vi.fn(), receiveOutlabRunDetails: vi.fn() },
 }));
-vi.mock("../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
+vi.mock("../../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
 
 const detail = (overrides = {}) => ({
   id: 100,

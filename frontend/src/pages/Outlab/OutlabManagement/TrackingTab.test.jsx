@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { TrackingTab } from "./OutlabManagement";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import SystemSettingService from "../../services/systemSettingService";
+import { TrackingTab } from "./TrackingTab";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import SystemSettingService from "../../../services/systemSettingService";
 
-vi.mock("../../services/surgicalBlockStainService", () => ({
+vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: {
     getOutlabRuns: vi.fn(),
     receiveOutlabRunDetails: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("../../services/surgicalBlockStainService", () => ({
     updateOutlabRun: vi.fn(),
   },
 }));
-vi.mock("../../services/systemSettingService", () => ({ default: { getPublicSettings: vi.fn() } }));
+vi.mock("../../../services/systemSettingService", () => ({ default: { getPublicSettings: vi.fn() } }));
 
 const makeRun = (overrides = {}) => ({
   id: 1,

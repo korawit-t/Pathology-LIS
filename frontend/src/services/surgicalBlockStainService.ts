@@ -7,15 +7,32 @@ import {
   PendingStainNode,
 } from "../types/stains";
 
+export interface OutlabRunDetail {
+  id: number;
+  accession_no?: string | null;
+  hn?: string | null;
+  patient_name?: string | null;
+  block_id?: number | null;
+  block_code?: string | null;
+  received_at?: string | null;
+  is_hosxp_keyed?: boolean;
+  hosxp_keyed_at?: string | null;
+  stain_order?: {
+    block_id?: number;
+    test?: { name?: string; category?: string };
+  };
+}
+
 export interface OutlabRun {
   id: number;
   run_no?: string;
   sent_at?: string;
   received_at?: string;
+  received_by_name?: string;
   destination_lab?: string;
   tracking_number?: string;
   status: string;
-  details?: unknown[];
+  details?: OutlabRunDetail[];
 }
 
 interface StainQueryParams {

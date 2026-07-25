@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { TodayPatientsTab } from "./OutlabManagement";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import HisService from "../../services/hisService";
+import { TodayPatientsTab } from "./TodayPatientsTab";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import HisService from "../../../services/hisService";
 
-vi.mock("../../services/surgicalBlockStainService", () => ({
+vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: { getPendingOutlabByHn: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
-vi.mock("../../services/hisService", () => ({ default: { getVisitsToday: vi.fn() } }));
+vi.mock("../../../services/hisService", () => ({ default: { getVisitsToday: vi.fn() } }));
 
 const pendingItem = (overrides = {}) => ({
   id: 1,
