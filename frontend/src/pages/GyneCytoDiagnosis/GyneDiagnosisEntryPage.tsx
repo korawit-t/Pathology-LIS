@@ -160,6 +160,12 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   const isLimitedAdequacy = /limited by/i.test(selectedAdequacyText);
   const showZoneField = !isUnsatisfactoryAdequacy;
   const showQualityField = isUnsatisfactoryAdequacy || isLimitedAdequacy;
+  // Unsatisfactory specimens force the same pathologist-review routing as an
+  // abnormal category, but shouldn't visually flip the "Abnormal" switch —
+  // that switch reflects the diagnostic category only. This is what every
+  // actual enforcement path (signer completion, publish payload, button
+  // routing/label) should read instead of the raw switch state.
+  const requiresPathologistReview = isAbnormal || isUnsatisfactoryAdequacy;
 
   const selectedCat1 = Form.useWatch("category_1_id", form);
   const subCategories = useMemo(
@@ -207,13 +213,14 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   }, [loading, diagnosis, caseData, defaultSigners, form]);
 
-  // Force pathologist review for Unsatisfactory specimens, same as abnormal
-  // (LSIL/HSIL+) categories — either condition routes to a pathologist.
+  // Sync the "Abnormal" switch from the selected category only — Unsatisfactory
+  // adequacy still forces pathologist review (see requiresPathologistReview
+  // above), it just doesn't flip this switch, since it isn't the same thing
+  // as an abnormal diagnostic category.
   useEffect(() => {
     const cat = mainCategories.find((c) => c.id === selectedCat1);
-    const categoryAbnormal = cat?.code?.startsWith("3") ?? false;
-    setIsAbnormal(categoryAbnormal || isUnsatisfactoryAdequacy);
-  }, [selectedCat1, mainCategories, isUnsatisfactoryAdequacy]);
+    setIsAbnormal(cat?.code?.startsWith("3") ?? false);
+  }, [selectedCat1, mainCategories]);
 
   useEffect(() => {
     if (!caseId || !diagnosis) return;
@@ -423,7 +430,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
           return;
         }
         allSigned = updatedSigners.every((s) => !!s.signed_at);
-      } else if (isAbnormal) {
+      } else if (requiresPathologistReview) {
         // Sending to a pathologist for review — only the current user's own
         // entry is actually signed right now. The pathologist's signature is
         // recorded later, at the moment they complete the QC review, so the
@@ -458,7 +465,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         const result = await GyneDiagnosisService.publishReport(
           Number(caseId),
           updatedSigners,
-          isAbnormal,
+          requiresPathologistReview,
           outLab ? true : undefined,
           outLab?.reason,
         );
@@ -747,17 +754,17 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                         icon={<CheckCircleOutlined />}
                         loading={finalizing}
                         onClick={
-                          isAbnormal
+                          requiresPathologistReview
                             ? handleSendToPathologistClick
                             : handleFinalizeClick
                         }
                         disabled={submitting || isFinalizeLocked}
                         style={{
-                          background: isAbnormal ? "#fa8c16" : "#cf1322",
+                          background: requiresPathologistReview ? "#fa8c16" : "#cf1322",
                           border: "none",
                         }}
                       >
-                        {isAbnormal ? "Send to Pathologist" : "Sign-off"}
+                        {requiresPathologistReview ? "Send to Pathologist" : "Sign-off"}
                       </Button>
                     )}
                   </>
@@ -1038,7 +1045,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                           type="secondary"
                           style={{ fontSize: 12 }}
                         >
-                          {isAbnormal
+                          {requiresPathologistReview
                             ? "Will route to pathologist for review"
                             : "Normal result — will finalize after sign-off"}
                         </Typography.Text>
