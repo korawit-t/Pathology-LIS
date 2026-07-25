@@ -21,6 +21,7 @@ import Webcam from "react-webcam";
 import { ImageEditor } from "./ImageEditor"; // 🌟 นำเข้า ImageEditor
 import styles from "./GrossImageCaptureModal.module.css";
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
+import { isImageCaptureSupported, captureHighResPhoto } from "../../../../utils/imageCapture";
 
 const { Text } = Typography;
 
@@ -34,8 +35,8 @@ interface GrossImageCaptureModalProps {
 }
 
 const videoConstraints = {
-  width: 1280,
-  height: 720,
+  width: 1920,
+  height: 1080,
   facingMode: "environment",
 };
 
@@ -58,7 +59,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   const [hqSupported, setHqSupported] = useState(false);
 
   useEffect(() => {
-    setHqSupported("ImageCapture" in window);
+    setHqSupported(isImageCaptureSupported());
   }, []);
 
   // 🌟 ฟังก์ชันจัดการเมื่อเลือกไฟล์จากเครื่อง
@@ -80,28 +81,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
     fileInputRef.current?.click();
   };
 
-  const capture = useCallback(async () => {
-    if (hqMode && hqSupported) {
-      const track = webcamRef.current?.stream?.getVideoTracks()[0];
-      if (!track) {
-        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
-        return;
-      }
-      try {
-        const imageCapture = new ImageCapture(track);
-        const blob = await imageCapture.takePhoto();
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setImageSrc(reader.result as string);
-          setShowEditor(true); // 🌟 เปิดหน้า Editor
-          message.success("ถ่ายภาพความละเอียดสูงสำเร็จ");
-        };
-        reader.readAsDataURL(blob);
-      } catch {
-        message.error("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ลองปิดโหมด HQ แล้วถ่ายใหม่");
-      }
-      return;
-    }
+  const captureViaScreenshot = useCallback(() => {
     if (webcamRef.current) {
       const image = webcamRef.current.getScreenshot();
       if (image) {
@@ -110,7 +90,32 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
         message.success("บันทึกภาพชั่วคราวแล้ว");
       }
     }
-  }, [hqMode, hqSupported]);
+  }, [webcamRef]);
+
+  const capture = useCallback(async () => {
+    if (hqMode && hqSupported) {
+      const track = webcamRef.current?.stream?.getVideoTracks()[0];
+      if (!track) {
+        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
+        return;
+      }
+      try {
+        const blob = await captureHighResPhoto(track);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImageSrc(reader.result as string);
+          setShowEditor(true); // 🌟 เปิดหน้า Editor
+          message.success("ถ่ายภาพความละเอียดสูงสำเร็จ");
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
+        captureViaScreenshot();
+      }
+      return;
+    }
+    captureViaScreenshot();
+  }, [hqMode, hqSupported, captureViaScreenshot]);
 
   const retake = () => {
     setImageSrc(null);

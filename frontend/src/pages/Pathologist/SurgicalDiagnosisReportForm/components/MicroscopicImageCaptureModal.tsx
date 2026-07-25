@@ -36,6 +36,7 @@ import MicroscopicImageService from "../../../../services/microscopicImageServic
 import { useSecureSrc } from "../../../../components/SecureImage";
 import { ImageEditor } from "../../../Gross/components/GrossImageCaptureModal/ImageEditor"; // 🌟 นำเข้า ImageEditor
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
+import { isImageCaptureSupported, captureHighResPhoto } from "../../../../utils/imageCapture";
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -89,8 +90,19 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   const [hqSupported, setHqSupported] = useState(false);
 
   useEffect(() => {
-    setHqSupported("ImageCapture" in window);
+    setHqSupported(isImageCaptureSupported());
   }, []);
+
+  const captureViaScreenshot = useCallback(() => {
+    if (webcamRef.current) {
+      const image = webcamRef.current.getScreenshot();
+      if (image) {
+        setImageSrc(image);
+        setShowEditor(true); // 🌟 เปิดหน้า Editor
+        message.success("บันทึกภาพตัวอย่างสำเร็จ");
+      }
+    }
+  }, [webcamRef]);
 
   const capture = useCallback(async () => {
     if (hqMode && hqSupported) {
@@ -100,8 +112,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         return;
       }
       try {
-        const imageCapture = new ImageCapture(track);
-        const blob = await imageCapture.takePhoto();
+        const blob = await captureHighResPhoto(track);
         const reader = new FileReader();
         reader.onloadend = () => {
           setImageSrc(reader.result as string);
@@ -110,19 +121,13 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         };
         reader.readAsDataURL(blob);
       } catch {
-        message.error("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ลองปิดโหมด HQ แล้วถ่ายใหม่");
+        message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
+        captureViaScreenshot();
       }
       return;
     }
-    if (webcamRef.current) {
-      const image = webcamRef.current.getScreenshot();
-      if (image) {
-        setImageSrc(image);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("บันทึกภาพตัวอย่างสำเร็จ");
-      }
-    }
-  }, [hqMode, hqSupported]);
+    captureViaScreenshot();
+  }, [hqMode, hqSupported, captureViaScreenshot]);
 
   // 🚩 ฟังก์ชันจัดการการเลือกไฟล์จากเครื่อง
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
