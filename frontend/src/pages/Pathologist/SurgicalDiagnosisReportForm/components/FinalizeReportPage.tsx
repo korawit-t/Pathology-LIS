@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
 import {
   Modal,
@@ -33,6 +33,7 @@ import {
 import SurgicalReportService from "../../../../services/surgicalReportService";
 import SurgicalBlockStainService from "../../../../services/surgicalBlockStainService";
 import logger from "../../../../utils/logger";
+import { usePdfBlobUrl } from "../../../../hooks/usePdfBlobUrl";
 import CriticalNotificationSection from "../../../../components/CriticalNotificationSection";
 import NotificationRuleService from "../../../../services/notificationRuleService";
 
@@ -96,8 +97,6 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
     pending_reason: "",
   });
 
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
   const [unreviewedStains, setUnreviewedStains] = useState<StainOrder[]>([]);
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [outLabOpen, setOutLabOpen] = useState(false);
@@ -126,35 +125,23 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  // PDF preview — debounced
-  useEffect(() => {
-    let activeUrl: string | null = null;
-    let timeoutId: number;
-    if (open && caseId) {
-      timeoutId = window.setTimeout(() => {
-        setPdfLoading(true);
-        SurgicalReportService.previewReportPdf(caseId, undefined, {
-          is_pending: data.is_pending,
-          pending_reason: data.pending_reason,
-        })
-          .then((blob) => {
-            activeUrl = URL.createObjectURL(blob);
-            setPdfUrl(activeUrl);
-          })
-          .catch((err) => {
-            logger.error("Failed to load PDF preview", err);
-            message.error("Failed to load PDF preview");
-          })
-          .finally(() => setPdfLoading(false));
-      }, 500);
-    } else {
-      setPdfUrl(null);
-    }
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (activeUrl) URL.revokeObjectURL(activeUrl);
-    };
+  // PDF preview — debounced since previewReportPdf renders a real PDF server-side
+  const pdfFetchFn = useMemo(() => {
+    if (!(open && caseId)) return null;
+    return () =>
+      SurgicalReportService.previewReportPdf(caseId, undefined, {
+        is_pending: data.is_pending,
+        pending_reason: data.pending_reason,
+      });
   }, [open, caseId, data.is_pending, data.pending_reason]);
+  const pdfOnError = useCallback((err: unknown) => {
+    logger.error("Failed to load PDF preview", err);
+    message.error("Failed to load PDF preview");
+  }, []);
+  const { url: pdfUrl, loading: pdfLoading } = usePdfBlobUrl(pdfFetchFn, {
+    debounceMs: 500,
+    onError: pdfOnError,
+  });
 
   // Fetch unreviewed stains
   useEffect(() => {

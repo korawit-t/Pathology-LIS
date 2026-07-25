@@ -551,7 +551,7 @@ const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
           }}
         >
           <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>
-            ตัวอย่างข้อความที่จะแทรก / Preview:
+            Preview of text to insert:
           </Text>
           <div
             style={{ fontSize: 13 }}

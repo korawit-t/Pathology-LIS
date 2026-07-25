@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import type { FormInstance } from "antd";
 import IHCResultPanel from "./IHCResultPanel";
 import { IHCService, IHCMarkerWithResult } from "../../../../services/ihcService";
 import UserService from "../../../../services/userService";
@@ -74,7 +75,7 @@ function makeForm(initial: Record<string, unknown> = {}) {
     setFieldValue: vi.fn((name: unknown, value: unknown) => {
       store = { ...store, [keyOf(name)]: value };
     }),
-  } as any;
+  } as unknown as FormInstance;
 }
 
 describe("IHCResultPanel", () => {
