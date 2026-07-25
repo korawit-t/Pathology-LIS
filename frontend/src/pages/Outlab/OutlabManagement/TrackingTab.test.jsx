@@ -84,6 +84,25 @@ describe("TrackingTab", () => {
     );
   });
 
+  it("shows an error and still refetches when receiving fails", async () => {
+    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([makeRun()]);
+    SurgicalBlockStainService.receiveOutlabRunDetails.mockRejectedValue(new Error("network error"));
+    render(<TrackingTab refreshTrigger={0} />);
+    await waitFor(() => expect(screen.getByText("OUT-001")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("OUT-001")); // expandRowByClick
+    expect(await screen.findByText("Slides in this run:")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    fireEvent.click(screen.getByRole("button", { name: /Receive selected \(2\)/i }));
+
+    expect(await screen.findByText("Failed to record selected slide returns")).toBeInTheDocument();
+    // Matches CaseViewTab's original behavior, now shared via useReceiveOutlabSlides:
+    // the UI always refetches after a receive attempt, even a failed one, so it
+    // reflects the server's true state rather than trusting local optimism.
+    await waitFor(() => expect(SurgicalBlockStainService.getOutlabRuns).toHaveBeenCalledTimes(2));
+  });
+
   it("deletes a sent run via the confirm popup", async () => {
     SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([makeRun({ id: 1, status: "sent" })]);
     SurgicalBlockStainService.deleteOutlabRun.mockResolvedValue({});

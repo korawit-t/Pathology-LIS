@@ -127,4 +127,19 @@ describe("CaseViewTab", () => {
       expect(screen.getByText(/Some slides recorded, but failed for run\(s\): 2/i)).toBeInTheDocument(),
     );
   });
+
+  it("reports full failure when every selected run fails to receive", async () => {
+    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([
+      run({ id: 1, details: [detail({ id: 1, accession_no: "S26-00001" })] }),
+      run({ id: 2, run_no: "OUT-002", details: [detail({ id: 2, accession_no: "S26-00003" })] }),
+    ]);
+    SurgicalBlockStainService.receiveOutlabRunDetails.mockRejectedValue(new Error("network error"));
+    render(<CaseViewTab refreshTrigger={0} />);
+    await waitFor(() => expect(screen.getByText("2 stain item(s)")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /Receive selected \(2\)/i }));
+
+    expect(await screen.findByText("Failed to record selected slide returns")).toBeInTheDocument();
+  });
 });

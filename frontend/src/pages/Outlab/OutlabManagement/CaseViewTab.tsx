@@ -19,6 +19,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgicalBlockStainService";
 import { useCaseInfoByAccession } from "../../../hooks/useCaseInfoByAccession";
+import { useReceiveOutlabSlides } from "../../../hooks/useReceiveOutlabSlides";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
 import { formatPatientName } from "../../../utils/patientName";
 import { AccessionNoText, BlockTag } from "./components/OutlabCellRenderers";
@@ -52,13 +53,13 @@ interface CaseViewTabProps {
 
 export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onReceived }) => {
   const { resolveCaseInfo } = useCaseInfoByAccession();
+  const { receiveSelected, receiving } = useReceiveOutlabSlides();
   const [runs, setRuns] = useState<OutlabRun[]>([]);
   const [caseMap, setCaseMap] = useState<Record<string, CaseInfo>>({});
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [historyBlock, setHistoryBlock] = useState<{ id: number; block_code?: string; accession_no?: string } | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [receiving, setReceiving] = useState(false);
   const [filterReceived, setFilterReceived] = useState<"all" | "unreceived" | "received">("unreceived");
 
   const fetchRuns = async () => {
@@ -115,29 +116,9 @@ export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onRece
         (byRun[item.run_id] ??= []).push(item.key);
       }
     });
-    const runIds = Object.keys(byRun);
-    if (runIds.length === 0) return;
-
-    setReceiving(true);
-    try {
-      const results = await Promise.allSettled(
-        runIds.map((runId) =>
-          SurgicalBlockStainService.receiveOutlabRunDetails(Number(runId), byRun[runId])
-        )
-      );
-      const failedRuns = runIds.filter((_, i) => results[i].status === "rejected");
-      if (failedRuns.length === 0) {
-        message.success(`Recorded return of ${selectedRowKeys.length} slide(s)`);
-      } else if (failedRuns.length < runIds.length) {
-        message.warning(`Some slides recorded, but failed for run(s): ${failedRuns.join(", ")}`);
-      } else {
-        message.error("Failed to record selected slide returns");
-      }
-      setSelectedRowKeys([]);
-      onReceived ? onReceived() : fetchRuns();
-    } finally {
-      setReceiving(false);
-    }
+    await receiveSelected(byRun);
+    setSelectedRowKeys([]);
+    onReceived ? onReceived() : fetchRuns();
   };
 
   const unreceivedCount = allItems.filter((item) => !item.received_at).length;

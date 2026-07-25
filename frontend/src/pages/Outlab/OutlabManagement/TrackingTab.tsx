@@ -28,6 +28,7 @@ import SystemSettingService from "../../../services/systemSettingService";
 import { OutlabRunPrint } from "../OutlabStainRun/OutlabRunPrint";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
 import { AccessionNoText } from "./components/OutlabCellRenderers";
+import { useReceiveOutlabSlides } from "../../../hooks/useReceiveOutlabSlides";
 
 const { Text } = Typography;
 
@@ -37,6 +38,7 @@ interface TrackingTabProps {
 }
 
 export const TrackingTab: React.FC<TrackingTabProps> = ({ refreshTrigger, onReceived }) => {
+  const { receiveSelected } = useReceiveOutlabSlides();
   const [runs, setRuns] = useState<OutlabRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
@@ -73,14 +75,9 @@ export const TrackingTab: React.FC<TrackingTabProps> = ({ refreshTrigger, onRece
   const handleReceiveSelected = async (runId: number) => {
     const ids = Array.from(selectedDetailIds[runId] || []);
     if (ids.length === 0) return;
-    try {
-      await SurgicalBlockStainService.receiveOutlabRunDetails(runId, ids);
-      message.success(`Recorded return of ${ids.length} slide(s)`);
-      setSelectedDetailIds((prev) => ({ ...prev, [runId]: new Set() }));
-      onReceived ? onReceived() : fetchRuns();
-    } catch {
-      message.error("Failed to record selected slide returns");
-    }
+    await receiveSelected({ [runId]: ids });
+    setSelectedDetailIds((prev) => ({ ...prev, [runId]: new Set() }));
+    onReceived ? onReceived() : fetchRuns();
   };
 
   const handleDelete = async (runId: number) => {
