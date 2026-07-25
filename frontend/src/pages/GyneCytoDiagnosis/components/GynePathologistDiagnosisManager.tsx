@@ -20,13 +20,11 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import StyledCard from "../../../components/Layout/StyledCard";
-import type { FormInstance } from "antd";
 import type { SystemSetting } from "../../../types/system";
 
 const { Text, Title } = Typography;
 
 interface GynePathologistDiagnosisManagerProps {
-  form: FormInstance;
   pathologists: { id: number; full_name?: string }[];
   defaultPathologistId?: number;
   defaultSigners?: {
@@ -43,7 +41,6 @@ interface GynePathologistDiagnosisManagerProps {
 const GynePathologistDiagnosisManager: React.FC<
   GynePathologistDiagnosisManagerProps
 > = ({
-  form,
   pathologists,
   defaultPathologistId,
   defaultSigners,
@@ -52,6 +49,7 @@ const GynePathologistDiagnosisManager: React.FC<
   settings,
   hideCT,
 }) => {
+  const form = Form.useFormInstance();
   // Logic from surgical: use setting or default to true
   const isRequireAllSign = settings?.require_all_pathologists_sign ?? true;
 
