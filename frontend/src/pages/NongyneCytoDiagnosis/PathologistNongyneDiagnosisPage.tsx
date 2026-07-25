@@ -53,7 +53,7 @@ import NongyneCaseImageService, {
 } from "../../services/nongyneCaseImageService";
 import { API_BASE_URL } from "../../services/httpClient";
 import UserService from "../../services/userService";
-import { NongyneDiagnosisResponse } from "../../types/nongyneDiagnosis";
+import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
@@ -75,6 +75,7 @@ import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/
 import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
 import NongyneSignOffPage from "./components/NongyneSignOffPage";
 import { getConsultLockState } from "../Pathologist/utils/consultLockState";
+import { toPathologistOptions } from "../../utils/pathologistOptions";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -83,6 +84,19 @@ interface Props {
   caseId?: string | number;
   onBack?: () => void;
 }
+
+// Form values for onFinish: the case-level fields (saved via
+// NongyneCytologyCaseService.update) plus everything NongyneDiagnosisUpdate
+// covers (saved via NongyneDiagnosisService.update/create) — the form mixes
+// both onto one antd <Form>, so onFinish receives the union.
+type NongyneOnFinishValues = NongyneDiagnosisUpdate & {
+  clinical_history?: string | null;
+  specimen_type?: string;
+  collection_site?: string | null;
+  received_volume_ml?: string | null;
+  has_malignancy?: boolean;
+  has_critical?: boolean;
+};
 
 const CASE_STATUS_CONFIG: Record<
   string,
@@ -163,7 +177,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   const [grossTemplateDrawerOpen, setGrossTemplateDrawerOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
-  const [completedReports, setCompletedReports] = useState<any[]>([]);
+  const [completedReports, setCompletedReports] = useState<NongyneDiagnosisResponse[]>([]);
   const [completedReportsLoading, setCompletedReportsLoading] = useState(false);
   const [selectedPopupReportId, setSelectedPopupReportId] = useState<
     number | null
@@ -285,10 +299,10 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     fetchImages();
     NongyneReportService.getReportsByCase(Number(caseId))
       .then((reports) => {
-        const active = reports.find((r: any) =>
+        const active = reports.find((r) =>
           ["pending_approval", "published"].includes(r.status),
         );
-        setActiveReportId((active as any)?.id ?? null);
+        setActiveReportId(active?.id ?? null);
       })
       .catch((e) => logger.error(e));
   }, [caseId]);
@@ -367,7 +381,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     NongyneReportService.getReportsByCase(Number(caseId))
       .then((reports) => {
         setCompletedReports(reports);
-        const first = (reports as any[])[0];
+        const first = reports[0];
         if (first) setSelectedPopupReportId(first.id);
       })
       .catch(() => {})
@@ -392,7 +406,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       .finally(() => setPopupPdfLoading(false));
   }, [selectedPopupReportId]);
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: NongyneOnFinishValues) => {
     try {
       setSubmitting(true);
       const {
@@ -1499,10 +1513,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   onSuccess={() => setConsultHistoryKey((k) => k + 1)}
                   caseType="nongyne"
                   reportId={activeReportId}
-                  pathologists={allUsers.map((u) => ({
-                    value: u.id,
-                    label: u.full_name ?? u.username ?? String(u.id),
-                  }))}
+                  pathologists={toPathologistOptions(allUsers)}
                 />
               </>
             )}
@@ -1659,7 +1670,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
               rowKey="id"
               pagination={false}
               scroll={{ y: 300 }}
-              onRow={(record: any) => ({
+              onRow={(record) => ({
                 onClick: () => setSelectedPopupReportId(record.id),
                 style: {
                   cursor: "pointer",
@@ -1672,7 +1683,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   title: "Round",
                   key: "round",
                   width: 60,
-                  render: (_: any, __: any, idx: number) => `#${idx + 1}`,
+                  render: (_, __, idx) => `#${idx + 1}`,
                 },
                 {
                   title: "Status",
