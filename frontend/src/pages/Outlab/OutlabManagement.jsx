@@ -47,6 +47,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { OutlabRunPrint } from "./OutlabStainRun/OutlabRunPrint";
 import PageContainer from "../../components/Layout/PageContainer";
 import BlockHistoryDrawer from "../SurgicalBlock/components/BlockHistoryDrawer";
+import { formatPatientName } from "../../utils/patientName";
 import dayjs from "dayjs";
 
 const { Text, Title } = Typography;
@@ -96,7 +97,7 @@ export const PendingQueueTab = ({ onSent }) => {
               : null;
             map[acc] = {
               hn: c.hn || "-",
-              patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "-",
+              patient_name: formatPatientName(c.patient),
               age,
               scheme: c.medical_scheme?.name || "-",
               hospital: c.hospital?.name || "-",
@@ -801,8 +802,7 @@ export const CaseViewTab = ({ refreshTrigger, onReceived }) => {
         accNos.forEach((acc, i) => {
           const c = results[i]?.items?.[0];
           if (c) {
-            const nameParts = [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean);
-            map[acc] = { hn: c.hn || "-", patient_name: nameParts.join(" ") || "-" };
+            map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
           }
         });
         setCaseMap(map);
@@ -1131,8 +1131,7 @@ export const HosxpKeyTab = ({ refreshTrigger }) => {
         accNos.forEach((acc, i) => {
           const c = results[i]?.items?.[0];
           if (c) {
-            const nameParts = [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean);
-            map[acc] = { hn: c.hn || "-", patient_name: nameParts.join(" ") || "-" };
+            map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
           }
         });
         setCaseMap(map);
