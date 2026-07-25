@@ -51,10 +51,27 @@ const renderModal = (
 ) => render(<CompletedCaseModal {...baseProps} {...overrides} />);
 
 /**
+ * Row actions are icon-only buttons. Query them by antd's icon class on
+ * document.body (the Modal renders through a portal), never with *ByRole.
+ *
+ * On this DOM — a full antd Modal wrapping a Table — one successful
+ * getByRole("img", { name }) call measured ~5.6s, and a miss ~100s, because
+ * RTL computes accessible names across the whole tree (and, on a miss,
+ * enumerates every role to build its error). Three such calls per test blew
+ * the 15s per-test timeout on slower machines while passing on faster ones.
+ * The class query below is ~0ms.
+ */
+const rowActionButton = (icon: "edit" | "delete") =>
+  document.body
+    .querySelector<HTMLElement>(`.anticon-${icon}`)
+    ?.closest("button") ?? null;
+
+/**
  * Wait for the Modal.confirm dialog and click one of its footer buttons.
- * Scoped by text within the dialog rather than by role: a confirm stacked on
- * top of an already-open Modal is not consistently exposed to the
- * accessibility tree in jsdom, so *ByRole finds nothing.
+ * Scoped by text within the dialog rather than by role for the same
+ * performance reason, and because a confirm stacked on an already-open Modal
+ * was not reliably exposed to the accessibility tree here — its buttons were
+ * present in the DOM but *ByRole reported them as not found.
  */
 const clickConfirmButton = async (label: string) => {
   const dialog = await waitFor(() => {
@@ -138,19 +155,19 @@ describe("CompletedCaseModal", () => {
 
   it("offers row actions on drafts only", () => {
     renderModal({ reports: [makeReport({ id: 1, status: "published" })] });
-    expect(screen.queryByRole("img", { name: "delete" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "edit" })).not.toBeInTheDocument();
+    expect(rowActionButton("delete")).toBeNull();
+    expect(rowActionButton("edit")).toBeNull();
   });
 
   it("continues editing a draft via the row's edit action", () => {
     renderModal({ reports: [makeReport({ id: 7, status: "draft" })] });
-    fireEvent.click(screen.getByRole("img", { name: "edit" }).closest("button")!);
+    fireEvent.click(rowActionButton("edit")!);
     expect(baseProps.onAddendum).toHaveBeenCalled();
   });
 
   it("deletes a draft after confirmation and asks the parent to refetch", async () => {
     renderModal({ reports: [makeReport({ id: 7, version_no: 2, status: "draft" })] });
-    fireEvent.click(screen.getByRole("img", { name: "delete" }).closest("button")!);
+    fireEvent.click(rowActionButton("delete")!);
 
     // antd renders the confirm title twice (visible header + a11y label).
     expect(await screen.findAllByText("Delete Draft Report")).not.toHaveLength(0);
@@ -164,7 +181,7 @@ describe("CompletedCaseModal", () => {
   it("does not ask the parent to refetch when the delete fails", async () => {
     mockDeleteReport.mockRejectedValue(new Error("boom"));
     renderModal({ reports: [makeReport({ id: 7, status: "draft" })] });
-    fireEvent.click(screen.getByRole("img", { name: "delete" }).closest("button")!);
+    fireEvent.click(rowActionButton("delete")!);
     await clickConfirmButton("Delete");
 
     expect(await screen.findByText("Failed to delete draft report")).toBeInTheDocument();
