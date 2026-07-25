@@ -27,6 +27,7 @@ import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgical
 import SystemSettingService from "../../../services/systemSettingService";
 import { OutlabRunPrint } from "../OutlabStainRun/OutlabRunPrint";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
+import { AccessionNoText } from "./components/OutlabCellRenderers";
 
 const { Text } = Typography;
 
@@ -363,9 +364,7 @@ export const TrackingTab: React.FC<TrackingTabProps> = ({ refreshTrigger, onRece
                             onChange={(e) => toggleGroup(e.target.checked)}
                           />
                         )}
-                        <Text strong style={{ color: "#1890ff" }}>
-                          {acc}
-                        </Text>
+                        <AccessionNoText text={acc} />
                       </Space>
                       <Space wrap size={[8, 4]}>
                         {details.map((d) => (

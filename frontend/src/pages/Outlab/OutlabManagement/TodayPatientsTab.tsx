@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Table, Tag, Button, Badge, Alert, Typography, message } from "antd";
+import { Table, Button, Badge, Alert, Typography, message } from "antd";
 import { CheckCircleOutlined, ReloadOutlined, BellOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
 import HisService from "../../../services/hisService";
+import { AccessionNoText, BlockTag, StainTag } from "./components/OutlabCellRenderers";
 import type { TodayPatientRow, TodayPatientItem } from "./types";
 
 const { Text } = Typography;
@@ -169,18 +170,18 @@ export const TodayPatientsTab: React.FC<TodayPatientsTabProps> = ({ refreshTrigg
                   title: "Accession No.",
                   dataIndex: "accession_no",
                   width: 140,
-                  render: (t) => <Text strong style={{ color: "#1890ff" }}>{t}</Text>,
+                  render: (t) => <AccessionNoText text={t} />,
                 },
                 {
                   title: "Block",
                   dataIndex: "block_code",
                   width: 80,
-                  render: (t) => <Tag color="cyan">{t || "-"}</Tag>,
+                  render: (t) => <BlockTag text={t} />,
                 },
                 {
                   title: "Stain",
                   dataIndex: "stain_name",
-                  render: (t) => <Tag color="purple">{t || "Unknown"}</Tag>,
+                  render: (t) => <StainTag text={t} />,
                 },
                 {
                   title: "Destination Lab",

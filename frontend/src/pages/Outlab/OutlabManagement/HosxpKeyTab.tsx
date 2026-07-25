@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   Table,
-  Tag,
   Button,
   Space,
   Typography,
@@ -17,6 +16,7 @@ import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgical
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 import HisService from "../../../services/hisService";
 import { formatPatientName } from "../../../utils/patientName";
+import { AccessionNoText, BlockTag, StainTag } from "./components/OutlabCellRenderers";
 import type { CaseInfo, OutlabAppointment } from "./types";
 
 const { Text } = Typography;
@@ -174,7 +174,7 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
       width: 140,
       sorter: (a, b) => (a.accession_no || "").localeCompare(b.accession_no || ""),
       defaultSortOrder: "ascend",
-      render: (text) => <Text strong style={{ color: "#1890ff" }}>{text}</Text>,
+      render: (text) => <AccessionNoText text={text} />,
     },
     {
       title: "HN",
@@ -193,14 +193,14 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
       dataIndex: "block_code",
       key: "block_code",
       width: 80,
-      render: (text) => <Tag color="cyan">{text}</Tag>,
+      render: (text) => <BlockTag text={text} />,
     },
     {
       title: "Stain",
       dataIndex: "stain_name",
       key: "stain_name",
       width: 160,
-      render: (text) => <Tag color="purple">{text}</Tag>,
+      render: (text) => <StainTag text={text} />,
     },
     {
       title: "HosXP",

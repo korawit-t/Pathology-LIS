@@ -21,6 +21,7 @@ import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgical
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
 import { formatPatientName } from "../../../utils/patientName";
+import { AccessionNoText, BlockTag } from "./components/OutlabCellRenderers";
 import type { CaseInfo } from "./types";
 
 const { Text } = Typography;
@@ -180,7 +181,7 @@ export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onRece
       key: "accession_no",
       width: 140,
       fixed: "left",
-      render: (text) => <Text strong style={{ color: "#1890ff" }}>{text}</Text>,
+      render: (text) => <AccessionNoText text={text} />,
     },
     {
       title: "HN",
@@ -201,7 +202,7 @@ export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onRece
       dataIndex: "block_code",
       key: "block_code",
       width: 80,
-      render: (text) => <Tag color="cyan">{text}</Tag>,
+      render: (text) => <BlockTag text={text} />,
     },
     {
       title: "Stain",
