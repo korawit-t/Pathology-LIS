@@ -158,6 +158,10 @@ const PathologistGyneDiagnosisPage: React.FC<
   const isLimitedAdequacy = /limited by/i.test(selectedAdequacyText);
   const showZoneField = !isUnsatisfactoryAdequacy;
   const showQualityField = isUnsatisfactoryAdequacy || isLimitedAdequacy;
+  // Unsatisfactory specimens force the same pathologist-review routing as an
+  // abnormal category, but shouldn't visually flip the "Abnormal" switch —
+  // that switch reflects the diagnostic category only.
+  const requiresPathologistReview = isAbnormal || isUnsatisfactoryAdequacy;
 
   const selectedCat1 = Form.useWatch("category_1_id", form);
   const subCategories = useMemo(
@@ -222,13 +226,13 @@ const PathologistGyneDiagnosisPage: React.FC<
     }
   }, [isRevision, caseData?.review_result, currentUser, form]);
 
-  // Sync isAbnormal from selected category — Unsatisfactory specimens also
-  // force pathologist review, same as abnormal (LSIL/HSIL+) categories.
+  // Sync the "Abnormal" switch from the selected category only — Unsatisfactory
+  // adequacy still forces pathologist review (see requiresPathologistReview
+  // above), it just doesn't flip this switch.
   useEffect(() => {
     const cat = mainCategories.find((c) => c.id === selectedCat1);
-    const categoryAbnormal = cat?.code?.startsWith("3") ?? false;
-    setIsAbnormal(categoryAbnormal || isUnsatisfactoryAdequacy);
-  }, [selectedCat1, mainCategories, isUnsatisfactoryAdequacy]);
+    setIsAbnormal(cat?.code?.startsWith("3") ?? false);
+  }, [selectedCat1, mainCategories]);
 
   useEffect(() => {
     if (!caseId || !diagnosis) return;
@@ -482,7 +486,7 @@ const PathologistGyneDiagnosisPage: React.FC<
         const result = await GyneDiagnosisService.publishReport(
           Number(caseId),
           updatedSigners,
-          isAbnormal,
+          requiresPathologistReview,
           outLab ? true : undefined,
           outLab?.reason,
         );
@@ -1047,8 +1051,8 @@ const PathologistGyneDiagnosisPage: React.FC<
                           type="secondary"
                           style={{ fontSize: 12 }}
                         >
-                          {isAbnormal
-                            ? "Abnormal result"
+                          {requiresPathologistReview
+                            ? "Will route to pathologist for review"
                             : "Normal result — will finalize after sign-off"}
                         </Typography.Text>
                       </Space>
