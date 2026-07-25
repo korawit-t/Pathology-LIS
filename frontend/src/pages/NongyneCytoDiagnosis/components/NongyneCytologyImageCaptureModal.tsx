@@ -1,9 +1,7 @@
 import React, {
   useRef,
   useState,
-  useCallback,
   FC,
-  ChangeEvent,
   useEffect,
 } from "react";
 import {
@@ -16,8 +14,6 @@ import {
   Input,
   Select,
   App,
-  Switch,
-  Tooltip,
 } from "antd";
 import {
   CameraOutlined,
@@ -29,12 +25,14 @@ import {
   EditOutlined,
 } from "@ant-design/icons";
 import Webcam from "react-webcam";
-import { ImageEditor } from "../../Gross/components/GrossImageCaptureModal/ImageEditor";
+import { ImageEditor } from "../../../components/ImageEditor";
 import NongyneCaseImageService, { NongyneCaseImage } from "../../../services/nongyneCaseImageService";
-import styles from "../../Pathologist/SurgicalDiagnosisReportForm/components/MicroscopicImageCaptureModal.module.css";
-import { isImageCaptureSupported, captureHighResPhoto } from "../../../utils/imageCapture";
-import { getDataUrlByteSize, oversizeMessage } from "../../../utils/imageUpload";
+import styles from "../../../styles/imageCaptureModal.module.css";
+import { HqCaptureToggle } from "../../../components/HqCaptureToggle";
+import { DEFAULT_VIDEO_CONSTRAINTS } from "../../../utils/imageCapture";
+import { oversizeMessage } from "../../../utils/imageUpload";
 import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
+import { useImageCapture } from "../../../hooks/useImageCapture";
 
 const { Text } = Typography;
 
@@ -46,12 +44,6 @@ interface NongyneCytologyImageCaptureModalProps {
   editingImage?: NongyneCaseImage | null;
   nextOrder?: number;
 }
-
-const VIDEO_CONSTRAINTS = {
-  width: 1920,
-  height: 1080,
-  facingMode: "environment" as const,
-};
 
 const STAIN_OPTIONS = ["H&E", "PAP", "Giemsa", "MGG", "PAS", "Mucicarmine", "Other"];
 
@@ -73,13 +65,12 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
   const [stain, setStain] = useState("H&E");
   const [uploading, setUploading] = useState(false);
 
-  const [hqMode, setHqMode] = useState(false);
-  const [hqSupported, setHqSupported] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-
-  useEffect(() => {
-    setHqSupported(isImageCaptureSupported());
-  }, []);
+  const onCaptured = (dataUrl: string) => {
+    setImageSrc(dataUrl);
+    setShowEditor(true);
+  };
+  const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
+    useImageCapture(webcamRef, onCaptured);
 
   useEffect(() => {
     if (editingImage) {
@@ -94,65 +85,6 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
       setShowEditor(false);
     }
   }, [editingImage, open]);
-
-  // ตรวจขนาดไฟล์ทันทีหลังถ่าย/เลือกไฟล์ ก่อนเปิด Editor — กันไม่ให้เสียเวลา
-  // crop/annotate ไปกับไฟล์ที่ท้ายที่สุดอัปโหลดไม่ได้
-  const finalizeCapture = useCallback(async (dataUrl: string) => {
-    const bytes = await getDataUrlByteSize(dataUrl);
-    if (bytes > MAX_IMAGE_UPLOAD_BYTES) {
-      message.error(oversizeMessage(bytes));
-      return;
-    }
-    setImageSrc(dataUrl);
-    setShowEditor(true);
-  }, [message]);
-
-  const captureViaScreenshot = useCallback(() => {
-    const image = webcamRef.current?.getScreenshot();
-    if (image) {
-      finalizeCapture(image);
-    }
-  }, [finalizeCapture]);
-
-  const capture = useCallback(async () => {
-    if (hqMode && hqSupported) {
-      const track = webcamRef.current?.stream?.getVideoTracks()[0];
-      if (!track) {
-        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
-        return;
-      }
-      setCapturing(true);
-      try {
-        const blob = await captureHighResPhoto(track);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          finalizeCapture(reader.result as string);
-        };
-        reader.readAsDataURL(blob);
-      } catch {
-        message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
-        captureViaScreenshot();
-      } finally {
-        setCapturing(false);
-      }
-      return;
-    }
-    captureViaScreenshot();
-  }, [hqMode, hqSupported, captureViaScreenshot, finalizeCapture, message]);
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-      message.error(oversizeMessage(file.size));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      finalizeCapture(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
 
   const handleEditorSave = (finalSrc: string) => {
     setImageSrc(finalSrc);
@@ -215,25 +147,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
             </Text>
           </Space>
           {!editingImage && (
-            <div style={{ marginTop: 4 }}>
-              <Tooltip
-                title={
-                  hqSupported
-                    ? undefined
-                    : "เบราว์เซอร์นี้ไม่รองรับการถ่ายภาพความละเอียดสูง"
-                }
-              >
-                <Switch
-                  size="small"
-                  checked={hqMode}
-                  onChange={setHqMode}
-                  disabled={!hqSupported}
-                />
-              </Tooltip>
-              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                ถ่ายภาพความละเอียดสูง (HQ)
-              </Text>
-            </div>
+            <HqCaptureToggle hqMode={hqMode} hqSupported={hqSupported} onChange={setHqMode} />
           )}
         </div>
       }
@@ -272,7 +186,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
             key="capture"
             type="primary"
             icon={<CameraOutlined />}
-            onClick={capture}
+            onClick={() => capture()}
             loading={capturing}
             disabled={!!imageSrc || capturing}
           >
@@ -298,7 +212,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
         ref={fileInputRef}
         style={{ display: "none" }}
         accept="image/*"
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e)}
       />
 
       {showEditor && imageSrc ? (
@@ -363,7 +277,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
                 ref={webcamRef}
                 mirrored={false}
                 screenshotFormat="image/jpeg"
-                videoConstraints={VIDEO_CONSTRAINTS}
+                videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />
             )}
