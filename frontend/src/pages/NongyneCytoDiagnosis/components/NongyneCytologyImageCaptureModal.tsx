@@ -16,6 +16,8 @@ import {
   Input,
   Select,
   App,
+  Switch,
+  Tooltip,
 } from "antd";
 import {
   CameraOutlined,
@@ -30,6 +32,7 @@ import Webcam from "react-webcam";
 import { ImageEditor } from "../../Gross/components/GrossImageCaptureModal/ImageEditor";
 import NongyneCaseImageService, { NongyneCaseImage } from "../../../services/nongyneCaseImageService";
 import styles from "../../Pathologist/SurgicalDiagnosisReportForm/components/MicroscopicImageCaptureModal.module.css";
+import { isImageCaptureSupported, captureHighResPhoto } from "../../../utils/imageCapture";
 
 const { Text } = Typography;
 
@@ -68,6 +71,13 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
   const [stain, setStain] = useState("H&E");
   const [uploading, setUploading] = useState(false);
 
+  const [hqMode, setHqMode] = useState(false);
+  const [hqSupported, setHqSupported] = useState(false);
+
+  useEffect(() => {
+    setHqSupported(isImageCaptureSupported());
+  }, []);
+
   useEffect(() => {
     if (editingImage) {
       setImageSrc(null);
@@ -82,13 +92,37 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
     }
   }, [editingImage, open]);
 
-  const capture = useCallback(() => {
+  const captureViaScreenshot = useCallback(() => {
     const image = webcamRef.current?.getScreenshot();
     if (image) {
       setImageSrc(image);
       setShowEditor(true);
     }
   }, []);
+
+  const capture = useCallback(async () => {
+    if (hqMode && hqSupported) {
+      const track = webcamRef.current?.stream?.getVideoTracks()[0];
+      if (!track) {
+        message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
+        return;
+      }
+      try {
+        const blob = await captureHighResPhoto(track);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImageSrc(reader.result as string);
+          setShowEditor(true);
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
+        captureViaScreenshot();
+      }
+      return;
+    }
+    captureViaScreenshot();
+  }, [hqMode, hqSupported, captureViaScreenshot, message]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -154,16 +188,39 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
   return (
     <Modal
       title={
-        <Space>
-          {editingImage ? (
-            <EditOutlined style={{ color: "#52c41a" }} />
-          ) : (
-            <CameraOutlined style={{ color: "#1890ff" }} />
+        <div>
+          <Space>
+            {editingImage ? (
+              <EditOutlined style={{ color: "#52c41a" }} />
+            ) : (
+              <CameraOutlined style={{ color: "#1890ff" }} />
+            )}
+            <Text strong>
+              {editingImage ? "Edit Image Info" : "Cytology Image Capture"}
+            </Text>
+          </Space>
+          {!editingImage && (
+            <div style={{ marginTop: 4 }}>
+              <Tooltip
+                title={
+                  hqSupported
+                    ? undefined
+                    : "เบราว์เซอร์นี้ไม่รองรับการถ่ายภาพความละเอียดสูง"
+                }
+              >
+                <Switch
+                  size="small"
+                  checked={hqMode}
+                  onChange={setHqMode}
+                  disabled={!hqSupported}
+                />
+              </Tooltip>
+              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                ถ่ายภาพความละเอียดสูง (HQ)
+              </Text>
+            </div>
           )}
-          <Text strong>
-            {editingImage ? "Edit Image Info" : "Cytology Image Capture"}
-          </Text>
-        </Space>
+        </div>
       }
       open={open}
       onCancel={onClose}
