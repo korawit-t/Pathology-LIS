@@ -7,16 +7,15 @@ import {
   message,
   Input,
   Tooltip,
-  Spin,
 } from "antd";
 import { CheckCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import dayjs from "dayjs";
 import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgicalBlockStainService";
 import HisService from "../../../services/hisService";
 import { useCaseInfoByAccession } from "../../../hooks/useCaseInfoByAccession";
 import { formatPatientName } from "../../../utils/patientName";
 import { AccessionNoText, BlockTag, StainTag } from "./components/OutlabCellRenderers";
+import { AppointmentSubTable } from "./components/AppointmentSubTable";
 import type { CaseInfo, OutlabAppointment } from "./types";
 
 const { Text } = Typography;
@@ -294,51 +293,12 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
           onExpand: (expanded, record) => {
             if (expanded) fetchAppointments(record.hn);
           },
-          expandedRowRender: (record) => {
-            const appts = appointmentMap[record.hn];
-            if (loadingAppt[record.hn]) return <Spin size="small" style={{ padding: 12 }} />;
-            if (!appts || appts.length === 0)
-              return <Text type="secondary" style={{ padding: "8px 12px", display: "block" }}>No appointments found in HosXP</Text>;
-            return (
-              <Table
-                dataSource={appts}
-                rowKey="oapp_id"
-                size="small"
-                pagination={false}
-                style={{ margin: "4px 0" }}
-                columns={[
-                  {
-                    title: "Appointment Date",
-                    dataIndex: "nextdate",
-                    width: 150,
-                    render: (v) => v ? <Text strong>{dayjs(v).format("DD/MM/YYYY")}</Text> : "-",
-                  },
-                  {
-                    title: "Time",
-                    dataIndex: "nexttime",
-                    width: 80,
-                    render: (v) => v ? String(v).substring(0, 5) : "-",
-                  },
-                  {
-                    title: "Clinic",
-                    dataIndex: "department",
-                    width: 200,
-                    render: (v, row) => v || row.contact_point || "-",
-                  },
-                  {
-                    title: "Cause",
-                    dataIndex: "app_cause",
-                    render: (v) => <Text type="secondary">{v || "-"}</Text>,
-                  },
-                  {
-                    title: "Note",
-                    dataIndex: "note",
-                    render: (v) => <Text type="secondary">{v || "-"}</Text>,
-                  },
-                ]}
-              />
-            );
-          },
+          expandedRowRender: (record) => (
+            <AppointmentSubTable
+              appointments={appointmentMap[record.hn]}
+              loading={loadingAppt[record.hn]}
+            />
+          ),
         }}
       />
     </>

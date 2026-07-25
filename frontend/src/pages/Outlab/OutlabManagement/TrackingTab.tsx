@@ -7,9 +7,7 @@ import {
   Typography,
   message,
   Input,
-  Tooltip,
   Popconfirm,
-  Checkbox,
 } from "antd";
 import {
   ClockCircleOutlined,
@@ -17,7 +15,6 @@ import {
   DeleteOutlined,
   PrinterOutlined,
   ReloadOutlined,
-  HistoryOutlined,
   EditOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -27,8 +24,8 @@ import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgical
 import SystemSettingService from "../../../services/systemSettingService";
 import { OutlabRunPrint } from "../OutlabStainRun/OutlabRunPrint";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
-import { AccessionNoText } from "./components/OutlabCellRenderers";
 import { useReceiveOutlabSlides } from "../../../hooks/useReceiveOutlabSlides";
+import { RunExpansionPanel } from "./components/RunExpansionPanel";
 
 const { Text } = Typography;
 
@@ -295,115 +292,28 @@ export const TrackingTab: React.FC<TrackingTabProps> = ({ refreshTrigger, onRece
         expandable={{
           expandRowByClick: true,
           expandIcon: () => null,
-          expandedRowRender: (record) => {
-            const grouped: Record<string, NonNullable<OutlabRun["details"]>> = {};
-            (record.details || []).forEach((d) => {
-              const acc = d.accession_no || "N/A";
-              if (!grouped[acc]) grouped[acc] = [];
-              grouped[acc].push(d);
-            });
-            const runSelected = selectedDetailIds[record.id] || new Set<number>();
-            const toggleDetail = (detailId: number, checked: boolean) => {
-              setSelectedDetailIds((prev) => {
-                const next = new Set(prev[record.id] || []);
-                if (checked) next.add(detailId); else next.delete(detailId);
-                return { ...prev, [record.id]: next };
-              });
-            };
-            const unreceivedIds = (record.details || []).filter((d) => !d.received_at).map((d) => d.id);
-            const unreceivedCount = unreceivedIds.length;
-            const allSelected = unreceivedCount > 0 && unreceivedIds.every((id) => runSelected.has(id));
-            const toggleSelectAll = () => {
-              setSelectedDetailIds((prev) => ({
-                ...prev,
-                [record.id]: allSelected ? new Set() : new Set(unreceivedIds),
-              }));
-            };
-            return (
-              <div style={{ padding: "8px 16px" }}>
-                <Space style={{ marginBottom: 10, width: "100%", justifyContent: "space-between" }}>
-                  <Text strong>Slides in this run:</Text>
-                  {unreceivedCount > 0 && (
-                    <Space size="small">
-                      <Button size="small" onClick={toggleSelectAll}>
-                        {allSelected ? "Deselect all" : "Select all"}
-                      </Button>
-                      <Button
-                        size="small"
-                        type="primary"
-                        disabled={runSelected.size === 0}
-                        onClick={() => handleReceiveSelected(record.id)}
-                      >
-                        Receive selected ({runSelected.size})
-                      </Button>
-                    </Space>
-                  )}
-                </Space>
-                <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                  {Object.entries(grouped).map(([acc, details]) => {
-                    const groupUnreceivedIds = details.filter((d) => !d.received_at).map((d) => d.id);
-                    const groupAllSelected = groupUnreceivedIds.length > 0 && groupUnreceivedIds.every((id) => runSelected.has(id));
-                    const groupSomeSelected = groupUnreceivedIds.some((id) => runSelected.has(id));
-                    const toggleGroup = (checked: boolean) => {
-                      setSelectedDetailIds((prev) => {
-                        const next = new Set(prev[record.id] || []);
-                        groupUnreceivedIds.forEach((id) => (checked ? next.add(id) : next.delete(id)));
-                        return { ...prev, [record.id]: next };
-                      });
-                    };
-                    return (
-                    <div key={acc} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <Space size={6} style={{ minWidth: 120, paddingTop: 2 }}>
-                        {groupUnreceivedIds.length > 0 && (
-                          <Checkbox
-                            checked={groupAllSelected}
-                            indeterminate={groupSomeSelected && !groupAllSelected}
-                            onChange={(e) => toggleGroup(e.target.checked)}
-                          />
-                        )}
-                        <AccessionNoText text={acc} />
-                      </Space>
-                      <Space wrap size={[8, 4]}>
-                        {details.map((d) => (
-                          <Space
-                            key={d.id}
-                            size={4}
-                            style={{ border: "1px solid #f0f0f0", borderRadius: 4, padding: "2px 6px" }}
-                          >
-                            {!d.received_at ? (
-                              <Checkbox
-                                checked={runSelected.has(d.id)}
-                                onChange={(e) => toggleDetail(d.id, e.target.checked)}
-                              />
-                            ) : (
-                              <Tooltip title={`Received ${dayjs(d.received_at).format("DD/MM/YYYY HH:mm")}`}>
-                                <CheckCircleOutlined style={{ color: "#52c41a" }} />
-                              </Tooltip>
-                            )}
-                            <Tag
-                              color="geekblue"
-                              style={{ cursor: "pointer", margin: 0 }}
-                              icon={<HistoryOutlined />}
-                              onClick={() =>
-                                setHistoryBlock({
-                                  id: d.block_id || d.stain_order?.block_id || null,
-                                  block_code: d.block_code || undefined,
-                                  accession_no: d.accession_no || undefined,
-                                })
-                              }
-                            >
-                              {d.block_code || "-"} — {d.stain_order?.test?.name || "Unknown"}
-                            </Tag>
-                          </Space>
-                        ))}
-                      </Space>
-                    </div>
-                    );
-                  })}
-                </Space>
-              </div>
-            );
-          },
+          expandedRowRender: (record) => (
+            <RunExpansionPanel
+              details={record.details || []}
+              selectedIds={selectedDetailIds[record.id] || new Set<number>()}
+              onToggleDetail={(detailId, checked) => {
+                setSelectedDetailIds((prev) => {
+                  const next = new Set(prev[record.id] || []);
+                  if (checked) next.add(detailId); else next.delete(detailId);
+                  return { ...prev, [record.id]: next };
+                });
+              }}
+              onToggleIds={(ids, checked) => {
+                setSelectedDetailIds((prev) => {
+                  const next = new Set(prev[record.id] || []);
+                  ids.forEach((id) => (checked ? next.add(id) : next.delete(id)));
+                  return { ...prev, [record.id]: next };
+                });
+              }}
+              onReceiveSelected={() => handleReceiveSelected(record.id)}
+              onBlockClick={setHistoryBlock}
+            />
+          ),
           rowExpandable: (record) => (record.details?.length || 0) > 0,
         }}
         locale={{ emptyText: "No outlab runs yet" }}
