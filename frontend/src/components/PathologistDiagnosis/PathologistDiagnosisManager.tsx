@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import {
   Form,
   Select,
@@ -19,12 +19,12 @@ import {
   InfoCircleOutlined,
   ClockCircleOutlined,
 } from "@ant-design/icons";
-import StyledCard from "../../../components/Layout/StyledCard";
-import type { SystemSetting } from "../../../types/system";
+import StyledCard from "../Layout/StyledCard";
+import type { SystemSetting } from "../../types/system";
 
 const { Text, Title } = Typography;
 
-interface GynePathologistDiagnosisManagerProps {
+interface PathologistDiagnosisManagerProps {
   pathologists: { id: number; full_name?: string }[];
   defaultPathologistId?: number;
   defaultSigners?: {
@@ -38,12 +38,11 @@ interface GynePathologistDiagnosisManagerProps {
   hideCT?: boolean;
 }
 
-const GynePathologistDiagnosisManager: React.FC<
-  GynePathologistDiagnosisManagerProps
+const PathologistDiagnosisManager: React.FC<
+  PathologistDiagnosisManagerProps
 > = ({
   pathologists,
   defaultPathologistId,
-  defaultSigners,
   isLocked,
   namePath,
   settings,
@@ -333,4 +332,4 @@ const GynePathologistDiagnosisManager: React.FC<
   );
 };
 
-export default GynePathologistDiagnosisManager;
+export default PathologistDiagnosisManager;

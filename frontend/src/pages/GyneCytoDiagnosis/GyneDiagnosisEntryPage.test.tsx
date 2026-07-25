@@ -40,7 +40,7 @@ const { trivialMock } = vi.hoisted(() => ({
 vi.mock("../../components/ReportPreviewModal", () => ({ default: trivialMock("mock-report-preview") }));
 vi.mock("../../components/PatientInfoCard", () => ({ default: trivialMock("mock-patient-info") }));
 vi.mock("./components/GyneCytologyImageCaptureModal", () => ({ default: trivialMock("mock-image-capture") }));
-vi.mock("./components/GynePathologistDiagnosisManager", () => ({ default: trivialMock("mock-pathologist-manager") }));
+vi.mock("../../components/PathologistDiagnosis/PathologistDiagnosisManager", () => ({ default: trivialMock("mock-pathologist-manager") }));
 vi.mock("../../components/InternalConsult/ConsultRequestModal", () => ({ default: trivialMock("mock-consult-request") }));
 vi.mock("../../components/InternalConsult/ConsultHistorySection", () => ({ default: trivialMock("mock-consult-history") }));
 vi.mock("../../components/OutlabConsult/ConsultPdfPanel", () => ({ default: trivialMock("mock-consult-pdf-panel") }));

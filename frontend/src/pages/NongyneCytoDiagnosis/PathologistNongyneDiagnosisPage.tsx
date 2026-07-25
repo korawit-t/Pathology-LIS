@@ -61,7 +61,7 @@ import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
 import StyledCard from "../../components/Layout/StyledCard";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
-import GynePathologistDiagnosisManager from "../GyneCytoDiagnosis/components/GynePathologistDiagnosisManager";
+import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/PathologistDiagnosisManager";
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
@@ -1488,7 +1488,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   styles={{ body: { padding: "24px" } }}
                   style={{ height: "100%" }}
                 >
-                  <GynePathologistDiagnosisManager
+                  <PathologistDiagnosisManager
                     pathologists={allUsers}
                     defaultSigners={defaultSigners}
                     isLocked={isEditorLocked}
