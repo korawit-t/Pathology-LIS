@@ -22,6 +22,8 @@ import { ImageEditor } from "./ImageEditor"; // 🌟 นำเข้า ImageEdi
 import styles from "./GrossImageCaptureModal.module.css";
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
 import { isImageCaptureSupported, captureHighResPhoto } from "../../../../utils/imageCapture";
+import { getDataUrlByteSize, oversizeMessage } from "../../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../../constants/upload.constants";
 
 const { Text } = Typography;
 
@@ -57,20 +59,39 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
 
   const [hqMode, setHqMode] = useState(false);
   const [hqSupported, setHqSupported] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
     setHqSupported(isImageCaptureSupported());
   }, []);
 
+  // ตรวจขนาดไฟล์ทันทีหลังถ่าย/เลือกไฟล์ ก่อนเปิด Editor — กันไม่ให้เสียเวลา
+  // crop/annotate ไปกับไฟล์ที่ท้ายที่สุดอัปโหลดไม่ได้
+  const finalizeCapture = useCallback(
+    async (dataUrl: string, successMessage: string) => {
+      const bytes = await getDataUrlByteSize(dataUrl);
+      if (bytes > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(bytes));
+        return;
+      }
+      setImageSrc(dataUrl);
+      setShowEditor(true); // 🌟 เปิดหน้า Editor
+      message.success(successMessage);
+    },
+    []
+  );
+
   // 🌟 ฟังก์ชันจัดการเมื่อเลือกไฟล์จากเครื่อง
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(file.size));
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
-        setImageSrc(reader.result as string); // แปลงเป็น Base64 เพื่อแสดง Preview
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("เลือกไฟล์ภาพสำเร็จ");
+        finalizeCapture(reader.result as string, "เลือกไฟล์ภาพสำเร็จ");
       };
       reader.readAsDataURL(file);
     }
@@ -85,12 +106,10 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
     if (webcamRef.current) {
       const image = webcamRef.current.getScreenshot();
       if (image) {
-        setImageSrc(image);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("บันทึกภาพชั่วคราวแล้ว");
+        finalizeCapture(image, "บันทึกภาพชั่วคราวแล้ว");
       }
     }
-  }, [webcamRef]);
+  }, [webcamRef, finalizeCapture]);
 
   const capture = useCallback(async () => {
     if (hqMode && hqSupported) {
@@ -99,23 +118,24 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
         message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
         return;
       }
+      setCapturing(true);
       try {
         const blob = await captureHighResPhoto(track);
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImageSrc(reader.result as string);
-          setShowEditor(true); // 🌟 เปิดหน้า Editor
-          message.success("ถ่ายภาพความละเอียดสูงสำเร็จ");
+          finalizeCapture(reader.result as string, "ถ่ายภาพความละเอียดสูงสำเร็จ");
         };
         reader.readAsDataURL(blob);
       } catch {
         message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
         captureViaScreenshot();
+      } finally {
+        setCapturing(false);
       }
       return;
     }
     captureViaScreenshot();
-  }, [hqMode, hqSupported, captureViaScreenshot]);
+  }, [hqMode, hqSupported, captureViaScreenshot, finalizeCapture]);
 
   const retake = () => {
     setImageSrc(null);
@@ -203,7 +223,8 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           type="primary"
           icon={<CameraOutlined />}
           onClick={capture}
-          disabled={!!imageSrc}
+          loading={capturing}
+          disabled={!!imageSrc || capturing}
         >
           กดถ่ายรูป
         </Button>,

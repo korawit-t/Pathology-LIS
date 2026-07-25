@@ -37,6 +37,8 @@ import { useSecureSrc } from "../../../../components/SecureImage";
 import { ImageEditor } from "../../../Gross/components/GrossImageCaptureModal/ImageEditor"; // 🌟 นำเข้า ImageEditor
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
 import { isImageCaptureSupported, captureHighResPhoto } from "../../../../utils/imageCapture";
+import { getDataUrlByteSize, oversizeMessage } from "../../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../../constants/upload.constants";
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -88,21 +90,36 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
 
   const [hqMode, setHqMode] = useState(false);
   const [hqSupported, setHqSupported] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
     setHqSupported(isImageCaptureSupported());
   }, []);
 
+  // ตรวจขนาดไฟล์ทันทีหลังถ่าย/เลือกไฟล์ ก่อนเปิด Editor — กันไม่ให้เสียเวลา
+  // crop/annotate ไปกับไฟล์ที่ท้ายที่สุดอัปโหลดไม่ได้
+  const finalizeCapture = useCallback(
+    async (dataUrl: string, successMessage: string) => {
+      const bytes = await getDataUrlByteSize(dataUrl);
+      if (bytes > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(bytes));
+        return;
+      }
+      setImageSrc(dataUrl);
+      setShowEditor(true); // 🌟 เปิดหน้า Editor
+      message.success(successMessage);
+    },
+    []
+  );
+
   const captureViaScreenshot = useCallback(() => {
     if (webcamRef.current) {
       const image = webcamRef.current.getScreenshot();
       if (image) {
-        setImageSrc(image);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("บันทึกภาพตัวอย่างสำเร็จ");
+        finalizeCapture(image, "บันทึกภาพตัวอย่างสำเร็จ");
       }
     }
-  }, [webcamRef]);
+  }, [webcamRef, finalizeCapture]);
 
   const capture = useCallback(async () => {
     if (hqMode && hqSupported) {
@@ -111,38 +128,36 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         message.error("ไม่พบกล้อง กรุณาลองใหม่อีกครั้ง");
         return;
       }
+      setCapturing(true);
       try {
         const blob = await captureHighResPhoto(track);
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImageSrc(reader.result as string);
-          setShowEditor(true); // 🌟 เปิดหน้า Editor
-          message.success("ถ่ายภาพความละเอียดสูงสำเร็จ");
+          finalizeCapture(reader.result as string, "ถ่ายภาพความละเอียดสูงสำเร็จ");
         };
         reader.readAsDataURL(blob);
       } catch {
         message.warning("ถ่ายภาพความละเอียดสูงไม่สำเร็จ ใช้ภาพจากวิดีโอแทน");
         captureViaScreenshot();
+      } finally {
+        setCapturing(false);
       }
       return;
     }
     captureViaScreenshot();
-  }, [hqMode, hqSupported, captureViaScreenshot]);
+  }, [hqMode, hqSupported, captureViaScreenshot, finalizeCapture]);
 
   // 🚩 ฟังก์ชันจัดการการเลือกไฟล์จากเครื่อง
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        // จำกัด 10MB
-        message.error("ขนาดไฟล์ใหญ่เกินไป (จำกัด 10MB)");
+      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(file.size));
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImageSrc(reader.result as string);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("โหลดไฟล์ภาพสำเร็จ");
+        finalizeCapture(reader.result as string, "โหลดไฟล์ภาพสำเร็จ");
       };
       reader.readAsDataURL(file);
     }
@@ -271,7 +286,8 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
             type="primary"
             icon={<CameraOutlined />}
             onClick={capture}
-            disabled={!!imageSrc}
+            loading={capturing}
+            disabled={!!imageSrc || capturing}
           >
             กดถ่ายรูป
           </Button>
