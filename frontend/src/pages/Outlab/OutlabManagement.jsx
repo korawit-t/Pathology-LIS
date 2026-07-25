@@ -117,7 +117,8 @@ export const PendingQueueTab = ({ onSent }) => {
       const res = await api.get("/external-labs", { params: { active_only: true } });
       setExternalLabs(res.data);
     } catch {
-      /* ignore */
+      // Intentionally silent — the destination-lab dropdown just stays empty;
+      // not critical enough to interrupt the dispatch flow with an error toast.
     }
   };
 
@@ -350,9 +351,9 @@ export const PendingQueueTab = ({ onSent }) => {
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <Text strong>เลขพัสดุขนส่ง (Tracking No.):</Text>
+          <Text strong>Tracking No.:</Text>
           <Input
-            placeholder="กรอกเลขพัสดุ / Courier tracking number (ถ้ามี)"
+            placeholder="Courier tracking number (optional)"
             value={trackingNumber}
             onChange={(e) => setTrackingNumber(e.target.value)}
             style={{ marginTop: 8 }}
@@ -392,6 +393,8 @@ export const TrackingTab = ({ refreshTrigger, onReceived }) => {
   useEffect(() => {
     SystemSettingService.getPublicSettings()
       .then((res) => setHospitalName(res.lab_name_en))
+      // Intentionally silent — hospitalName is only used to label the printed
+      // dispatch sheet; a blank label isn't worth an error toast here.
       .catch(() => {});
   }, []);
 
@@ -445,11 +448,11 @@ export const TrackingTab = ({ refreshTrigger, onReceived }) => {
   const saveTracking = async (runId) => {
     try {
       await SurgicalBlockStainService.updateOutlabRun(runId, { tracking_number: editingTrackingValue });
-      message.success("บันทึกเลขพัสดุสำเร็จ");
+      message.success("Tracking number saved");
       setEditingTrackingId(null);
       fetchRuns();
     } catch {
-      message.error("บันทึกไม่สำเร็จ");
+      message.error("Failed to save tracking number");
     }
   };
 
@@ -504,8 +507,8 @@ export const TrackingTab = ({ refreshTrigger, onReceived }) => {
                 style={{ width: 160 }}
                 autoFocus
               />
-              <Button size="small" type="primary" onClick={() => saveTracking(record.id)}>บันทึก</Button>
-              <Button size="small" onClick={() => setEditingTrackingId(null)}>ยกเลิก</Button>
+              <Button size="small" type="primary" onClick={() => saveTracking(record.id)}>Save</Button>
+              <Button size="small" onClick={() => setEditingTrackingId(null)}>Cancel</Button>
             </Space>
           );
         }
@@ -1318,7 +1321,7 @@ export const HosxpKeyTab = ({ refreshTrigger }) => {
       {selectedRowKeys.length > 0 && (
         <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#e6f4ff", borderRadius: 8, border: "1px solid #91caff" }}>
           <CheckCircleOutlined style={{ color: "#1677ff" }} />
-          <span>เลือก <strong>{selectedRowKeys.length}</strong> รายการ</span>
+          <span><strong>{selectedRowKeys.length}</strong> selected</span>
           <Button
             type="primary"
             size="small"
@@ -1329,7 +1332,7 @@ export const HosxpKeyTab = ({ refreshTrigger }) => {
           >
             Key Selected ({selectedRowKeys.length})
           </Button>
-          <Button size="small" onClick={() => setSelectedRowKeys([])}>ยกเลิกการเลือก</Button>
+          <Button size="small" onClick={() => setSelectedRowKeys([])}>Clear Selection</Button>
         </div>
       )}
 

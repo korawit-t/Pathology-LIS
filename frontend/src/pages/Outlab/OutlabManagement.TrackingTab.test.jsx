@@ -107,7 +107,7 @@ describe("TrackingTab", () => {
     // picking the one with no placeholder (the inline tracking-number editor).
     const input = (await screen.findAllByRole("textbox")).find((el) => !el.placeholder);
     fireEvent.change(input, { target: { value: "TRACK-123" } });
-    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(SurgicalBlockStainService.updateOutlabRun).toHaveBeenCalledWith(1, { tracking_number: "TRACK-123" }),
