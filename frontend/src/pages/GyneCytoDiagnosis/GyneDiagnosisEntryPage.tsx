@@ -31,7 +31,7 @@ import {
   HistoryOutlined,
   QuestionCircleOutlined,
 } from "@ant-design/icons";
-import type { GyneDiagnosisResponse } from "../../types/gyne-diagnosis";
+import type { GyneDiagnosisResponse, GyneDiagnosisUpdate } from "../../types/gyne-diagnosis";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
 import StyledCard from "../../components/Layout/StyledCard";
 import GyneCytologyImageCaptureModal from "./components/GyneCytologyImageCaptureModal";
@@ -299,9 +299,9 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   };
 
-  const sanitizeSigners = (values: any) => {
+  const sanitizeSigners = (values: GyneDiagnosisUpdate) => {
     if (values.signers) {
-      values.signers = values.signers.map((s: any) => ({
+      values.signers = values.signers.map((s) => ({
         ...s,
         signed_at: s.signed_at || null,
       }));
@@ -309,7 +309,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     return values;
   };
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: GyneDiagnosisUpdate) => {
     try {
       setSubmitting(true);
       // Convert undefined → null so cleared fields are sent in the payload

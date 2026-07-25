@@ -30,7 +30,7 @@ import {
   ExclamationCircleOutlined,
   HistoryOutlined,
 } from "@ant-design/icons";
-import type { GyneDiagnosisResponse } from "../../types/gyne-diagnosis";
+import type { GyneDiagnosisResponse, GyneDiagnosisUpdate } from "../../types/gyne-diagnosis";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
 import StyledCard from "../../components/Layout/StyledCard";
 import GyneCytologyImageCaptureModal from "./components/GyneCytologyImageCaptureModal";
@@ -319,9 +319,9 @@ const PathologistGyneDiagnosisPage: React.FC<
     }
   };
 
-  const sanitizeSigners = (values: any) => {
+  const sanitizeSigners = (values: GyneDiagnosisUpdate) => {
     if (values.signers) {
-      values.signers = values.signers.map((s: any) => ({
+      values.signers = values.signers.map((s) => ({
         ...s,
         signed_at: s.signed_at || null,
       }));
@@ -329,7 +329,7 @@ const PathologistGyneDiagnosisPage: React.FC<
     return values;
   };
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: GyneDiagnosisUpdate) => {
     try {
       setSubmitting(true);
       // Convert undefined → null so cleared fields are sent in the payload
@@ -349,7 +349,10 @@ const PathologistGyneDiagnosisPage: React.FC<
         // Form.List lets the user remove rows before submitting — this is
         // the final enforcement point, not redundant duplication.
         if (caseData?.review_result === "disagree" && currentUser) {
-          const signersList: GyneSigner[] = values.signers || [];
+          // Cast, not `any`: values.signers was just set above via a
+          // GyneSigner-typed map, but GyneDiagnosisUpdate's DTO shape widens
+          // `role` back to `string` for the wire format.
+          const signersList: GyneSigner[] = (values.signers as GyneSigner[]) || [];
           const alreadyInList = signersList.some(
             (s) => Number(s.user_id) === Number(currentUser.id),
           );
