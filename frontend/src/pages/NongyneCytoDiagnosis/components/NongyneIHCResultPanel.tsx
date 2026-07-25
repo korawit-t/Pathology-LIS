@@ -15,7 +15,6 @@ import {
   Typography,
   message,
 } from "antd";
-import { FormInstance } from "antd";
 import {
   CheckOutlined,
   ExperimentOutlined,
@@ -56,7 +55,6 @@ const { Text } = Typography;
 const DEFAULT_PREFIX = "Immunohistochemical staining reveals:";
 
 interface NongyneIHCResultPanelProps {
-  form: FormInstance;
   caseId: number;
   isLocked: boolean;
 }
@@ -215,10 +213,10 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 const NongyneIHCResultPanel: React.FC<NongyneIHCResultPanelProps> = ({
-  form,
   caseId,
   isLocked,
 }) => {
+  const form = Form.useFormInstance();
   const { user, updateUser } = useAuth();
   const [panel, setPanel] = useState<NongyneIHCMarkerWithResult[]>([]);
   const [loading, setLoading] = useState(true);

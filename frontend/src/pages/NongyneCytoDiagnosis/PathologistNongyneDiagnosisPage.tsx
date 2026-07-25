@@ -1429,7 +1429,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
             {caseData?.is_cell_block && (
               <StyledCard styles={{ body: { padding: "24px" } }}>
                 <NongyneIHCResultPanel
-                  form={form}
                   caseId={Number(caseId)}
                   isLocked={isEditorLocked}
                 />
