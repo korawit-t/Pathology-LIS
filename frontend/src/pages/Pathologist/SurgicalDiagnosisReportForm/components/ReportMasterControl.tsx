@@ -54,7 +54,6 @@ const MODE_CONFIG: Record<DiagnosisMode, {
   },
 };
 
-// 1. ปรับการสร้าง Content สำหรับ Mode Selection
 const getFormatHintContent = (specimens: SurgicalSpecimen[], showSpecimenName: boolean) => (
   <div style={{ padding: "4px", maxWidth: "300px" }}>
     <div style={{ marginBottom: 0 }}>
@@ -78,7 +77,6 @@ const getFormatHintContent = (specimens: SurgicalSpecimen[], showSpecimenName: b
                 {s.specimen_label}
                 {showSpecimenName ? `: ${s.specimen_name}` : ":"}
               </Text>
-              {/* Skeleton Line แทนคำวินิจฉัย */}
               <div
                 style={{
                   height: "4px",
@@ -155,24 +153,22 @@ const getFormatHintContent = (specimens: SurgicalSpecimen[], showSpecimenName: b
           borderLeft: "3px solid #52c41a",
         }}
       >
-        {/* บรรทัดที่ 1 (ยาว 85%) */}
         <div
           style={{
             height: "4px",
             width: "85%",
-            background: "#d9f7be", // สีเขียวจางให้เข้ากับ Clean Mode
+            background: "#d9f7be",
             borderRadius: "2px",
             marginTop: "4px",
           }}
         />
-        {/* 🚩 บรรทัดที่ 2 (สั้นลงหน่อย 60% ให้ดูเป็นธรรมชาติ) */}
         <div
           style={{
             height: "4px",
             width: "60%",
             background: "#d9f7be",
             borderRadius: "2px",
-            marginTop: "6px", // เว้นระยะห่างระหว่างบรรทัด
+            marginTop: "6px",
           }}
         />
       </div>
@@ -201,7 +197,6 @@ const ReportMasterControl: React.FC<ReportMasterControlProps> = ({
   showSpecimenName,
 }) => {
   const form = Form.useFormInstance();
-  // --- Logic การหา Order ล่าสุด ---
   const maxOrder = reports.length > 0 ? Math.max(...reports.map((r) => r.diagnosis_order ?? 0)) : 0;
   const maxOrderAllSigned = maxOrder > 0 && reports.filter((r) => (r.diagnosis_order ?? 0) === maxOrder).every((r) => r.status === "signed");
   const nextOrder = maxOrder === 0 ? 1 : maxOrderAllSigned ? maxOrder + 1 : maxOrder;
@@ -299,8 +294,6 @@ const ReportMasterControl: React.FC<ReportMasterControlProps> = ({
 
     return (
       <div style={{ padding: "8px", maxWidth: "850px" }}>
-        {" "}
-        {/* ขยายความกว้างเพื่อรับ 3 col */}
         <Row gutter={16}>
           {/* ADDENDUM */}
           <Col span={8}>

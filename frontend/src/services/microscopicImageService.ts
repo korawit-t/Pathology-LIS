@@ -27,7 +27,7 @@ const MicroscopicImageService = {
    */
   updateImage: async (
     imageId: number,
-    data: { description?: string; magnification?: string; stain?: string }
+    data: { description?: string; magnification?: string; stain?: string; show_in_report?: boolean }
   ): Promise<MicroscopicImage> => {
     // ใช้ PATCH เพื่อส่งเฉพาะฟิลด์ที่ต้องการแก้ไขไปยัง Backend
     const res = await api.patch<MicroscopicImage>(

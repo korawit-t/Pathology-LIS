@@ -64,7 +64,7 @@ const AIGeneratePreviewModal: React.FC<AIGeneratePreviewModalProps> = ({
       width={700}
       footer={[
         <Button key="cancel" onClick={handleCancel}>
-          ยกเลิก
+          Cancel
         </Button>,
         <Button
           key="confirm"
@@ -75,7 +75,7 @@ const AIGeneratePreviewModal: React.FC<AIGeneratePreviewModalProps> = ({
           onClick={() => onConfirm(source)}
           style={{ background: "#722ed1", borderColor: "#722ed1" }}
         >
-          ส่งให้ AI →
+          Send to AI →
         </Button>,
       ]}
       destroyOnClose
@@ -154,7 +154,7 @@ const AIGeneratePreviewModal: React.FC<AIGeneratePreviewModalProps> = ({
                   type="secondary"
                   style={{ fontSize: 12, display: "block", marginBottom: 4 }}
                 >
-                  User Message (จะส่งให้ AI)
+                  User Message (sent to AI)
                 </Text>
                 <div
                   style={{
