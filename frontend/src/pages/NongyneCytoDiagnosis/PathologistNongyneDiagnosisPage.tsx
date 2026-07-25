@@ -1475,7 +1475,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   style={{ height: "100%" }}
                 >
                   <GynePathologistDiagnosisManager
-                    form={form}
                     pathologists={allUsers}
                     defaultSigners={defaultSigners}
                     isLocked={isEditorLocked}
