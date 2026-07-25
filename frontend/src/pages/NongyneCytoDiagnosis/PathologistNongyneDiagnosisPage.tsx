@@ -1139,7 +1139,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                   </div>
                   <Form.Item name="clinical_history" noStyle>
                     <SimpleTiptapEditor
-                      placeholder="ประวัติการรักษาและผลตรวจที่เกี่ยวข้อง..."
+                      placeholder="Clinical history and relevant test results..."
                       style={{ minHeight: "90px" }}
                     />
                   </Form.Item>
