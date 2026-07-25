@@ -18,7 +18,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../../services/surgicalCaseService";
+import { useCaseInfoByAccession } from "../../../hooks/useCaseInfoByAccession";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
 import { formatPatientName } from "../../../utils/patientName";
 import { AccessionNoText, BlockTag } from "./components/OutlabCellRenderers";
@@ -51,6 +51,7 @@ interface CaseViewTabProps {
 }
 
 export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onReceived }) => {
+  const { resolveCaseInfo } = useCaseInfoByAccession();
   const [runs, setRuns] = useState<OutlabRun[]>([]);
   const [caseMap, setCaseMap] = useState<Record<string, CaseInfo>>({});
   const [loading, setLoading] = useState(false);
@@ -67,24 +68,13 @@ export const CaseViewTab: React.FC<CaseViewTabProps> = ({ refreshTrigger, onRece
       setRuns(data);
 
       // Fetch patient/HN via SurgicalCaseService (same pattern as UnifiedAccession)
-      const accNos = [...new Set(
-        data.flatMap((run) => (run.details || []).map((d) => d.accession_no).filter(Boolean))
-      )] as string[];
-      if (accNos.length > 0) {
-        const results = await Promise.all(
-          accNos.map((acc) =>
-            SurgicalCaseService.getCases({ search: acc, limit: 1 }).catch(() => ({ items: [], total: 0 }))
-          )
-        );
-        const map: Record<string, CaseInfo> = {};
-        accNos.forEach((acc, i) => {
-          const c = results[i]?.items?.[0];
-          if (c) {
-            map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
-          }
-        });
-        setCaseMap(map);
-      }
+      const accNos = data.flatMap((run) => (run.details || []).map((d) => d.accession_no));
+      const caseByAcc = await resolveCaseInfo(accNos);
+      const map: Record<string, CaseInfo> = {};
+      Object.entries(caseByAcc).forEach(([acc, c]) => {
+        map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
+      });
+      setCaseMap(map);
     } catch {
       message.error("Failed to load outlab data");
     } finally {

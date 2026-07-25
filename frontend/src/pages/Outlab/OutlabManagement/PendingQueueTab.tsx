@@ -22,8 +22,8 @@ import dayjs from "dayjs";
 import api from "../../../services/httpClient";
 import SurgicalBlockService from "../../../services/surgicalBlockService";
 import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../../services/surgicalCaseService";
 import { useAuth } from "../../../hooks/useAuth";
+import { useCaseInfoByAccession } from "../../../hooks/useCaseInfoByAccession";
 import BlockHistoryDrawer from "../../SurgicalBlock/components/BlockHistoryDrawer";
 import { formatPatientName } from "../../../utils/patientName";
 import type { OutlabBlock, CaseInfo, ExternalLab } from "./types";
@@ -36,6 +36,7 @@ interface PendingQueueTabProps {
 
 export const PendingQueueTab: React.FC<PendingQueueTabProps> = ({ onSent }) => {
   const { user } = useAuth();
+  const { resolveCaseInfo } = useCaseInfoByAccession();
   const [blocks, setBlocks] = useState<OutlabBlock[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -60,32 +61,23 @@ export const PendingQueueTab: React.FC<PendingQueueTabProps> = ({ onSent }) => {
       });
       setBlocks(outlabBlocks);
 
-      const accNos = [...new Set(outlabBlocks.map((b) => b.accession_no).filter(Boolean))] as string[];
-      if (accNos.length > 0) {
-        const results = await Promise.all(
-          accNos.map((acc) =>
-            SurgicalCaseService.getCases({ search: acc, limit: 1 }).catch(() => ({ items: [], total: 0 }))
-          )
-        );
-        const map: Record<string, CaseInfo> = {};
-        accNos.forEach((acc, i) => {
-          const c = results[i]?.items?.[0];
-          if (c) {
-            const today = dayjs();
-            const age = c.patient?.birth_date
-              ? today.diff(dayjs(c.patient.birth_date), "year")
-              : null;
-            map[acc] = {
-              hn: c.hn || "-",
-              patient_name: formatPatientName(c.patient),
-              age,
-              scheme: c.medical_scheme?.name || "-",
-              hospital: c.hospital?.name || "-",
-            };
-          }
-        });
-        setCaseMap(map);
-      }
+      const accNos = outlabBlocks.map((b) => b.accession_no);
+      const caseByAcc = await resolveCaseInfo(accNos);
+      const map: Record<string, CaseInfo> = {};
+      Object.entries(caseByAcc).forEach(([acc, c]) => {
+        const today = dayjs();
+        const age = c.patient?.birth_date
+          ? today.diff(dayjs(c.patient.birth_date), "year")
+          : null;
+        map[acc] = {
+          hn: c.hn || "-",
+          patient_name: formatPatientName(c.patient),
+          age,
+          scheme: c.medical_scheme?.name || "-",
+          hospital: c.hospital?.name || "-",
+        };
+      });
+      setCaseMap(map);
     } catch {
       message.error("Failed to load block data");
     } finally {

@@ -13,8 +13,8 @@ import { CheckCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import SurgicalBlockStainService, { OutlabRun } from "../../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../../services/surgicalCaseService";
 import HisService from "../../../services/hisService";
+import { useCaseInfoByAccession } from "../../../hooks/useCaseInfoByAccession";
 import { formatPatientName } from "../../../utils/patientName";
 import { AccessionNoText, BlockTag, StainTag } from "./components/OutlabCellRenderers";
 import type { CaseInfo, OutlabAppointment } from "./types";
@@ -37,6 +37,7 @@ interface HosxpKeyTabProps {
 }
 
 export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
+  const { resolveCaseInfo } = useCaseInfoByAccession();
   const [runs, setRuns] = useState<OutlabRun[]>([]);
   const [caseMap, setCaseMap] = useState<Record<string, CaseInfo>>({});
   const [appointmentMap, setAppointmentMap] = useState<Record<string, OutlabAppointment[]>>({});
@@ -66,24 +67,13 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
       const data = await SurgicalBlockStainService.getOutlabRuns({ limit: 500 });
       setRuns(data);
 
-      const accNos = [...new Set(
-        data.flatMap((run) => (run.details || []).map((d) => d.accession_no).filter(Boolean))
-      )] as string[];
-      if (accNos.length > 0) {
-        const results = await Promise.all(
-          accNos.map((acc) =>
-            SurgicalCaseService.getCases({ search: acc, limit: 1 }).catch(() => ({ items: [], total: 0 }))
-          )
-        );
-        const map: Record<string, CaseInfo> = {};
-        accNos.forEach((acc, i) => {
-          const c = results[i]?.items?.[0];
-          if (c) {
-            map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
-          }
-        });
-        setCaseMap(map);
-      }
+      const accNos = data.flatMap((run) => (run.details || []).map((d) => d.accession_no));
+      const caseByAcc = await resolveCaseInfo(accNos);
+      const map: Record<string, CaseInfo> = {};
+      Object.entries(caseByAcc).forEach(([acc, c]) => {
+        map[acc] = { hn: c.hn || "-", patient_name: formatPatientName(c.patient) };
+      });
+      setCaseMap(map);
     } catch {
       message.error("Failed to load outlab data");
     } finally {
