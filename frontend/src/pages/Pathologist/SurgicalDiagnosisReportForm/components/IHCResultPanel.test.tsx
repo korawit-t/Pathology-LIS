@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { Form } from "antd";
 import type { FormInstance } from "antd";
 import IHCResultPanel from "./IHCResultPanel";
 import { IHCService, IHCMarkerWithResult } from "../../../../services/ihcService";
@@ -64,19 +65,29 @@ const makeMarker = (overrides: Record<string, unknown> = {}): IHCMarkerWithResul
   ...overrides,
 });
 
-function makeForm(initial: Record<string, unknown> = {}) {
-  let store = { ...initial };
-  const keyOf = (name: unknown) => (Array.isArray(name) ? name.join(".") : String(name));
-  return {
-    getFieldValue: vi.fn((name: unknown) => store[keyOf(name)]),
-    setFieldsValue: vi.fn((values: Record<string, unknown>) => {
-      store = { ...store, ...values };
-    }),
-    setFieldValue: vi.fn((name: unknown, value: unknown) => {
-      store = { ...store, [keyOf(name)]: value };
-    }),
-  } as unknown as FormInstance;
-}
+/**
+ * IHCResultPanel reads the report form via Form.useFormInstance(), so every
+ * test renders it inside a real <Form>. `formRef` exposes that instance so
+ * assertions can read the values the panel wrote, instead of spying on a
+ * hand-rolled fake.
+ */
+let formRef: FormInstance;
+
+const renderPanel = (
+  props: { specimenId: number; isLocked: boolean },
+  initialValues: Record<string, unknown> = {},
+) => {
+  const Wrapper = () => {
+    const [form] = Form.useForm();
+    formRef = form;
+    return (
+      <Form form={form} initialValues={initialValues}>
+        <IHCResultPanel {...props} />
+      </Form>
+    );
+  };
+  return render(<Wrapper />);
+};
 
 describe("IHCResultPanel", () => {
   beforeEach(() => {
@@ -95,33 +106,40 @@ describe("IHCResultPanel", () => {
 
   it("renders nothing while loading resolves to an empty panel", async () => {
     mockGetPanel.mockResolvedValue([]);
-    const { container } = render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    const { container } = renderPanel({ specimenId: 5, isLocked: false });
     await act(async () => {
       await Promise.resolve();
     });
-    expect(container).toBeEmptyDOMElement();
+    // The wrapping <form> is the harness, not the panel — it must stay empty.
+    expect(container.querySelector("form")).toBeEmptyDOMElement();
   });
 
   it("renders the marker name and primary options", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     expect(await screen.findByText("ER")).toBeInTheDocument();
     expect(screen.getByText("Positive")).toBeInTheDocument();
   });
 
   it("auto-marks the case pending when markers exist but none have results yet", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    const form = makeForm();
-    render(<IHCResultPanel form={form} specimenId={5} isLocked={false} />);
-    await waitFor(() => expect(form.setFieldsValue).toHaveBeenCalled());
-    expect(form.setFieldsValue).toHaveBeenCalledWith(
-      expect.objectContaining({ is_pending: true, pending_reason: "Waiting for IHC results" }),
-    );
+    renderPanel({ specimenId: 5, isLocked: false });
+    await waitFor(() => expect(formRef.getFieldValue("is_pending")).toBe(true));
+    expect(formRef.getFieldValue("pending_reason")).toBe("Waiting for IHC results");
+  });
+
+  it("leaves an already-pending case alone instead of stamping its own reason", async () => {
+    mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
+    // is_pending already true with no reason yet: the auto-mark must not fire,
+    // so pending_reason stays empty rather than becoming the IHC boilerplate.
+    renderPanel({ specimenId: 5, isLocked: false }, { is_pending: true });
+    await screen.findByText("Positive");
+    expect(formRef.getFieldValue("pending_reason")).toBeUndefined();
   });
 
   it("clicking a primary option saves selected_option, clicking again clears it", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     await screen.findByText("Positive");
 
     fireEvent.click(screen.getByText("Positive"));
@@ -154,7 +172,7 @@ describe("IHCResultPanel", () => {
         },
       }),
     ]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     const input = await screen.findByPlaceholderText(/31-40/);
 
     fireEvent.change(input, { target: { value: "31-40" } });
@@ -176,7 +194,7 @@ describe("IHCResultPanel", () => {
         result: { id: 1, surgical_specimen_id: 5, ap_test_id: 10, selected_option: "positive", numeric_value: null, note: null, updated_at: "" },
       }),
     ]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     await screen.findByText("Positive");
     expect(screen.queryByPlaceholderText("value")).not.toBeInTheDocument();
   });
@@ -187,7 +205,7 @@ describe("IHCResultPanel", () => {
         extra_fields: [makeExtraField({ options: [makeExtraFieldOption()] })],
       }),
     ]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     const tag = await screen.findByText("3+ (Strong)");
 
     fireEvent.click(tag);
@@ -215,7 +233,7 @@ describe("IHCResultPanel", () => {
         extra_fields: [makeExtraField({ field_type: "numeric", numeric_unit: "%" })],
       }),
     ]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     const input = await screen.findByPlaceholderText(/31-40/);
 
     fireEvent.change(input, { target: { value: "31-40" } });
@@ -236,7 +254,7 @@ describe("IHCResultPanel", () => {
     mockGetPanel.mockResolvedValue([
       makeMarker({ extra_fields: [makeExtraField({ field_type: "text" })] }),
     ]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     const input = await screen.findByDisplayValue("");
 
     fireEvent.change(input, { target: { value: "n" } });
@@ -270,32 +288,58 @@ describe("IHCResultPanel", () => {
         ],
       }),
     ]);
-    const form = makeForm();
-    render(<IHCResultPanel form={form} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     await screen.findByText("ER");
 
     fireEvent.click(screen.getByText("Insert → Diagnosis"));
 
-    expect(form.setFieldValue).toHaveBeenCalled();
-    const [, html] = (form.setFieldValue as ReturnType<typeof vi.fn>).mock.calls[0];
+    const html = formRef.getFieldValue(["diagnoses", 5, "diagnosis"]);
     expect(html).toContain("ER");
     expect(html).toContain("Positive, 91-100%, 3+ (Strong)");
   });
 
+  it("appends to the diagnosis field rather than replacing what is already there", async () => {
+    mockGetPanel.mockResolvedValue([
+      makeMarker({
+        options: [makeOption()],
+        result: {
+          id: 1,
+          surgical_specimen_id: 5,
+          ap_test_id: 10,
+          selected_option: "positive",
+          numeric_value: null,
+          note: null,
+          updated_at: "",
+        },
+      }),
+    ]);
+    renderPanel(
+      { specimenId: 5, isLocked: false },
+      { diagnoses: { 5: { diagnosis: "<p>Existing text</p>" } } },
+    );
+    await screen.findByText("ER");
+
+    fireEvent.click(screen.getByText("Insert → Diagnosis"));
+
+    const html = formRef.getFieldValue(["diagnoses", 5, "diagnosis"]);
+    expect(html).toContain("Existing text");
+    expect(html.indexOf("Existing text")).toBeLessThan(html.indexOf("ER"));
+  });
+
   it("shows a warning and does not touch the form when there is nothing to insert", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    const form = makeForm();
-    render(<IHCResultPanel form={form} specimenId={5} isLocked={false} />);
+    renderPanel({ specimenId: 5, isLocked: false });
     await screen.findByText("Positive");
 
     fireEvent.click(screen.getByText("Insert → Diagnosis"));
 
-    expect(form.setFieldValue).not.toHaveBeenCalled();
+    expect(await screen.findByText("No IHC results to insert")).toBeInTheDocument();
+    expect(formRef.getFieldValue(["diagnoses", 5, "diagnosis"])).toBeUndefined();
   });
 
   it("locks interaction when isLocked is true: no drag hint and no insert buttons", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={true} />);
+    renderPanel({ specimenId: 5, isLocked: true });
     await screen.findByText("Positive");
 
     expect(screen.queryByText(/to reorder/i)).not.toBeInTheDocument();
@@ -304,7 +348,7 @@ describe("IHCResultPanel", () => {
 
   it("locked options are not clickable", async () => {
     mockGetPanel.mockResolvedValue([makeMarker({ options: [makeOption()] })]);
-    render(<IHCResultPanel form={makeForm()} specimenId={5} isLocked={true} />);
+    renderPanel({ specimenId: 5, isLocked: true });
     const tag = await screen.findByText("Positive");
 
     fireEvent.click(tag);

@@ -14,7 +14,6 @@ import {
   Typography,
   message,
 } from "antd";
-import { FormInstance } from "antd";
 import {
   ExperimentOutlined,
   HolderOutlined,
@@ -49,7 +48,6 @@ const { Text } = Typography;
 const DEFAULT_PREFIX = "Immunohistochemical staining reveals:";
 
 interface IHCResultPanelProps {
-  form: FormInstance;
   specimenId: number;
   isLocked: boolean;
 }
@@ -300,10 +298,10 @@ const SortableMarkerRow: React.FC<SortableMarkerRowProps> = ({
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 const IHCResultPanel: React.FC<IHCResultPanelProps> = ({
-  form,
   specimenId,
   isLocked,
 }) => {
+  const form = Form.useFormInstance();
   const { user, updateUser } = useAuth();
   const [panel, setPanel] = useState<IHCMarkerWithResult[]>([]);
   const [loading, setLoading] = useState(true);

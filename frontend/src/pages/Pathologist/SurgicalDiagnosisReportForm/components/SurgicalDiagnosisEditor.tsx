@@ -355,7 +355,6 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
 
                 {/* Position A: IHC Result Panel */}
                 <IHCResultPanel
-                  form={form}
                   specimenId={specimen.id}
                   isLocked={isLocked}
                 />
