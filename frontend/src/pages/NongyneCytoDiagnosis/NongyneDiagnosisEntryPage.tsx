@@ -69,6 +69,7 @@ import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
+import { toPathologistOptions } from "../../utils/pathologistOptions";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -1243,10 +1244,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                   onSuccess={() => setConsultHistoryKey((k) => k + 1)}
                   caseType="nongyne"
                   reportId={activeReportId}
-                  pathologists={allUsers.map((u) => ({
-                    value: u.id,
-                    label: u.full_name ?? u.username ?? String(u.id),
-                  }))}
+                  pathologists={toPathologistOptions(allUsers)}
                 />
               </>
             )}
