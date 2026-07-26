@@ -40,7 +40,7 @@ import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
 import NotificationRuleService from "../../services/notificationRuleService";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
-import GynePathologistDiagnosisManager from "./components/GynePathologistDiagnosisManager";
+import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/PathologistDiagnosisManager";
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
@@ -1141,7 +1141,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
             />
 
             {/* ── Signers ── */}
-            <GynePathologistDiagnosisManager
+            <PathologistDiagnosisManager
               pathologists={pathologists}
               defaultSigners={defaultSigners}
               isLocked={isEditorLocked}
