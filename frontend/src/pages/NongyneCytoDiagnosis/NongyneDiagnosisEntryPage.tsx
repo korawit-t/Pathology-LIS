@@ -39,6 +39,7 @@ import {
   EditOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import type { UserRole } from "../../constants/roles.constants";
 
 import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
@@ -50,7 +51,7 @@ import NongyneCaseImageService, {
 } from "../../services/nongyneCaseImageService";
 import { API_BASE_URL } from "../../services/httpClient";
 import UserService from "../../services/userService";
-import { NongyneDiagnosisResponse } from "../../types/nongyneDiagnosis";
+import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
@@ -78,6 +79,22 @@ interface NongyneDiagnosisEntryPageProps {
   caseId?: string | number;
   onBack?: () => void;
 }
+
+// Form values for onFinish: the case-level fields (saved via
+// NongyneCytologyCaseService.update) plus everything NongyneDiagnosisUpdate
+// covers (saved via NongyneDiagnosisService.update/create) — the form mixes
+// both onto one antd <Form>, so onFinish receives the union. Kept local
+// (not imported from the Pathologist sibling, which has its own identical
+// definition) — page-local shapes like this aren't centralized elsewhere in
+// this codebase either.
+type NongyneOnFinishValues = NongyneDiagnosisUpdate & {
+  clinical_history?: string | null;
+  specimen_type?: string;
+  collection_site?: string | null;
+  received_volume_ml?: string | null;
+  has_malignancy?: boolean;
+  has_critical?: boolean;
+};
 
 const CASE_STATUS_CONFIG: Record<
   string,
@@ -159,7 +176,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   >(null);
   const [slideDispatchEnabled, setSlideDispatchEnabled] = useState(true);
 
-  const PATHO_ROLES: import("../../constants/roles.constants").UserRole[] = [
+  const PATHO_ROLES: UserRole[] = [
     "pathologist",
     "senior_pathologist",
   ];
@@ -270,10 +287,10 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
     fetchImages();
     NongyneReportService.getReportsByCase(Number(caseId))
       .then((reports) => {
-        const active = reports.find((r: any) =>
+        const active = reports.find((r) =>
           ["pending_approval", "published"].includes(r.status),
         );
-        setActiveReportId((active as any)?.id ?? null);
+        setActiveReportId(active?.id ?? null);
       })
       .catch((e) => logger.error(e));
   }, [caseId]);
@@ -320,7 +337,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const isFormMode = !diagnosis || !isFinalized;
   const isFormLocked = isFinalized;
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: NongyneOnFinishValues) => {
     try {
       setSubmitting(true);
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
