@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -9,21 +9,22 @@ import {
   Col,
   Popconfirm,
   message,
-  Upload,
   Space,
   Divider,
 } from "antd";
-import type { UploadFile, UploadProps } from "antd";
+import type { UploadFile } from "antd";
 import {
   PrinterOutlined,
   DeleteOutlined,
   CloseCircleOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import debounce from "lodash/debounce";
+import { usePatientSearch } from "../../../../hooks/usePatientSearch";
+import { useCaseFileUpload } from "../../../../hooks/useCaseFileUpload";
+import { useCaseLifecycleActions } from "../../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../../utils/caseMasterData";
+import { importHisPatient } from "../../../../utils/hisPatientImport";
 import PatientFormModal from "../../../../components/PatientFormModal";
 import HisPatientSearchModal from "../HisPatientSearchModal";
 import type { HisPatientResult } from "../../../../services/hisService";
@@ -33,7 +34,6 @@ import RequestDocumentsUpload from "../../../../components/FormParts/RequestDocu
 import SurgicalCaseFormFields from "./SurgicalCaseFormFields";
 // Services
 import SurgicalCaseService from "../../../../services/surgicalCaseService";
-import PatientService from "../../../../services/patientService";
 import HospitalService from "../../../../services/hospitalService";
 import DepartmentService from "../../../../services/departmentService";
 import MedicalSchemeService from "../../../../services/medicalSchemeService";
@@ -42,7 +42,6 @@ import UserService from "../../../../services/userService";
 // Constants & Types
 import {
   SurgicalCase,
-  RequestFile,
   SurgicalCaseCreatePayload,
 } from "../../../../types/surgical";
 import type { Patient } from "../../../../types/patient";
@@ -53,17 +52,12 @@ import type { MedicalScheme } from "../../../../types/medicalScheme";
 import type { User } from "../../../../types/user";
 import PrintPreviewModal from "../PrintPreviewModal";
 import logger from "../../../../utils/logger";
+import { getErrorDetail } from "../../../../utils/errorHandler";
+import type { CaseFormModalProps } from "../../../../types/caseFormModal";
 
 const { Option } = Select;
 
-
-interface SurgicalCaseFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: SurgicalCase | null) => void;
-  onRefresh?: () => void;
-}
+type SurgicalCaseFormModalProps = CaseFormModalProps<SurgicalCase>;
 
 const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   open,
@@ -77,13 +71,19 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   const pendingResetRef = React.useRef(false);
 
   // Master Data States
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [pathologists, setPathologists] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch(form, hospitals);
 
   // State ควบคุม Modal Patient
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
@@ -91,9 +91,29 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [caseData, setCaseData] = useState<SurgicalCase | null>(null);
 
-  // File Upload States
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  // File Upload
+  const {
+    fileList,
+    setFileList,
+    isUploading,
+    uploadProps,
+    handleConfirmDownload,
+    handleConfirmDeleteFile,
+    flushPendingUploads,
+    toUploadFileList,
+  } = useCaseFileUpload(SurgicalCaseService, editingId);
+  const { handleDelete, handleCancel } = useCaseLifecycleActions(
+    editingId,
+    SurgicalCaseService.deleteCase,
+    (id, reason) => SurgicalCaseService.cancelCase(id, { reason }),
+    {
+      title: "Cancel this case?",
+      prompt: "Per ISO 15189, please provide a reason for cancellation:",
+      placeholder: "e.g. Wrong HN entered, hospital change, other...",
+    },
+    onSuccess,
+    setLoading,
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
@@ -101,23 +121,22 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   // 1. Fetch Master Data เมื่อเปิด Modal ครั้งแรก
   useEffect(() => {
     const fetchMasterData = async () => {
-      try {
-        const [hospitals, departments, schemes, pathologists, titles] =
-          await Promise.all([
-            HospitalService.getHospitals(),
-            DepartmentService.getDepartments(true),
-            MedicalSchemeService.getSchemes(),
-            UserService.getUsers({ role: "pathologist" }),
-            TitleService.getTitles(),
-          ]);
-        setHospitals(hospitals);
-        setDepartments(departments);
-        setSchemes(schemes);
-        setPathologists(pathologists);
-        setTitles(titles);
-      } catch (err) {
-        message.error("Failed to load reference data");
-      }
+      const result = await loadMasterData(() =>
+        Promise.all([
+          HospitalService.getHospitals(),
+          DepartmentService.getDepartments(true),
+          MedicalSchemeService.getSchemes(),
+          UserService.getUsers({ role: "pathologist" }),
+          TitleService.getTitles(),
+        ]),
+      );
+      if (!result) return;
+      const [hospitals, departments, schemes, pathologists, titles] = result;
+      setHospitals(hospitals);
+      setDepartments(departments);
+      setSchemes(schemes);
+      setPathologists(pathologists);
+      setTitles(titles);
     };
 
     if (open) {
@@ -151,19 +170,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
 
       if (data.patient) setPatients([data.patient as Patient]);
 
-      if (data.request_files) {
-        setFileList(
-          data.request_files.map((file: RequestFile) => ({
-            uid: String(file.id),
-            name: file.file_name,
-            status: "done",
-            url: file.file_path, // Could be used if serving directly via URL
-            type: file.file_type,
-          })),
-        );
-      } else {
-        setFileList([]);
-      }
+      setFileList(toUploadFileList(data.request_files));
 
       // 🌟 ปรับปรุงการ Mapping ข้อมูลก่อนเข้า Form
       form.setFieldsValue({
@@ -184,172 +191,22 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     }
   };
 
-  // 3. Search Patient Logic
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]); // ล้างข้อมูลเมื่อคำค้นหาสั้นเกินไป
-          return;
-        }
-        setIsSearching(true);
-        try {
-          const patients = await PatientService.getPatients(value);
-          setPatients(patients);
-        } catch (err) {
-          logger.error("Search Patient Error:", err);
-          setPatients([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    // 1. เพิ่มคนไข้ใหม่เข้าไปใน List เพื่อให้ Select หาเจอ
-    setPatients((prev) => [newPatient, ...prev]);
-
-    // 2. ตั้งค่าให้ Form เลือกคนใหม่นี้ทันที
-    form.setFieldsValue({
-      patient_id: newPatient.id,
-    });
-
-    message.success(
-      `Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`,
-    );
-    setIsPatientModalOpen(false);
-  };
-
   // Handle patient selection from HIS modal
   const handleHisPatientSelect = async (record: HisPatientResult) => {
     setIsHisModalOpen(false);
     try {
-      // Map HOSxP gender code: 1=ชาย(male), 2=หญิง(female)
-      let gender: string | undefined;
-      if (record.gender_code === 1) gender = "Male";
-      else if (record.gender_code === 2) gender = "Female";
-
-      // HIS sends fname (first name) and lname (last name) separately
-      const firstName = record.fname?.trim() || "";
-      const lastName = record.lname?.trim() || "";
-      let patient: Patient | null = null;
-
-      // 1. Find by CID (most reliable)
-      if (record.cid && record.cid.trim()) {
-        const existingPatients = await PatientService.getPatients(record.cid);
-        patient = existingPatients.find((p) => p.cid === record.cid);
-      }
-
-      // 2. Find by first name + last name match
-      if (!patient && firstName) {
-        const existingPatients = await PatientService.getPatients(firstName);
-        patient = existingPatients.find(
-          (p) => p.name === firstName && (p.ln || "") === lastName,
-        );
-      }
-
-      const pnameClean = (record.pname || "").trim();
-      let matchedTitle = pnameClean
-        ? titles.find((t) => (t.title || "").trim() === pnameClean)
-        : undefined;
-
-      if (pnameClean && !matchedTitle) {
-        try {
-          const created = await TitleService.createTitle({ title: pnameClean });
-          matchedTitle = created;
-          setTitles((prev) => [...prev, created]);
-          message.info(`เพิ่มคำนำหน้าใหม่: ${created.title}`);
-        } catch {
-          /* ไม่มีสิทธิ์สร้าง — ปล่อยผ่าน */
-        }
-      }
-
-      // 3. Create new patient with split name fields
-      if (!patient) {
-        patient = await PatientService.createPatient({
-          title_id: matchedTitle?.id || undefined,
-          name: firstName,
-          ln: lastName || undefined,
-          gender: gender,
-          cid: record.cid || undefined,
-          birth_date: record.birthday
-            ? record.birthday.split(" ")[0]
-            : undefined,
+      const { patient, matchedHospitalId, matchedDepartmentId, matchedSchemeId, collectAt } =
+        await importHisPatient(record, {
+          titles,
+          schemes,
+          departments,
+          hospitals,
+          setTitles,
+          setSchemes,
+          setDepartments,
+          setPatients,
+          backfillExistingPatientTitle: true,
         });
-        message.success(`New patient created: ${firstName} ${lastName}`.trim());
-      } else if (!patient.title_id && matchedTitle) {
-        // Backfill title for existing patient registered without one
-        await PatientService.updatePatient(patient.id, {
-          title_id: matchedTitle.id,
-        });
-        patient = { ...patient, title_id: matchedTitle.id };
-      }
-
-      // Set patient in the list so the Select can find it
-      setPatients((prev) => {
-        const exists = prev.find((p) => p.id === patient.id);
-        return exists ? prev : [patient, ...prev];
-      });
-
-      // Parse order_date for collect_at
-      const collectAt = record.order_date
-        ? dayjs(record.order_date)
-        : undefined;
-
-      // Auto-match or create medical scheme from HIS pttype text
-      let matchedSchemeId: number | undefined;
-      if (record.pttype?.trim()) {
-        const pt = record.pttype.trim().toLowerCase();
-        const existing = schemes.find(
-          (s) =>
-            s.name?.toLowerCase() === pt ||
-            s.name?.toLowerCase().includes(pt) ||
-            pt.includes(s.name?.toLowerCase() ?? ""),
-        );
-        if (existing) {
-          matchedSchemeId = existing.id;
-        } else {
-          try {
-            const created = await MedicalSchemeService.createScheme({
-              name: record.pttype.trim(),
-            });
-            matchedSchemeId = created.id;
-            setSchemes((prev) => [...prev, created]);
-            message.info(`เพิ่มสิทธิ์การรักษาใหม่: ${created.name}`);
-          } catch {
-            /* ไม่มีสิทธิ์สร้าง */
-          }
-        }
-      }
-
-      // Match hospital — HIS is connected to one institution so default to first
-      const matchedHospitalId = hospitals[0]?.id;
-
-      // Match department by name (bidirectional substring + trim to handle whitespace from HIS)
-      let matchedDepartmentId: number | undefined;
-      if (record.department?.trim()) {
-        const existing = departments.find((d) => {
-          const dn = d.name?.toLowerCase().trim() ?? "";
-          const rn = record.department!.toLowerCase().trim();
-          return dn === rn || dn.includes(rn) || rn.includes(dn);
-        });
-        if (existing) {
-          matchedDepartmentId = existing.id;
-        } else {
-          try {
-            const created = await DepartmentService.createDepartment({
-              name: record.department.trim(),
-              is_active: true,
-            });
-            matchedDepartmentId = created.id;
-            setDepartments((prev) => [...prev, created]);
-            message.info(`New department added: ${created.name}`);
-          } catch {
-            // No permission to create department — leave field blank
-          }
-        }
-      }
 
       // Auto-fill form fields
       form.setFieldsValue({
@@ -366,31 +223,13 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
       });
 
       message.success("HIS data imported successfully");
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("HIS patient select error:", err);
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
       message.error(
         "Failed to import HIS data: " +
-          (err.response?.data?.detail || err.message || "Unknown error"),
+          (axiosErr.response?.data?.detail || axiosErr.message || "Unknown error"),
       );
-    }
-  };
-
-  // 4. HN Auto-fill Logic
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
     }
   };
 
@@ -434,22 +273,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         );
 
         // Upload any queued files now that we have a case ID
-        const pendingFiles = fileList.filter((f) => f.originFileObj);
-        if (pendingFiles.length > 0) {
-          const newCaseId = savedResult.id;
-          await Promise.allSettled(
-            pendingFiles.map((pf) =>
-              SurgicalCaseService.uploadRequestFile(
-                newCaseId,
-                pf.originFileObj as File,
-              ).catch(() => {
-                message.warning(
-                  `Failed to upload "${pf.name}". Please retry in edit mode.`,
-                );
-              }),
-            ),
-          );
-        }
+        await flushPendingUploads(savedResult.id);
 
         message.success("Case registered successfully");
       }
@@ -457,12 +281,10 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
       // 3. ส่งข้อมูลที่ได้จาก Backend (ซึ่งมี ID และ Accession No) กลับไปที่หน้า Manager
       // เนื่องจาก SurgicalCaseService ของคุณ return res.data มาให้แล้ว
       onSuccess(savedResult ?? null);
-    } catch (err: any) {
-      logger.error("Backend Error:", err.response?.data?.detail);
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      logger.error("Backend Error:", detail);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
@@ -491,52 +313,22 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         is_slide_prepped: false,
         is_reported: false,
         collect_at: values.collect_at
-          ? (values.collect_at as any).toISOString()
+          ? (values.collect_at as Dayjs).toISOString()
           : null,
       };
       const saved = await SurgicalCaseService.createCase(
         formattedValues as unknown as SurgicalCaseCreatePayload,
       );
-      const pendingFiles = fileList.filter((f) => f.originFileObj);
-      if (pendingFiles.length > 0) {
-        await Promise.allSettled(
-          pendingFiles.map((pf) =>
-            SurgicalCaseService.uploadRequestFile(
-              saved.id,
-              pf.originFileObj as File,
-            ).catch(() => {
-              message.warning(`Failed to upload "${pf.name}"`);
-            }),
-          ),
-        );
-      }
+      await flushPendingUploads(saved.id);
       message.success(`ลงทะเบียนสำเร็จ (${saved.accession_no})`);
       onRefresh?.();
       setCaseData(saved);
       setFileList([]);
       pendingResetRef.current = true;
       setIsPrintModalOpen(true);
-    } catch (err: any) {
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    try {
-      await SurgicalCaseService.deleteCase(editingId);
-      message.success("Case deleted successfully");
-
-      // 🌟 ส่ง null กลับไปเพื่อบอกหน้าหลักว่า "เคสนี้ไม่มีตัวตนแล้ว"
-      onSuccess(null);
-    } catch (err) {
-      message.error("Failed to delete case");
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
@@ -567,163 +359,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     } catch (err) {
       message.error("Failed to open file");
     }
-  };
-
-  // --- Confirm Download ---
-  const handleConfirmDownload = (file: UploadFile) => {
-    Modal.confirm({
-      title: "Download File",
-      icon: <DownloadOutlined style={{ color: "#1890ff" }} />,
-      content: `Download "${file.name}"?`,
-      okText: "Download",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await SurgicalCaseService.downloadRequestFile(
-            Number(file.uid),
-            file.name,
-          );
-          message.success("File downloaded successfully");
-        } catch (err) {
-          message.error("Failed to download file");
-        }
-      },
-    });
-  };
-
-  // --- Confirm Delete ---
-  const handleConfirmDeleteFile = (file: UploadFile) => {
-    if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-")) {
-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-      return;
-    }
-    Modal.confirm({
-      title: "Delete File",
-      icon: <ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: `Delete "${file.name}"? This cannot be undone.`,
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await SurgicalCaseService.deleteRequestFile(Number(file.uid));
-          message.success("File deleted");
-          setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-        } catch (error) {
-          message.error("Failed to delete file");
-        }
-      },
-    });
-  };
-
-  const handleUploadRequest = async (options: {
-    file: File;
-    onSuccess: (res: string) => void;
-    onError: (err: { err: unknown }) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    if (!editingId) {
-      message.warning("Please save the case before uploading files");
-      onError({ err: new Error("Case not created yet") });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const res = await SurgicalCaseService.uploadRequestFile(
-        editingId,
-        file as File,
-      );
-      const newFile: UploadFile = {
-        uid: String(res.file_id),
-        name: file.name,
-        status: "done",
-        type: file.type,
-      };
-      setFileList((prev) => [...prev, newFile]);
-      onSuccess("ok");
-      message.success(`${file.name} uploaded successfully`);
-    } catch (err) {
-      onError({ err });
-      message.error(`Failed to upload ${file.name}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadProps: UploadProps = {
-    customRequest:
-      handleUploadRequest as unknown as UploadProps["customRequest"],
-    onRemove: () => false,
-    fileList,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error("File must be smaller than 10MB");
-        return Upload.LIST_IGNORE;
-      }
-      if (!editingId) {
-        // Queue locally — will upload after case is created
-        setFileList((prev) => [
-          ...prev,
-          {
-            uid: `pending-${crypto.randomUUID()}`,
-            name: file.name,
-            status: "done",
-            type: file.type,
-            originFileObj: file as any,
-          },
-        ]);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
-  };
-
-  const handleCancel = () => {
-    let cancelReason = "";
-
-    Modal.confirm({
-      title: "Cancel this case?",
-      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: (
-        <div style={{ marginTop: 16 }}>
-          <p>Per ISO 15189, please provide a reason for cancellation:</p>
-          <Input.TextArea
-            rows={3}
-            placeholder="e.g. Wrong HN entered, hospital change, other..."
-            onChange={(e) => (cancelReason = e.target.value)}
-          />
-        </div>
-      ),
-      okText: "Confirm Cancel",
-      okType: "danger",
-      cancelText: "Close",
-      onOk: async () => {
-        if (!cancelReason.trim()) {
-          message.warning("Please provide a reason before cancelling");
-          return Promise.reject();
-        }
-
-        try {
-          setLoading(true);
-          await SurgicalCaseService.cancelCase(editingId!, {
-            reason: cancelReason,
-          });
-
-          message.success("Case cancelled and logged");
-
-          onSuccess(null);
-        } catch (error: any) {
-          const errorMsg =
-            error.response?.data?.detail || "Failed to cancel case";
-          message.error(errorMsg);
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
   };
 
   return (

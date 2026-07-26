@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -9,19 +9,23 @@ import {
   Col,
   Space,
   Popconfirm,
-  Upload,
   message,
   Divider,
   Checkbox,
 } from "antd";
-import type { UploadFile, UploadProps } from "antd";
+import type { UploadFile } from "antd";
 import {
   DeleteOutlined,
   CloseCircleOutlined,
   FireOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import debounce from "lodash/debounce";
+import type { Dayjs } from "dayjs";
+import { usePatientSearch } from "../../../hooks/usePatientSearch";
+import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
+import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../utils/caseMasterData";
+import { importHisPatient } from "../../../utils/hisPatientImport";
 import PatientFormModal from "../../../components/PatientFormModal";
 import HisPatientSearchModal from "../../SurgicalCase/components/HisPatientSearchModal";
 import NongynePrintPreviewModal from "./NongynePrintPreviewModal";
@@ -34,30 +38,23 @@ import SpecimenTemplateService from "../../../services/specimenTemplateService";
 import type { SpecimenTemplate } from "../../../services/specimenTemplateService";
 
 import NongyneCytologyCaseService from "../../../services/nongyneCytoCaseService";
-import type { RequestFile } from "../../../types/surgical";
-import PatientService from "../../../services/patientService";
 import HospitalService from "../../../services/hospitalService";
 import DepartmentService from "../../../services/departmentService";
 import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import logger from "../../../utils/logger";
-import { NongyneCytologyCase, PatientRef } from "../../../types/nongyne";
-import type { Patient } from "../../../types/patient";
+import { getErrorDetail } from "../../../utils/errorHandler";
+import { NongyneCytologyCase, NongyneCytologyCaseCreate, PatientRef } from "../../../types/nongyne";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
 import type { MedicalScheme } from "../../../types/medicalScheme";
 import type { User } from "../../../types/user";
+import type { CaseFormModalProps } from "../../../types/caseFormModal";
 
 const { Option } = Select;
 
-interface NongyneCaseFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: NongyneCytologyCase | null) => void;
-  onRefresh?: () => void;
-}
+type NongyneCaseFormModalProps = CaseFormModalProps<NongyneCytologyCase>;
 
 const DEFAULT_SPECIMEN_TYPES: SpecimenTemplate[] = [
   "Fluid",
@@ -91,21 +88,47 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     useState<NongyneCytologyCase | null>(null);
   const pendingResetRef = React.useRef(false);
 
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const {
+    fileList,
+    setFileList,
+    isUploading,
+    uploadProps,
+    handleConfirmDownload,
+    handleConfirmDeleteFile,
+    flushPendingUploads,
+    toUploadFileList,
+  } = useCaseFileUpload(NongyneCytologyCaseService, editingId);
+  const { handleDelete, handleCancel } = useCaseLifecycleActions(
+    editingId,
+    NongyneCytologyCaseService.delete,
+    NongyneCytologyCaseService.cancel,
+    {
+      title: "Confirm case cancellation?",
+      prompt: "Please provide a reason for cancellation:",
+      placeholder: "e.g. Wrong HN, Changed hospital, Other...",
+    },
+    onSuccess,
+    setLoading,
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
 
   // Master Data States
-  const [patients, setPatients] = useState<(Patient | PatientRef)[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [cytotechnologists, setCytotechnologists] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch<PatientRef>(form, hospitals);
   const [specimenTypes, setSpecimenTypes] = useState<SpecimenTemplate[]>(
     DEFAULT_SPECIMEN_TYPES,
   );
@@ -116,16 +139,8 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
 
   useEffect(() => {
     const fetchMasterData = async () => {
-      try {
-        const [
-          hospitals,
-          departments,
-          schemes,
-          pathologists,
-          cytos,
-          titles,
-          specimenTypes,
-        ] = await Promise.all([
+      const result = await loadMasterData(() =>
+        Promise.all([
           HospitalService.getHospitals(),
           DepartmentService.getDepartments(true),
           MedicalSchemeService.getSchemes(),
@@ -133,17 +148,17 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
           UserService.getUsers({ role: "cytotechnologist" }),
           TitleService.getTitles(),
           SpecimenTemplateService.getTemplates("nongyne_cyto"),
-        ]);
-        setHospitals(hospitals);
-        setDepartments(departments);
-        setSchemes(schemes);
-        setPathologists(pathologists);
-        setCytotechnologists(cytos);
-        setTitles(titles);
-        if (specimenTypes.length) setSpecimenTypes(specimenTypes);
-      } catch (err) {
-        message.error("Failed to load reference data");
-      }
+        ]),
+      );
+      if (!result) return;
+      const [hospitals, departments, schemes, pathologists, cytos, titles, specimenTypes] = result;
+      setHospitals(hospitals);
+      setDepartments(departments);
+      setSchemes(schemes);
+      setPathologists(pathologists);
+      setCytotechnologists(cytos);
+      setTitles(titles);
+      if (specimenTypes.length) setSpecimenTypes(specimenTypes);
     };
 
     if (open) {
@@ -164,16 +179,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       const data = await NongyneCytologyCaseService.getById(editingId!);
 
       if (data.patient) setPatients([data.patient]);
-      if (data.request_files) {
-        setFileList(
-          data.request_files.map((f: RequestFile) => ({
-            uid: String(f.id),
-            name: f.file_name,
-            status: "done" as const,
-            type: f.file_type,
-          })),
-        );
-      }
+      setFileList(toUploadFileList(data.request_files));
 
       form.setFieldsValue({
         ...data,
@@ -192,56 +198,6 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       message.error("Failed to load case data");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]);
-          return;
-        }
-        setIsSearching(true);
-        try {
-          const patients = await PatientService.getPatients(value);
-          setPatients(patients);
-        } catch (err) {
-          logger.error("Search Patient Error:", err);
-          setPatients([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    form.setFieldsValue({
-      patient_id: newPatient.id,
-    });
-    message.success(
-      `Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`,
-    );
-    setIsPatientModalOpen(false);
-  };
-
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
     }
   };
 
@@ -264,120 +220,16 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     }
   };
 
-  const handleConfirmDownload = (file: UploadFile) => {
-    Modal.confirm({
-      title: "Download File",
-      content: `Download "${file.name}"?`,
-      okText: "Download",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await NongyneCytologyCaseService.downloadRequestFile(
-            Number(file.uid),
-            file.name,
-          );
-          message.success("File downloaded successfully");
-        } catch {
-          message.error("Failed to download file");
-        }
-      },
-    });
-  };
-
-  const handleConfirmDeleteFile = (file: UploadFile) => {
-    if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-")) {
-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-      return;
-    }
-    Modal.confirm({
-      title: "Delete File",
-      content: `Delete "${file.name}"? This cannot be undone.`,
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await NongyneCytologyCaseService.deleteRequestFile(Number(file.uid));
-          message.success("File deleted");
-          setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-        } catch {
-          message.error("Failed to delete file");
-        }
-      },
-    });
-  };
-
-  const handleUploadRequest = async (options: {
-    file: File;
-    onSuccess: (res: string) => void;
-    onError: (err: { err: unknown }) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    if (!editingId) {
-      message.warning("Please save the case before uploading files");
-      onError({ err: new Error("Case not created yet") });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const res = await NongyneCytologyCaseService.uploadRequestFile(
-        editingId,
-        file,
-      );
-      const newFile: UploadFile = {
-        uid: String(res.file_id),
-        name: file.name,
-        status: "done",
-        type: file.type,
-      };
-      setFileList((prev) => [...prev, newFile]);
-      onSuccess("ok");
-      message.success(`${file.name} uploaded successfully`);
-    } catch (err) {
-      onError({ err });
-      message.error(`Failed to upload ${file.name}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadProps: UploadProps = {
-    customRequest:
-      handleUploadRequest as unknown as UploadProps["customRequest"],
-    onRemove: () => false,
-    fileList,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error("File must be smaller than 10MB");
-        return Upload.LIST_IGNORE;
-      }
-      if (!editingId) {
-        setFileList((prev) => [
-          ...prev,
-          {
-            uid: `pending-${Date.now()}`,
-            name: file.name,
-            status: "done",
-            type: file.type,
-            originFileObj: file as any,
-          },
-        ]);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
-  };
-
   // For specimen types configured with requires_slide_count /
   // requires_volume, warn (but don't block) when the corresponding field was
   // left blank — resolves true if it's fine to proceed, false if the user
   // backed out to go fill it in.
-  const confirmRegistrationWarnings = (values: any): Promise<boolean> => {
+  const confirmRegistrationWarnings = (
+    values: Record<string, unknown>,
+  ): Promise<boolean> => {
     if (editingId) return Promise.resolve(true);
-    const match = specimenTypes.find((s) => s.name === values.specimen_type);
+    const specimenType = values.specimen_type as string | undefined;
+    const match = specimenTypes.find((s) => s.name === specimenType);
     if (!match) return Promise.resolve(true);
 
     const missing: string[] = [];
@@ -392,7 +244,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     return new Promise((resolve) => {
       Modal.confirm({
         title: "Some Fields Not Specified",
-        content: `"${values.specimen_type}" usually needs: ${missing.join(", ")}. Continue with the default anyway?`,
+        content: `"${specimenType}" usually needs: ${missing.join(", ")}. Continue with the default anyway?`,
         okText: "Continue",
         cancelText: "Go Back",
         onOk: () => resolve(true),
@@ -401,13 +253,15 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     });
   };
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: Record<string, unknown>) => {
     if (!(await confirmRegistrationWarnings(values))) return;
     setLoading(true);
     try {
       const formattedValues = {
         ...values,
-        collect_at: values.collect_at ? values.collect_at.toISOString() : null,
+        collect_at: values.collect_at
+          ? (values.collect_at as Dayjs).toISOString()
+          : null,
       };
 
       let savedResult;
@@ -418,24 +272,26 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
         );
         message.success("Case updated successfully");
       } else {
-        savedResult = await NongyneCytologyCaseService.create(formattedValues);
+        savedResult = await NongyneCytologyCaseService.create(
+          formattedValues as unknown as NongyneCytologyCaseCreate,
+        );
+        // Upload any queued files now that we have a case ID
+        await flushPendingUploads(savedResult.id);
         message.success("Case registered successfully");
       }
 
       onSuccess(savedResult ?? null);
-    } catch (err: any) {
-      logger.error("Backend Error:", err.response?.data?.detail);
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      logger.error("Backend Error:", detail);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveAndNew = async () => {
-    let values: any;
+    let values: Record<string, unknown>;
     try {
       values = await form.validateFields();
     } catch {
@@ -446,79 +302,27 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     try {
       const formattedValues = {
         ...values,
-        collect_at: values.collect_at ? values.collect_at.toISOString() : null,
+        collect_at: values.collect_at
+          ? (values.collect_at as Dayjs).toISOString()
+          : null,
       };
-      const saved = await NongyneCytologyCaseService.create(formattedValues);
+      const saved = await NongyneCytologyCaseService.create(
+        formattedValues as unknown as NongyneCytologyCaseCreate,
+      );
+      await flushPendingUploads(saved.id);
       message.success(`ลงทะเบียนสำเร็จ (${saved.accession_no})`);
       onRefresh?.();
       setFileList([]);
       pendingResetRef.current = true;
       setSaveAndNewData(saved);
-    } catch (err: any) {
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    try {
-      await NongyneCytologyCaseService.delete(editingId);
-      message.success("Case deleted successfully");
-      onSuccess(null);
-    } catch (err) {
-      message.error("Failed to delete case");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = () => {
-    let cancelReason = "";
-
-    Modal.confirm({
-      title: "Confirm case cancellation?",
-      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: (
-        <div style={{ marginTop: 16 }}>
-          <p>Please provide a reason for cancellation:</p>
-          <Input.TextArea
-            rows={3}
-            placeholder="e.g. Wrong HN, Changed hospital, Other..."
-            onChange={(e) => (cancelReason = e.target.value)}
-          />
-        </div>
-      ),
-      okText: "Confirm Cancel",
-      okType: "danger",
-      cancelText: "Close",
-      onOk: async () => {
-        if (!cancelReason.trim()) {
-          message.warning("Please provide a reason before cancelling");
-          return Promise.reject();
-        }
-
-        try {
-          setLoading(true);
-          await NongyneCytologyCaseService.cancel(editingId!, cancelReason);
-
-          message.success("Case cancelled successfully");
-          onSuccess(null);
-        } catch (error: any) {
-          const errorMsg =
-            error.response?.data?.detail || "Failed to cancel case";
-          message.error(errorMsg);
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
-  };
 
   return (
     <>
@@ -734,98 +538,19 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
         onSelect={async (record: HisPatientResult) => {
           setIsHisModalOpen(false);
           try {
-            const firstName = record.fname?.trim() || "";
-            const lastName = record.lname?.trim() || "";
-            let patient: Patient | null = null;
-
-            if (record.cid && record.cid.trim()) {
-              const existing = await PatientService.getPatients(record.cid);
-              patient = existing.find((p) => p.cid === record.cid);
-            }
-            if (!patient && firstName) {
-              const existing = await PatientService.getPatients(firstName);
-              patient = existing.find(
-                (p) => p.name === firstName && (p.ln || "") === lastName,
-              );
-            }
-            if (!patient) {
-              let gender: string | undefined;
-              if (record.gender_code === 1) gender = "Male";
-              else if (record.gender_code === 2) gender = "Female";
-
-              const matchedTitle = titles.find(
-                (t) => record.pname && t.title === record.pname,
-              );
-              patient = await PatientService.createPatient({
-                title_id: matchedTitle?.id || undefined,
-                name: firstName,
-                ln: lastName || undefined,
-                gender,
-                cid: record.cid || undefined,
-                birth_date: record.birthday
-                  ? record.birthday.split(" ")[0]
-                  : undefined,
+            const { patient, matchedHospitalId, matchedDepartmentId, matchedSchemeId, collectAt } =
+              await importHisPatient<PatientRef>(record, {
+                titles,
+                schemes,
+                departments,
+                hospitals,
+                setTitles,
+                setSchemes,
+                setDepartments,
+                setPatients,
+                backfillExistingPatientTitle: true,
               });
-              message.success(
-                `New patient created: ${firstName} ${lastName}`.trim(),
-              );
-            }
 
-            setPatients((prev) => {
-              const exists = prev.find((p) => p.id === patient.id);
-              return exists ? prev : [patient, ...prev];
-            });
-
-            const matchedHospitalId = hospitals[0]?.id;
-
-            let matchedDepartmentId: number | undefined;
-            if (record.department?.trim()) {
-              const existing = departments.find((d) => {
-                const dn = d.name?.toLowerCase().trim() ?? "";
-                const rn = record.department!.toLowerCase().trim();
-                return dn === rn || dn.includes(rn) || rn.includes(dn);
-              });
-              if (existing) {
-                matchedDepartmentId = existing.id;
-              } else {
-                const created = await DepartmentService.createDepartment({
-                  name: record.department.trim(),
-                  is_active: true,
-                });
-                matchedDepartmentId = created.id;
-                setDepartments((prev) => [...prev, created]);
-                message.info(`New department added: ${created.name}`);
-              }
-            }
-
-            let matchedSchemeId: number | undefined;
-            if (record.pttype?.trim()) {
-              const pt = record.pttype.trim().toLowerCase();
-              const existing = schemes.find(
-                (s) =>
-                  s.name?.toLowerCase() === pt ||
-                  s.name?.toLowerCase().includes(pt) ||
-                  pt.includes(s.name?.toLowerCase() ?? ""),
-              );
-              if (existing) {
-                matchedSchemeId = existing.id;
-              } else {
-                try {
-                  const created = await MedicalSchemeService.createScheme({
-                    name: record.pttype.trim(),
-                  });
-                  matchedSchemeId = created.id;
-                  setSchemes((prev) => [...prev, created]);
-                  message.info(`เพิ่มสิทธิ์การรักษาใหม่: ${created.name}`);
-                } catch {
-                  /* ไม่มีสิทธิ์สร้าง */
-                }
-              }
-            }
-
-            const dayObj = record.order_date
-              ? dayjs(record.order_date)
-              : undefined;
             form.setFieldsValue({
               patient_id: patient.id,
               hn: record.hn || undefined,
@@ -833,12 +558,17 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
               department_id: matchedDepartmentId,
               medical_scheme_id: matchedSchemeId,
               clinician_name: record.doctor || undefined,
-              collect_at: dayObj?.isValid() ? dayObj : undefined,
+              collect_at: collectAt?.isValid() ? collectAt : undefined,
               lab_number: record.lab_order_number || undefined,
             });
             message.success("HIS data imported successfully");
-          } catch (err: any) {
-            message.error("Failed to import HIS data: " + (err.message || ""));
+          } catch (err: unknown) {
+            logger.error("HIS patient select error:", err);
+            const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+            message.error(
+              "Failed to import HIS data: " +
+                (axiosErr.response?.data?.detail || axiosErr.message || ""),
+            );
           }
         }}
       />

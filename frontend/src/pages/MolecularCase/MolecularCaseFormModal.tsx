@@ -3,6 +3,9 @@ import { Modal, Form, Select, Input, DatePicker, Segmented, message, Spin, Row, 
 import debounce from "lodash/debounce";
 import dayjs from "dayjs";
 
+import { usePatientSearch } from "../../hooks/usePatientSearch";
+import { importHisPatient } from "../../utils/hisPatientImport";
+import { formatPatientName } from "../../utils/patientName";
 import PatientFormModal from "../../components/PatientFormModal";
 import HisPatientSearchModal from "../SurgicalCase/components/HisPatientSearchModal";
 import type { HisPatientResult } from "../../services/hisService";
@@ -11,7 +14,6 @@ import HospitalService from "../../services/hospitalService";
 import DepartmentService from "../../services/departmentService";
 import MedicalSchemeService from "../../services/medicalSchemeService";
 import TitleService from "../../services/titleService";
-import PatientService from "../../services/patientService";
 import UserService from "../../services/userService";
 import SurgicalCaseService from "../../services/surgicalCaseService";
 import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
@@ -57,8 +59,14 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
   const [loadingCase, setLoadingCase] = useState(false);
 
   // --- "Standalone" mode ---
-  const [patients, setPatients] = useState<(Patient | MolecularCasePatientRef)[]>([]);
-  const [isPatientSearching, setIsPatientSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching: isPatientSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch<MolecularCasePatientRef>(form, hospitals);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isHisModalOpen, setIsHisModalOpen] = useState(false);
 
@@ -142,25 +150,6 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
     [],
   );
 
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]);
-          return;
-        }
-        setIsPatientSearching(true);
-        try {
-          setPatients(await PatientService.getPatients(value));
-        } catch {
-          setPatients([]);
-        } finally {
-          setIsPatientSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
   const handleSelectCase = async (caseId: number) => {
     setLoadingCase(true);
     form.setFieldsValue({ block_id: undefined });
@@ -185,116 +174,21 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
     );
   }, [selectedCase]);
 
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    form.setFieldsValue({ patient_id: newPatient.id });
-    message.success(`Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`);
-    setIsPatientModalOpen(false);
-  };
-
-  const handleSelectSpecificHN = (e: React.MouseEvent, hnItem: string, patientId: number) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({ patient_id: patientId, hn: hNumber, hospital_id: targetHospital?.id });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
-    }
-  };
-
   const handleHisPatientSelect = async (record: HisPatientResult) => {
     setIsHisModalOpen(false);
     try {
-      const firstName = record.fname?.trim() || "";
-      const lastName = record.lname?.trim() || "";
-      let patient: Patient | null = null;
-
-      if (record.cid && record.cid.trim()) {
-        const existing = await PatientService.getPatients(record.cid);
-        patient = existing.find((p) => p.cid === record.cid) || null;
-      }
-      if (!patient && firstName) {
-        const existing = await PatientService.getPatients(firstName);
-        patient = existing.find((p) => p.name === firstName && (p.ln || "") === lastName) || null;
-      }
-
-      const pnameClean = (record.pname || "").trim();
-      let matchedTitle = pnameClean ? titles.find((t) => (t.title || "").trim() === pnameClean) : undefined;
-      if (pnameClean && !matchedTitle) {
-        try {
-          const created = await TitleService.createTitle({ title: pnameClean });
-          matchedTitle = created;
-          setTitles((prev) => [...prev, created]);
-        } catch {
-          /* no permission to create title — leave blank */
-        }
-      }
-
-      if (!patient) {
-        let gender: string | undefined;
-        if (record.gender_code === 1) gender = "Male";
-        else if (record.gender_code === 2) gender = "Female";
-
-        patient = await PatientService.createPatient({
-          title_id: matchedTitle?.id || undefined,
-          name: firstName,
-          ln: lastName || undefined,
-          gender,
-          cid: record.cid || undefined,
-          birth_date: record.birthday ? record.birthday.split(" ")[0] : undefined,
+      const { patient, matchedHospitalId, matchedDepartmentId, matchedSchemeId, collectAt } =
+        await importHisPatient<MolecularCasePatientRef>(record, {
+          titles,
+          schemes,
+          departments,
+          hospitals,
+          setTitles,
+          setSchemes,
+          setDepartments,
+          setPatients,
+          backfillExistingPatientTitle: false,
         });
-        message.success(`New patient created: ${firstName} ${lastName}`.trim());
-      }
-
-      setPatients((prev) => {
-        const exists = prev.find((p) => p.id === patient!.id);
-        return exists ? prev : [patient!, ...prev];
-      });
-
-      const matchedHospitalId = hospitals[0]?.id;
-
-      let matchedDepartmentId: number | undefined;
-      if (record.department?.trim()) {
-        const existing = departments.find((d) => {
-          const dn = d.name?.toLowerCase().trim() ?? "";
-          const rn = record.department!.toLowerCase().trim();
-          return dn === rn || dn.includes(rn) || rn.includes(dn);
-        });
-        if (existing) {
-          matchedDepartmentId = existing.id;
-        } else {
-          try {
-            const created = await DepartmentService.createDepartment({ name: record.department.trim(), is_active: true });
-            matchedDepartmentId = created.id;
-            setDepartments((prev) => [...prev, created]);
-            message.info(`New department added: ${created.name}`);
-          } catch {
-            /* no permission to create department — leave blank */
-          }
-        }
-      }
-
-      let matchedSchemeId: number | undefined;
-      if (record.pttype?.trim()) {
-        const pt = record.pttype.trim().toLowerCase();
-        const existing = schemes.find(
-          (s) => s.name?.toLowerCase() === pt || s.name?.toLowerCase().includes(pt) || pt.includes(s.name?.toLowerCase() ?? ""),
-        );
-        if (existing) {
-          matchedSchemeId = existing.id;
-        } else {
-          try {
-            const created = await MedicalSchemeService.createScheme({ name: record.pttype.trim() });
-            matchedSchemeId = created.id;
-            setSchemes((prev) => [...prev, created]);
-            message.info(`New medical scheme added: ${created.name}`);
-          } catch {
-            /* no permission to create scheme — leave blank */
-          }
-        }
-      }
-
-      const collectAt = record.order_date ? dayjs(record.order_date) : undefined;
 
       form.setFieldsValue({
         patient_id: patient.id,
@@ -411,7 +305,7 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
                   onChange={handleSelectCase}
                   options={caseOptions.map((c) => ({
                     value: c.id,
-                    label: `${c.accession_no} — ${[c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || c.hn || ""}`,
+                    label: `${c.accession_no} — ${(c.patient ? formatPatientName(c.patient) : "") || c.hn || ""}`,
                   }))}
                 />
               </Form.Item>

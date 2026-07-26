@@ -1,23 +1,27 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
-  Input,
   Button,
   Row,
   Col,
   Checkbox,
   Space,
-  Upload,
   Select,
   message,
   Popconfirm,
   Divider,
 } from "antd";
-import type { UploadFile, UploadProps } from "antd";
+import type { UploadFile } from "antd";
 import { DeleteOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import debounce from "lodash/debounce";
+import type { Dayjs } from "dayjs";
+import { usePatientSearch } from "../../../hooks/usePatientSearch";
+import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
+import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../utils/caseMasterData";
+import { importHisPatient } from "../../../utils/hisPatientImport";
+import logger from "../../../utils/logger";
 
 // Components & Services
 import PatientFormModal from "../../../components/PatientFormModal";
@@ -27,30 +31,22 @@ import PatientSearchField from "../../../components/FormParts/PatientSearchField
 import RequestDocumentsUpload from "../../../components/FormParts/RequestDocumentsUpload";
 import GyneCytoFormFields from "./GyneCytoFormModal.fields";
 import type { HisPatientResult } from "../../../services/hisService";
-import PatientService from "../../../services/patientService";
 import HospitalService from "../../../services/hospitalService";
 import DepartmentService from "../../../services/departmentService";
 import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
-import type { RequestFile } from "../../../types/surgical";
 import TitleService from "../../../services/titleService";
 import SpecimenTemplateService from "../../../services/specimenTemplateService";
-import type { GyneCytologyCase } from "../../../types/gyne-cytology";
-import type { Patient } from "../../../types/patient";
+import type { GyneCytologyCase, GyneCytologyCaseCreate } from "../../../types/gyne-cytology";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
 import type { MedicalScheme } from "../../../types/medicalScheme";
 import type { User } from "../../../types/user";
+import type { CaseFormModalProps } from "../../../types/caseFormModal";
 
-interface GyneCytoFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: GyneCytologyCase | null) => void;
-  onRefresh?: () => void;
-}
+type GyneCytoFormModalProps = CaseFormModalProps<GyneCytologyCase>;
 
 const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   open,
@@ -65,20 +61,46 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     null,
   );
   const pendingResetRef = React.useRef(false);
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const {
+    fileList,
+    setFileList,
+    isUploading,
+    uploadProps,
+    handleConfirmDownload,
+    handleConfirmDeleteFile,
+    flushPendingUploads,
+    toUploadFileList,
+  } = useCaseFileUpload(GyneCytologyCaseService, editingId);
+  const { handleDelete, handleCancel } = useCaseLifecycleActions(
+    editingId,
+    GyneCytologyCaseService.delete,
+    GyneCytologyCaseService.cancel,
+    {
+      title: "Confirm case cancellation?",
+      prompt: "Please provide a reason for cancellation:",
+      placeholder: "e.g. Wrong HN, Changed hospital, Other...",
+    },
+    onSuccess,
+    setLoading,
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
 
   // Master Data
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [staffs, setStaffs] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch(form, hospitals);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isHisModalOpen, setIsHisModalOpen] = useState(false);
   const [gyneSpecimenTypes, setGyneSpecimenTypes] = useState<string[]>([
@@ -106,29 +128,31 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   }, [open, editingId]);
 
   const fetchMasterData = async () => {
-    try {
-      const [h, d, sc, u, t, specimenTypes] = await Promise.all([
-        HospitalService.getHospitals(),
-        DepartmentService.getDepartments(true),
-        MedicalSchemeService.getSchemes(),
-        UserService.getUsers(),
-        TitleService.getTitles(),
-        SpecimenTemplateService.getTemplates("gyne_cyto"),
-      ]);
-      setHospitals(h);
-      setDepartments(d);
-      setSchemes(sc);
-      setStaffs(u);
-      setTitles(t);
-      if (specimenTypes.length) {
-        const names = specimenTypes.map((s) => s.name);
-        setGyneSpecimenTypes(names);
-        if (!editingId && !form.getFieldValue("specimen_type")) {
-          form.setFieldValue("specimen_type", names[0]);
-        }
+    const result = await loadMasterData(
+      () =>
+        Promise.all([
+          HospitalService.getHospitals(),
+          DepartmentService.getDepartments(true),
+          MedicalSchemeService.getSchemes(),
+          UserService.getUsers(),
+          TitleService.getTitles(),
+          SpecimenTemplateService.getTemplates("gyne_cyto"),
+        ]),
+      "Failed to load master data",
+    );
+    if (!result) return;
+    const [h, d, sc, u, t, specimenTypes] = result;
+    setHospitals(h);
+    setDepartments(d);
+    setSchemes(sc);
+    setStaffs(u);
+    setTitles(t);
+    if (specimenTypes.length) {
+      const names = specimenTypes.map((s) => s.name);
+      setGyneSpecimenTypes(names);
+      if (!editingId && !form.getFieldValue("specimen_type")) {
+        form.setFieldValue("specimen_type", names[0]);
       }
-    } catch (err) {
-      message.error("Failed to load master data");
     }
   };
 
@@ -137,16 +161,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     try {
       const data = await GyneCytologyCaseService.getById(editingId!);
       if (data.patient) setPatients([data.patient]);
-      if (data.request_files) {
-        setFileList(
-          data.request_files.map((f: RequestFile) => ({
-            uid: String(f.id),
-            name: f.file_name,
-            status: "done" as const,
-            type: f.file_type,
-          })),
-        );
-      }
+      setFileList(toUploadFileList(data.request_files));
       setTimeout(() => {
         form.setFieldsValue({
           ...data,
@@ -176,39 +191,6 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (v: string) => {
-        if (!v || v.length < 3) return;
-        setIsSearching(true);
-        try {
-          const res = await PatientService.getPatients(v);
-          setPatients(res);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
-    }
-  };
-
   const handlePreviewFile = async (file: UploadFile) => {
     if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-"))
       return;
@@ -228,177 +210,26 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
-  const handleConfirmDownload = (file: UploadFile) => {
-    Modal.confirm({
-      title: "Download File",
-      content: `Download "${file.name}"?`,
-      okText: "Download",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await GyneCytologyCaseService.downloadRequestFile(
-            Number(file.uid),
-            file.name,
-          );
-          message.success("File downloaded successfully");
-        } catch {
-          message.error("Failed to download file");
-        }
-      },
-    });
-  };
-
-  const handleConfirmDeleteFile = (file: UploadFile) => {
-    if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-")) {
-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-      return;
-    }
-    Modal.confirm({
-      title: "Delete File",
-      content: `Delete "${file.name}"? This cannot be undone.`,
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await GyneCytologyCaseService.deleteRequestFile(Number(file.uid));
-          message.success("File deleted");
-          setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-        } catch {
-          message.error("Failed to delete file");
-        }
-      },
-    });
-  };
-
-  const handleUploadRequest = async (options: {
-    file: File;
-    onSuccess: (res: string) => void;
-    onError: (err: { err: unknown }) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    if (!editingId) {
-      message.warning("Please save the case before uploading files");
-      onError({ err: new Error("Case not created yet") });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const res = await GyneCytologyCaseService.uploadRequestFile(
-        editingId,
-        file,
-      );
-      const newFile: UploadFile = {
-        uid: String(res.file_id),
-        name: file.name,
-        status: "done",
-        type: file.type,
-      };
-      setFileList((prev) => [...prev, newFile]);
-      onSuccess("ok");
-      message.success(`${file.name} uploaded successfully`);
-    } catch (err) {
-      onError({ err });
-      message.error(`Failed to upload ${file.name}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadProps: UploadProps = {
-    customRequest:
-      handleUploadRequest as unknown as UploadProps["customRequest"],
-    onRemove: () => false,
-    fileList,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error("File must be smaller than 10MB");
-        return Upload.LIST_IGNORE;
-      }
-      if (!editingId) {
-        setFileList((prev) => [
-          ...prev,
-          {
-            uid: `pending-${Date.now()}`,
-            name: file.name,
-            status: "done",
-            type: file.type,
-            originFileObj: file as any,
-          },
-        ]);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
-  };
-
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    try {
-      await GyneCytologyCaseService.delete(editingId);
-      message.success("Case deleted successfully");
-      onSuccess(null);
-    } catch {
-      message.error("Failed to delete case");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = () => {
-    let cancelReason = "";
-
-    Modal.confirm({
-      title: "Confirm case cancellation?",
-      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: (
-        <div style={{ marginTop: 16 }}>
-          <p>Please provide a reason for cancellation:</p>
-          <Input.TextArea
-            rows={3}
-            placeholder="e.g. Wrong HN, Changed hospital, Other..."
-            onChange={(e) => (cancelReason = e.target.value)}
-          />
-        </div>
-      ),
-      okText: "Confirm Cancel",
-      okType: "danger",
-      cancelText: "Close",
-      onOk: async () => {
-        if (!cancelReason.trim()) {
-          message.warning("Please provide a reason before cancelling");
-          return Promise.reject();
-        }
-        try {
-          setLoading(true);
-          await GyneCytologyCaseService.cancel(editingId!, cancelReason);
-          message.success("Case cancelled successfully");
-          onSuccess(null);
-        } catch {
-          message.error("Failed to cancel case");
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
-  };
-
-  const doSave = async (values: any) => {
+  const doSave = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
       const payload = {
         ...values,
-        last_menstrual_period:
-          values.last_menstrual_period?.format("YYYY-MM-DD"),
-        collect_at: values.collect_at?.toISOString(),
+        last_menstrual_period: (
+          values.last_menstrual_period as { format: (f: string) => string } | undefined
+        )?.format("YYYY-MM-DD"),
+        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
       };
       const res = editingId
         ? await GyneCytologyCaseService.update(editingId, payload)
-        : await GyneCytologyCaseService.create(payload);
+        : await GyneCytologyCaseService.create(
+            payload as unknown as GyneCytologyCaseCreate,
+          );
+      // Upload any queued files now that we have a case ID (create only —
+      // an edit-mode save has nothing pending, files upload immediately).
+      if (!editingId) {
+        await flushPendingUploads(res.id);
+      }
       message.success(editingId ? "Updated successfully" : "Registered successfully");
       onSuccess(res);
     } catch (err) {
@@ -408,7 +239,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: Record<string, unknown>) => {
     if (!values.cytotechnologist_id) {
       Modal.confirm({
         title: "Cytotechnologist not specified",
@@ -423,16 +254,20 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     await doSave(values);
   };
 
-  const doSaveAndNew = async (values: any) => {
+  const doSaveAndNew = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
       const payload = {
         ...values,
-        last_menstrual_period:
-          values.last_menstrual_period?.format("YYYY-MM-DD"),
-        collect_at: values.collect_at?.toISOString(),
+        last_menstrual_period: (
+          values.last_menstrual_period as { format: (f: string) => string } | undefined
+        )?.format("YYYY-MM-DD"),
+        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
       };
-      const res = await GyneCytologyCaseService.create(payload);
+      const res = await GyneCytologyCaseService.create(
+        payload as unknown as GyneCytologyCaseCreate,
+      );
+      await flushPendingUploads(res.id);
       message.success(`Registered successfully (${res.accession_no})`);
       onRefresh?.();
       setFileList([]);
@@ -446,7 +281,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   };
 
   const handleSaveAndNew = async () => {
-    let values: any;
+    let values: Record<string, unknown>;
     try {
       values = await form.validateFields();
     } catch {
@@ -693,14 +528,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
       <PatientFormModal
         open={isPatientModalOpen}
         onClose={() => setIsPatientModalOpen(false)}
-        onSuccess={(p) => {
-          setPatients([p, ...patients]);
-          form.setFieldsValue({
-            patient_id: p.id,
-            hn: p.hn || form.getFieldValue("hn"),
-          });
-          setIsPatientModalOpen(false);
-        }}
+        onSuccess={handlePatientCreationSuccess}
         titles={titles}
         hospitals={hospitals}
       />
@@ -712,122 +540,19 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
         onSelect={async (record: HisPatientResult) => {
           setIsHisModalOpen(false);
           try {
-            const firstName = record.fname?.trim() || "";
-            const lastName = record.lname?.trim() || "";
-            let patient: Patient | null = null;
-
-            if (record.cid && record.cid.trim()) {
-              const existing = await PatientService.getPatients(record.cid);
-              patient = existing.find((p) => p.cid === record.cid);
-            }
-            if (!patient && firstName) {
-              const existing = await PatientService.getPatients(firstName);
-              patient = existing.find(
-                (p) => p.name === firstName && (p.ln || "") === lastName,
-              );
-            }
-            let gender: string | undefined;
-            if (record.gender_code === 1) gender = "Male";
-            else if (record.gender_code === 2) gender = "Female";
-
-            const pnameClean = (record.pname || "").trim();
-            let matchedTitle = pnameClean
-              ? titles.find((t) => (t.title || "").trim() === pnameClean)
-              : undefined;
-
-            if (pnameClean && !matchedTitle) {
-              try {
-                const created = await TitleService.createTitle({
-                  title: pnameClean,
-                });
-                matchedTitle = created;
-                setTitles((prev) => [...prev, created]);
-                message.info(`Added new title: ${created.title}`);
-              } catch {
-                /* No permission to create */
-              }
-            }
-
-            if (!patient) {
-              patient = await PatientService.createPatient({
-                title_id: matchedTitle?.id || undefined,
-                name: firstName,
-                ln: lastName || undefined,
-                gender,
-                cid: record.cid || undefined,
-                birth_date: record.birthday
-                  ? record.birthday.split(" ")[0]
-                  : undefined,
+            const { patient, matchedHospitalId, matchedDepartmentId, matchedSchemeId, collectAt } =
+              await importHisPatient(record, {
+                titles,
+                schemes,
+                departments,
+                hospitals,
+                setTitles,
+                setSchemes,
+                setDepartments,
+                setPatients,
+                backfillExistingPatientTitle: true,
               });
-              message.success(
-                `Created new patient: ${firstName} ${lastName}`.trim(),
-              );
-            } else if (!patient.title_id && matchedTitle) {
-              await PatientService.updatePatient(patient.id, {
-                title_id: matchedTitle.id,
-              });
-              patient = { ...patient, title_id: matchedTitle.id };
-            }
 
-            setPatients((prev) => {
-              const exists = prev.find((p) => p.id === patient.id);
-              return exists ? prev : [patient, ...prev];
-            });
-
-            const matchedHospitalId = hospitals[0]?.id;
-
-            let matchedDepartmentId: number | undefined;
-            if (record.department?.trim()) {
-              const dn = record.department.trim().toLowerCase();
-              const existing = departments.find((d) => {
-                const n = d.name?.toLowerCase().trim() ?? "";
-                return n === dn || n.includes(dn) || dn.includes(n);
-              });
-              if (existing) {
-                matchedDepartmentId = existing.id;
-              } else {
-                try {
-                  const created = await DepartmentService.createDepartment({
-                    name: record.department.trim(),
-                    is_active: true,
-                  });
-                  matchedDepartmentId = created.id;
-                  setDepartments((prev) => [...prev, created]);
-                  message.info(`Added new Department: ${created.name}`);
-                } catch {
-                  /* No permission to create */
-                }
-              }
-            }
-
-            let matchedSchemeId: number | undefined;
-            if (record.pttype?.trim()) {
-              const pt = record.pttype.trim().toLowerCase();
-              const existing = schemes.find(
-                (s) =>
-                  s.name?.toLowerCase() === pt ||
-                  s.name?.toLowerCase().includes(pt) ||
-                  pt.includes(s.name?.toLowerCase() ?? ""),
-              );
-              if (existing) {
-                matchedSchemeId = existing.id;
-              } else {
-                try {
-                  const created = await MedicalSchemeService.createScheme({
-                    name: record.pttype.trim(),
-                  });
-                  matchedSchemeId = created.id;
-                  setSchemes((prev) => [...prev, created]);
-                  message.info(`Added new Medical Scheme: ${created.name}`);
-                } catch {
-                  /* No permission to create */
-                }
-              }
-            }
-
-            const dayObj = record.order_date
-              ? dayjs(record.order_date)
-              : undefined;
             form.setFieldsValue({
               patient_id: patient.id,
               hn: record.hn || undefined,
@@ -835,11 +560,16 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
               department_id: matchedDepartmentId,
               medical_scheme_id: matchedSchemeId,
               clinician_name: record.doctor || undefined,
-              collect_at: dayObj?.isValid() ? dayObj : undefined,
+              collect_at: collectAt?.isValid() ? collectAt : undefined,
             });
             message.success("Data copied from HIS successfully");
-          } catch (err: any) {
-            message.error("Failed to import data: " + (err.message || ""));
+          } catch (err: unknown) {
+            logger.error("HIS patient select error:", err);
+            const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+            message.error(
+              "Failed to import data: " +
+                (axiosErr.response?.data?.detail || axiosErr.message || ""),
+            );
           }
         }}
       />

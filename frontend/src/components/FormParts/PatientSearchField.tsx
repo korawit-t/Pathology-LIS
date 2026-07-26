@@ -8,6 +8,7 @@ import {
   QuestionOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { formatPatientName } from "../../utils/patientName";
 import type { Patient } from "../../types/patient";
 import type { Title } from "../../types/title";
 import type { Hospital } from "../../types/hospital";
@@ -60,12 +61,16 @@ const PatientSearchField: React.FC<PatientSearchFieldProps> = ({
               filterOption={false}
               onSearch={onSearch}
               notFoundContent={isSearching ? <Spin size="small" /> : "No results found"}
-              options={patients.map((p) => ({
-                label: `${p.title?.title || titles.find((t) => t.id === p.title_id)?.title || ""}${p.name}${p.ln ? " " + p.ln : ""}`,
-                value: p.id,
-                cid: p.cid,
-                hn: p.hn,
-              }))}
+              options={patients.map((p) => {
+                const resolvedTitle =
+                  p.title?.title || titles.find((t) => t.id === p.title_id)?.title;
+                return {
+                  label: formatPatientName({ title: { title: resolvedTitle }, name: p.name, ln: p.ln }),
+                  value: p.id,
+                  cid: p.cid,
+                  hn: p.hn,
+                };
+              })}
               optionRender={(option) => (
                 <div style={{ padding: "4px 0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>

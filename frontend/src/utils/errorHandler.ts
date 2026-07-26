@@ -7,6 +7,15 @@ interface ApiError {
   detail?: string | { msg: string }[];
 }
 
+/** Extracts the FastAPI `detail` string from a caught error, or undefined
+ * if there isn't one — leaves the fallback message up to the caller so
+ * each call site's existing wording is preserved exactly. */
+export const getErrorDetail = (err: unknown): string | undefined => {
+  const detail = (err as AxiosError<ApiError> | undefined)?.response?.data
+    ?.detail;
+  return typeof detail === "string" ? detail : undefined;
+};
+
 export const handleApiError = (error: unknown, form?: FormInstance) => {
   const axiosError = error as AxiosError<ApiError>;
   logger.error("API Error:", axiosError);
