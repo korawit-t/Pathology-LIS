@@ -23,6 +23,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
+import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
 import PatientFormModal from "../../../components/PatientFormModal";
 import HisPatientSearchModal from "../../SurgicalCase/components/HisPatientSearchModal";
 import NongynePrintPreviewModal from "./NongynePrintPreviewModal";
@@ -96,6 +97,18 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     flushPendingUploads,
     toUploadFileList,
   } = useCaseFileUpload(NongyneCytologyCaseService, editingId);
+  const { handleDelete, handleCancel } = useCaseLifecycleActions(
+    editingId,
+    NongyneCytologyCaseService.delete,
+    NongyneCytologyCaseService.cancel,
+    {
+      title: "Confirm case cancellation?",
+      prompt: "Please provide a reason for cancellation:",
+      placeholder: "e.g. Wrong HN, Changed hospital, Other...",
+    },
+    onSuccess,
+    setLoading,
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
@@ -321,61 +334,6 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    try {
-      await NongyneCytologyCaseService.delete(editingId);
-      message.success("Case deleted successfully");
-      onSuccess(null);
-    } catch (err) {
-      message.error("Failed to delete case");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = () => {
-    let cancelReason = "";
-
-    Modal.confirm({
-      title: "Confirm case cancellation?",
-      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: (
-        <div style={{ marginTop: 16 }}>
-          <p>Please provide a reason for cancellation:</p>
-          <Input.TextArea
-            rows={3}
-            placeholder="e.g. Wrong HN, Changed hospital, Other..."
-            onChange={(e) => (cancelReason = e.target.value)}
-          />
-        </div>
-      ),
-      okText: "Confirm Cancel",
-      okType: "danger",
-      cancelText: "Close",
-      onOk: async () => {
-        if (!cancelReason.trim()) {
-          message.warning("Please provide a reason before cancelling");
-          return Promise.reject();
-        }
-
-        try {
-          setLoading(true);
-          await NongyneCytologyCaseService.cancel(editingId!, cancelReason);
-
-          message.success("Case cancelled successfully");
-          onSuccess(null);
-        } catch (error: any) {
-          const errorMsg =
-            error.response?.data?.detail || "Failed to cancel case";
-          message.error(errorMsg);
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
-  };
 
   return (
     <>

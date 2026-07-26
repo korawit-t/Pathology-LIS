@@ -22,6 +22,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../../hooks/useCaseFileUpload";
+import { useCaseLifecycleActions } from "../../../../hooks/useCaseLifecycleActions";
 import PatientFormModal from "../../../../components/PatientFormModal";
 import HisPatientSearchModal from "../HisPatientSearchModal";
 import type { HisPatientResult } from "../../../../services/hisService";
@@ -99,6 +100,18 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     flushPendingUploads,
     toUploadFileList,
   } = useCaseFileUpload(SurgicalCaseService, editingId);
+  const { handleDelete, handleCancel } = useCaseLifecycleActions(
+    editingId,
+    SurgicalCaseService.deleteCase,
+    (id, reason) => SurgicalCaseService.cancelCase(id, { reason }),
+    {
+      title: "Cancel this case?",
+      prompt: "Per ISO 15189, please provide a reason for cancellation:",
+      placeholder: "e.g. Wrong HN entered, hospital change, other...",
+    },
+    onSuccess,
+    setLoading,
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
@@ -436,22 +449,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
-    if (!editingId) return;
-    setLoading(true);
-    try {
-      await SurgicalCaseService.deleteCase(editingId);
-      message.success("Case deleted successfully");
-
-      // 🌟 ส่ง null กลับไปเพื่อบอกหน้าหลักว่า "เคสนี้ไม่มีตัวตนแล้ว"
-      onSuccess(null);
-    } catch (err) {
-      message.error("Failed to delete case");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // --- Preview Request File ---
   const handlePreviewFile = async (file: UploadFile) => {
     // Pending file (not uploaded yet) — preview from local object
@@ -477,51 +474,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     } catch (err) {
       message.error("Failed to open file");
     }
-  };
-
-  const handleCancel = () => {
-    let cancelReason = "";
-
-    Modal.confirm({
-      title: "Cancel this case?",
-      icon: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: (
-        <div style={{ marginTop: 16 }}>
-          <p>Per ISO 15189, please provide a reason for cancellation:</p>
-          <Input.TextArea
-            rows={3}
-            placeholder="e.g. Wrong HN entered, hospital change, other..."
-            onChange={(e) => (cancelReason = e.target.value)}
-          />
-        </div>
-      ),
-      okText: "Confirm Cancel",
-      okType: "danger",
-      cancelText: "Close",
-      onOk: async () => {
-        if (!cancelReason.trim()) {
-          message.warning("Please provide a reason before cancelling");
-          return Promise.reject();
-        }
-
-        try {
-          setLoading(true);
-          await SurgicalCaseService.cancelCase(editingId!, {
-            reason: cancelReason,
-          });
-
-          message.success("Case cancelled and logged");
-
-          onSuccess(null);
-        } catch (error: any) {
-          const errorMsg =
-            error.response?.data?.detail || "Failed to cancel case";
-          message.error(errorMsg);
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
   };
 
   return (
