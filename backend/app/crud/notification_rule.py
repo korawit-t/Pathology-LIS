@@ -1,6 +1,5 @@
 # app/crud/notification_rule.py
 from sqlalchemy.orm import Session
-from typing import Dict, Any
 from app.models.notification_rule import NotificationRule
 from app.schemas.notification_rule import NotificationRuleUpdate
 

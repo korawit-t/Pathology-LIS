@@ -2,9 +2,9 @@ from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException
 
 from app.models.internal_consult import InternalConsult
-from app.models.surgical_report import SurgicalReport, ReportStatus
-from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus
-from app.models.nongyne_cyto_report import NongyneCytoReport, NongyneReportStatus
+from app.models.surgical_report import SurgicalReport
+from app.models.gyne_cyto_report import GyneCytoReport
+from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.utils.time import local_now
 
 import app.crud.report_crud as surgical_report_crud

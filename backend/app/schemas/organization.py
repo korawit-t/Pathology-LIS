@@ -1,7 +1,6 @@
 from pydantic import BaseModel, ConfigDict
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional
-from typing import Optional
 
 
 # --- Hospital Schemas ---

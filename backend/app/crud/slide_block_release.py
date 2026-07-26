@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException
-from datetime import datetime
 from app.utils.time import local_now
 from typing import Optional
 
@@ -8,16 +7,11 @@ from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_block_stain import SurgicalBlockStain
-from app.models.surgical_report import SurgicalReport
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_cyto_stain import GyneCytologyStain
-from app.models.gyne_cyto_report import GyneCytoReport
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
-from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.models.patient import Patient
-from app.models.organization import Title
-from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.slide_block_release import SlideBlockRelease
 from app.models.system_setting import SystemSetting
 from app.schemas.slide_block_release import SlideBlockReleaseCreate

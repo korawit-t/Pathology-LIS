@@ -5,7 +5,7 @@ from app.utils.file_handler import validate_and_sanitize
 from app.utils.time import local_now
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import List, Any, Optional
+from typing import Any, Optional
 from datetime import datetime, date, time
 
 from app.db.database import get_db

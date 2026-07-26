@@ -1,10 +1,8 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime
 from app.utils.time import local_now
 from fastapi import HTTPException
 from app.models.surgical_specimen import SurgicalSpecimen
-from app.models.surgical_case import SurgicalCase
 from app.schemas.surgical_specimen import SurgicalSpecimenUpdate, SurgicalSpecimenCreate
 
 

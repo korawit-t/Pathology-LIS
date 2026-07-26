@@ -3,7 +3,6 @@ Pydantic schemas for HIS (HOSxP) patient query results.
 """
 from pydantic import ConfigDict, BaseModel
 from typing import Optional
-from datetime import date, datetime
 
 
 class HisPatientResult(BaseModel):

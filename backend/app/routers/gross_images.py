@@ -8,11 +8,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 from app.db.database import get_db
-from app.schemas.gross_image import GrossImageCreate, GrossImageResponse, GrossImageUpdate
+from app.schemas.gross_image import GrossImageResponse, GrossImageUpdate
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.gross_image import GrossImage
 from app.utils.file_handler import save_gross_image_local, delete_gross_image_local
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_ACCESS_GROSS_IMAGE  # 🌟 นำเข้ากลุ่มสิทธิ์ที่ตั้งไว้
 
 router = APIRouter(

@@ -1,10 +1,8 @@
-from sqlalchemy.orm import Session, joinedload, contains_eager
-from typing import List, Optional
-from fastapi import HTTPException
+from sqlalchemy.orm import Session, joinedload
+from typing import List
 from sqlalchemy import desc, not_, select
 from app.models.sectioning import SectioningRun, SectioningDetail
 from app.schemas.sectioning import (
-    SectioningRunCreate,
     SectioningDetailCreate,
     SectioningDetailUpdate,
     SectioningRunCreateBatch,
@@ -12,8 +10,6 @@ from app.schemas.sectioning import (
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
-from app.schemas import sectioning as schemas
-from datetime import datetime
 from app.utils.time import local_now
 
 

@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import any_
-from datetime import datetime
 from app.utils.time import local_now
 
 from app.models.user import User

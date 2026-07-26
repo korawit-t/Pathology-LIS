@@ -10,7 +10,6 @@ from app.schemas.report_approval import ReportApproveRequest, ApprovalLogRespons
 from app.schemas.surgical_report import SurgicalReportResponse
 
 # นำเข้าเครื่องมือจัดการสิทธิ์
-from app.models.gyne_cyto_report import GyneCytoReport
 from app.schemas.gyne_cyto_report import GyneCytoReportResponse
 from app.schemas.nongyne_cyto_report import NongyneCytoReportResponse, NongyneCytoReportPagination
 from app.crud import report_crud, gyne_report_crud, nongyne_cyto_report as nongyne_report_crud

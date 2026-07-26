@@ -6,7 +6,7 @@ from app.models.surgical_block_event import SurgicalBlockEvent
 from app.models.tissue_processing import TissueProcessingItem, TissueProcessingRun
 from app.models.embedding import EmbeddingDetail, EmbeddingRun
 from app.models.sectioning import SectioningDetail, SectioningRun
-from app.models.surgical_block_stain import SurgicalBlockStain, SurgicalStainRun, SurgicalStainRunDetail
+from app.models.surgical_block_stain import SurgicalBlockStain, SurgicalStainRun
 from app.models.block_storage import BlockStorageDetail, BlockStorageRun
 from app.schemas.surgical_block_event import BlockEventCreate, BlockTimelineEntry
 

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date, case
+from sqlalchemy import func, cast, Date
 from datetime import date
 from typing import Optional
 from collections import defaultdict

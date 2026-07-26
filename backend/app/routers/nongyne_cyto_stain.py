@@ -17,7 +17,6 @@ from app.schemas.nongyne_cyto_stain import (
 )
 from app.models.nongyne_cyto_stain import NongyneStainRun, NongyneStainRunDetail, NongyneCytologyStain
 from app.models.nongyne_cyto_case import NongyneCytologyCase
-from app.models.patient import Patient
 from app.schemas.nongyne_cyto_stain import (
     NongyneStainRunCreate,
     NongyneStainRunResponse,

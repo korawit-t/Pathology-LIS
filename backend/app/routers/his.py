@@ -6,7 +6,6 @@ Configure via HIS_TYPE in .env
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
 
 from app.db.his_database import get_his_db, is_his_configured
 from app.schemas.his import HisPatientResult

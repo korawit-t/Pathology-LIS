@@ -10,7 +10,6 @@ from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import (
     SurgicalReport,
     ReportStatus,
-    ReportType,
     SurgicalReportImage,
     ReportSigner,
 )

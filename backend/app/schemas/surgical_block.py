@@ -1,7 +1,6 @@
 from pydantic import ConfigDict, BaseModel
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
-from app.schemas.surgical_specimen import SurgicalSpecimenResponse
 
 
 # 1. ใช้ TYPE_CHECKING เพื่อให้ IDE รู้จัก Type ตอนเขียนโค้ด

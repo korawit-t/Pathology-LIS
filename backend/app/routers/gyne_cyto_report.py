@@ -24,9 +24,8 @@ from app.core.roles import (
     CAN_WRITE_GYNE_CYTO_REPORT,
     CAN_READ_GYNE_CYTO_REPORT
 )
-from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import get_scoped_hospital_ids, assert_hospital_scoped_access
 from pydantic import BaseModel
-from datetime import datetime
 from app.utils.time import local_now
 from app.crud.report_archive import get_gyne_archive
 from app.schemas.archive import ArchivePage
@@ -248,7 +247,6 @@ def update_gyne_print_status(report_id: int, payload: dict, db: Session = Depend
 
 @router.post("/barcode-pdf", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
 def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
-    from app.models.gyne_cyto_case import GyneCytologyCase
     from app.models.system_setting import SystemSetting
     from app.services.barcode_service import generate_code39_base64_img
     from app.services.pdf_service import generate_pdf_blob

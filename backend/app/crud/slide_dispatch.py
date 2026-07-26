@@ -1,7 +1,5 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
-from datetime import datetime
 from app.utils.time import local_now
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen

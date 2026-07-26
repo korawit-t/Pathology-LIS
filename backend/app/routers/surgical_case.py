@@ -1,8 +1,6 @@
 import logging
 import os
-import shutil
 import uuid
-import mimetypes
 from datetime import datetime, date, time
 from app.utils.time import local_now
 from app.utils.file_handler import validate_and_sanitize
@@ -23,7 +21,6 @@ from fastapi import (
     Response,
 )
 from sqlalchemy.orm import Session
-from pydantic import ValidationError
 from fastapi.responses import FileResponse
 
 from sqlalchemy import func
@@ -45,7 +42,6 @@ from app.schemas.surgical_case import (
 )
 from app.crud import surgical_case as crud_case
 from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
-from app.models.user import User
 
 router = APIRouter(
     prefix="/surgical-cases",

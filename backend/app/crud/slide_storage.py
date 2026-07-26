@@ -8,7 +8,6 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_stain import GyneCytologyStain
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
-from datetime import datetime
 from app.utils.time import local_now
 from typing import Optional
 

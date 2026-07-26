@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, func
 from sqlalchemy.orm import relationship
 from app.db.database import Base
-from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 
 
 class SurgicalBlockStain(Base):

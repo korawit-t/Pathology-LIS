@@ -17,7 +17,6 @@ from app.schemas.gyne_cyto_stain import (
 )
 from app.models.gyne_cyto_stain import GyneStainRun, GyneStainRunDetail, GyneCytologyStain
 from app.models.gyne_cyto_case import GyneCytologyCase
-from app.models.patient import Patient
 from app.schemas.gyne_cyto_stain import GyneStainRunCreate
 from app.dependencies.auth import get_current_user
 from app.models.user import User

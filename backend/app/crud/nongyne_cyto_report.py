@@ -16,7 +16,6 @@ from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
 from typing import List
 import base64
-import os
 import re
 from pathlib import Path
 from app.crud import his_export_log as his_export_crud
@@ -643,7 +642,6 @@ def process_nongyne_report_approval(
 
 
 def get_pending_nongyne_reports(db: Session, skip: int = 0, limit: int = 20, search: str = None):
-    from app.models.patient import Patient
     query = (
         db.query(NongyneCytoReport)
         .filter(NongyneCytoReport.status == NongyneReportStatus.PENDING_APPROVAL)

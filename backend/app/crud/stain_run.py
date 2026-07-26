@@ -1,14 +1,12 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
-from datetime import datetime
 from app.utils.time import local_now
 from app.models.surgical_block_stain import (
     SurgicalBlockStain,
     SurgicalStainRun,
     SurgicalStainRunDetail,
 )
-from app.schemas.stain_run import StainRunCreate, StainRunUpdate
-from app.models.surgical_block_stain import SurgicalBlockStain, SurgicalStainRun
+from app.schemas.stain_run import StainRunCreate
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
@@ -161,7 +159,6 @@ def list_active_runs(db: Session, test_id: int = None):
     ดึงรายการ Run ล่าสุด พร้อมโหลดรายละเอียดสไลด์และข้อมูล Master Data
     """
     # 🚩 2. เพิ่ม .joinedload(SurgicalBlockStain.test) เพื่อให้รู้ว่าสไลด์นั้นคือการย้อมอะไร
-    from app.models.user import User
 
     query = db.query(SurgicalStainRun).options(
         joinedload(SurgicalStainRun.operator),

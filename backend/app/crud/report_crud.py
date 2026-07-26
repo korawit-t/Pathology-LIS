@@ -1,6 +1,5 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.models.surgical_report import (
     SurgicalReport,
     ReportStatus,
@@ -9,7 +8,6 @@ from app.models.surgical_report import (
 )  # 🚩 เพิ่ม ReportSigner
 from app.schemas.report_approval import ReportApproveRequest
 from app.models.user import User
-from datetime import datetime
 from app.utils.time import local_now
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_diagnosis import (

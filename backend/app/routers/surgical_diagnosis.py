@@ -1,8 +1,7 @@
 from app.schemas.surgical_bulk import BulkSaveDraft
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from typing import List
-from fastapi.responses import StreamingResponse
 from app.db.database import get_db
 
 # อัปเดตการ Import Schema ให้ตรงกับชื่อใหม่
@@ -16,7 +15,6 @@ from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.dependencies.auth import (
     get_current_user,
-    RoleChecker,
     assert_hospital_scoped_access,
     get_scoped_hospital_ids,
 )

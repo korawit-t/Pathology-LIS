@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, date
-from typing import Optional, List, Any
+from typing import Optional, List
 
 # --- Sub-Schemas สำหรับ Response ---
 

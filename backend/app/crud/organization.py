@@ -20,7 +20,6 @@ from app.schemas.organization import (
     MedicalSchemeUpdate,
     DepartmentCreate,
     DepartmentUpdate,
-    Department as DepartmentSchema,
     HolidayCreate,
 )
 

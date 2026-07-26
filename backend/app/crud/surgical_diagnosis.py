@@ -9,11 +9,10 @@ from app.schemas.surgical_diagnosis import (
     SurgicalDiagnosisUpdate,
 )
 from app.schemas.surgical_bulk import BulkSaveDraft
-from app.models import SurgicalDiagnosis, SurgicalSpecimen, SurgicalCase
+from app.models import SurgicalSpecimen, SurgicalCase
 from app.models.surgical_report import SurgicalReport, ReportSigner, ReportStatus
 from app.models.user import User
 
-from datetime import datetime
 from app.utils.time import local_now
 from app.utils.consult_lock import assert_consult_not_locked
 from fastapi import HTTPException

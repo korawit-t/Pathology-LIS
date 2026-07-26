@@ -1,7 +1,6 @@
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Index, func, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Index, func, UniqueConstraint
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from app.db.database import Base # สมมติว่า Base ถูก import จาก app/db/database
 
 class SurgicalSpecimen(Base):

@@ -1,6 +1,5 @@
 import logging
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
 from app.models.gyne_cyto_stain import GyneCytologyStain
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.schemas.gyne_cyto_stain import GyneStainCreate, GyneStainUpdate

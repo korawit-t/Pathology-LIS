@@ -2,12 +2,12 @@ from app.schemas.surgical_bulk import BulkSaveDraft
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional, Any
+from typing import Optional
 import traceback
 import logging
 
 logger = logging.getLogger(__name__)
-from datetime import datetime, date
+from datetime import date
 from app.utils.time import local_now
 import io
 
@@ -20,7 +20,7 @@ from app.crud.surgical_report import (
     get_pending_cosign_worklist,
     resolve_report_logo,
 )
-from app.crud.surgical_report_builder import prepare_report_data, get_image_base64_from_path, STORAGE_BASE
+from app.crud.surgical_report_builder import prepare_report_data
 from app.crud.surgical_statistics import get_surgical_statistics, get_lab_tech_statistics, get_staff_registration_stats, get_staff_gross_stats, get_tissue_process_stats, get_storage_stats, get_outlab_stats
 from app.schemas.surgical_report import (
     SurgicalReportResponse,
@@ -28,7 +28,7 @@ from app.schemas.surgical_report import (
     SurgicalStatResponse,
     LabTechStatResponse,
 )
-from app.dependencies.auth import get_current_user, RoleChecker, get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.models.surgical_report import SurgicalReport, ReportStatus
@@ -213,7 +213,7 @@ def finalize_and_snapshot_endpoint(
             "clinician": report.clinician_name or "-",
         })
         return report
-    except Exception as e:
+    except Exception:
         logger.error("Finalize & Snapshot Error: %s", traceback.format_exc())
         raise HTTPException(status_code=500, detail="An error occurred while processing the report. Please try again or contact support.")
 

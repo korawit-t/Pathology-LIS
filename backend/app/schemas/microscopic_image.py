@@ -18,14 +18,6 @@ class MicroscopicImageCreate(MicroscopicImageBase):
     pass  # ใช้ฟิลด์เหมือน Base ทุกอย่างสำหรับจังหวะ Create
 
 
-class MicroscopicImageResponse(MicroscopicImageBase):
-    id: int
-    specimen_id: int
-    uploaded_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # 🚩 เพิ่มคลาสนี้เพื่อให้รองรับการ Update แบบบางฟิลด์ (Optional)
 class MicroscopicImageUpdate(BaseModel):
     magnification: Optional[str] = None

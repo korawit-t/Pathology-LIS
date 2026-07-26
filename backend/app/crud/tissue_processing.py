@@ -3,7 +3,6 @@ from app.models.tissue_processing import TissueProcessingRun, TissueProcessingIt
 from app.schemas.tissue_processing import TissueProcessingRunCreate, ProcessorMachineCreate, ProcessorMachineUpdate, ProcessingProgramCreate, ProcessingProgramUpdate
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
-from datetime import datetime
 from app.utils.time import local_now
 from fastapi import HTTPException
 

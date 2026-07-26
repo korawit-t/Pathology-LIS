@@ -8,7 +8,7 @@ from app.crud.user import get_users, get_user, create_user, update_user, delete_
 import app.crud.user as user_crud
 
 # ✅ Import RoleChecker และ get_current_user เข้ามา
-from app.dependencies.auth import get_current_user, RoleChecker, check_password_status
+from app.dependencies.auth import get_current_user, check_password_status
 from app.models.user import User
 from app.core.roles import CAN_MANAGE_USERS
 from app.core.security import verify_password

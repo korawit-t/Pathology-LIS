@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List
 from datetime import date
 from pathlib import Path
 import uuid
@@ -24,10 +24,9 @@ from app.schemas.organization import (
     Department,
     HolidayCreate,
     HolidayResponse,
-    HolidayUpdate,
 )
 from app.crud import organization as crud
-from app.dependencies.auth import RoleChecker, get_current_user
+from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_MANAGE_SETTINGS
 from app.utils.time import local_now
 
@@ -379,7 +378,6 @@ def import_holidays_from_google_calendar(
     Uses the stored api_key from system config.
     """
     import httpx
-    from datetime import datetime, timezone
     from urllib.parse import quote
 
     api_key = _resolve_api_key(db)

@@ -1,13 +1,11 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from app.models.surgical_block_stain import (
-    SurgicalBlockStain,
     SurgicalStainRun,
     SurgicalStainRunDetail,
     SurgicalBlockStain,
 )
 from app.schemas.surgical_block_stain import StainCreate, StainUpdate
-from app.models.surgical_block_stain import SurgicalBlockStain
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
@@ -544,7 +542,6 @@ def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
 
     result = []
     for run in runs:
-        op = run.operator
         details = []
         for detail in run.details:
             stain = detail.stain_order
@@ -697,7 +694,6 @@ def update_outlab_run(db: Session, run_id: int, obj_in):
 
 
 def toggle_hosxp_keyed(db: Session, detail_id: int, keyed: bool) -> dict | None:
-    from datetime import datetime
     detail = db.query(SurgicalOutlabRunDetail).filter(SurgicalOutlabRunDetail.id == detail_id).first()
     if not detail:
         return None
