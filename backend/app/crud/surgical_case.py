@@ -2,7 +2,7 @@ import logging
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_, and_, exists, select, case
 from fastapi import HTTPException, status
-from datetime import datetime
+from datetime import datetime, date
 from app.utils.time import local_now
 from app.models.surgical_case import SurgicalCase
 
@@ -981,3 +981,233 @@ def get_workload_summary(db: Session, date_from=None, date_to=None, pathologist_
     if signed_cases is not None:
         result["signed_cases"] = signed_cases
     return result
+
+
+def get_workload_daily(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> list:
+    """Per-day workload breakdown for chart display."""
+    from datetime import time, timedelta
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+    case_filter = and_(*filters)
+
+    day_col = func.date(SurgicalCase.registered_at).label("day")
+
+    daily_cases = {
+        str(r.day): r.cnt
+        for r in db.query(day_col, func.count(SurgicalCase.id).label("cnt"))
+        .filter(case_filter)
+        .group_by(func.date(SurgicalCase.registered_at))
+        .all()
+    }
+
+    def _daily_stain(label, *extra):
+        return {
+            str(r.day): r.cnt
+            for r in db.query(
+                func.date(SurgicalCase.registered_at).label("day"),
+                func.count(SurgicalBlockStain.id).label("cnt"),
+            )
+            .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+            .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .filter(case_filter, *extra)
+            .group_by(func.date(SurgicalCase.registered_at))
+            .all()
+        }
+
+    daily_he = _daily_stain("he", AnatomicalPathologyTest.name.ilike("%H&E%"))
+    daily_special = _daily_stain(
+        "special",
+        AnatomicalPathologyTest.category == "Histochem",
+        ~AnatomicalPathologyTest.name.ilike("%H&E%"),
+    )
+    daily_ihc = _daily_stain("ihc", AnatomicalPathologyTest.category == "IHC")
+
+    # Generate every date in range so days with 0 cases still appear
+    if date_from and date_to:
+        all_dates = [
+            str(date_from + timedelta(days=i))
+            for i in range((date_to - date_from).days + 1)
+        ]
+    else:
+        all_dates = sorted(set(daily_cases) | set(daily_he) | set(daily_special) | set(daily_ihc))
+
+    return [
+        {
+            "date": d,
+            "cases": daily_cases.get(d, 0),
+            "he_slides": daily_he.get(d, 0),
+            "special_stain_slides": daily_special.get(d, 0),
+            "ihc_slides": daily_ihc.get(d, 0),
+        }
+        for d in all_dates
+    ]
+
+
+def get_workload_ihc_top(db: Session, date_from=None, date_to=None, pathologist_id: int = None, limit: int = 10) -> list:
+    """Top N IHC markers ordered by a pathologist in the given date range."""
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    rows = (
+        db.query(
+            AnatomicalPathologyTest.name,
+            func.count(SurgicalBlockStain.id).label("count"),
+        )
+        .join(SurgicalBlockStain, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+        .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+        .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+        .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+        .filter(AnatomicalPathologyTest.category == "IHC", and_(*filters))
+        .group_by(AnatomicalPathologyTest.name)
+        .order_by(func.count(SurgicalBlockStain.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return [{"name": r.name, "count": r.count} for r in rows]
+
+
+def get_immuno_stats(db: Session) -> dict:
+    """Count distinct cases with pending IHC or Special Stain block stains."""
+    from app.models.molecular_case import MolecularCase
+
+    def _count(category_filter, is_external=None):
+        q = (
+            db.query(func.count(SurgicalCase.id.distinct()))
+            .join(SurgicalSpecimen, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .join(SurgicalBlock, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalBlockStain, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(AnatomicalPathologyTest, AnatomicalPathologyTest.id == SurgicalBlockStain.test_id)
+            .filter(
+                SurgicalBlockStain.status == "pending",
+                AnatomicalPathologyTest.category == category_filter,
+                SurgicalCase.status != "cancelled",
+            )
+        )
+        if category_filter == "Histochem":
+            q = q.filter(~AnatomicalPathologyTest.name.ilike("%H&E%"))
+        if is_external is not None:
+            q = q.filter(AnatomicalPathologyTest.is_external == is_external)
+        return q.scalar() or 0
+
+    return {
+        "pending_ihc": _count("IHC"),
+        "pending_special_stain": _count("Histochem"),
+        "pending_ihc_internal": _count("IHC", is_external=False),
+        "pending_special_stain_internal": _count("Histochem", is_external=False),
+        "pending_ihc_outlab": _count("IHC", is_external=True),
+        "pending_special_stain_outlab": _count("Histochem", is_external=True),
+        "pending_molecular_outlab": (
+            db.query(func.count(MolecularCase.id))
+            .filter(MolecularCase.status == "pending", MolecularCase.is_cancelled == False)  # noqa: E712
+            .scalar()
+            or 0
+        ),
+    }
+
+
+def get_cancer_registry_summary(db: Session, date_from=None, date_to=None) -> dict:
+    """Cancer registry: malignancy counts by month and by specimen name."""
+    from collections import defaultdict
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+
+    total = db.query(func.count(SurgicalCase.id)).filter(*filters).scalar() or 0
+    malignant = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(*filters, SurgicalCase.has_malignancy == True)
+        .scalar() or 0
+    )
+    benign = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(*filters, SurgicalCase.has_malignancy == False)
+        .scalar() or 0
+    )
+
+    # Monthly breakdown (Python-level grouping for DB compatibility)
+    monthly_cases = (
+        db.query(
+            SurgicalCase.registered_at,
+            SurgicalCase.has_malignancy,
+        )
+        .filter(*filters)
+        .all()
+    )
+    monthly_map: dict = defaultdict(lambda: {"malignant": 0, "benign": 0, "indeterminate": 0})
+    for c in monthly_cases:
+        k = c.registered_at.strftime("%Y-%m")
+        if c.has_malignancy is True:
+            monthly_map[k]["malignant"] += 1
+        elif c.has_malignancy is False:
+            monthly_map[k]["benign"] += 1
+        else:
+            monthly_map[k]["indeterminate"] += 1
+
+    # Top specimen names
+    specimen_rows = (
+        db.query(
+            SurgicalSpecimen.specimen_name,
+            func.count(SurgicalSpecimen.id.distinct()).label("total"),
+        )
+        .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
+        .filter(*filters, SurgicalCase.has_malignancy == True)
+        .group_by(SurgicalSpecimen.specimen_name)
+        .order_by(func.count(SurgicalSpecimen.id.distinct()).desc())
+        .limit(15)
+        .all()
+    )
+
+    return {
+        "total": total,
+        "malignant": malignant,
+        "benign": benign,
+        "indeterminate": total - malignant - benign,
+        "malignancy_rate": round(malignant / total * 100, 1) if total else 0,
+        "monthly": [
+            {"month": k, **v} for k, v in sorted(monthly_map.items())
+        ],
+        "by_specimen": [
+            {"specimen_name": r.specimen_name, "count": r.total}
+            for r in specimen_rows
+        ],
+    }
+
+
+def get_slide_quality_stats(db: Session, start_date: str, end_date: str) -> dict:
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+
+    rows = (
+        db.query(SurgicalCase.slide_quality, func.count(SurgicalCase.id))
+        .filter(
+            SurgicalCase.is_cancelled == False,
+            func.date(SurgicalCase.registered_at) >= start,
+            func.date(SurgicalCase.registered_at) <= end,
+        )
+        .group_by(SurgicalCase.slide_quality)
+        .all()
+    )
+    result = {"good": 0, "fair": 0, "poor": 0, "unspecified": 0}
+    for val, cnt in rows:
+        key = val if val in result else "unspecified"
+        result[key] += cnt
+    return {"total": sum(result.values()), "slide_quality": result, "stain_quality": None}
