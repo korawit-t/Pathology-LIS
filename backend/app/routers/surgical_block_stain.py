@@ -7,6 +7,15 @@ from io import BytesIO
 
 def _nk(s: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
+
+
+def _pad_block_code(code: str) -> str:
+    """Zero-pad the trailing block number for stickers: A1 -> A01, A11 -> A11."""
+    m = re.match(r"^([A-Za-z]*)(\d+)$", code or "")
+    if not m:
+        return code or ""
+    letters, digits = m.groups()
+    return f"{letters}{digits.zfill(2)}"
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 from pydantic import BaseModel
@@ -92,6 +101,15 @@ def create_outlab_run(
 def read_outlab_runs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_outlab_runs(db, skip=skip, limit=limit)
 
+@router.get("/outlab-runs/pending-by-hn")
+def read_pending_outlab_by_hn(db: Session = Depends(get_db)):
+    """Not-yet-HosXP-keyed outlab items grouped by patient HN, in one query.
+    Backs the Today's Patients tab — replaces an earlier client-side loop
+    that fetched all outlab runs then did an N+1 /surgical-cases?search=
+    lookup per accession number. Mirrors the same definition of "pending"
+    used by the scheduled_notifications worker (get_unkeyed_outlab_by_hn)."""
+    return crud.get_unkeyed_outlab_by_hn(db)
+
 @router.patch("/outlab-runs/{run_id}", response_model=OutlabRunResponse)
 def update_outlab_run(
     run_id: int,
@@ -149,7 +167,11 @@ def delete_outlab_run(run_id: int, db: Session = Depends(get_db)):
     return {"message": "Outlab run deleted successfully"}
 
 @router.post("", response_model=StainResponse)
-def create_stain(obj_in: StainCreate, db: Session = Depends(get_db)):
+def create_stain(
+    obj_in: StainCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     from app.models.anatomical_pathology_test import AnatomicalPathologyTest
     # Auto-fill test_id for recut orders using the stable system_code
     if obj_in.is_recut and obj_in.test_id is None:
@@ -160,7 +182,7 @@ def create_stain(obj_in: StainCreate, db: Session = Depends(get_db)):
         )
         if he_recut:
             obj_in = obj_in.model_copy(update={"test_id": he_recut.id})
-    return crud.create_stain(db, obj_in=obj_in)
+    return crud.create_stain(db, obj_in=obj_in, registrar_id=current_user.id)
 
 
 @router.post("/batch-run")
@@ -191,8 +213,11 @@ def update_stain(
 
 
 @router.delete("/{stain_id}")
-def delete_stain(stain_id: int, db: Session = Depends(get_db)):
-    success = crud.delete_stain(db, stain_id=stain_id)
+def delete_stain(stain_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    try:
+        success = crud.delete_stain(db, stain_id=stain_id, actor_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not success:
         raise HTTPException(status_code=404, detail="Stain not found")
     return {"message": "Deleted successfully"}
@@ -263,10 +288,11 @@ def print_stain_run_stickers(
         print_data.append(
             {
                 "accession_no": detail.accession_no or "N/A",
-                "block_code": detail.block_code or "N/A",
+                "block_code": _pad_block_code(detail.block_code) or "N/A",
                 "stain_display": stain_display,
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
+                "hn": case.hn if case else None,
             }
         )
 
@@ -412,10 +438,11 @@ def print_quick_stickers(
         data_to_print.append(
             {
                 "accession_no": case.accession_no if case else "N/A",
-                "block_code": block.block_code if block else "N/A",
+                "block_code": _pad_block_code(block.block_code) if block else "N/A",
                 "stain_display": order.test.name if order.test else "Unknown",
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
+                "hn": case.hn if case else None,
             }
         )
 

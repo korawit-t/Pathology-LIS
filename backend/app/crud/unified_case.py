@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, literal, or_, select, union_all
+from sqlalchemy import and_, case, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
+from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_case import GyneCytologyCase
+from app.models.molecular_case import MolecularCase
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.organization import Department, Hospital, MedicalScheme, Title
 from app.models.patient import Patient
@@ -25,18 +27,32 @@ def _apply_common_filters(
     medical_scheme_id: Optional[int],
     date_from: Optional[datetime],
     date_to: Optional[datetime],
+    *,
+    hn_col=None,
+    status_col=None,
+    hospital_id_col=None,
+    medical_scheme_id_col=None,
 ):
+    """`*_col` overrides let a branch filter on a resolved expression instead
+    of the bare model column — needed for Molecular, whose hn/hospital/scheme
+    live on the row itself only for standalone cases and must otherwise
+    resolve through the parent Surgical case (see _molecular_branch)."""
+    hn_col = model.hn if hn_col is None else hn_col
+    status_col = model.status if status_col is None else status_col
+    hospital_id_col = model.hospital_id if hospital_id_col is None else hospital_id_col
+    medical_scheme_id_col = model.medical_scheme_id if medical_scheme_id_col is None else medical_scheme_id_col
+
     if search:
         s = f"%{search}%"
         query = query.where(
-            or_(model.accession_no.ilike(s), model.hn.ilike(s), Patient.name.ilike(s))
+            or_(model.accession_no.ilike(s), hn_col.ilike(s), Patient.name.ilike(s))
         )
     if status:
-        query = query.where(model.status.in_(status))
+        query = query.where(status_col.in_(status))
     if hospital_id is not None:
-        query = query.where(model.hospital_id == hospital_id)
+        query = query.where(hospital_id_col == hospital_id)
     if medical_scheme_id is not None:
-        query = query.where(model.medical_scheme_id == medical_scheme_id)
+        query = query.where(medical_scheme_id_col == medical_scheme_id)
     if date_from is not None:
         query = query.where(model.registered_at >= date_from)
     if date_to is not None:
@@ -157,10 +173,70 @@ def _nongyne_branch(**filters):
     return _apply_common_filters(query, NongyneCytologyCase, **filters)
 
 
+def _molecular_branch(**filters):
+    # A Molecular case is either standalone (carries its own patient/hospital/
+    # hn/clinician, same as the other 3 types always do) or parent-linked
+    # (ordered on an existing Surgical case's block — those fields are NULL
+    # on the row itself and must resolve through parent_case_id instead).
+    # Mirrors the exact same fallback crud/molecular_case.py::_to_response_dict
+    # already uses for display, and its search filter already uses for lookup.
+    hn_expr = func.coalesce(MolecularCase.hn, SurgicalCase.hn)
+    patient_id_expr = func.coalesce(MolecularCase.patient_id, SurgicalCase.patient_id)
+    hospital_id_expr = func.coalesce(MolecularCase.hospital_id, SurgicalCase.hospital_id)
+    department_id_expr = func.coalesce(MolecularCase.department_id, SurgicalCase.department_id)
+    medical_scheme_id_expr = func.coalesce(MolecularCase.medical_scheme_id, SurgicalCase.medical_scheme_id)
+    clinician_expr = func.coalesce(MolecularCase.clinician_name, SurgicalCase.clinician_name)
+    # MolecularCase tracks cancellation via a separate is_cancelled flag rather
+    # than folding it into `status` — synthesize a "cancelled" status value so
+    # the unified status column stays consistent with how the other 3 types
+    # already represent cancellation as a status string.
+    status_expr = case((MolecularCase.is_cancelled, literal("cancelled")), else_=MolecularCase.status)
+
+    query = (
+        select(
+            literal("molecular").label("case_type"),
+            MolecularCase.id.label("id"),
+            MolecularCase.accession_no.label("accession_no"),
+            hn_expr.label("hn"),
+            _patient_name_expr().label("patient_name"),
+            Hospital.name.label("hospital_name"),
+            Department.name.label("department_name"),
+            MedicalScheme.name.label("medical_scheme_name"),
+            AnatomicalPathologyTest.name.label("specimen"),
+            status_expr.label("status"),
+            MolecularCase.registered_at.label("registered_at"),
+            clinician_expr.label("clinician_name"),
+            literal(False).label("is_express"),
+            and_(
+                MolecularCase.is_outlab.is_(True),
+                MolecularCase.outlab_pdf_path.is_(None),
+            ).label("consult"),
+            literal(False).label("wf_grossed"),
+            literal(False).label("wf_processed"),
+            literal(False).label("wf_slide_prepped"),
+            literal(False).label("wf_screened"),
+            (MolecularCase.status == "reported").label("wf_reported"),
+        )
+        .outerjoin(SurgicalCase, SurgicalCase.id == MolecularCase.parent_case_id)
+        .outerjoin(Patient, Patient.id == patient_id_expr)
+        .outerjoin(Title, Title.id == Patient.title_id)
+        .outerjoin(Hospital, Hospital.id == hospital_id_expr)
+        .outerjoin(Department, Department.id == department_id_expr)
+        .outerjoin(MedicalScheme, MedicalScheme.id == medical_scheme_id_expr)
+        .outerjoin(AnatomicalPathologyTest, AnatomicalPathologyTest.id == MolecularCase.ap_test_id)
+    )
+    return _apply_common_filters(
+        query, MolecularCase, **filters,
+        hn_col=hn_expr, status_col=status_expr,
+        hospital_id_col=hospital_id_expr, medical_scheme_id_col=medical_scheme_id_expr,
+    )
+
+
 _BRANCH_BUILDERS = {
     "surgical": _surgical_branch,
     "gyne": _gyne_branch,
     "nongyne": _nongyne_branch,
+    "molecular": _molecular_branch,
 }
 
 

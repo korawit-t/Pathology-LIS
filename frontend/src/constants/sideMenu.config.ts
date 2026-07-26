@@ -300,6 +300,13 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         roles: PAGE_PERMISSIONS["pathologist-page"],
       },
       {
+        key: "molecular-cases",
+        label: "Molecular Pathology",
+        icon: ExperimentOutlined,
+        view: "molecular-cases",
+        roles: PAGE_PERMISSIONS["molecular-cases"],
+      },
+      {
         key: "diagnosis-gyne-qc-review",
         label: "QC Review",
         view: "gyne-qc-review",

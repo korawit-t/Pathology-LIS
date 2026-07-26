@@ -17,7 +17,7 @@ import {
 } from "antd";
 import { SearchOutlined, ReloadOutlined, TableOutlined, BarChartOutlined, DownloadOutlined } from "@ant-design/icons";
 import { exportToCsv } from "../../utils/exportCsv";
-import { sanitizeHtml } from "../../utils/sanitize";
+import { sanitizeHtml, stripHtmlToText } from "../../utils/sanitize";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
@@ -292,7 +292,7 @@ const CaseListTable: React.FC<{
           ]
         : []),
       { header: "Date", key: "registered_at", render: (v: unknown) => v ? dayjs(v as string).format("DD/MM/YYYY") : "-" },
-      { header: "Diagnosis", key: "diagnosis", render: (v: unknown) => v ? String(v).replace(/<[^>]+>/g, "") : "" },
+      { header: "Diagnosis", key: "diagnosis", render: (v: unknown) => v ? stripHtmlToText(String(v)) : "" },
       ...markerCols.map((m) => ({
         header: m,
         key: "ihc",

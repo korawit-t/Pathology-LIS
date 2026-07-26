@@ -8,9 +8,25 @@ client-side buildUnifiedRows merge, which silently capped each case type at
 import uuid
 from datetime import datetime, timedelta
 
+from app.crud.molecular_case import (
+    cancel_molecular_case,
+    create_standalone_molecular_case,
+)
+from app.crud.surgical_block_stain import create_stain
 from app.crud.unified_case import get_unified_cases
+from app.schemas.molecular_case import MolecularCaseCreate
+from app.schemas.surgical_block_stain import StainCreate
 
-from tests.factories import make_bare_case, make_bare_gyne_case, make_bare_nongyne_case
+from tests.factories import (
+    make_anatomical_pathology_test,
+    make_bare_case,
+    make_bare_gyne_case,
+    make_bare_nongyne_case,
+    make_block,
+    make_hospital,
+    make_patient,
+    make_signable_case,
+)
 
 
 class TestUnifiedCasesCrud:
@@ -86,6 +102,87 @@ class TestUnifiedCasesCrud:
         assert result["total"] == 1
         assert result["items"][0]["case_type"] == "surgical"
         assert result["items"][0]["id"] == surg.id
+
+    def test_merges_molecular_standalone_case(self, db, admin_user):
+        registrar, _ = admin_user
+        marker = uuid.uuid4().hex[:10]
+        patient = make_patient(db, name=f"UnifiedMolecular{marker}")
+        hospital = make_hospital(db)
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="EGFR Unified Test")
+
+        case = create_standalone_molecular_case(
+            db,
+            MolecularCaseCreate(patient_id=patient.id, ap_test_id=ap_test.id, hospital_id=hospital.id, hn=marker),
+            registrar_id=registrar.id,
+        )
+
+        result = get_unified_cases(db, search=marker)
+        assert result["total"] == 1
+        row = result["items"][0]
+        assert row["case_type"] == "molecular"
+        assert row["id"] == case.id
+        assert row["hn"] == marker
+        assert row["hospital_name"] == hospital.name
+        assert patient.name in (row["patient_name"] or "")
+        assert row["specimen"] == "EGFR Unified Test"
+
+    def test_merges_molecular_parent_linked_case_resolves_via_parent(self, db, admin_user):
+        registrar, _ = admin_user
+        marker = uuid.uuid4().hex[:10]
+        surg_case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        surg_case.hn = marker
+        db.commit()
+        block = make_block(db, specimen.id)
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="KRAS Unified Test")
+
+        create_stain(db, StainCreate(block_id=block.id, test_id=ap_test.id, slide_no=1), registrar_id=registrar.id)
+
+        result = get_unified_cases(db, search=marker)
+        case_types = {row["case_type"] for row in result["items"]}
+        assert "surgical" in case_types
+        assert "molecular" in case_types
+
+        molecular_row = next(r for r in result["items"] if r["case_type"] == "molecular")
+        # hn/patient resolve through the parent Surgical case, but the
+        # accession is the Molecular case's own (M26-...), not the parent's.
+        assert molecular_row["hn"] == marker
+        assert molecular_row["accession_no"] != surg_case.accession_no
+        assert molecular_row["accession_no"].startswith("M")
+
+    def test_molecular_cancelled_case_reports_cancelled_status(self, db, admin_user):
+        registrar, _ = admin_user
+        marker = uuid.uuid4().hex[:10]
+        patient = make_patient(db, name=f"CancelUnified{marker}")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="BRAF Unified Test")
+        case = create_standalone_molecular_case(
+            db,
+            MolecularCaseCreate(patient_id=patient.id, ap_test_id=ap_test.id, hn=marker),
+            registrar_id=registrar.id,
+        )
+        cancel_molecular_case(db, case.id, reason="test cancel", cancelled_by_id=registrar.id)
+
+        result = get_unified_cases(db, search=marker)
+        assert result["items"][0]["status"] == "cancelled"
+
+    def test_case_type_filter_can_restrict_to_molecular(self, db, admin_user):
+        registrar, _ = admin_user
+        marker = uuid.uuid4().hex[:10]
+        surg = make_bare_case(db, registrar_id=registrar.id)
+        surg.hn = marker
+        db.commit()
+        patient = make_patient(db, name=f"FilterMolecular{marker}")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="ALK Unified Test")
+        molecular_case = create_standalone_molecular_case(
+            db,
+            MolecularCaseCreate(patient_id=patient.id, ap_test_id=ap_test.id, hn=marker),
+            registrar_id=registrar.id,
+        )
+
+        result = get_unified_cases(db, search=marker, case_types=["molecular"])
+
+        assert result["total"] == 1
+        assert result["items"][0]["case_type"] == "molecular"
+        assert result["items"][0]["id"] == molecular_case.id
 
 
 class TestUnifiedCasesRouterAccess:

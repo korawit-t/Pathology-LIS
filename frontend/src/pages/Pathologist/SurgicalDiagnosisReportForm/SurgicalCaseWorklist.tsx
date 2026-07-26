@@ -117,7 +117,6 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
           <Text strong style={{ color: isDarkMode ? "#40a9ff" : "#1890ff" }}>
             {text}
           </Text>
-          {/* แสดง Version ถ้าเป็นโหมด Co-Sign */}
           {record.version_no && (
             <Tag color="processing">v.{record.version_no}</Tag>
           )}
@@ -317,7 +316,6 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       render: (status, record) => {
         const consultTag = renderConsultBadge(record);
 
-        // 🚩 ถ้าเป็น Co-Sign Mode ให้เน้น Status ของ Sign-off
         if (isCoSignMode) {
           return (
             <Space direction="vertical" size={4}>
@@ -357,7 +355,6 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
         );
       },
     },
-    // เพิ่มคอลัมน์ "Pathologist" เฉพาะหน้า Co-Sign เพื่อดูว่าใครส่งมา
     ...(isCoSignMode
       ? [
           {
@@ -467,7 +464,7 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
         size="middle"
         onRow={(record) => ({
           onClick: () => {
-            // 🚩 ถ้าเป็นโหมด Co-sign ให้ส่ง case_id แทน id (เพราะ record.id คือ report_id)
+            // In Co-sign mode record.id is actually report_id, so pass case_id instead
             onSelectCase(isCoSignMode ? record.case_id : record.id);
           },
           style: { cursor: "pointer" },

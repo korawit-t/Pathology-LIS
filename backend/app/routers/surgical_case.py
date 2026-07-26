@@ -6,7 +6,7 @@ import mimetypes
 from datetime import datetime, date, time
 from app.utils.time import local_now
 from app.utils.file_handler import validate_and_sanitize
-from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
+from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf, approve_consult_pdf
 
 logger = logging.getLogger(__name__)
 from typing import List, Optional, Any
@@ -635,6 +635,7 @@ def get_immuno_stats(
     """Count distinct cases with pending IHC or Special Stain block stains."""
     from app.models.surgical_block import SurgicalBlock
     from app.models.surgical_block_stain import SurgicalBlockStain
+    from app.models.molecular_case import MolecularCase
 
     def _count(category_filter, is_external=None):
         q = (
@@ -662,7 +663,12 @@ def get_immuno_stats(
         "pending_special_stain_internal": _count("Histochem", is_external=False),
         "pending_ihc_outlab": _count("IHC", is_external=True),
         "pending_special_stain_outlab": _count("Histochem", is_external=True),
-        "pending_molecular_outlab": _count("Molecular", is_external=True),
+        "pending_molecular_outlab": (
+            db.query(func.count(MolecularCase.id))
+            .filter(MolecularCase.status == "pending", MolecularCase.is_cancelled == False)  # noqa: E712
+            .scalar()
+            or 0
+        ),
     }
 
 
@@ -1228,6 +1234,26 @@ def download_consult_pdf(
         filename=os.path.basename(case.consult_pdf_path),
         media_type="application/pdf"
     )
+
+@router.post("/{case_id}/consult-pdf/approve")
+def approve_consult_pdf_endpoint(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    case = crud_case.get_case(db=db, case_id=case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
+    if not case.consult_pdf_path:
+        raise HTTPException(status_code=400, detail="No consult PDF uploaded to approve")
+
+    approve_consult_pdf(db, case, current_user.id)
+    display_name = current_user.report_name or current_user.full_name
+    return {
+        "consult_pdf_approved_by": display_name,
+        "consult_pdf_approved_at": case.consult_pdf_approved_at.isoformat(),
+    }
 
 
 # --- ฟังก์ชันสำหรับยกเลิก (Soft Delete) สำหรับเคสที่สถานะเลย Registered ไปแล้ว ---

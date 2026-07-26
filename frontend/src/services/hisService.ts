@@ -51,6 +51,15 @@ const HisService = {
     const res = await api.get("/his/appointments", { params: { hn } });
     return res.data;
   },
+
+  /**
+   * HNs with an actual visit recorded today (vn_stat), not merely a
+   * scheduled appointment — one batched call, no per-HN loop needed.
+   */
+  getVisitsToday: async (): Promise<{ hns: string[] }> => {
+    const res = await api.get("/his/visits-today");
+    return res.data;
+  },
 };
 
 export default HisService;

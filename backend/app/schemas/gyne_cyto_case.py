@@ -121,6 +121,7 @@ class GyneCytologyCaseUpdate(BaseModel):
     is_out_lab_consult: Optional[bool] = None
     is_out_lab: Optional[bool] = None
     out_lab_result_pdf_path: Optional[str] = None
+    out_lab_result_uploaded_at: Optional[datetime] = None
     consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
@@ -139,16 +140,25 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     id: int
     status: str
     registered_at: datetime
+    report_at: Optional[datetime] = None
     registrar_id: int
     is_express: bool = False
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
+    out_lab_result_uploaded_at: Optional[datetime] = None
+    outlab_result_approved_by_id: Optional[int] = None
+    outlab_result_approved_at: Optional[datetime] = None
     consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
+
+    # Computed: display name of the outlab-result approver (see get_gyne_case
+    # in crud/gyne_cyto_case.py — not a stored column, mirrors
+    # consult_pdf_approver_name on SurgicalCaseResponse).
+    outlab_result_approver_name: Optional[str] = None
 
     # QC Review
     needs_review: bool = False

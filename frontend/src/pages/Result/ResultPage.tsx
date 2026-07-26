@@ -26,6 +26,7 @@ import GyneDiagnosisService from "../../services/gyneDiagnosisService";
 import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
 import legacyReportService from "../../services/legacyReportService";
+import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 import { ArchiveItem } from "../../services/archiveService";
 import dayjs from "dayjs";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -34,11 +35,13 @@ import logger from "../../utils/logger";
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
-type CaseType = "surgical" | "gyne" | "nongyne";
+type CaseType = "surgical" | "gyne" | "nongyne" | "molecular";
 
 interface SearchRow extends ArchiveItem {
   _type: CaseType;
   _rowKey: string;
+  // Molecular-only — decides which PDF endpoint fetchBlob calls.
+  is_outlab?: boolean;
 }
 
 
@@ -59,7 +62,7 @@ const ResultPage: React.FC = () => {
     setPage(1);
     setHasSearched(true);
     try {
-      const [surg, gyne, nongyne] = await Promise.all([
+      const [surg, gyne, nongyne, molecular] = await Promise.all([
         SurgicalReportService.getArchive(
           1,
           100,
@@ -81,6 +84,7 @@ const ResultPage: React.FC = () => {
           undefined,
           clinicianQ,
         ),
+        MolecularCaseService.getAll({ search: patientQ, clinician: clinicianQ, limit: 100 }),
       ]);
 
       const normalize = (items: ArchiveItem[], type: CaseType): SearchRow[] =>
@@ -90,10 +94,31 @@ const ResultPage: React.FC = () => {
           _rowKey: `${type}-${r.source}-${r.id}`,
         }));
 
+      // Molecular has no legacy table / archive endpoint — normalize its own
+      // response shape directly instead of going through ArchiveItem.
+      const normalizeMolecular = (items: MolecularCaseResponse[]): SearchRow[] =>
+        items.map((r) => ({
+          source: "current",
+          id: r.id,
+          accession_no: r.accession_no,
+          patient_name: r.patient_name ?? undefined,
+          patient_hn: r.hn ?? undefined,
+          specimen: r.test_name ?? undefined,
+          clinician_name: r.clinician_name ?? undefined,
+          pathologist_name: r.reported_by_name ?? undefined,
+          status: r.status,
+          date: r.reported_at ?? r.registered_at ?? undefined,
+          registered_date: r.registered_at ?? undefined,
+          is_outlab: r.is_outlab,
+          _type: "molecular",
+          _rowKey: `molecular-current-${r.id}`,
+        }));
+
       const merged = [
         ...normalize(surg.items, "surgical"),
         ...normalize(gyne.items, "gyne"),
         ...normalize(nongyne.items, "nongyne"),
+        ...normalizeMolecular(molecular),
       ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
       setRows(merged);
@@ -132,7 +157,11 @@ const ResultPage: React.FC = () => {
     !!row.has_outlab_result;
 
   const fetchBlob = async (row: SearchRow): Promise<Blob> => {
-    if (row.source === "legacy") {
+    if (row._type === "molecular") {
+      return row.is_outlab
+        ? MolecularCaseService.getOutlabPdfBlob(row.id)
+        : MolecularCaseService.getResultPdfBlob(row.id);
+    } else if (row.source === "legacy") {
       const blob = await legacyReportService.getPdf(row._type, row.id);
       legacyReportService.markRead(row._type, row.id).catch(() => {});
       return blob;
@@ -261,6 +290,13 @@ const ResultPage: React.FC = () => {
         if (isOutlabOnly(r)) {
           return <Tag color="cyan">ผล Out-lab</Tag>;
         }
+        if (r._type === "molecular") {
+          return s === "reported" ? (
+            <Tag color="green">รายงานแล้ว</Tag>
+          ) : (
+            <Tag color="orange">รอผล</Tag>
+          );
+        }
         const color =
           s === "published" ? "green"
           : s === "in_progress" ? "default"
@@ -280,7 +316,11 @@ const ResultPage: React.FC = () => {
       width: 150,
       fixed: "right" as const,
       render: (_: unknown, r: SearchRow) => {
-        const canView = r.source === "legacy" || r.status?.toLowerCase() === "published" || isOutlabOnly(r);
+        const canView =
+          r.source === "legacy" ||
+          r.status?.toLowerCase() === "published" ||
+          isOutlabOnly(r) ||
+          (r._type === "molecular" && (!!r.is_outlab || r.status?.toLowerCase() === "reported"));
         if (!canView)
           return (
             <Text type="secondary" style={{ fontSize: 12 }}>

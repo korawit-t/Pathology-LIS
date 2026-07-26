@@ -75,14 +75,14 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
   const buttonStyles = {
     save: {
       background: isDarkMode
-        ? "linear-gradient(135deg, #237804 0%, #389e0d 100%)" // เขียวเข้มหรู
+        ? "linear-gradient(135deg, #237804 0%, #389e0d 100%)"
         : "#52c41a",
       boxShadow: isDarkMode ? "0 0 12px rgba(82, 196, 26, 0.2)" : "none",
       border: "none",
     },
     signOff: {
       background: isDarkMode
-        ? "linear-gradient(135deg, #820014 0%, #a8071a 100%)" // แดงก่ำมีมิติ
+        ? "linear-gradient(135deg, #820014 0%, #a8071a 100%)"
         : "#cf1322",
       boxShadow: isDarkMode ? "0 0 15px rgba(207, 19, 34, 0.3)" : "none",
       border: "none",
@@ -95,7 +95,6 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
         position: "sticky",
         top: 0,
         zIndex: 1000,
-        // 🚩 พื้นหลัง Toolbar แบบโปร่งแสงและเบลอ (Glassmorphism)
         background: isDarkMode
           ? "rgba(20, 20, 20, 0.85)"
           : "rgba(255, 255, 255, 0.9)",
@@ -117,7 +116,6 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
           justifyContent: "space-between",
         }}
       >
-        {/* --- ส่วนฝั่งซ้าย --- */}
         <Space size="large">
           <Button
             icon={<ArrowLeftOutlined />}
@@ -164,9 +162,7 @@ const SurgicalReportToolbar: React.FC<SurgicalReportToolbarProps> = ({
           </span>
         )}
 
-        {/* --- ส่วนฝั่งขวา (Buttons) --- */}
         <Space>
-          {/* 🚩 ปุ่ม Setting Modal */}
           <Tooltip title="Report Settings">
             <Button
               icon={<SettingOutlined />}

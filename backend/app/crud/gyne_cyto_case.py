@@ -1,3 +1,6 @@
+import io
+import json
+import os
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import func, or_, cast, and_, literal
@@ -10,6 +13,24 @@ from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus
 from app.schemas.gyne_cyto_case import GyneCytologyCaseCreate, GyneCytologyCaseUpdate
 from app.crud.gyne_cyto_stain import auto_create_default_stain
+from app.crud.organization import resolve_lab_header
+from app.crud.system_setting import get_settings as get_system_settings
+from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64, STORAGE_BASE
+from app.services.pdf_service import generate_consult_cover_pdf
+
+try:
+    from pypdf import PdfWriter
+    PYPDF_AVAILABLE = True
+except ImportError:
+    PYPDF_AVAILABLE = False
+
+
+def _darken_hex(hex_color: str, factor: float = 0.65) -> str:
+    """Return a darkened version of a hex color (e.g. #0056b3 -> #003a8c)."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    r, g, b = int(r * factor), int(g * factor), int(b * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _get_next_gyne_accession_no(db: Session) -> str:
@@ -84,7 +105,7 @@ def get_gyne_case(db: Session, case_id: int):
     """
     ดึงข้อมูลเคสเดียว พร้อมโหลดข้อมูลที่เกี่ยวข้องทั้งหมด (Eager Loading)
     """
-    return (
+    case = (
         db.query(GyneCytologyCase)
         .options(
             selectinload(GyneCytologyCase.patient).selectinload(Patient.title),
@@ -94,10 +115,20 @@ def get_gyne_case(db: Session, case_id: int):
             selectinload(GyneCytologyCase.hospital),
             selectinload(GyneCytologyCase.department),
             selectinload(GyneCytologyCase.medical_scheme),
+            selectinload(GyneCytologyCase.outlab_result_approver),
         )
         .filter(GyneCytologyCase.id == case_id)
         .first()
     )
+    if case:
+        # Not a stored column — computed display name for the outlab-result
+        # approver, mirrors consult_pdf_approver_name on SurgicalCase.
+        case.outlab_result_approver_name = (
+            (case.outlab_result_approver.report_name or case.outlab_result_approver.full_name)
+            if case.outlab_result_approver
+            else None
+        )
+    return case
 
 
 def get_gyne_cases(
@@ -116,6 +147,7 @@ def get_gyne_cases(
     is_out_lab_consult: bool = None,
     is_out_lab: bool = None,
     has_out_lab_result: bool = None,
+    outlab_result_approved: bool = None,
     consult_status: str = None,
     exclude_consult_status: str = None,
     is_reported: bool = None,
@@ -215,6 +247,12 @@ def get_gyne_cases(
             query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.isnot(None))
         else:
             query = query.filter(GyneCytologyCase.out_lab_result_pdf_path.is_(None))
+
+    if outlab_result_approved is not None:
+        if outlab_result_approved:
+            query = query.filter(GyneCytologyCase.outlab_result_approved_at.isnot(None))
+        else:
+            query = query.filter(GyneCytologyCase.outlab_result_approved_at.is_(None))
 
     if consult_status:
         query = query.filter(GyneCytologyCase.consult_status == consult_status)
@@ -341,6 +379,104 @@ def update_gyne_case(
     except Exception as e:
         db.rollback()
         raise e
+
+
+def approve_outlab_test_result(db: Session, case: GyneCytologyCase, approved_by_id: int) -> None:
+    case.outlab_result_approved_by_id = approved_by_id
+    case.outlab_result_approved_at = local_now()
+    db.commit()
+
+
+def clear_outlab_result_approval(db: Session, case: GyneCytologyCase) -> None:
+    """Reset sign-off on re-upload — a replaced PDF needs fresh review."""
+    case.outlab_result_approved_by_id = None
+    case.outlab_result_approved_at = None
+    db.commit()
+
+
+def get_outlab_test_result_with_cover(db: Session, case_id: int) -> bytes | None:
+    """The uploaded outlab test result PDF with a lab-header + patient/
+    accession cover sheet prepended — reuses the exact same template/
+    rasterize/merge pipeline as the Surgical external-consult cover sheet and
+    Molecular's out-lab-pdf cover sheet (consult_cover_template.html via
+    generate_consult_cover_pdf/get_consult_pdf_thumbnails_base64). Also shows
+    who signed off on it and when, once approved. Regenerated fresh on every
+    call — no cache, mirrors those endpoints."""
+    case = (
+        db.query(GyneCytologyCase)
+        .options(
+            selectinload(GyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(GyneCytologyCase.hospital),
+            selectinload(GyneCytologyCase.department),
+            selectinload(GyneCytologyCase.outlab_result_approver),
+        )
+        .filter(GyneCytologyCase.id == case_id)
+        .first()
+    )
+    if not case or not case.out_lab_result_pdf_path or not os.path.exists(case.out_lab_result_pdf_path):
+        return None
+
+    with open(case.out_lab_result_pdf_path, "rb") as f:
+        main_bytes = f.read()
+
+    if not PYPDF_AVAILABLE:
+        return main_bytes
+
+    thumbnails = get_consult_pdf_thumbnails_base64(case.out_lab_result_pdf_path)
+    if not thumbnails:
+        return main_bytes
+
+    patient = case.patient
+    title = getattr(patient, "title", None) if patient else None
+
+    settings = get_system_settings(db)
+    lab_name_en, lab_address, logo_path = resolve_lab_header(case.hospital, settings)
+    logo_url = None
+    if logo_path:
+        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
+        logo_url = full.as_uri() if full.exists() else None
+
+    primary_color = settings.report_primary_color if settings else None
+    font_path = STORAGE_BASE.parent / "assets" / "fonts"
+
+    approver_name = (
+        (case.outlab_result_approver.report_name or case.outlab_result_approver.full_name)
+        if case.outlab_result_approver else None
+    )
+
+    report_data = {
+        "font_path": font_path.as_uri(),
+        "primary_color": primary_color,
+        "primary_color_dark": _darken_hex(primary_color) if primary_color else None,
+        "report_logo_url_snapshot": logo_url,
+        "lab_name_en_snapshot": lab_name_en,
+        "lab_address_snapshot": lab_address,
+        "patient_title": title.title if title else "",
+        "patient_name": patient.name if patient else "",
+        "patient_ln": patient.ln if patient else "",
+        "patient_hn": case.hn,
+        "patient_gender": patient.gender if patient else "",
+        "patient_age_display": patient.age_display if patient else "-",
+        "accession_no": case.accession_no,
+        "clinician_name": case.clinician_name,
+        "hospital_name": case.hospital.name if case.hospital else None,
+        "department_name": case.department.name if case.department else None,
+        "collect_at": case.collect_at,
+        "registered_at": case.registered_at,
+        "reported_at": case.report_at,
+        "consult_pdf_thumbnail_snapshot": json.dumps(thumbnails),
+        "consult_pdf_approved_by_snapshot": approver_name,
+        "consult_pdf_approved_at_snapshot": case.outlab_result_approved_at,
+    }
+
+    cover_bytes = generate_consult_cover_pdf(report_data)
+
+    writer = PdfWriter()
+    writer.append(io.BytesIO(cover_bytes))
+    writer.append(io.BytesIO(main_bytes))
+    merged_io = io.BytesIO()
+    writer.write(merged_io)
+    return merged_io.getvalue()
 
 
 def delete_gyne_case(db: Session, case_id: int):

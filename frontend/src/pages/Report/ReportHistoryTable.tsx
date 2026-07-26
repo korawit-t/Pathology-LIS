@@ -5,6 +5,7 @@ import PageContainer from "../../components/Layout/PageContainer";
 import SurgicalReportHistory, { ReportHistoryHandle } from "./components/SurgicalReportHistory";
 import GyneReportHistory from "./components/GyneReportHistory";
 import NonGyneReportHistory from "./components/NonGyneReportHistory";
+import MolecularReportHistory from "./components/MolecularReportHistory";
 
 const { Title } = Typography;
 
@@ -19,11 +20,13 @@ const ReportHistoryTable: React.FC<Props> = ({ onBack: _ }) => {
   const surgicalRef = useRef<ReportHistoryHandle>(null);
   const gyneRef = useRef<ReportHistoryHandle>(null);
   const nongyneRef = useRef<ReportHistoryHandle>(null);
+  const molecularRef = useRef<ReportHistoryHandle>(null);
 
   const activeRef =
     activeTab === "surgical" ? surgicalRef :
     activeTab === "gyne" ? gyneRef :
-    nongyneRef;
+    activeTab === "nongyne" ? nongyneRef :
+    molecularRef;
 
   const items = [
     {
@@ -40,6 +43,11 @@ const ReportHistoryTable: React.FC<Props> = ({ onBack: _ }) => {
       key: "nongyne",
       label: "Non-Gyne Cytology",
       children: <NonGyneReportHistory ref={nongyneRef} />,
+    },
+    {
+      key: "molecular",
+      label: "Molecular Pathology",
+      children: <MolecularReportHistory ref={molecularRef} />,
     },
   ];
 

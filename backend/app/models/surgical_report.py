@@ -106,6 +106,9 @@ class SurgicalReport(Base):
     lab_address_snapshot = Column(Text, nullable=True)
     report_footer_snapshot = Column(Text, nullable=True)
     consult_pdf_path_snapshot = Column(String, nullable=True)
+    consult_pdf_thumbnail_snapshot = Column(Text, nullable=True)
+    consult_pdf_approved_by_snapshot = Column(String, nullable=True)
+    consult_pdf_approved_at_snapshot = Column(DateTime, nullable=True)
 
     # --- Status & Timestamps ---
     status = Column(

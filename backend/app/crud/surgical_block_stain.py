@@ -54,11 +54,11 @@ def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
         case.status = "stained"
 
 
-def create_stain(db: Session, obj_in: StainCreate):
+def create_stain(db: Session, obj_in: StainCreate, registrar_id: int | None = None):
     """
     สร้างรายการย้อมใหม่ (สามารถระบุเลข slide_no เองหรือให้ระบบรันต่อก็ได้)
     """
-    db_obj = SurgicalBlockStain(**obj_in.model_dump())
+    db_obj = SurgicalBlockStain(**obj_in.model_dump(exclude={"assist_pathologist_id"}))
     db.add(db_obj)
     db.flush()
 
@@ -76,6 +76,20 @@ def create_stain(db: Session, obj_in: StainCreate):
                             case.status = "pending immuno"
                         elif ap_test.category == "Histochem" and case.status != "pending immuno":
                             case.status = "pending special stains"
+
+        # Ordering a Molecular-category test spawns its own M26- case, with this
+        # Surgical case as parent — see app/his_export/README.md-style feature docs
+        # in the plan; registrar_id is required since the case needs a creator.
+        if ap_test and ap_test.category == "Molecular" and registrar_id is not None:
+            from app.crud.molecular_case import create_molecular_case_from_stain
+
+            create_molecular_case_from_stain(
+                db,
+                stain=db_obj,
+                ap_test=ap_test,
+                registrar_id=registrar_id,
+                assist_pathologist_id=obj_in.assist_pathologist_id,
+            )
 
     db.commit()
     db.refresh(db_obj)
@@ -130,7 +144,7 @@ def get_unprinted_stains(db: Session):
     )
 
 
-def delete_stain(db: Session, stain_id: int) -> bool:
+def delete_stain(db: Session, stain_id: int, actor_id: int | None = None) -> bool:
     """
     ลบรายการย้อมสไลด์ (Stain) ตาม ID
     """
@@ -140,6 +154,21 @@ def delete_stain(db: Session, stain_id: int) -> bool:
     if not db_obj:
         return False
 
+    # If this stain had auto-spawned a Molecular case that's already been
+    # reported (a signed-off clinical result), block the delete outright —
+    # cancelling that side-effect-of-a-different-action is too destructive.
+    # The user must explicitly cancel the Molecular case itself first.
+    from app.crud.molecular_case import (
+        cancel_or_delete_molecular_case_for_stain,
+        get_reported_molecular_case_for_stain,
+    )
+    blocking_case = get_reported_molecular_case_for_stain(db, stain_id)
+    if blocking_case:
+        raise ValueError(
+            f"Cannot delete: linked Molecular case {blocking_case.accession_no} has "
+            "already been reported. Cancel that case explicitly first."
+        )
+
     try:
         block = db.get(SurgicalBlock, db_obj.block_id)
         case_id = None
@@ -147,6 +176,14 @@ def delete_stain(db: Session, stain_id: int) -> bool:
             specimen = db.get(SurgicalSpecimen, block.specimen_id)
             if specimen:
                 case_id = specimen.case_id
+
+        # If this stain had auto-spawned a Molecular case (category=Molecular
+        # order — see create_stain above), resolve it before the stain itself
+        # is gone: hard-delete if untouched, otherwise soft-cancel to keep
+        # the accession/audit trail. Must run before db.delete(db_obj) since
+        # MolecularCase.stain_id is ON DELETE SET NULL — the lookup below
+        # would no longer find it once the stain row is actually removed.
+        cancel_or_delete_molecular_case_for_stain(db, stain_id=stain_id, actor_id=actor_id)
 
         db.delete(db_obj)
         db.flush()
@@ -428,6 +465,63 @@ def create_outlab_run(db: Session, obj_in: OutlabRunCreate, user_id: int):
     db.commit()
     db.refresh(db_run)
     return db_run
+
+def get_unkeyed_outlab_by_hn(db: Session) -> dict:
+    """Group not-yet-HosXP-keyed outlab run details by patient HN, in one
+    query — shared by the Today's Patients tab (via its own HTTP endpoint,
+    replacing an earlier client-side N+1 loop over /surgical-cases?search=)
+    and the scheduled_notifications worker, so both agree on what counts as
+    "pending". Returns:
+    {hn: {"patient_name": str, "items": [{"id", "accession_no", "block_code",
+    "stain_name", "destination_lab"}, ...]}}.
+    """
+    details = (
+        db.query(SurgicalOutlabRunDetail)
+        .options(
+            joinedload(SurgicalOutlabRunDetail.stain_order)
+            .joinedload(SurgicalBlockStain.test),
+            joinedload(SurgicalOutlabRunDetail.stain_order)
+            .joinedload(SurgicalBlockStain.block)
+            .joinedload(SurgicalBlock.specimen)
+            .joinedload(SurgicalSpecimen.case)
+            .joinedload(SurgicalCase.patient)
+            .joinedload(Patient.title),
+            joinedload(SurgicalOutlabRunDetail.outlab_run),
+        )
+        .filter(SurgicalOutlabRunDetail.is_hosxp_keyed.is_(False))
+        .all()
+    )
+
+    by_hn: dict = {}
+    for detail in details:
+        stain = detail.stain_order
+        if not stain or not stain.block or not stain.block.specimen or not stain.block.specimen.case:
+            continue
+        case = stain.block.specimen.case
+        hn = case.hn
+        if not hn:
+            continue
+        patient = case.patient
+        name_parts = []
+        if patient:
+            if patient.title:
+                name_parts.append(patient.title.title)
+            name_parts.append(patient.name)
+            if patient.ln:
+                name_parts.append(patient.ln)
+        patient_name = " ".join(p for p in name_parts if p) or "-"
+
+        entry = by_hn.setdefault(hn, {"patient_name": patient_name, "items": []})
+        entry["items"].append({
+            "id": detail.id,
+            "accession_no": case.accession_no,
+            "block_code": stain.block.block_code,
+            "stain_name": stain.test.name if stain.test else "Unknown",
+            "destination_lab": detail.outlab_run.destination_lab if detail.outlab_run else None,
+        })
+
+    return by_hn
+
 
 def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
     runs = (

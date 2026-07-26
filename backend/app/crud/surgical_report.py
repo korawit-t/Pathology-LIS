@@ -56,20 +56,16 @@ def get_surgical_report_pdf(db: Session, report: SurgicalReport) -> bytes:
 
     resolve_report_logo(report_data, db)
 
-    prepend_pdfs = []
-    if report.consult_pdf_path_snapshot:
-        prepend_pdfs.append(report.consult_pdf_path_snapshot)
-
     settings = get_system_settings(db)
     active_template = f"reports/{settings.surgical_report_template or 'surgical_report_template.html'}"
 
-    from app.services.pdf_service import generate_pdf_blob
-    return generate_pdf_blob(
+    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
+    pdf_blob = generate_pdf_blob(
         report_data,
         template_name=active_template,
         is_preview=False,
-        prepend_pdfs=prepend_pdfs if prepend_pdfs else None,
     )
+    return prepend_consult_cover(pdf_blob, report_data)
 
 
 def build_surgical_export_payload(report: SurgicalReport) -> dict:

@@ -33,6 +33,7 @@ CAN_APPROVE = RoleChecker(["senior_pathologist", "admin"])
 CAN_WRITE_GYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager"])
 CAN_READ_GYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager", "register", "hospital", "clinician"])
 CAN_APPROVE_GYNE_CYTO = RoleChecker(["admin", "senior_pathologist", "cytotechnologist"])
+CAN_APPROVE_OUTLAB_RESULT = RoleChecker(["pathologist", "senior_pathologist", "admin"])
 
 # --- สิทธิ์สำหรับ NonGyne Cytology ---
 CAN_WRITE_NONGYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager"])

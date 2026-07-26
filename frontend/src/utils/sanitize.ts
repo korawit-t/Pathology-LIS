@@ -1,5 +1,13 @@
 import DOMPurify from "dompurify";
 
+// Parser-based tag stripping for plain-text contexts (CSV export cells,
+// etc.) — unlike a `.replace(/<[^>]+>/g, "")` regex, DOMPurify parses the
+// markup properly so malformed/nested tags can't leave residual `<script`
+// fragments behind (CodeQL: incomplete multi-character sanitization).
+export function stripHtmlToText(html: string | null | undefined): string {
+  return DOMPurify.sanitize(html || "", { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+}
+
 export function sanitizeHtml(html: string | null | undefined): string {
   return DOMPurify.sanitize(html || "", {
     ALLOWED_TAGS: [

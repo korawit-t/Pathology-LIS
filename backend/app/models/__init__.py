@@ -47,6 +47,8 @@ from .nongyne_case_image import NongyneCaseImage
 from .gyne_case_image import GyneCaseImage
 from .notification_channel import NotificationChannel
 from .notification_rule import NotificationRule
+from .scheduled_notification_rule import ScheduledNotificationRule
+from .scheduled_notification_state import ScheduledNotificationState
 from .block_storage import BlockStorageRun, BlockStorageDetail
 from .slide_storage import SlideStorageRun, SlideStorageDetail
 from .outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
@@ -76,6 +78,7 @@ from .wsi_file import WsiFile
 from .wsi_slide_link import WsiSlideLink
 from .stain_panel import StainPanel, StainPanelItem
 from .his_export_log import HisExportLog
+from .molecular_case import MolecularCase
 
 # ... models อื่นๆ
 # การทำแบบนี้จะทำให้เวลาเราเขียน:

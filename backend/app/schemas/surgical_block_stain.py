@@ -36,6 +36,9 @@ class StainCreate(StainBase):
     test_id: Optional[int] = None  # nullable for recut orders without a specific test
     is_recut: bool = False
     recut_note: Optional[str] = None
+    # Molecular-category orders only — not a SurgicalBlockStain column, excluded
+    # from the dict before constructing the model (see crud.create_stain).
+    assist_pathologist_id: Optional[int] = None
 
 
 class StainUpdate(BaseModel):
@@ -142,6 +145,8 @@ class OutlabRunDetailResponse(BaseModel):
     block_id: Optional[int] = None
     received_at: Optional[datetime] = None
     received_by_id: Optional[int] = None
+    is_hosxp_keyed: bool = False
+    hosxp_keyed_at: Optional[datetime] = None
     stain_order: Optional[StainResponse] = None
 
     @model_validator(mode="after")

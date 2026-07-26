@@ -1,13 +1,13 @@
-import React, { useRef, useState, useCallback, FC } from "react";
+import React, { useRef, useState, FC } from "react";
 import {
   Modal,
   Button,
-  message,
+  App,
   Space,
   Typography,
   Divider,
   Select,
-} from "antd"; // 🌟 เพิ่ม Select
+} from "antd";
 import {
   CameraOutlined,
   RedoOutlined,
@@ -16,26 +16,21 @@ import {
   FileImageOutlined,
 } from "@ant-design/icons";
 import Webcam from "react-webcam";
-import { ImageEditor } from "./ImageEditor"; // 🌟 นำเข้า ImageEditor
+import { ImageEditor } from "../../../../components/ImageEditor";
 import styles from "./GrossImageCaptureModal.module.css";
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
+import { HqCaptureToggle } from "../../../../components/HqCaptureToggle";
+import { DEFAULT_VIDEO_CONSTRAINTS } from "../../../../utils/imageCapture";
+import { useImageCapture } from "../../../../hooks/useImageCapture";
 
 const { Text } = Typography;
 
 interface GrossImageCaptureModalProps {
   open: boolean;
   onClose: () => void;
-  // 🌟 เพิ่ม specimens เข้ามาเพื่อสร้าง Dropdown
   specimens: Specimen[];
-  // 🌟 ปรับ onCaptureAndUpload ให้รับ specimenId ด้วย
   onCaptureAndUpload: (imageSrc: string, specimenId: number | null) => void;
 }
-
-const videoConstraints = {
-  width: 1280,
-  height: 720,
-  facingMode: "environment",
-};
 
 const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   open,
@@ -43,44 +38,26 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   specimens,
   onCaptureAndUpload,
 }) => {
+  const { message } = App.useApp();
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [selectedSpecimenId, setSelectedSpecimenId] = useState<number | null>(
     null,
-  ); // 🌟 เก็บ ID ที่เลือก
+  );
 
-  const [showEditor, setShowEditor] = useState(false); // 🌟 ใช้เปิด/ปิด Image Editor
+  const [showEditor, setShowEditor] = useState(false);
 
-  // 🌟 ฟังก์ชันจัดการเมื่อเลือกไฟล์จากเครื่อง
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImageSrc(reader.result as string); // แปลงเป็น Base64 เพื่อแสดง Preview
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("เลือกไฟล์ภาพสำเร็จ");
-      };
-      reader.readAsDataURL(file);
-    }
+  const onCaptured = (dataUrl: string) => {
+    setImageSrc(dataUrl);
+    setShowEditor(true);
   };
+  const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
+    useImageCapture(webcamRef, onCaptured);
 
-  // 🌟 ฟังก์ชันเปิดหน้าต่างเลือกไฟล์
   const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
-
-  const capture = useCallback(() => {
-    if (webcamRef.current) {
-      const image = webcamRef.current.getScreenshot();
-      if (image) {
-        setImageSrc(image);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("บันทึกภาพชั่วคราวแล้ว");
-      }
-    }
-  }, [webcamRef]);
 
   const retake = () => {
     setImageSrc(null);
@@ -89,10 +66,9 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
 
   const handleUpload = () => {
     if (!imageSrc) {
-      message.error("กรุณาถ่ายภาพก่อนทำการอัปโหลด");
+      message.error("Please capture an image before uploading");
       return;
     }
-    // ส่งทั้งรูปและ ID ของชิ้นเนื้อกลับไป
     onCaptureAndUpload(imageSrc, selectedSpecimenId);
     setImageSrc(null);
     setShowEditor(false);
@@ -108,10 +84,13 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
   return (
     <Modal
       title={
-        <Space>
-          <CameraOutlined />
-          <span>ถ่ายภาพชิ้นเนื้อ (Gross Image Capture)</span>
-        </Space>
+        <div>
+          <Space>
+            <CameraOutlined />
+            <span>Gross Image Capture</span>
+          </Space>
+          <HqCaptureToggle hqMode={hqMode} hqSupported={hqSupported} onChange={setHqMode} />
+        </div>
       }
       open={open}
       onCancel={onClose}
@@ -120,7 +99,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
       destroyOnClose
       footer={[
         <Button key="cancel" icon={<CloseOutlined />} onClick={onClose}>
-          ยกเลิก
+          Cancel
         </Button>,
         <Button
           key="retake"
@@ -129,27 +108,26 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           onClick={retake}
           disabled={!imageSrc}
         >
-          ถ่ายใหม่
+          Retake
         </Button>,
-
-        // 🌟 เพิ่มปุ่มเลือกไฟล์จากเครื่อง
         <Button
           key="browse"
           icon={<FileImageOutlined />}
           onClick={triggerFileInput}
           disabled={!!imageSrc}
         >
-          เลือกจากไฟล์
+          Select File
         </Button>,
 
         <Button
           key="capture"
           type="primary"
           icon={<CameraOutlined />}
-          onClick={capture}
-          disabled={!!imageSrc}
+          onClick={() => capture("Image captured successfully")}
+          loading={capturing}
+          disabled={!!imageSrc || capturing}
         >
-          กดถ่ายรูป
+          Capture
         </Button>,
         <Button
           key="upload"
@@ -162,80 +140,79 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           }}
           icon={<UploadOutlined />}
           onClick={handleUpload}
-          // 🚩 บังคับต้องมีทั้งรูปภาพ และ เลือกชิ้นเนื้อ
+          // Require both an image and a selected specimen
           disabled={!imageSrc || !selectedSpecimenId}
         >
-          ยืนยันและอัปโหลด
+          Confirm & Upload
         </Button>,
       ]}
       styles={{ body: { padding: showEditor ? 0 : 24 } }}
     >
       {showEditor && imageSrc ? (
-        <ImageEditor 
-          imageSrc={imageSrc} 
-          onSave={handleEditorSave} 
-          onCancel={() => setShowEditor(false)} 
+        <ImageEditor
+          imageSrc={imageSrc}
+          onSave={handleEditorSave}
+          onCancel={() => setShowEditor(false)}
         />
       ) : (
-      <div className={styles.container}>
-        {/* 🌟 ส่วนเลือกชิ้นเนื้อ (เพิ่มใหม่) */}
-        {/* 🌟 Input File แบบซ่อน */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          accept="image/*"
-          onChange={handleFileChange}
-        />
+        <div className={styles.container}>
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept="image/*"
+            onChange={(e) => handleFileChange(e, "File selected successfully")}
+          />
 
-        <div style={{ marginBottom: 16, textAlign: "center" }}>
-          <Space>
-            <Text strong>ภาพถ่ายของชิ้นเนื้อ:</Text>
-            <Select
-              style={{ width: 300 }}
-              placeholder="กรุณาเลือกชิ้นเนื้อ (ระบุ Relation)"
-              value={selectedSpecimenId}
-              onChange={(value) => setSelectedSpecimenId(value)}
-              allowClear
-            >
-              {specimens.map((spec) => (
-                <Select.Option key={spec.id} value={spec.id}>
-                  {spec.specimen_label}: {spec.specimen_name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Space>
-        </div>
+          <div style={{ marginBottom: 16, textAlign: "center" }}>
+            <Space>
+              <Text strong>Specimen photo:</Text>
+              <Select
+                style={{ width: 300 }}
+                placeholder="Select a specimen (Relation)"
+                value={selectedSpecimenId}
+                onChange={(value) => setSelectedSpecimenId(value)}
+                allowClear
+              >
+                {specimens.map((spec) => (
+                  <Select.Option key={spec.id} value={spec.id}>
+                    {spec.specimen_label}: {spec.specimen_name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Space>
+          </div>
 
-        <div className={styles.previewArea}>
-          {imageSrc ? (
-            <div className={styles.imageWrapper}>
-              <img
-                src={imageSrc}
-                alt="Captured Gross"
-                className={styles.capturedImage}
+          <div className={styles.previewArea}>
+            {imageSrc ? (
+              <div className={styles.imageWrapper}>
+                <img
+                  src={imageSrc}
+                  alt="Captured Gross"
+                  className={styles.capturedImage}
+                />
+                <div className={styles.overlayText}>Preview Mode</div>
+              </div>
+            ) : (
+              <Webcam
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
+                className={styles.webcam}
               />
-              <div className={styles.overlayText}>Preview Mode</div>
-            </div>
-          ) : (
-            <Webcam
-              audio={false}
-              ref={webcamRef}
-              screenshotFormat="image/jpeg"
-              videoConstraints={videoConstraints}
-              className={styles.webcam}
-            />
-          )}
-        </div>
+            )}
+          </div>
 
-        <Divider plain>
-          <Text type="secondary">
-            {imageSrc
-              ? "ตรวจสอบรูปภาพและชิ้นเนื้อที่เลือกก่อนอัปโหลด"
-              : "ปรับตำแหน่งชิ้นเนื้อให้ชัดเจน"}
-          </Text>
-        </Divider>
-      </div>
+          <Divider plain>
+            <Text type="secondary">
+              {imageSrc
+                ? "Review the image and selected specimen before uploading"
+                : "Position the specimen clearly"}
+            </Text>
+          </Divider>
+        </div>
       )}
     </Modal>
   );

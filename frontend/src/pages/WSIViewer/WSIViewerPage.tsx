@@ -61,8 +61,8 @@ export default function WSIViewerPage({ onBack }: Props) {
 
     try {
       const [infoRes, dziRes] = await Promise.all([
-        fetch(`${API_BASE}/wsi/info?path=${encodeURIComponent(path)}`),
-        fetch(`${API_BASE}/wsi/dzi-info?path=${encodeURIComponent(path)}`),
+        fetch(`${API_BASE}/wsi/info?path=${encodeURIComponent(path)}`, { credentials: "include" }),
+        fetch(`${API_BASE}/wsi/dzi-info?path=${encodeURIComponent(path)}`, { credentials: "include" }),
       ]);
 
       if (!infoRes.ok) {

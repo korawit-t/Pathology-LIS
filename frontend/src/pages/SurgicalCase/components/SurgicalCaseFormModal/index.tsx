@@ -668,7 +668,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         setFileList((prev) => [
           ...prev,
           {
-            uid: `pending-${Date.now()}-${Math.random()}`,
+            uid: `pending-${crypto.randomUUID()}`,
             name: file.name,
             status: "done",
             type: file.type,

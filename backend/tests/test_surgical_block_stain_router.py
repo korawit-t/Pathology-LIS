@@ -6,14 +6,19 @@ print-stickers/mark-printed endpoints (which call the already-tested
 generate_slide_sticker_pdf directly, so only smoke-tested here, not
 re-verifying PDF layout)."""
 
+import uuid
+
 from app.crud.surgical_block import create_block
+from app.crud.surgical_block_stain import create_outlab_run
 from app.schemas.surgical_block import SurgicalBlockCreate
+from app.schemas.surgical_block_stain import OutlabRunCreate
 
 from tests.factories import (
     make_signable_case,
     make_anatomical_pathology_test,
     make_system_setting,
     make_hospital,
+    make_block_stain,
 )
 
 
@@ -147,6 +152,33 @@ class TestPrintHeQuick:
 
         assert r.status_code == 200
         assert captured["print_data"][0]["hospital_code"] == "HOSP-B"
+
+
+class TestPendingOutlabByHn:
+    """GET /outlab-runs/pending-by-hn — backs the Today's Patients tab,
+    replacing an earlier client-side N+1 loop over /surgical-cases?search=."""
+
+    def test_clinician_cannot_access(self, clinician_client):
+        assert clinician_client.get("/surgical-block-stains/outlab-runs/pending-by-hn").status_code == 403
+
+    def test_returns_unkeyed_items_grouped_by_hn(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.hn = f"HN-{uuid.uuid4().hex[:8]}"
+        db.commit()
+        block = _make_block(db, specimen.id)
+        test = make_anatomical_pathology_test(db, category="IHC", name="CK7")
+        stain = make_block_stain(db, block.id, test_id=test.id, status="sent")
+        create_outlab_run(
+            db, OutlabRunCreate(destination_lab="Reference Lab", stain_ids=[stain.id]), user_id=registrar.id,
+        )
+
+        r = pathologist_client.get("/surgical-block-stains/outlab-runs/pending-by-hn")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert case.hn in body
+        assert body[case.hn]["items"][0]["stain_name"] == "CK7"
 
 
 def test_requires_authentication(client):

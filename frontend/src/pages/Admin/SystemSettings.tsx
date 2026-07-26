@@ -11,6 +11,7 @@ import {
   RobotOutlined,
   ScanOutlined,
   SafetyOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons";
 import { APP_VERSION } from "../../constants/app.constants";
 import api from "../../services/httpClient";
@@ -23,6 +24,7 @@ import BarcodeTab from "./components/BarcodeTab";
 import StickerTab from "./components/StickerTab";
 import NotificationChannelTab from "./components/NotificationChannelTab";
 import NotificationRulesTab from "./components/NotificationRulesTab";
+import ScheduledNotificationRulesTab from "./components/ScheduledNotificationRulesTab";
 import AiRegistryTab from "./components/AiRegistryTab";
 import AiConfigTab from "./components/AiConfigTab";
 import ReportGenTab from "./components/ReportGenTab";
@@ -49,6 +51,7 @@ const SystemSettings: React.FC = () => {
     { key: "report",             icon: <FileTextOutlined />,  label: "Report Settings" },
     { key: "notifications",      icon: <FileTextOutlined />,  label: "Notification Channels" },
     { key: "notification-rules", icon: <FileTextOutlined />,  label: "Notification Rules" },
+    { key: "scheduled-notifications", icon: <ClockCircleOutlined />, label: "Scheduled Alerts" },
     { key: "barcode",            icon: <BarcodeOutlined />,   label: "Barcode Label" },
     { key: "sticker",            icon: <TagsOutlined />,      label: "Sticker Label" },
     { key: "ai-registry",        icon: <RobotOutlined />,      label: "Tumor Registry" },
@@ -105,6 +108,7 @@ const SystemSettings: React.FC = () => {
           {activeKey === "report" && <ReportTab />}
           {activeKey === "notifications" && <NotificationChannelTab />}
           {activeKey === "notification-rules" && <NotificationRulesTab />}
+          {activeKey === "scheduled-notifications" && <ScheduledNotificationRulesTab />}
           {activeKey === "barcode" && <BarcodeTab />}
           {activeKey === "sticker" && <StickerTab />}
           {activeKey === "ai-registry" && <AiRegistryTab />}

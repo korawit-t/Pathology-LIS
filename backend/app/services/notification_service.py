@@ -137,14 +137,14 @@ def _send_slack_sync(credentials: Dict[str, Any], message: str) -> None:
         client.post(webhook_url, json={"text": message}, timeout=5)
 
 
-def notify_signed_out(db, data: Dict[str, Any]) -> None:
-    """Sync fire-and-forget: send case_signed_out notification via all active channels."""
+def notify_event(db, event_key: str, data: Dict[str, Any], default_template: str = None) -> None:
+    """Sync fire-and-forget: send a notification for the given event_key via all active channels."""
     try:
         from app.models.notification_rule import NotificationRule
         from app.models.notification_channel import NotificationChannel
         rule = (
             db.query(NotificationRule)
-            .filter(NotificationRule.event_key == "case_signed_out", NotificationRule.is_active.is_(True))
+            .filter(NotificationRule.event_key == event_key, NotificationRule.is_active.is_(True))
             .first()
         )
         if not rule or not rule.channel_ids:
@@ -157,8 +157,8 @@ def notify_signed_out(db, data: Dict[str, Any]) -> None:
             )
             .all()
         )
-        template = rule.message_template or (
-            "🔔 รายงานออกแล้ว\nHN: {hn}\nชื่อ: {name}\nCase: {accession_no}"
+        template = rule.message_template or default_template or (
+            "🔔 แจ้งเตือนจากระบบ Pathology LIS\nHN: {hn}\nชื่อ: {name}\nCase: {id_case}"
         )
         message = _fill_template(template, data)
         for ch in channels:
@@ -171,6 +171,16 @@ def notify_signed_out(db, data: Dict[str, Any]) -> None:
                 pass
     except Exception:
         pass  # never block the HTTP response
+
+
+def notify_signed_out(db, data: Dict[str, Any]) -> None:
+    """Sync fire-and-forget: send case_signed_out notification via all active channels."""
+    notify_event(
+        db,
+        "case_signed_out",
+        data,
+        default_template="🔔 รายงานออกแล้ว\nHN: {hn}\nชื่อ: {name}\nCase: {accession_no}",
+    )
 
 
 async def broadcast_to_channels(channels, template: str, data: Dict[str, Any]) -> None:

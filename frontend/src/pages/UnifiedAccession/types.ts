@@ -23,7 +23,7 @@ export interface OutlabStainRun {
 
 export type UnifiedRow = {
   _key: string;
-  type: "surgical" | "gyne" | "nongyne";
+  type: "surgical" | "gyne" | "nongyne" | "molecular";
   id: number;
   accession_no: string;
   hn: string;

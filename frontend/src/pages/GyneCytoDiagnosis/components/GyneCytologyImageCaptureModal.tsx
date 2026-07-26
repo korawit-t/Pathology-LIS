@@ -1,9 +1,7 @@
 import React, {
   useRef,
   useState,
-  useCallback,
   FC,
-  ChangeEvent,
   useEffect,
 } from "react";
 import {
@@ -27,9 +25,14 @@ import {
   EditOutlined,
 } from "@ant-design/icons";
 import Webcam from "react-webcam";
-import { ImageEditor } from "../../Gross/components/GrossImageCaptureModal/ImageEditor";
+import { ImageEditor } from "../../../components/ImageEditor";
 import GyneCaseImageService, { GyneCaseImage } from "../../../services/gyneCaseImageService";
-import styles from "../../Pathologist/SurgicalDiagnosisReportForm/components/MicroscopicImageCaptureModal.module.css";
+import styles from "../../../styles/imageCaptureModal.module.css";
+import { HqCaptureToggle } from "../../../components/HqCaptureToggle";
+import { DEFAULT_VIDEO_CONSTRAINTS } from "../../../utils/imageCapture";
+import { oversizeMessage } from "../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
+import { useImageCapture } from "../../../hooks/useImageCapture";
 
 const { Text } = Typography;
 
@@ -41,12 +44,6 @@ interface GyneCytologyImageCaptureModalProps {
   editingImage?: GyneCaseImage | null;
   nextOrder?: number;
 }
-
-const VIDEO_CONSTRAINTS = {
-  width: 1920,
-  height: 1080,
-  facingMode: "environment" as const,
-};
 
 const STAIN_OPTIONS = ["PAP", "LBC", "H&E", "Giemsa", "MGG", "Other"];
 
@@ -68,6 +65,13 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
   const [stain, setStain] = useState("PAP");
   const [uploading, setUploading] = useState(false);
 
+  const onCaptured = (dataUrl: string) => {
+    setImageSrc(dataUrl);
+    setShowEditor(true);
+  };
+  const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
+    useImageCapture(webcamRef, onCaptured);
+
   useEffect(() => {
     if (editingImage) {
       setImageSrc(null);
@@ -81,29 +85,6 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
       setShowEditor(false);
     }
   }, [editingImage, open]);
-
-  const capture = useCallback(() => {
-    const image = webcamRef.current?.getScreenshot();
-    if (image) {
-      setImageSrc(image);
-      setShowEditor(true);
-    }
-  }, []);
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      message.error("File too large (max 10 MB)");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImageSrc(reader.result as string);
-      setShowEditor(true);
-    };
-    reader.readAsDataURL(file);
-  };
 
   const handleEditorSave = (finalSrc: string) => {
     setImageSrc(finalSrc);
@@ -135,8 +116,8 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
     try {
       setUploading(true);
       const blob = await (await fetch(imageSrc)).blob();
-      if (blob.size > 10 * 1024 * 1024) {
-        message.error(`File too large (${(blob.size / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
+      if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
+        message.error(oversizeMessage(blob.size));
         return;
       }
       const ts = new Date().toISOString().replace(/[-:T.]/g, "").slice(8, 14);
@@ -155,16 +136,21 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
   return (
     <Modal
       title={
-        <Space>
-          {editingImage ? (
-            <EditOutlined style={{ color: "#52c41a" }} />
-          ) : (
-            <CameraOutlined style={{ color: "#1890ff" }} />
+        <div>
+          <Space>
+            {editingImage ? (
+              <EditOutlined style={{ color: "#52c41a" }} />
+            ) : (
+              <CameraOutlined style={{ color: "#1890ff" }} />
+            )}
+            <Text strong>
+              {editingImage ? "Edit Image Info" : "Cytology Image Capture"}
+            </Text>
+          </Space>
+          {!editingImage && (
+            <HqCaptureToggle hqMode={hqMode} hqSupported={hqSupported} onChange={setHqMode} />
           )}
-          <Text strong>
-            {editingImage ? "Edit Image Info" : "Cytology Image Capture"}
-          </Text>
-        </Space>
+        </div>
       }
       open={open}
       onCancel={onClose}
@@ -201,8 +187,9 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
             key="capture"
             type="primary"
             icon={<CameraOutlined />}
-            onClick={capture}
-            disabled={!!imageSrc}
+            onClick={() => capture()}
+            loading={capturing}
+            disabled={!!imageSrc || capturing}
           >
             Capture
           </Button>
@@ -226,7 +213,7 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
         ref={fileInputRef}
         style={{ display: "none" }}
         accept="image/*"
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e)}
       />
 
       {showEditor && imageSrc ? (
@@ -291,7 +278,7 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
                 ref={webcamRef}
                 mirrored={false}
                 screenshotFormat="image/jpeg"
-                videoConstraints={VIDEO_CONSTRAINTS}
+                videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />
             )}

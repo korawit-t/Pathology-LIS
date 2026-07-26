@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Form,
   Input,
@@ -15,29 +15,16 @@ import {
   Card,
   Modal,
   Steps,
-  Upload,
-  DatePicker,
-  Table,
-  Tag,
 } from "antd";
 import {
   FileTextOutlined,
   MedicineBoxOutlined,
   ReloadOutlined,
   HistoryOutlined,
-  EditOutlined,
   DatabaseOutlined,
   ExclamationCircleOutlined,
   ArrowLeftOutlined,
-  UploadOutlined,
-  InboxOutlined,
-  CheckCircleOutlined,
-  FileAddOutlined,
-  FilePdfOutlined,
-  DeleteOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
-import type { Dayjs } from "dayjs";
 import PatientInfoCard from "../../../components/PatientInfoCard";
 import ClinicalInfoSection from "../../../components/ClinicalInfoSection";
 import { useSurgicalReport } from "../hooks/useSurgicalReport";
@@ -57,12 +44,13 @@ import ReportMasterControl from "./components/ReportMasterControl";
 import FinalizeReportPage from "./components/FinalizeReportPage";
 import ReportStationSettingsModal from "./components/ReportStationSettingsModal";
 import CaseFlagManager from "./components/CaseFlagManager";
+import ConsultPdfModal from "./components/ConsultPdfModal";
+import CompletedCaseModal from "./components/CompletedCaseModal";
 import CytoHistoCorrelationCard from "./components/CytoHistoCorrelationCard";
 import SurgicalReportNavigator from "./components/SurgicalReportNavigator";
 import styles from "../../../styles/LayoutWidget.module.css";
 import StyledCard from "../../../components/Layout/StyledCard";
 import UserService, { UserPreferences } from "../../../services/userService";
-import SurgicalCaseService from "../../../services/surgicalCaseService";
 import SurgicalReportService from "../../../services/surgicalReportService";
 import ReportGenerationService from "../../../services/reportGenerationService";
 import type { ReportGenRequest } from "../../../services/reportGenerationService";
@@ -70,6 +58,8 @@ import AIGeneratePreviewModal from "./components/AIGeneratePreviewModal";
 import { useAuth } from "../../../hooks/useAuth";
 import logger from "../../../utils/logger";
 import type { User } from "../../../types/user";
+import { oversizeMessage } from "../../../utils/imageUpload";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
 import type { SurgicalReport } from "../../../types/surgicalReport";
 import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
@@ -87,6 +77,21 @@ interface Props {
   isSideLayout?: boolean;
 }
 
+// Report-station display preferences, always resolved to a concrete value
+// (unlike UserPreferences, whose fields are optional partial-update inputs)
+type DisplayPreferences = Required<
+  Pick<
+    UserPreferences,
+    | "is_split_mode"
+    | "patient_info_expanded"
+    | "show_navigator"
+    | "auto_save"
+    | "auto_save_interval"
+    | "editor_font_size"
+    | "show_specimen_category"
+  >
+>;
+
 const SurgicalReportForm: React.FC<Props> = ({
   user,
   caseId,
@@ -103,23 +108,13 @@ const SurgicalReportForm: React.FC<Props> = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const [consultPdfPopupOpen, setConsultPdfPopupOpen] = useState(false);
-  const [popupUploadFile, setPopupUploadFile] = useState<File | null>(null);
-  const [popupReceivedAt, setPopupReceivedAt] = useState<Dayjs>(dayjs());
-  const [popupUploading, setPopupUploading] = useState(false);
   const consultPdfPopupShownRef = useRef(false);
-  const [consultPdfBlobUrl, setConsultPdfBlobUrl] = useState<string | null>(null);
-  const [consultPdfPreviewLoading, setConsultPdfPreviewLoading] = useState(false);
-  const [consultPdfDeleting, setConsultPdfDeleting] = useState(false);
 
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
   const [isAddendumMode, setIsAddendumMode] = useState(false);
-  const [completedPdfUrl, setCompletedPdfUrl] = useState<string | null>(null);
-  const [completedPdfLoading, setCompletedPdfLoading] = useState(false);
   const [completedReports, setCompletedReports] = useState<SurgicalReport[]>([]);
   const [completedReportsLoading, setCompletedReportsLoading] = useState(false);
-  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
-  const [deletingReportId, setDeletingReportId] = useState<number | null>(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
 const handleOpenFinalizeModal = async () => {
@@ -131,11 +126,11 @@ const handleOpenFinalizeModal = async () => {
       const caseText = (form.getFieldValue("case_diagnosis_text") || "").trim();
       if (!caseText) {
         Modal.confirm({
-          title: "Diagnosis ยังว่างอยู่",
+          title: "Diagnosis is still empty",
           icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
-          content: "ยังไม่ได้กรอก diagnosis รวม ต้องการ Sign Off ต่อหรือไม่?",
-          okText: "Sign Off ต่อ",
-          cancelText: "ยกเลิก",
+          content: "The combined diagnosis hasn't been filled in. Continue to Sign Off anyway?",
+          okText: "Continue to Sign Off",
+          cancelText: "Cancel",
           onOk: () => setIsFinalizeModalOpen(true),
         });
         return;
@@ -151,18 +146,18 @@ const handleOpenFinalizeModal = async () => {
           .map((s) => s.specimen_label || `Specimen #${s.id}`)
           .join(", ");
         Modal.confirm({
-          title: "Diagnosis ยังไม่ครบ",
+          title: "Diagnosis is incomplete",
           icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
           content: (
             <span>
-              ชิ้นเนื้อต่อไปนี้ยังไม่มี diagnosis:{" "}
+              The following specimens don't have a diagnosis yet:{" "}
               <strong>{labels}</strong>
               <br />
-              ต้องการ Sign Off ต่อหรือไม่?
+              Continue to Sign Off anyway?
             </span>
           ),
-          okText: "Sign Off ต่อ",
-          cancelText: "ยกเลิก",
+          okText: "Continue to Sign Off",
+          cancelText: "Cancel",
           onOk: () => setIsFinalizeModalOpen(true),
         });
         return;
@@ -221,18 +216,17 @@ const handleOpenFinalizeModal = async () => {
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState<boolean>(
-    user?.preferences?.auto_save ?? true,
-  );
-  const [autoSaveInterval, setAutoSaveInterval] = useState<number>(
-    user?.preferences?.auto_save_interval ?? 45,
-  );
-  const [editorFontSize, setEditorFontSize] = useState<
-    "small" | "medium" | "large"
-  >(user?.preferences?.editor_font_size ?? "medium");
-  const [showSpecimenCategory, setShowSpecimenCategory] = useState<boolean>(
-    user?.preferences?.show_specimen_category ?? true,
-  );
+
+  // Report-station display preferences, initialized from user.preferences
+  const [prefs, setPrefs] = useState<DisplayPreferences>({
+    is_split_mode: user?.preferences?.is_split_mode ?? false,
+    patient_info_expanded: user?.preferences?.patient_info_expanded ?? true,
+    show_navigator: user?.preferences?.show_navigator ?? true,
+    auto_save: user?.preferences?.auto_save ?? true,
+    auto_save_interval: user?.preferences?.auto_save_interval ?? 45,
+    editor_font_size: user?.preferences?.editor_font_size ?? "medium",
+    show_specimen_category: user?.preferences?.show_specimen_category ?? true,
+  });
 
   const EDITOR_FONT_SIZE_MAP = {
     small: "13px",
@@ -264,6 +258,11 @@ const handleOpenFinalizeModal = async () => {
     setSurgicalCase,
   } = useSurgicalReport(caseId, user, form);
 
+  const pathologistOptions = useMemo(
+    () => pathologists.map((p) => ({ value: p.id, label: p.full_name || "" })),
+    [pathologists],
+  );
+
   const { isConsultEditorLocked, isConsultFinalizeLocked, isEditorLocked, isFinalizeLocked } =
     getConsultLockState({
       isLocked,
@@ -290,27 +289,6 @@ const handleOpenFinalizeModal = async () => {
     }
   }, [surgicalCase?.id, surgicalCase?.is_out_lab_consult, surgicalCase?.consult_status]);
 
-  // Load the consult PDF inline as soon as the popup opens in the
-  // "already uploaded" state — no extra click needed to preview it.
-  useEffect(() => {
-    let activeUrl: string | null = null;
-    if (consultPdfPopupOpen && surgicalCase?.consult_pdf_path && caseId) {
-      setConsultPdfPreviewLoading(true);
-      SurgicalCaseService.getConsultPdfBlob(Number(caseId))
-        .then((blob) => {
-          activeUrl = URL.createObjectURL(blob);
-          setConsultPdfBlobUrl(activeUrl);
-        })
-        .catch(() => message.error("ไม่สามารถโหลด Consult PDF ได้"))
-        .finally(() => setConsultPdfPreviewLoading(false));
-    } else {
-      setConsultPdfBlobUrl(null);
-    }
-    return () => {
-      if (activeUrl) URL.revokeObjectURL(activeUrl);
-    };
-  }, [consultPdfPopupOpen, surgicalCase?.consult_pdf_path, caseId]);
-
   // Handle signed-out case entry: always show popup so user sees report history.
   // Skipped while a consult round is actively pending (upload or re-sign-off) so
   // that popup doesn't cover the Consult PDF popup underneath it.
@@ -333,120 +311,15 @@ const handleOpenFinalizeModal = async () => {
   // Fetch report history when popup opens OR history drawer opens
   useEffect(() => {
     if ((!completedCasePopupOpen && !isHistoryOpen) || !surgicalCase?.id) {
-      if (!isHistoryOpen) {
-        setCompletedReports([]);
-        setSelectedReportId(null);
-      }
+      if (!isHistoryOpen) setCompletedReports([]);
       return;
     }
     setCompletedReportsLoading(true);
     SurgicalReportService.getReportHistory(Number(surgicalCase.id))
-      .then((data) => {
-        setCompletedReports(data.items);
-        const publishedReports = data.items.filter((r) => r.status === "published");
-        const latest = publishedReports.reduce<SurgicalReport | null>(
-          (best, r) => (!best || r.version_no > best.version_no ? r : best),
-          null,
-        );
-        if (latest) setSelectedReportId(latest.id);
-      })
+      .then((data) => setCompletedReports(data.items))
       .catch(() => {})
       .finally(() => setCompletedReportsLoading(false));
   }, [completedCasePopupOpen, isHistoryOpen, surgicalCase?.id, historyRefreshKey]);
-
-  const handleDeleteDraftReport = (reportId: number) => {
-    Modal.confirm({
-      title: "Delete Draft Report",
-      icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
-      content: "This draft report will be permanently deleted. Continue?",
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        setDeletingReportId(reportId);
-        try {
-          await SurgicalReportService.deleteReport(reportId);
-          message.success("Draft report deleted");
-          if (selectedReportId === reportId) setSelectedReportId(null);
-          setHistoryRefreshKey((k) => k + 1);
-        } catch {
-          message.error("Failed to delete draft report");
-        } finally {
-          setDeletingReportId(null);
-        }
-      },
-    });
-  };
-
-  // Fetch PDF when selected report changes
-  useEffect(() => {
-    let activeUrl: string | null = null;
-    if (completedCasePopupOpen && selectedReportId) {
-      setCompletedPdfLoading(true);
-      SurgicalReportService.getReportPdf(selectedReportId)
-        .then((blob) => {
-          activeUrl = URL.createObjectURL(blob);
-          setCompletedPdfUrl(activeUrl);
-        })
-        .catch(() => message.error("Failed to load PDF preview"))
-        .finally(() => setCompletedPdfLoading(false));
-    } else {
-      setCompletedPdfUrl(null);
-    }
-    return () => {
-      if (activeUrl) URL.revokeObjectURL(activeUrl);
-    };
-  }, [completedCasePopupOpen, selectedReportId]);
-
-  const handlePopupUpload = async () => {
-    if (!popupUploadFile || !caseId) return;
-    setPopupUploading(true);
-    try {
-      await SurgicalCaseService.uploadConsultPdf(
-        Number(caseId),
-        popupUploadFile,
-        popupReceivedAt.toISOString(),
-      );
-      message.success("Consult PDF uploaded successfully");
-      // Keep the popup open — it switches to Preview/Sign Off once
-      // surgicalCase.consult_pdf_path comes back truthy from refresh().
-      setPopupUploadFile(null);
-      refresh();
-    } catch {
-      message.error("Failed to upload Consult PDF");
-    } finally {
-      setPopupUploading(false);
-    }
-  };
-
-  const handleSignOffFromConsultPopup = () => {
-    setConsultPdfPopupOpen(false);
-    handleOpenFinalizeModal();
-  };
-
-  const handleDeleteConsultPdf = () => {
-    if (!caseId) return;
-    Modal.confirm({
-      title: "Delete Consult PDF",
-      icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
-      content: "Remove the uploaded consult PDF? You'll need to upload a new one before signing off.",
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        setConsultPdfDeleting(true);
-        try {
-          await SurgicalCaseService.deleteConsultPdf(Number(caseId));
-          message.success("Consult PDF deleted");
-          refresh();
-        } catch {
-          message.error("Failed to delete Consult PDF");
-        } finally {
-          setConsultPdfDeleting(false);
-        }
-      },
-    });
-  };
 
   // ── Unified save (used by toolbar, auto-save, and keyboard shortcut) ──
   const handleSave = useCallback(async () => {
@@ -529,8 +402,9 @@ const handleOpenFinalizeModal = async () => {
         }
         setIsDirty(true);
         setAiModalOpen(false);
-      } catch (err: any) {
-        message.error(err?.response?.data?.detail || "AI generation failed");
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        message.error(axiosErr?.response?.data?.detail || "AI generation failed");
       } finally {
         setIsAIGenerating(false);
       }
@@ -540,17 +414,17 @@ const handleOpenFinalizeModal = async () => {
 
   // ── Auto-save on configurable interval when there are unsaved changes ──
   useEffect(() => {
-    if (isEditorLocked || !isAutoSaveEnabled) return;
+    if (isEditorLocked || !prefs.auto_save) return;
     autoSaveRef.current = setInterval(() => {
       setIsDirty((dirty) => {
         if (dirty) handleSave();
         return dirty;
       });
-    }, autoSaveInterval * 1_000);
+    }, prefs.auto_save_interval * 1_000);
     return () => {
       if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     };
-  }, [isEditorLocked, isAutoSaveEnabled, autoSaveInterval, handleSave]);
+  }, [isEditorLocked, prefs.auto_save, prefs.auto_save_interval, handleSave]);
 
   // ── Keyboard shortcuts: Ctrl/⌘+S = save, Ctrl/⌘+Shift+P = preview ──
   useEffect(() => {
@@ -625,29 +499,15 @@ const handleOpenFinalizeModal = async () => {
     });
   }, [isDirty, handleSave, onBack]);
 
-  // Initialize display settings from user preferences
-  const [isSplitMode, setIsSplitMode] = useState<boolean>(
-    user?.preferences?.is_split_mode ?? false,
-  );
-  const [isPatientInfoExpanded, setIsPatientInfoExpanded] = useState<boolean>(
-    user?.preferences?.patient_info_expanded ?? true,
-  );
-  const [showNavigatorPref, setShowNavigatorPref] = useState<boolean>(
-    user?.preferences?.show_navigator ?? true,
-  );
-
   const fetchMicroImages = async () => {
-    // 🚩 ตรวจสอบว่ามี caseId หรือไม่ก่อนยิง API
     if (!caseId) return;
 
     try {
-      // 🚩 เปลี่ยนชื่อให้ตรงกับ Service (getImagesByCaseId)
       const data = await MicroscopicImageService.getImagesByCaseId(caseId);
       setMicroImages(data);
     } catch (error) {
-      // แจ้งเตือนผู้ใช้หากดึงข้อมูลไม่สำเร็จ
       logger.error("Failed to fetch micro images:", error);
-      message.error("ไม่สามารถโหลดรูปภาพ Microscopic ได้");
+      message.error("Failed to load Microscopic images");
     }
   };
 
@@ -656,10 +516,9 @@ const handleOpenFinalizeModal = async () => {
     try {
       const slides = await WsiSettingService.getCaseSlides(Number(caseId));
       setWsiSlides(slides);
-    } catch { /* silent — ไม่มี WSI ก็ไม่แสดง */ }
+    } catch { /* silent — no WSI slides to show */ }
   };
 
-  // 🚩 โหลดรูปเมื่อเปิดหน้าเว็บ หรือเมื่อ caseId เปลี่ยนแปลง
   useEffect(() => {
     if (caseId) {
       fetchMicroImages();
@@ -667,20 +526,17 @@ const handleOpenFinalizeModal = async () => {
     }
   }, [caseId]);
 
-  // 🚩 เพิ่มฟังก์ชันสำหรับ Refresh (สำหรับส่งลงไปให้ Gallery ใช้ตอนลบรูป)
   const handleRefreshMicroImages = () => {
     fetchMicroImages();
   };
 
-  // 🚩 ฟังก์ชันเปิด Modal กล้อง
   const handleOpenMicroCapture = (specimenId: number) => {
     setTargetSpecimenId(specimenId);
     setIsMicroModalOpen(true);
   };
 
-  // 🚩 เพิ่มฟังก์ชันนี้สำหรับ "แก้ไข"
   const handleEditMicroImage = (image: MicroscopicImage) => {
-    setEditingImage(image); // 🚩 ใส่ข้อมูลรูปที่จะแก้ลงไป
+    setEditingImage(image);
     setTargetSpecimenId(image.specimen_id);
     setIsMicroModalOpen(true);
   };
@@ -690,35 +546,28 @@ const handleOpenFinalizeModal = async () => {
     specimenId: number,
     metadata: Pick<MicroscopicImage, "magnification" | "stain" | "description">,
   ) => {
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
     try {
       if (editingImage) {
-        // 🚩 กรณีแก้ไข (Update) - ใช้ข้อมูลจาก metadata ตรงๆ
         await MicroscopicImageService.updateImage(editingImage.id, {
           magnification: metadata.magnification,
           stain: metadata.stain,
           description: metadata.description,
         });
-        message.success("อัปเดตข้อมูลรูปภาพสำเร็จ");
+        message.success("Image info updated successfully");
       } else {
-        // 🚩 กรณีอัปโหลดใหม่ (Upload)
         const response = await fetch(imageSrc);
         const blob = await response.blob();
 
-        // ✅ เพิ่มการตรวจขนาดไฟล์
-        if (blob.size > MAX_FILE_SIZE) {
-          message.error(
-            `ไฟล์ใหญ่เกินไป (${(blob.size / (1024 * 1024)).toFixed(2)} MB). จำกัดที่ 5MB`,
-          );
+        if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
+          message.error(oversizeMessage(blob.size));
           return;
         }
 
-        // ✅ สร้างชื่อไฟล์ที่มี Timestamp เพื่อไม่ให้ชื่อใน UI ซ้ำกัน
+        // Timestamp keeps generated filenames unique in the UI
         const timestamp = new Date()
           .toISOString()
           .replace(/[-:T.]/g, "")
-          .slice(8, 14); // ได้ HHmmss
+          .slice(8, 14); // HHmmss
         const fileName = `micro_${specimenId}_${timestamp}.jpg`;
 
         const file = new File([blob], fileName, { type: "image/jpeg" });
@@ -730,14 +579,14 @@ const handleOpenFinalizeModal = async () => {
         formData.append("description", metadata.description || "");
 
         await MicroscopicImageService.uploadImage(specimenId, formData);
-        message.success("อัปโหลดรูปภาพสำเร็จ");
+        message.success("Image uploaded successfully");
       }
 
       fetchMicroImages();
       setIsMicroModalOpen(false);
-      setEditingImage(null); // 🚩 อย่าลืม Reset state การแก้ไข
+      setEditingImage(null);
     } catch (error) {
-      message.error("ดำเนินการล้มเหลว");
+      message.error("Operation failed");
       logger.error(error);
     }
   };
@@ -745,7 +594,7 @@ const handleOpenFinalizeModal = async () => {
   if (loading && !surgicalCase) {
     return (
       <div style={{ textAlign: "center", padding: "100px" }}>
-        <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+        <Spin size="large" tip="Loading data..." />
       </div>
     );
   }
@@ -784,19 +633,25 @@ const handleOpenFinalizeModal = async () => {
     );
   }
 
-  // 1. Logic เดิม: โชว์ Navigator ด้านข้าง เมื่อพับ Sidebar
+  // Side navigator shows when the sidebar is collapsed (side layout only)
   const showNavigator = isSideLayout ? isSidebarCollapsed : true;
 
-  // 2. Logic ใหม่: โชว์ Anchor แนวนอนที่ Top Bar เมื่อ "เปิด" Sidebar (เพื่อประหยัดพื้นที่แนวตั้ง)
-  // และซ่อนมันเมื่อพับ Sidebar (เพราะเรามี Navigator ด้านข้างมาแทนแล้ว)
+  // Horizontal top-bar anchor shows instead, to save vertical space, when the
+  // sidebar is expanded — the side navigator already covers that case otherwise
   const showTopAnchor = isSideLayout ? !isSidebarCollapsed : false;
 
   const handleUpdatePreference = async (newPrefs: UserPreferences) => {
     try {
-      // 1. อัปเดต UI State ทันที (Optimistic Update)
-      if (newPrefs.is_split_mode !== undefined) {
-        setIsSplitMode(newPrefs.is_split_mode);
-      }
+      // Optimistic UI update
+      setPrefs((p) => ({
+        is_split_mode: newPrefs.is_split_mode ?? p.is_split_mode,
+        patient_info_expanded: newPrefs.patient_info_expanded ?? p.patient_info_expanded,
+        show_navigator: newPrefs.show_navigator ?? p.show_navigator,
+        auto_save: newPrefs.auto_save ?? p.auto_save,
+        auto_save_interval: newPrefs.auto_save_interval ?? p.auto_save_interval,
+        editor_font_size: newPrefs.editor_font_size ?? p.editor_font_size,
+        show_specimen_category: newPrefs.show_specimen_category ?? p.show_specimen_category,
+      }));
       if (newPrefs.default_diagnosis_mode !== undefined) {
         setDiagnosisMode(
           newPrefs.default_diagnosis_mode as
@@ -805,31 +660,9 @@ const handleOpenFinalizeModal = async () => {
             | "clean",
         );
       }
-      if (newPrefs.patient_info_expanded !== undefined) {
-        setIsPatientInfoExpanded(newPrefs.patient_info_expanded);
-      }
-      if (newPrefs.show_navigator !== undefined) {
-        setShowNavigatorPref(newPrefs.show_navigator);
-      }
-      if (newPrefs.auto_save !== undefined) {
-        setIsAutoSaveEnabled(newPrefs.auto_save);
-      }
-      if (newPrefs.auto_save_interval !== undefined) {
-        setAutoSaveInterval(newPrefs.auto_save_interval);
-      }
-      if (newPrefs.editor_font_size !== undefined) {
-        setEditorFontSize(
-          newPrefs.editor_font_size as "small" | "medium" | "large",
-        );
-      }
-      if (newPrefs.show_specimen_category !== undefined) {
-        setShowSpecimenCategory(newPrefs.show_specimen_category);
-      }
 
-      // 2. บันทึกลง Database ผ่าน UserService
       await UserService.updateMyPreferences(newPrefs);
 
-      // 3. อัปเดต localStorage เพื่อให้สิทธิ์และค่า setting ผูกกับ Current Session
       const currentUserStr = localStorage.getItem("user");
       if (currentUserStr) {
         const currentUserData = JSON.parse(currentUserStr);
@@ -838,12 +671,11 @@ const handleOpenFinalizeModal = async () => {
           ...newPrefs,
         };
         localStorage.setItem("user", JSON.stringify(currentUserData));
-        // 4. ให้ React Re-render ทุก Component ที่ใช้งาน User Context
         updateUser(currentUserData);
       }
     } catch (error) {
       logger.error("Failed to update preferences:", error);
-      message.error("ไม่สามารถบันทึกการตั้งค่าได้");
+      message.error("Failed to save settings");
     }
   };
 
@@ -864,8 +696,10 @@ const handleOpenFinalizeModal = async () => {
         isLocked={isFinalizeLocked}
         showTopAnchor={showTopAnchor}
         allDiagnosesCount={new Set(allDiagnoses?.map((d) => d.diagnosis_order)).size || 0}
-        isSplitMode={isSplitMode}
-        onToggleSplitMode={() => setIsSplitMode(!isSplitMode)}
+        isSplitMode={prefs.is_split_mode}
+        onToggleSplitMode={() =>
+          setPrefs((p) => ({ ...p, is_split_mode: !p.is_split_mode }))
+        }
         onOpenSettings={() => setIsSettingsOpen(true)}
         isDirty={isDirty}
         lastSavedAt={lastSavedAt}
@@ -920,25 +754,22 @@ const handleOpenFinalizeModal = async () => {
           </div>
         )}
         <Row gutter={[24, 0]} wrap={false}>
-          {showNavigator && showNavigatorPref && (
+          {showNavigator && prefs.show_navigator && (
             <SurgicalReportNavigator isDarkMode={isDarkMode} />
           )}
-          {/* คอลัมน์กลาง: Main Form (ปรับ span ตามโหมด) */}
           <Col flex="auto" style={{ minWidth: 0 }}>
             <Row gutter={[24, 24]}>
-              {/* ⬅️ ฝั่งซ้าย: แบบฟอร์มการทำงาน */}
-              <Col xs={24} lg={isSplitMode ? 14 : 24}>
+              <Col xs={24} lg={prefs.is_split_mode ? 14 : 24}>
                 <Space
                   direction="vertical"
                   size={16}
                   style={{ display: "flex" }}
                 >
-                  {/* 2. Patient Info */}
                   <div id="patient-info">
                     <PatientInfoCard
                       activeCase={surgicalCase}
                       activeCaseType="surgical"
-                      isExpanded={isPatientInfoExpanded}
+                      isExpanded={prefs.patient_info_expanded}
                       onToggle={(state) =>
                         handleUpdatePreference({ patient_info_expanded: state })
                       }
@@ -947,16 +778,16 @@ const handleOpenFinalizeModal = async () => {
 
                   {/* Clinical Info and Specimen Manager - 2 Columns (50/50) or Stacked in Split Mode */}
                   <Row gutter={[16, 16]} align="stretch">
-                    <Col xs={24} lg={isSplitMode ? 24 : 10}>
+                    <Col xs={24} lg={prefs.is_split_mode ? 24 : 10}>
                       <div id="clinical-info" style={{ height: "100%" }}>
                         <ClinicalInfoSection
                           name="clinical_diagnosis"
-                          rows={4} // ปรับจำนวนแถวให้เล็กลงหน่อยเพราะกางกว้างแล้ว
+                          rows={4}
                           label="Clinical Diagnosis"
                         />
                       </div>
                     </Col>
-                    <Col xs={24} lg={isSplitMode ? 24 : 14}>
+                    <Col xs={24} lg={prefs.is_split_mode ? 24 : 14}>
                       <div id="specimen-manager" style={{ height: "100%" }}>
                         <SpecimenManagerSection
                           key={`spec-mgr-${surgicalCase?.id}`}
@@ -968,7 +799,7 @@ const handleOpenFinalizeModal = async () => {
                           canAddDelete={false}
                           onSpecimensChange={() => refresh()}
                           showSpecimenName={settings?.show_specimen_name}
-                          showSpecimenCategory={showSpecimenCategory}
+                          showSpecimenCategory={prefs.show_specimen_category}
                         />
                       </div>
                     </Col>
@@ -976,19 +807,17 @@ const handleOpenFinalizeModal = async () => {
 
                   <WsiSlidesSection caseId={Number(caseId)} />
 
-                  {/* 3. Diagnostic Station ทั้งหมด (Integrated Editor + Workblocks) */}
                   <StyledCard
                     id="diagnostic-station"
-                    // 🚩 ถอด border/borderRadius/background เดิมออก เพราะ StyledCard จัดการให้แล้ว
-                    bodyStyle={{ padding: 0 }} // 🚩 สำคัญ: ตั้งเป็น 0 เพื่อให้ ReportMasterControl ชิดขอบพอดี
+                    // padding: 0 lets ReportMasterControl sit flush against the card edge
+                    bodyStyle={{ padding: 0 }}
                     style={{
-                      overflow: "hidden", // ยังคงไว้เพื่อให้เนื้อหาข้างในถูกตัดตามมุมมน 20px ของ StyledCard
+                      // clips content to StyledCard's 20px rounded corners
+                      overflow: "hidden",
                       scrollMarginTop: "100px",
                     }}
                   >
-                    {/* 🚩 1. แถบคอนโทรล (ติดขอบบน) */}
                     <ReportMasterControl
-                      form={form}
                       reports={allDiagnoses || []}
                       diagnosisMode={diagnosisMode}
                       setDiagnosisMode={setDiagnosisMode}
@@ -998,14 +827,13 @@ const handleOpenFinalizeModal = async () => {
                       showSpecimenName={settings?.show_specimen_name}
                     />
 
-                    {/* 🚩 2. Integrated/Clean Editor (ถ้าอยู่ในโหมดรวม) */}
                     {(diagnosisMode === "integrated" ||
                       diagnosisMode === "clean") && (
                       <div
                         style={{
                           padding: "16px",
                           borderBottom: "1px solid #f0f0f0",
-                          // 🚩 เปลี่ยนสีพื้นหลังเบาๆ ตามโหมดเพื่อให้หมอไม่สับสน
+                          // subtle background tint per mode so the pathologist doesn't confuse the two
                           background:
                             diagnosisMode === "clean" ? "#f6ffed" : "#f0f7ff",
                         }}
@@ -1013,7 +841,6 @@ const handleOpenFinalizeModal = async () => {
                         <IntegratedCaseDiagnosisEditor
                           surgicalCase={surgicalCase}
                           isLocked={isEditorLocked}
-                          form={form}
                           diagnosisMode={diagnosisMode}
                           onAIGenerate={handleAIGenerate}
                           isAIGenerating={isAIGenerating}
@@ -1021,17 +848,15 @@ const handleOpenFinalizeModal = async () => {
                       </div>
                     )}
 
-                    {/* 🚩 3. รายการชิ้นเนื้อ (Workblocks) */}
                     <div
                       className="workblocks-container"
-                      style={{ fontSize: EDITOR_FONT_SIZE_MAP[editorFontSize], ["--editor-font-size" as string]: EDITOR_FONT_SIZE_MAP[editorFontSize] } as React.CSSProperties}
+                      style={{ fontSize: EDITOR_FONT_SIZE_MAP[prefs.editor_font_size], ["--editor-font-size" as string]: EDITOR_FONT_SIZE_MAP[prefs.editor_font_size] } as React.CSSProperties}
                     >
                       {surgicalCase?.specimens?.map((spec, index: number) => (
                         <SpecimenIntegratedWorkblock
                           key={spec.id}
                           specimen={spec}
                           surgicalCase={surgicalCase}
-                          form={form}
                           isLocked={isEditorLocked}
                           hasOriginalSigned={hasOriginalSigned}
                           pathologists={pathologists}
@@ -1057,7 +882,6 @@ const handleOpenFinalizeModal = async () => {
                     <Col xs={24} lg={14}>
                       <div style={{ height: "100%" }}>
                         <PathologistDiagnosisManager
-                          form={form}
                           pathologists={pathologists}
                           defaultPathologistId={
                             surgicalCase?.pathologist_id || user?.id
@@ -1072,13 +896,12 @@ const handleOpenFinalizeModal = async () => {
                       <div style={{ height: "100%" }}>
                         <CaseFlagManager
                           isLocked={isLocked && !isAddendumMode}
-                          form={form}
                           caseId={Number(caseId)}
                           reportId={surgicalCase?.reports?.find(
                             (r: SurgicalReport) => ["draft", "pending", "pending_approval"].includes(r.status)
                           )?.id}
                           currentUserId={user?.id}
-                          pathologists={pathologists.map((p: any) => ({ value: p.id ?? p.value, label: p.full_name ?? p.label }))}
+                          pathologists={pathologistOptions}
                           tumorRegistryEnabled={settings?.tumor_registry_enabled ?? false}
                           tumorRegistryAiEnabled={!!(settings?.tumor_registry_llm_profile_id)}
                         />
@@ -1095,8 +918,7 @@ const handleOpenFinalizeModal = async () => {
                   )}
                 </Space>
               </Col>
-              {/* ➡️ ฝั่งขวาของ Split: ประวัติ และ Preview (แสดงเฉพาะตอน "เปิด" Split Mode) */}
-              {isSplitMode && (
+              {prefs.is_split_mode && (
                 <Col xs={24} lg={10}>
                   <div
                     style={{
@@ -1148,7 +970,7 @@ const handleOpenFinalizeModal = async () => {
         onClose={() => setIsMicroModalOpen(false)}
         onSuccess={() => {
           setIsMicroModalOpen(false);
-          fetchMicroImages(); // โหลดรูปใหม่มาโชว์ใน Gallery ทันที
+          fetchMicroImages();
         }}
         specimens={surgicalCase?.specimens || []}
         onCaptureAndUpload={handleCaptureAndUpload}
@@ -1159,18 +981,17 @@ const handleOpenFinalizeModal = async () => {
         onCancel={() => setIsPreviewModalOpen(false)}
       />
 
-      {/* 🚩 Report Station Settings Modal */}
       <ReportStationSettingsModal
         open={isSettingsOpen}
         onCancel={() => setIsSettingsOpen(false)}
-        isSplitMode={isSplitMode}
+        isSplitMode={prefs.is_split_mode}
         diagnosisMode={diagnosisMode}
-        isPatientInfoExpanded={isPatientInfoExpanded}
-        showNavigator={showNavigatorPref}
-        autoSave={isAutoSaveEnabled}
-        autoSaveInterval={autoSaveInterval}
-        editorFontSize={editorFontSize}
-        showSpecimenCategory={showSpecimenCategory}
+        isPatientInfoExpanded={prefs.patient_info_expanded}
+        showNavigator={prefs.show_navigator}
+        autoSave={prefs.auto_save}
+        autoSaveInterval={prefs.auto_save_interval}
+        editorFontSize={prefs.editor_font_size}
+        showSpecimenCategory={prefs.show_specimen_category}
         onUpdatePreference={handleUpdatePreference}
       />
 
@@ -1208,316 +1029,32 @@ const handleOpenFinalizeModal = async () => {
       </Drawer>
 
       {/* Consult PDF Upload — auto-shown when case is dispatched to external lab */}
-      <Modal
+      <ConsultPdfModal
         open={consultPdfPopupOpen}
-        title={
-          <Space>
-            <InboxOutlined style={{ color: "#722ed1" }} />
-            <Typography.Text strong style={{ fontSize: 15, color: "#722ed1" }}>
-              Out-Lab Consult
-            </Typography.Text>
-          </Space>
-        }
-        onCancel={() => setConsultPdfPopupOpen(false)}
-        footer={null}
-        width={surgicalCase?.consult_pdf_path ? 720 : 520}
-        maskClosable={false}
-      >
-        {!surgicalCase?.consult_pdf_path ? (
-          <>
-            <Alert
-              type="info"
-              showIcon
-              message="This case has been sent for external consultation. Please upload the consult report PDF."
-              style={{ marginBottom: 16 }}
-            />
-            <div>
-              <Typography.Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
-                Report Received Date / Time:
-              </Typography.Text>
-              <DatePicker
-                showTime={{ format: "HH:mm" }}
-                format="DD/MM/YYYY HH:mm"
-                value={popupReceivedAt}
-                onChange={(d) => d && setPopupReceivedAt(d)}
-                style={{ width: "100%", marginBottom: 12 }}
-              />
-            </div>
-            <Upload.Dragger
-              accept="application/pdf"
-              maxCount={1}
-              beforeUpload={(file) => {
-                if (file.size > 10 * 1024 * 1024) {
-                  message.error("File must be under 10 MB");
-                  return Upload.LIST_IGNORE;
-                }
-                setPopupUploadFile(file);
-                return false;
-              }}
-              onRemove={() => setPopupUploadFile(null)}
-              style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
-            >
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined style={{ color: "#722ed1" }} />
-              </p>
-              <p className="ant-upload-text" style={{ color: "#722ed1" }}>
-                Click or drag PDF to upload
-              </p>
-              <p className="ant-upload-hint" style={{ fontSize: 11 }}>
-                Max 10 MB · PDF only
-              </p>
-            </Upload.Dragger>
-            {popupUploadFile && (
-              <Button
-                type="primary"
-                icon={<UploadOutlined />}
-                onClick={handlePopupUpload}
-                loading={popupUploading}
-                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
-                block
-              >
-                Upload Report PDF
-              </Button>
-            )}
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", textAlign: "center", marginTop: 8 }}>
-              PDF will appear as the first page of the printed report.
-            </Typography.Text>
-          </>
-        ) : (
-          <>
-            <Alert
-              type="success"
-              showIcon
-              message="Consult report PDF received."
-              description="Review it below, then Sign Off to complete this consult round."
-              style={{ marginBottom: 12 }}
-            />
-            <div
-              style={{
-                height: 420,
-                background: "#f5f5f5",
-                borderRadius: 8,
-                border: "1px solid #d9d9d9",
-                overflow: "hidden",
-                marginBottom: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {consultPdfPreviewLoading ? (
-                <Spin tip="Loading PDF..." />
-              ) : consultPdfBlobUrl ? (
-                <iframe
-                  src={`${consultPdfBlobUrl}#toolbar=1&navpanes=0`}
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none" }}
-                  title="Consult PDF Preview"
-                />
-              ) : (
-                <Typography.Text type="secondary">Preview unavailable</Typography.Text>
-              )}
-            </div>
-            <Space direction="vertical" style={{ width: "100%" }} size={8}>
-              <Button
-                type="primary"
-                onClick={handleSignOffFromConsultPopup}
-                disabled={isConsultFinalizeLocked}
-                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1" }}
-                block
-              >
-                Sign Off
-              </Button>
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                onClick={handleDeleteConsultPdf}
-                loading={consultPdfDeleting}
-                block
-              >
-                Delete PDF
-              </Button>
-            </Space>
-          </>
-        )}
-      </Modal>
+        onClose={() => setConsultPdfPopupOpen(false)}
+        caseId={caseId}
+        consultPdfPath={surgicalCase?.consult_pdf_path}
+        consultPdfApprovedAt={surgicalCase?.consult_pdf_approved_at}
+        consultPdfApproverName={surgicalCase?.consult_pdf_approver_name}
+        isConsultFinalizeLocked={isConsultFinalizeLocked}
+        onRefresh={refresh}
+        onSignedOff={handleOpenFinalizeModal}
+      />
 
       {/* Case Already Signed Off popup */}
-      <Modal
+      <CompletedCaseModal
         open={completedCasePopupOpen}
-        onCancel={() => setCompletedCasePopupOpen(false)}
-        footer={null}
-        width={1300}
-        centered
-        closable
-        style={{ top: 20 }}
-      >
-        <Row gutter={24}>
-          <Col span={10} style={{ borderRight: "1px solid #f0f0f0", paddingRight: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Patient / case header */}
-            <div style={{ background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 8, padding: "10px 14px" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-                <Typography.Text strong style={{ fontSize: 15 }}>
-                  {surgicalCase?.accession_no}
-                </Typography.Text>
-                <Tag color="green" style={{ margin: 0 }}>SIGNED</Tag>
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {[surgicalCase?.patient?.title?.title, surgicalCase?.patient?.name, surgicalCase?.patient?.ln]
-                  .filter(Boolean).join(" ") || "—"}
-              </div>
-              <div style={{ fontSize: 12, color: "#595959", marginTop: 2 }}>
-                HN: {surgicalCase?.patient?.hn || surgicalCase?.hn || "—"}
-              </div>
-            </div>
-
-            {surgicalCase?.is_out_lab_consult && surgicalCase?.consult_status === "pending" && (
-              <Alert
-                type="warning"
-                showIcon
-                message="Pending Out-Lab Consult Dispatch"
-                description="This case was flagged for Out-Lab Consult but hasn't been sent to an external lab yet. Go to Out-Lab Consult → Send to Consult to dispatch it."
-              />
-            )}
-
-            <div style={{ textAlign: "center" }}>
-              <CheckCircleOutlined style={{ fontSize: 36, color: "#52c41a", marginBottom: 6 }} />
-              <Typography.Title level={5} style={{ margin: "0 0 4px" }}>
-                Case Already Signed Off
-              </Typography.Title>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                You are in view-only mode.
-              </Typography.Text>
-              <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 12 }}>
-                <Button onClick={onBack}>Go Back</Button>
-                <Button
-                  type="primary"
-                  icon={<FileAddOutlined />}
-                  onClick={() => { setIsAddendumMode(true); setCompletedCasePopupOpen(false); }}
-                >
-                  Add New Report
-                </Button>
-              </div>
-            </div>
-
-            <Table<SurgicalReport>
-              size="small"
-              loading={completedReportsLoading}
-              dataSource={completedReports}
-              rowKey="id"
-              pagination={false}
-              scroll={{ y: 300 }}
-              onRow={(record) => ({
-                onClick: () => setSelectedReportId(record.id),
-                style: {
-                  cursor: "pointer",
-                  background: record.id === selectedReportId ? "#e6f4ff" : undefined,
-                },
-              })}
-              columns={[
-                {
-                  title: "Ver.",
-                  dataIndex: "version_no",
-                  width: 42,
-                  render: (v: number) => <Typography.Text strong>v{v}</Typography.Text>,
-                },
-                {
-                  title: "Type",
-                  dataIndex: "report_type",
-                  width: 82,
-                  render: (t: string) => (
-                    <Tag color={t === "Final" ? "blue" : t === "Addendum" ? "orange" : "purple"} style={{ margin: 0 }}>
-                      {t}
-                    </Tag>
-                  ),
-                },
-                {
-                  title: "Status",
-                  dataIndex: "status",
-                  width: 90,
-                  render: (s: string) => (
-                    <Tag
-                      color={s === "published" ? "green" : s === "pending_approval" ? "orange" : "default"}
-                      style={{ margin: 0 }}
-                    >
-                      {s?.replace(/_/g, " ").toUpperCase()}
-                    </Tag>
-                  ),
-                },
-                {
-                  title: "Pathologist",
-                  dataIndex: "pathologist_name",
-                  ellipsis: true,
-                  render: (name: string) => (
-                    <Typography.Text style={{ fontSize: 12 }}>{name || "—"}</Typography.Text>
-                  ),
-                },
-                {
-                  title: "Date",
-                  dataIndex: "published_at",
-                  width: 90,
-                  render: (v: string, record) =>
-                    (v || record.created_at)
-                      ? dayjs(v || record.created_at).format("DD/MM/YY HH:mm")
-                      : "-",
-                },
-                {
-                  title: "",
-                  key: "actions",
-                  width: 36,
-                  render: (_: unknown, record) =>
-                    record.status === "draft" ? (
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        loading={deletingReportId === record.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteDraftReport(record.id);
-                        }}
-                      />
-                    ) : null,
-                },
-              ]}
-            />
-          </Col>
-          <Col span={14}>
-            <div
-              style={{
-                height: "70vh",
-                background: "#f5f5f5",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                borderRadius: 8,
-                border: "1px solid #d9d9d9",
-                overflow: "hidden",
-              }}
-            >
-              {completedPdfLoading ? (
-                <Spin tip="Loading Report..." size="large" />
-              ) : completedPdfUrl ? (
-                <iframe
-                  src={completedPdfUrl}
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none" }}
-                  title="Signed Report Preview"
-                />
-              ) : (
-                <div style={{ textAlign: "center", color: "#999" }}>
-                  <FilePdfOutlined style={{ fontSize: 48, marginBottom: 8 }} />
-                  <p>No Preview Available</p>
-                </div>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Modal>
-
+        onClose={() => setCompletedCasePopupOpen(false)}
+        surgicalCase={surgicalCase}
+        reports={completedReports}
+        reportsLoading={completedReportsLoading}
+        onBack={onBack}
+        onAddendum={() => {
+          setIsAddendumMode(true);
+          setCompletedCasePopupOpen(false);
+        }}
+        onReportsChanged={() => setHistoryRefreshKey((k) => k + 1)}
+      />
       <FinalizeReportPage
         open={isFinalizeModalOpen}
         onCancel={() => setIsFinalizeModalOpen(false)}
@@ -1546,7 +1083,7 @@ const handleOpenFinalizeModal = async () => {
         reportId={surgicalCase?.reports?.find(
           (r: SurgicalReport) => r.status === "draft"
         )?.id}
-        pathologists={pathologists.map((p: any) => ({ value: p.id ?? p.value, label: p.full_name ?? p.label }))}
+        pathologists={pathologistOptions}
         currentUserId={user?.id}
         senderName={user?.full_name}
       />

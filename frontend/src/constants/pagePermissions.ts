@@ -55,7 +55,8 @@ export type PageKey =
   | "nongyne-cell-block"
   | "gyne-qc-review"
   | "wsi-file-list"
-  | "wsi-slide-gallery";
+  | "wsi-slide-gallery"
+  | "molecular-cases";
 
 export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   dashboard: [
@@ -80,6 +81,7 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "print-sticker-he": ["histo", "lab_manager", "admin"],
   "slide-dispatch": ["histo", "lab_manager", "admin"],
   "staining-manager": ["histo", "lab_manager", "admin"],
+  "molecular-cases": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
   "specimen-storage": ["gross", "histo", "lab_manager", "admin"],
   "block-storage": ["histo", "lab_manager", "admin"],
   "slide-storage": ["histo", "lab_manager", "admin"],

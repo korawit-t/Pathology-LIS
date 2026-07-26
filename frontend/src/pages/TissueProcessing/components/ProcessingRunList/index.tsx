@@ -120,7 +120,10 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
     );
 
     // 🌟 แก้จาก groups เป็น grouped ให้ชื่อตรงกับด้านบน
-    return Object.values(grouped);
+    // เรียง Accession No. จากน้อยไปมาก
+    return Object.values(grouped).sort((a, b) =>
+      a.accession_no.localeCompare(b.accession_no, undefined, { numeric: true }),
+    );
   }, [selectedRunDetails]);
 
   // เรียกใช้ Columns จากไฟล์แยก
@@ -294,6 +297,11 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
                   dataIndex: "accession_no", // 🌟 มั่นใจว่าตรงกับ key ใน Object ที่เราสร้างใน reduce
                   render: (text: string) => <Text strong>{text}</Text>,
                   width: 150,
+                  sorter: (a: GroupedAccession, b: GroupedAccession) =>
+                    a.accession_no.localeCompare(b.accession_no, undefined, {
+                      numeric: true,
+                    }),
+                  defaultSortOrder: "ascend",
                 },
                 {
                   title: "Blocks in this Case",

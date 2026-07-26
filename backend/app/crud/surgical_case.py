@@ -224,7 +224,7 @@ def get_cases(
 
 
 def get_case(db: Session, case_id: int):
-    return (
+    case = (
         db.query(SurgicalCase)
         .options(
             selectinload(SurgicalCase.specimens),
@@ -237,10 +237,20 @@ def get_case(db: Session, case_id: int):
             .selectinload(ReportSigner.user),
             # 🚩 โหลด Diagnoses แบบคลีนๆ (ไม่มี pathologist_assignments แล้ว)
             selectinload(SurgicalCase.diagnoses),
+            selectinload(SurgicalCase.consult_pdf_approver),
         )
         .filter(SurgicalCase.id == case_id)
         .first()
     )
+    if case:
+        # Not a stored column — computed display name for the consult-PDF
+        # approver, mirrors the has_ihc computed-field pattern in get_cases().
+        case.consult_pdf_approver_name = (
+            (case.consult_pdf_approver.report_name or case.consult_pdf_approver.full_name)
+            if case.consult_pdf_approver
+            else None
+        )
+    return case
 
 
 def delete_case(db: Session, case_id: int):

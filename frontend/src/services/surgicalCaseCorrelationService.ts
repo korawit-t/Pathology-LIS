@@ -10,6 +10,21 @@ export interface SurgicalCaseCorrelationRecord {
   comment: string | null;
   correlated_by: { id: number; full_name: string } | null;
   correlated_at: string;
+  from_report_id?: number | null;
+  to_report_id?: number | null;
+}
+
+export interface SurgicalCaseCorrelationListParams {
+  skip?: number;
+  limit?: number;
+  result?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface SurgicalCaseCorrelationListResponse {
+  items: SurgicalCaseCorrelationRecord[];
+  total: number;
 }
 
 export interface SurgicalCaseCorrelationCreatePayload {
@@ -27,6 +42,16 @@ export interface SurgicalCaseCorrelationUpdatePayload {
 }
 
 const SurgicalCaseCorrelationService = {
+  list: async (
+    params: SurgicalCaseCorrelationListParams,
+  ): Promise<SurgicalCaseCorrelationListResponse> => {
+    const res = await api.get<SurgicalCaseCorrelationListResponse>(
+      "/surgical-case-correlations",
+      { params },
+    );
+    return res.data;
+  },
+
   getByCase: async (caseId: number): Promise<SurgicalCaseCorrelationRecord[]> => {
     const res = await api.get<SurgicalCaseCorrelationRecord[]>(
       `/surgical-case-correlations/by-case/${caseId}`,

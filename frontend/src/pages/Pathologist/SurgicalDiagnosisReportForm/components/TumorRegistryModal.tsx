@@ -69,10 +69,10 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
       const values = await form.validateFields();
       setSaving(true);
       await TumorRegistryService.upsert(caseId, values);
-      message.success("บันทึก Tumor Registry แล้ว");
+      message.success("Tumor Registry saved");
       onClose();
     } catch {
-      message.error("ไม่สามารถบันทึกได้");
+      message.error("Failed to save");
     } finally {
       setSaving(false);
     }
@@ -83,8 +83,9 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
     try {
       const data = await TumorRegistryService.getPreview(caseId);
       setPreview(data);
-    } catch (err: any) {
-      message.error(err?.response?.data?.detail ?? "โหลด preview ไม่สำเร็จ");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      message.error(axiosErr?.response?.data?.detail ?? "Failed to load preview");
     } finally {
       setPreviewLoading(false);
     }
@@ -96,9 +97,10 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
       const suggested = await TumorRegistryService.suggest(caseId);
       form.setFieldsValue(suggested);
       setPreview(null);
-      message.success("AI suggest ICD-O codes แล้ว — ตรวจสอบและแก้ไขก่อนบันทึก");
-    } catch (err: any) {
-      message.error(err?.response?.data?.detail ?? "AI suggest ไม่สำเร็จ");
+      message.success("AI suggested ICD-O codes — review and edit before saving");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      message.error(axiosErr?.response?.data?.detail ?? "AI suggest failed");
     } finally {
       setConfirming(false);
     }
@@ -116,7 +118,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
               <span>Tumor Registry</span>
             </Space>
             {aiEnabled && !isLocked && (
-              <Tooltip title="ดู prompt และ diagnosis text ก่อนส่ง AI — ตรวจสอบก่อนบันทึกเสมอ">
+              <Tooltip title="Review the prompt and diagnosis text before sending to AI — always check before saving">
                 <Button
                   size="small"
                   icon={<RobotOutlined />}
@@ -145,7 +147,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
               <Space size={4}>
                 <Text strong style={{ fontSize: 12, color: "#8c8c8c", textTransform: "uppercase", letterSpacing: "0.5px" }}>ICD-O-3</Text>
                 {aiEnabled && (
-                  <Tooltip title="AI suggest จะกรอก section นี้ให้อัตโนมัติ">
+                  <Tooltip title="AI Suggest will fill in this section automatically">
                     <InfoCircleOutlined style={{ fontSize: 11, color: "#722ed1" }} />
                   </Tooltip>
                 )}
@@ -211,7 +213,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
         onCancel={() => setPreview(null)}
         width={680}
         footer={[
-          <Button key="cancel" onClick={() => setPreview(null)}>ยกเลิก</Button>,
+          <Button key="cancel" onClick={() => setPreview(null)}>Cancel</Button>,
           <Button
             key="confirm"
             type="primary"
@@ -220,7 +222,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
             onClick={handleConfirmSuggest}
             style={{ background: "#722ed1", borderColor: "#722ed1" }}
           >
-            ส่งให้ AI →
+            Send to AI →
           </Button>,
         ]}
         destroyOnClose
@@ -250,7 +252,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
 
             {/* Diagnosis text (user message) */}
             <div>
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Diagnosis Text (จะส่งเป็น user message)</Text>
+              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>Diagnosis Text (sent as the user message)</Text>
               {preview.diagnosis_text ? (
                 <div style={{
                   background: "#fff7e6", border: "1px solid #ffd591", borderRadius: 6,
@@ -260,7 +262,7 @@ const TumorRegistryModal: React.FC<TumorRegistryModalProps> = ({
                   {preview.diagnosis_text}
                 </div>
               ) : (
-                <Alert type="warning" message="ยังไม่มี diagnosis text ที่บันทึกไว้ — กรุณาบันทึก draft ก่อน" showIcon />
+                <Alert type="warning" message="No saved diagnosis text yet — please save a draft first" showIcon />
               )}
             </div>
           </div>

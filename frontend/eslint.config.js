@@ -24,6 +24,11 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // eslint-plugin-react-hooks v7 added these as errors by default. Pre-existing
+      // code has real instances of both; downgrading to warn (like exhaustive-deps
+      // above) avoids a large unrelated cleanup while still surfacing them.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/immutability': 'warn',
     },
   },
   {

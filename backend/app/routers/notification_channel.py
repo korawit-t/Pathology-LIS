@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 from app.db.database import get_db
 from app.schemas.notification_channel import NotificationChannelCreate, NotificationChannelUpdate, NotificationChannelResponse
 from app.crud import notification_channel as crud_channel
-from app.dependencies.auth import get_current_active_user
+from app.core.roles import CAN_MANAGE_SETTINGS
 from app.services.notification_service import send_test_notification, send_real_notification
 from pydantic import BaseModel
 
@@ -17,7 +17,7 @@ class NotificationSendBody(BaseModel):
 router = APIRouter(
     prefix="/notification-channels",
     tags=["Notification Channels"],
-    dependencies=[Depends(get_current_active_user)]
+    dependencies=[Depends(CAN_MANAGE_SETTINGS)]
 )
 
 @router.get("", response_model=List[NotificationChannelResponse])

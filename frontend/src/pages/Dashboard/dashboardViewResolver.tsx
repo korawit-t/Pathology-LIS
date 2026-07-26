@@ -77,6 +77,7 @@ const SlideBlockReleasePage = lazy(() => import("../SlideBlockRelease"));
 const UnifiedAccession = lazy(() => import("../UnifiedAccession"));
 const DecalQueuePage = lazy(() => import("../DecalQueue"));
 const CellBlockTrackingPage = lazy(() => import("../CellBlock"));
+const MolecularCasePage = lazy(() => import("../MolecularCase"));
 
 const WsiFileListPage = lazy(() => import("../WSIFileList"));
 const WsiSlideGalleryPage = lazy(() => import("../WSISlideGallery"));
@@ -263,6 +264,10 @@ const VIEW_CONFIG: Record<
   "outlab-test-queue": {
     pageKey: "outlab-test-queue" as PageKey,
     component: OutlabTestQueue,
+  },
+  "molecular-cases": {
+    pageKey: "molecular-cases" as PageKey,
+    component: MolecularCasePage,
   },
 
   users: { pageKey: "users", component: UserManager },

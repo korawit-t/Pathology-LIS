@@ -69,17 +69,17 @@ const MicroscopicImageItem: React.FC<ImageItemProps> = ({
             checked={img.show_in_report !== false}
             onChange={async (checked) => {
               try {
-                await MicroscopicImageService.updateImage(img.id, { show_in_report: checked } as any);
+                await MicroscopicImageService.updateImage(img.id, { show_in_report: checked });
                 if (onRefresh) onRefresh();
               } catch {
-                message.error("บันทึกไม่สำเร็จ");
+                message.error("Save failed");
               }
             }}
           />
         </div>
       )}
       {!isLocked && (
-        <Popconfirm title="ลบรูปภาพ?" onConfirm={() => onDelete(img.id)}>
+        <Popconfirm title="Delete image?" onConfirm={() => onDelete(img.id)}>
           <Button
             type="primary" danger shape="circle" size="small"
             icon={deletingId === img.id ? <Spin size="small" /> : <DeleteOutlined />}
@@ -95,8 +95,8 @@ interface MicroscopicImageGalleryProps {
   specimenId: number;
   images?: MicroscopicImage[];
   isLocked: boolean;
-  onRefresh?: () => void; // ฟังก์ชันเรียกโหลดข้อมูลใหม่หลังจากอัปโหลดหรือลบ
-  onOpenCapture?: () => void; // ฟังก์ชันเปิด Modal กล้อง
+  onRefresh?: () => void;
+  onOpenCapture?: () => void;
   onEditImage?: (image: MicroscopicImage) => void;
 }
 
@@ -111,19 +111,16 @@ const MicroscopicImageGallery: React.FC<MicroscopicImageGalleryProps> = ({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
-  // 🚩 ฟังก์ชันสำหรับอัปเดตคำอธิบายภาพ
-  // 🚩 ฟังก์ชันอัปเดตคำอธิบายภาพ
   const handleUpdateCaption = async (id: number, newCaption: string) => {
     setUpdatingId(id);
     try {
-      // เรียกใช้ Service สำหรับ PATCH ข้อมูลเฉพาะฟิลด์ caption
       await MicroscopicImageService.updateImage(id, {
         description: newCaption,
       });
-      message.success("อัปเดตคำอธิบายเรียบร้อย");
+      message.success("Caption updated successfully");
       if (onRefresh) onRefresh();
     } catch (error) {
-      message.error("บันทึกไม่สำเร็จ");
+      message.error("Save failed");
     } finally {
       setUpdatingId(null);
     }
@@ -176,8 +173,8 @@ const MicroscopicImageGallery: React.FC<MicroscopicImageGalleryProps> = ({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", // ขยายกว้างขึ้นนิดหน่อยให้พิมพ์สะดวก
-              gap: "16px", // เพิ่มช่องว่างให้ดูโปร่งขึ้น
+              gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+              gap: "16px",
             }}
           >
             {images.map((img) => (

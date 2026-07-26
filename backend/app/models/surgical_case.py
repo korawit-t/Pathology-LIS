@@ -75,6 +75,8 @@ class SurgicalCase(Base):
     consult_reason = Column(Text, nullable=True)
     consult_report_out_at = Column(DateTime, nullable=True)
     consult_pdf_received_at = Column(DateTime, nullable=True)
+    consult_pdf_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    consult_pdf_approved_at = Column(DateTime, nullable=True)
     has_malignancy = Column(Boolean, nullable=True)
     has_critical = Column(Boolean, default=False)
     is_pending = Column(Boolean, default=False)
@@ -130,6 +132,7 @@ class SurgicalCase(Base):
 
     specimen_storer = relationship("User", foreign_keys=[specimen_storage_by_id])
     specimen_disposer = relationship("User", foreign_keys=[discard_by_id])
+    consult_pdf_approver = relationship("User", foreign_keys=[consult_pdf_approved_by_id])
 
     # --- 5. Timestamps ---
     created_at = Column(DateTime, default=func.now())

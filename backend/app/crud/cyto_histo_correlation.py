@@ -80,7 +80,7 @@ def list_correlations(db: Session, skip: int = 0, limit: int = 20,
     if surg_ids:
         subq = (db.query(SurgicalReport.case_id, func.max(SurgicalReport.id).label("max_id"))
                 .filter(SurgicalReport.case_id.in_(surg_ids),
-                        SurgicalReport.status.in_(["published", "completed"]))
+                        SurgicalReport.status == "published")
                 .group_by(SurgicalReport.case_id).subquery())
         surg_report_map = {row.case_id: row.max_id for row in db.query(subq).all()}
 

@@ -201,7 +201,7 @@ def get_gyne_archive(
                 sr.interpretation,
                 c.specimen_type AS specimen,
                 c.id AS case_id,
-                (c.is_out_lab AND c.out_lab_result_pdf_path IS NOT NULL) AS has_outlab_result
+                (c.is_out_lab AND c.out_lab_result_pdf_path IS NOT NULL AND c.outlab_result_approved_at IS NOT NULL) AS has_outlab_result
             FROM gyne_cytology_cases c
             JOIN patients p ON c.patient_id = p.id
             LEFT JOIN titles ti ON p.title_id = ti.id

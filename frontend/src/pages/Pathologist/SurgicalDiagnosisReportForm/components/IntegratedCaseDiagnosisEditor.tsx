@@ -17,7 +17,6 @@ import {
 } from "@ant-design/icons";
 import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../../SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
-import type { FormInstance } from "antd";
 import type { SurgicalCase } from "../../../../types/surgical";
 
 const { Text } = Typography;
@@ -25,7 +24,6 @@ const { Text } = Typography;
 interface IntegratedCaseDiagnosisEditorProps {
   surgicalCase: SurgicalCase;
   isLocked: boolean;
-  form: FormInstance;
   diagnosisMode: "integrated" | "clean";
   onAIGenerate?: () => void;
   isAIGenerating?: boolean;
@@ -33,11 +31,12 @@ interface IntegratedCaseDiagnosisEditorProps {
 
 const IntegratedCaseDiagnosisEditor: React.FC<
   IntegratedCaseDiagnosisEditorProps
-> = ({ surgicalCase, isLocked, form, diagnosisMode, onAIGenerate, isAIGenerating = false }) => {
+> = ({ surgicalCase, isLocked, diagnosisMode, onAIGenerate, isAIGenerating = false }) => {
+  const form = Form.useFormInstance();
   const isCleanMode = diagnosisMode === "clean";
   const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
 
-  // บังคับเลือกชิ้นเนื้อทั้งหมด (เหมือนเดิม)
+  // Always link all specimens to this case-level diagnosis
   useEffect(() => {
     if (surgicalCase?.specimens) {
       const allIds = surgicalCase.specimens.map((s) => s.id);
@@ -46,7 +45,7 @@ const IntegratedCaseDiagnosisEditor: React.FC<
   }, [surgicalCase, form]);
 
   const dynamicLabel = useMemo(() => {
-    // 🚩 ถ้าเป็น Clean Mode ไม่ต้องคำนวณ Label ให้รกหน้าจอ
+    // Clean Mode doesn't show the specimen label, so skip computing it
     if (isCleanMode) return "";
 
     const specs = surgicalCase?.specimens || [];
@@ -67,7 +66,6 @@ const IntegratedCaseDiagnosisEditor: React.FC<
       : labels.join(", ");
   }, [surgicalCase, isCleanMode]);
 
-  // 🚩 Logic สำหรับการเลือก Template ในระดับ Case
   const handleApplyTemplate = (
     data: { diagnosis: string; microscopic: string },
     mode: "append" | "replace",
@@ -78,14 +76,12 @@ const IntegratedCaseDiagnosisEditor: React.FC<
     if (mode === "replace") {
       form.setFieldValue(fieldName, data.diagnosis);
     } else {
-      // Append: ต่อท้ายเนื้อหาเดิม
       const combined = currentDiag
         ? `${currentDiag}<p>${data.diagnosis}</p>`
         : data.diagnosis;
       form.setFieldValue(fieldName, combined);
     }
 
-    // แจ้งเตือนและปิด Modal
     message.success("Template applied to case diagnosis");
     setIsTemplateModalOpen(false);
   };
@@ -140,7 +136,6 @@ const IntegratedCaseDiagnosisEditor: React.FC<
         }
         style={{
           borderRadius: "12px",
-          // 🚩 ปรับสีขอบและพื้นหลังตามโหมด
           border: isCleanMode ? "2px solid #52c41a" : "2px solid #1890ff",
           background: isCleanMode ? "#f6ffed" : "#f0f7ff",
           boxShadow: isCleanMode
@@ -148,7 +143,6 @@ const IntegratedCaseDiagnosisEditor: React.FC<
             : "0 4px 12px rgba(24, 144, 255, 0.1)",
         }}
       >
-        {/* 🚩 ซ่อนส่วน Label ถ้าเป็นโหมด Clean */}
         {!isCleanMode && (
           <div style={{ marginBottom: 16 }}>
             <Text type="secondary">Diagnosis for Specimens: </Text>
@@ -174,8 +168,8 @@ const IntegratedCaseDiagnosisEditor: React.FC<
             disabled={isLocked}
             placeholder={
               isCleanMode
-                ? "ระบุคำวินิจฉัยอิสระที่นี่..."
-                : `ระบุคำวินิจฉัยสรุปรวมสำหรับชิ้นเนื้อ ${dynamicLabel}...`
+                ? "Enter the free-form diagnosis here..."
+                : `Enter the combined diagnosis for specimens ${dynamicLabel}...`
             }
             style={{ minHeight: "300px" }}
           />
@@ -185,7 +179,6 @@ const IntegratedCaseDiagnosisEditor: React.FC<
           <input />
         </Form.Item>
       </Card>
-      {/* 🚩 Modal Template System สำหรับ Case Level */}
       <Modal
         title="Diagnostic Templates (Case Level)"
         open={isTemplateModalOpen}
@@ -195,7 +188,6 @@ const IntegratedCaseDiagnosisEditor: React.FC<
         destroyOnClose
         zIndex={2000}
       >
-        {/* ส่ง onApply โดยไม่ต้องสนเรื่อง "target all" เพราะโหมดนี้มีเป้าหมายเดียวคือ Case */}
         <DiagnosticTemplateSystem
           onApply={(data, mode) => handleApplyTemplate(data, mode)}
         />

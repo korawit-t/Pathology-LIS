@@ -33,6 +33,7 @@ const GyneCytologyCaseService = {
     is_out_lab_consult?: boolean;
     is_out_lab?: boolean;
     has_out_lab_result?: boolean;
+    outlab_result_approved?: boolean;
     consult_status?: string;
     exclude_consult_status?: string;
     is_reported?: boolean;
@@ -203,6 +204,13 @@ const GyneCytologyCaseService = {
 
   downloadOutlabTestResult: async (caseId: number): Promise<Blob> => {
     const res = await api.get(`/gyne-cytology/${caseId}/outlab-test-result`, { responseType: "blob" });
+    return res.data;
+  },
+
+  approveOutlabTestResult: async (
+    caseId: number,
+  ): Promise<{ outlab_result_approved_by: string; outlab_result_approved_at: string }> => {
+    const res = await api.post(`/gyne-cytology/${caseId}/outlab-test-result/approve`);
     return res.data;
   },
 

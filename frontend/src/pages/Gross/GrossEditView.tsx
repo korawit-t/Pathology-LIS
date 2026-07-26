@@ -53,6 +53,7 @@ import { useGrossImages } from "./hooks/useGrossImages";
 import { prepareGrossInitialValues } from "./utils/formHelpers";
 import { useTheme } from "../../contexts/ThemeContext";
 import logger from "../../utils/logger";
+import { stripHtmlToText } from "../../utils/sanitize";
 
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
@@ -248,8 +249,7 @@ const GrossEditView: React.FC<Props> = ({
       }
 
       const grossDescriptions = values.gross_descriptions || {};
-      const stripHtml = (html: string) =>
-        (html || "").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
+      const stripHtml = (html: string) => stripHtmlToText(html).trim();
 
       const specimensWithoutDesc = freshSpecimens.filter((s) => {
         const desc = grossDescriptions[s.id.toString()] || "";

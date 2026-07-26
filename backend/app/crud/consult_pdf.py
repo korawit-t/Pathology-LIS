@@ -36,4 +36,13 @@ def clear_consult_pdf(db: Session, case) -> None:
     if case.consult_pdf_path and os.path.exists(case.consult_pdf_path):
         os.remove(case.consult_pdf_path)
     case.consult_pdf_path = None
+    case.consult_pdf_approved_by_id = None
+    case.consult_pdf_approved_at = None
+    db.commit()
+
+
+def approve_consult_pdf(db: Session, case, approved_by_id: int) -> None:
+    """Record who reviewed/signed off on the uploaded consult PDF, and when."""
+    case.consult_pdf_approved_by_id = approved_by_id
+    case.consult_pdf_approved_at = local_now()
     db.commit()
