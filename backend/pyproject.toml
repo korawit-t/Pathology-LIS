@@ -1,0 +1,46 @@
+[tool.ruff]
+line-length = 120
+# tests/ scoped out for now: test setup helpers (e.g. make_block(db, ...))
+# are frequently called for their DB-insert side effect with the returned
+# object never referenced by name again, which reads identically to a
+# genuine unused-variable to pyflakes. Reviewing ~100 hits there to tell
+# real dead code apart from that pattern is a separate task from linting
+# the actual application code in app/.
+#
+# alembic/versions/ scoped out permanently: auto-generated migration
+# history. "Unused op/sa imports" in a merge-only migration is a normal,
+# expected artifact of Alembic's own generator, not something worth
+# editing after the fact — these files are a record of what already ran
+# against real databases.
+extend-exclude = ["tests", "alembic/versions"]
+
+[tool.ruff.lint]
+# Pyflakes only: unused imports/variables, redefinitions, loop-variable
+# shadowing. Deliberately not enabling broader rule sets — see notes below
+# for the ones that were evaluated and rejected as noisy or false-positive
+# for this codebase's actual patterns, rather than left off by oversight.
+select = ["F"]
+
+# Rejected/deferred rule sets (checked against a real run, not guessed):
+#
+# - B008 (flake8-bugbear function-call-in-default-argument): flags
+#   Depends(get_db) / Query(...) as a "dangerous mutable default", but
+#   that's the required FastAPI dependency-injection pattern used in
+#   nearly every route handler here. ~800 false positives.
+# - E711 / E712 (== None / == True / == False comparisons): this codebase's
+#   SQLAlchemy filters rely on Column == True/False/None to build SQL WHERE
+#   clauses via operator overloading — `is True`/`is None` don't work on
+#   SQLAlchemy columns at all, so this is the correct idiom, not a bug.
+#   ~50 false positives (one is already manually suppressed with
+#   `# noqa: E712` in crud/surgical_case.py).
+# - UP006 / UP035 / UP045 (old-style Optional[X]/List[X] -> X | None /
+#   list[X]) and I001 (import sorting): pure style modernization, zero
+#   bug-catching value, ~2,200 hits that would dominate a first lint PR.
+#   Candidate for a dedicated future round, not bundled into "add a
+#   safety net".
+# - E402 (module-import-not-at-top-of-file, ~111 hits): mostly this
+#   codebase's `logger = logging.getLogger(__name__)`-before-more-imports
+#   house style. Stylistic, not a bug.
+# - RUF013 (implicit-optional, ~205 hits) and BLE001 (blind-except,
+#   ~51 hits): both need case-by-case judgment calls, not a blanket
+#   autofix. Future round.
