@@ -19,6 +19,7 @@ import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
 import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../utils/caseMasterData";
 
 // Components & Services
 import PatientFormModal from "../../../components/PatientFormModal";
@@ -127,29 +128,31 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   }, [open, editingId]);
 
   const fetchMasterData = async () => {
-    try {
-      const [h, d, sc, u, t, specimenTypes] = await Promise.all([
-        HospitalService.getHospitals(),
-        DepartmentService.getDepartments(true),
-        MedicalSchemeService.getSchemes(),
-        UserService.getUsers(),
-        TitleService.getTitles(),
-        SpecimenTemplateService.getTemplates("gyne_cyto"),
-      ]);
-      setHospitals(h);
-      setDepartments(d);
-      setSchemes(sc);
-      setStaffs(u);
-      setTitles(t);
-      if (specimenTypes.length) {
-        const names = specimenTypes.map((s) => s.name);
-        setGyneSpecimenTypes(names);
-        if (!editingId && !form.getFieldValue("specimen_type")) {
-          form.setFieldValue("specimen_type", names[0]);
-        }
+    const result = await loadMasterData(
+      () =>
+        Promise.all([
+          HospitalService.getHospitals(),
+          DepartmentService.getDepartments(true),
+          MedicalSchemeService.getSchemes(),
+          UserService.getUsers(),
+          TitleService.getTitles(),
+          SpecimenTemplateService.getTemplates("gyne_cyto"),
+        ]),
+      "Failed to load master data",
+    );
+    if (!result) return;
+    const [h, d, sc, u, t, specimenTypes] = result;
+    setHospitals(h);
+    setDepartments(d);
+    setSchemes(sc);
+    setStaffs(u);
+    setTitles(t);
+    if (specimenTypes.length) {
+      const names = specimenTypes.map((s) => s.name);
+      setGyneSpecimenTypes(names);
+      if (!editingId && !form.getFieldValue("specimen_type")) {
+        form.setFieldValue("specimen_type", names[0]);
       }
-    } catch (err) {
-      message.error("Failed to load master data");
     }
   };
 

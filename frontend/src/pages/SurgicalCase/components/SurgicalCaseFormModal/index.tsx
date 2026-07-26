@@ -23,6 +23,7 @@ import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../../hooks/useCaseFileUpload";
 import { useCaseLifecycleActions } from "../../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../../utils/caseMasterData";
 import PatientFormModal from "../../../../components/PatientFormModal";
 import HisPatientSearchModal from "../HisPatientSearchModal";
 import type { HisPatientResult } from "../../../../services/hisService";
@@ -119,23 +120,22 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   // 1. Fetch Master Data เมื่อเปิด Modal ครั้งแรก
   useEffect(() => {
     const fetchMasterData = async () => {
-      try {
-        const [hospitals, departments, schemes, pathologists, titles] =
-          await Promise.all([
-            HospitalService.getHospitals(),
-            DepartmentService.getDepartments(true),
-            MedicalSchemeService.getSchemes(),
-            UserService.getUsers({ role: "pathologist" }),
-            TitleService.getTitles(),
-          ]);
-        setHospitals(hospitals);
-        setDepartments(departments);
-        setSchemes(schemes);
-        setPathologists(pathologists);
-        setTitles(titles);
-      } catch (err) {
-        message.error("Failed to load reference data");
-      }
+      const result = await loadMasterData(() =>
+        Promise.all([
+          HospitalService.getHospitals(),
+          DepartmentService.getDepartments(true),
+          MedicalSchemeService.getSchemes(),
+          UserService.getUsers({ role: "pathologist" }),
+          TitleService.getTitles(),
+        ]),
+      );
+      if (!result) return;
+      const [hospitals, departments, schemes, pathologists, titles] = result;
+      setHospitals(hospitals);
+      setDepartments(departments);
+      setSchemes(schemes);
+      setPathologists(pathologists);
+      setTitles(titles);
     };
 
     if (open) {

@@ -24,6 +24,7 @@ import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
 import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
+import { loadMasterData } from "../../../utils/caseMasterData";
 import PatientFormModal from "../../../components/PatientFormModal";
 import HisPatientSearchModal from "../../SurgicalCase/components/HisPatientSearchModal";
 import NongynePrintPreviewModal from "./NongynePrintPreviewModal";
@@ -138,16 +139,8 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
 
   useEffect(() => {
     const fetchMasterData = async () => {
-      try {
-        const [
-          hospitals,
-          departments,
-          schemes,
-          pathologists,
-          cytos,
-          titles,
-          specimenTypes,
-        ] = await Promise.all([
+      const result = await loadMasterData(() =>
+        Promise.all([
           HospitalService.getHospitals(),
           DepartmentService.getDepartments(true),
           MedicalSchemeService.getSchemes(),
@@ -155,17 +148,17 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
           UserService.getUsers({ role: "cytotechnologist" }),
           TitleService.getTitles(),
           SpecimenTemplateService.getTemplates("nongyne_cyto"),
-        ]);
-        setHospitals(hospitals);
-        setDepartments(departments);
-        setSchemes(schemes);
-        setPathologists(pathologists);
-        setCytotechnologists(cytos);
-        setTitles(titles);
-        if (specimenTypes.length) setSpecimenTypes(specimenTypes);
-      } catch (err) {
-        message.error("Failed to load reference data");
-      }
+        ]),
+      );
+      if (!result) return;
+      const [hospitals, departments, schemes, pathologists, cytos, titles, specimenTypes] = result;
+      setHospitals(hospitals);
+      setDepartments(departments);
+      setSchemes(schemes);
+      setPathologists(pathologists);
+      setCytotechnologists(cytos);
+      setTitles(titles);
+      if (specimenTypes.length) setSpecimenTypes(specimenTypes);
     };
 
     if (open) {
