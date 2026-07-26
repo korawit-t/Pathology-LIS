@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 
 import { usePatientSearch } from "../../hooks/usePatientSearch";
 import { importHisPatient } from "../../utils/hisPatientImport";
+import { formatPatientName } from "../../utils/patientName";
 import PatientFormModal from "../../components/PatientFormModal";
 import HisPatientSearchModal from "../SurgicalCase/components/HisPatientSearchModal";
 import type { HisPatientResult } from "../../services/hisService";
@@ -304,7 +305,7 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
                   onChange={handleSelectCase}
                   options={caseOptions.map((c) => ({
                     value: c.id,
-                    label: `${c.accession_no} — ${[c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || c.hn || ""}`,
+                    label: `${c.accession_no} — ${(c.patient ? formatPatientName(c.patient) : "") || c.hn || ""}`,
                   }))}
                 />
               </Form.Item>
