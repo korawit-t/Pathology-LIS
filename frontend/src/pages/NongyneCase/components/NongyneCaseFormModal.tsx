@@ -43,6 +43,7 @@ import DepartmentService from "../../../services/departmentService";
 import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import logger from "../../../utils/logger";
+import { getErrorDetail } from "../../../utils/errorHandler";
 import { NongyneCytologyCase, NongyneCytologyCaseCreate, PatientRef } from "../../../types/nongyne";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
@@ -280,12 +281,10 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       }
 
       onSuccess(savedResult ?? null);
-    } catch (err: any) {
-      logger.error("Backend Error:", err.response?.data?.detail);
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      logger.error("Backend Error:", detail);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
@@ -316,11 +315,9 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       setFileList([]);
       pendingResetRef.current = true;
       setSaveAndNewData(saved);
-    } catch (err: any) {
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }

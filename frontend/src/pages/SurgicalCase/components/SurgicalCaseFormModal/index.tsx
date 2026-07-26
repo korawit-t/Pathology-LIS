@@ -52,6 +52,7 @@ import type { MedicalScheme } from "../../../../types/medicalScheme";
 import type { User } from "../../../../types/user";
 import PrintPreviewModal from "../PrintPreviewModal";
 import logger from "../../../../utils/logger";
+import { getErrorDetail } from "../../../../utils/errorHandler";
 import type { CaseFormModalProps } from "../../../../types/caseFormModal";
 
 const { Option } = Select;
@@ -280,12 +281,10 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
       // 3. ส่งข้อมูลที่ได้จาก Backend (ซึ่งมี ID และ Accession No) กลับไปที่หน้า Manager
       // เนื่องจาก SurgicalCaseService ของคุณ return res.data มาให้แล้ว
       onSuccess(savedResult ?? null);
-    } catch (err: any) {
-      logger.error("Backend Error:", err.response?.data?.detail);
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      logger.error("Backend Error:", detail);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
@@ -327,11 +326,9 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
       setFileList([]);
       pendingResetRef.current = true;
       setIsPrintModalOpen(true);
-    } catch (err: any) {
-      message.error(
-        "Save failed: " +
-          (err.response?.data?.detail || "An unexpected error occurred"),
-      );
+    } catch (err: unknown) {
+      const detail = getErrorDetail(err);
+      message.error("Save failed: " + (detail || "An unexpected error occurred"));
     } finally {
       setLoading(false);
     }
