@@ -45,7 +45,7 @@ import NongyneCaseImageService, {
 } from "../../services/nongyneCaseImageService";
 import UserService from "../../services/userService";
 import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
-import { NongyneCytologyCase } from "../../types/nongyne";
+import { NongyneCytologyCase, NongyneCytologyCaseUpdate } from "../../types/nongyne";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
 import PatientInfoCard from "../../components/PatientInfoCard";
@@ -331,50 +331,61 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const isFormMode = !diagnosis || !isFinalized;
   const isFormLocked = isFinalized;
 
+  // Shared by onFinish, handlePathologistPickerConfirm, and handlePreviewPdf
+  // — all three save the same case-level fields + diagnosis update/create,
+  // just with different extra case fields and different post-save behavior
+  // (which stays visible at each call site, not hidden in here).
+  const persistDraft = async (
+    values: NongyneOnFinishValues,
+    extraCaseFields: Partial<NongyneCytologyCaseUpdate> = {},
+  ) => {
+    const {
+      clinical_history,
+      specimen_type,
+      collection_site,
+      received_volume_ml,
+      has_malignancy,
+      has_critical,
+      signers: _s,
+      ...diagnosisValues
+    } = values;
+
+    await NongyneCytologyCaseService.update(Number(caseId), {
+      clinical_history: clinical_history ?? null,
+      specimen_type,
+      collection_site: collection_site ?? null,
+      received_volume_ml: received_volume_ml ?? null,
+      has_malignancy: has_malignancy ?? false,
+      has_critical: has_critical ?? false,
+      ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
+      ...extraCaseFields,
+    });
+
+    if (diagnosis) {
+      await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
+    } else {
+      await NongyneDiagnosisService.create({
+        ...diagnosisValues,
+        case_id: Number(caseId),
+      });
+    }
+
+    return {
+      clinical_history,
+      specimen_type,
+      collection_site,
+      received_volume_ml,
+      has_malignancy,
+      has_critical,
+    };
+  };
+
   const onFinish = async (values: NongyneOnFinishValues) => {
     try {
       setSubmitting(true);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _signers,
-        ...diagnosisValues
-      } = values;
-
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
-      });
-      setCaseData((prev) => ({
-        ...prev,
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-      }));
-
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-        message.success("Draft saved.");
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-        message.success("Draft saved.");
-      }
+      const savedFields = await persistDraft(values);
+      setCaseData((prev) => ({ ...prev, ...savedFields }));
+      message.success("Draft saved.");
       fetchDiagnosis();
     } catch (err) {
       logger.error(err);
@@ -397,38 +408,11 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
       // Save current form values as draft first
       const values = form.getFieldsValue();
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _s,
-        ...diagnosisValues
-      } = values;
-
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
+      await persistDraft(values, {
         pathologist_id: selectedPathologistId,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
         is_screened: true,
         ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
       });
-
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-      }
 
       setPathologistPickerOpen(false);
       message.success("Case sent to pathologist successfully");
@@ -446,33 +430,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       setLoading(true);
       // Auto-save current form values so PDF reflects latest edits
       const values = form.getFieldsValue();
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _s,
-        ...diagnosisValues
-      } = values;
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
-      });
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-      }
+      await persistDraft(values);
       const blob = await NongyneDiagnosisService.previewReportPdf(
         Number(caseId),
       );
