@@ -223,7 +223,7 @@ const StatReviewPage: React.FC = () => {
                     />
                     <YAxis allowDecimals={false} />
                     <Tooltip
-                      labelFormatter={(label) => dayjs(label).format("DD MMM YYYY")}
+                      labelFormatter={(label) => dayjs(label as string).format("DD MMM YYYY")}
                     />
                     <Legend />
                     <Bar
