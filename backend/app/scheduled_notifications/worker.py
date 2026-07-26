@@ -22,7 +22,8 @@ _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _FALLBACK_TEMPLATE = (
     "🔔 แจ้งเตือนผลย้อมนอกค้างคีย์\n"
     "HN: {hn} | {name}\n"
-    "รายการค้างคีย์: {pending_count} รายการ"
+    "Case: {case_id}\n"
+    "รายการค้างคีย์ ({pending_count}):\n{pending_items}"
 )
 
 
@@ -86,7 +87,18 @@ async def _check_outlab_pending_visit_today(rule, channels: List[NotificationCha
     now_dt = local_now()
     today_iso = now_dt.date().isoformat()
     breaches = [
-        {"hn": hn, "name": info["patient_name"], "pending_count": str(len(info["items"]))}
+        {
+            "hn": hn,
+            "name": info["patient_name"],
+            "pending_count": str(len(info["items"])),
+            "case_id": ", ".join(sorted({
+                item["accession_no"] for item in info["items"] if item["accession_no"]
+            })) or "-",
+            "pending_items": "\n".join(
+                f"- {item['accession_no'] or '-'} {item['block_code'] or '-'}: {item['stain_name']}"
+                for item in info["items"]
+            ),
+        }
         for hn, info in by_hn.items()
         if hn in visiting_hns
     ]

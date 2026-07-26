@@ -72,6 +72,7 @@ class GyneCytologyCase(Base):
     is_out_lab_consult = Column(Boolean, default=False, index=True)
     is_out_lab = Column(Boolean, default=False, index=True)
     out_lab_result_pdf_path = Column(String, nullable=True)
+    out_lab_result_uploaded_at = Column(DateTime, nullable=True)
     outlab_result_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     outlab_result_approved_at = Column(DateTime, nullable=True)
     consult_status = Column(String, nullable=True, index=True)

@@ -6,7 +6,6 @@ import {
   Flex,
   Typography,
   Input,
-  FormInstance,
   Button,
   Divider,
   Tooltip,
@@ -29,7 +28,6 @@ const { TextArea } = Input;
 
 interface CaseFlagManagerProps {
   isLocked?: boolean;
-  form?: FormInstance;
   caseId?: number;
   reportId?: number;
   currentUserId?: number;
@@ -40,7 +38,6 @@ interface CaseFlagManagerProps {
 
 const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   isLocked,
-  form,
   caseId,
   reportId,
   currentUserId,
@@ -48,6 +45,7 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   tumorRegistryEnabled,
   tumorRegistryAiEnabled,
 }) => {
+  const form = Form.useFormInstance();
   const isPending = Form.useWatch("is_pending", form);
   const [internalConsultOpen, setInternalConsultOpen] = useState(false);
   const [internalConsultKey, setInternalConsultKey] = useState(0);

@@ -1,14 +1,14 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { HosxpKeyTab } from "./OutlabManagement";
-import SurgicalBlockStainService from "../../services/surgicalBlockStainService";
-import SurgicalCaseService from "../../services/surgicalCaseService";
-import HisService from "../../services/hisService";
+import { HosxpKeyTab } from "./HosxpKeyTab";
+import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
+import SurgicalCaseService from "../../../services/surgicalCaseService";
+import HisService from "../../../services/hisService";
 
-vi.mock("../../services/surgicalBlockStainService", () => ({
+vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: { getOutlabRuns: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
-vi.mock("../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
-vi.mock("../../services/hisService", () => ({ default: { getAppointments: vi.fn() } }));
+vi.mock("../../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
+vi.mock("../../../services/hisService", () => ({ default: { getAppointments: vi.fn() } }));
 
 const detail = (overrides = {}) => ({
   id: 100,

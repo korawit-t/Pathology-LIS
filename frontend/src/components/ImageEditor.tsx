@@ -17,7 +17,6 @@ import {
   MinusOutlined
 } from "@ant-design/icons";
 import useImage from "use-image";
-import styles from "./GrossImageCaptureModal.module.css";
 
 const { Text } = Typography;
 
@@ -150,8 +149,13 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     const canvas = document.createElement("canvas");
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
-    canvas.width = crop.width;
-    canvas.height = crop.height;
+    // Crop x/y/width/height are in on-screen (displayed) pixels; the canvas
+    // must be sized in natural pixels or the output gets downsampled to
+    // display resolution.
+    const pixelCropWidth = crop.width * scaleX;
+    const pixelCropHeight = crop.height * scaleY;
+    canvas.width = pixelCropWidth;
+    canvas.height = pixelCropHeight;
     const ctx = canvas.getContext("2d");
 
     if (ctx) {
@@ -159,16 +163,16 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         image,
         crop.x * scaleX,
         crop.y * scaleY,
-        crop.width * scaleX,
-        crop.height * scaleY,
+        pixelCropWidth,
+        pixelCropHeight,
         0,
         0,
-        crop.width,
-        crop.height
+        pixelCropWidth,
+        pixelCropHeight
       );
     }
     return new Promise((resolve) => {
-      resolve(canvas.toDataURL("image/jpeg"));
+      resolve(canvas.toDataURL("image/jpeg", 0.95));
     });
   };
 
@@ -180,10 +184,33 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       return;
     }
 
-    // If there are drawings, export the konva stage
-    if (stageRef.current) {
-      // Need to convert rendered stage back to data url
-      const finalUri = stageRef.current.toDataURL({ pixelRatio: 2 });
+    // If there are drawings, export the konva stage. The stage is rendered
+    // at preview size (stageSize, fit to a 500px-tall container) to keep the
+    // editor UI usable, so exporting it as-is (even with pixelRatio) caps the
+    // saved image at ~2x preview resolution regardless of the source photo's
+    // real resolution. Temporarily resize the stage to the natural image
+    // resolution and scale up its layer to match before exporting, then
+    // restore both so the on-screen editor is unaffected.
+    const stage = stageRef.current;
+    if (stage && image) {
+      const layer = stage.getLayers()[0];
+      const exportScale = stageSize.width > 0 ? image.width / stageSize.width : 1;
+      const originalWidth = stage.width();
+      const originalHeight = stage.height();
+      const originalScale = layer.scale();
+
+      stage.width(image.width);
+      stage.height(image.height);
+      layer.scale({ x: exportScale, y: exportScale });
+      layer.draw();
+
+      const finalUri = stage.toDataURL({ mimeType: "image/jpeg", quality: 0.95 });
+
+      stage.width(originalWidth);
+      stage.height(originalHeight);
+      layer.scale(originalScale);
+      layer.draw();
+
       onSave(finalUri);
     }
   };

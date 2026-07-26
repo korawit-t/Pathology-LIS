@@ -12,6 +12,7 @@ import { SurgicalDiagnosis } from "../../../../types/surgicalDiagnosis";
 import { SurgicalReport } from "../../../../types/surgicalReport";
 import SurgicalReportService from "../../../../services/surgicalReportService";
 import StyledCard from "../../../../components/Layout/StyledCard";
+import { openPdfBlobInNewWindow } from "../../../../hooks/usePdfBlobUrl";
 
 const { Text } = Typography;
 
@@ -38,29 +39,19 @@ const ReportHistorySection: React.FC<Props> = ({
   const handleViewPdf = async (reportId: number, order: number) => {
     const matched = reportSnapshots?.find((r) => r.id === reportId);
     if (!matched) return;
-    // open synchronously so Safari doesn't block it as a popup
-    const newWindow = window.open("", "_blank");
     setPdfLoadingOrder(order);
     try {
-      const blob = await SurgicalReportService.getReportPdf(matched.id);
-      const url = URL.createObjectURL(blob);
-      if (newWindow) {
-        newWindow.location.href = url;
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-      }
+      await openPdfBlobInNewWindow(() => SurgicalReportService.getReportPdf(matched.id));
     } catch {
-      newWindow?.close();
-      message.error("ไม่สามารถโหลด PDF ได้");
+      message.error("Failed to load PDF");
     } finally {
       setPdfLoadingOrder(null);
     }
   };
 
-  // 1. Group ข้อมูลโดยใช้ diagnosis_order เป็นหลัก
   const groupedReports = reports.reduce(
     (acc, curr) => {
       const order = curr.diagnosis_order ?? 0;
-      // ใช้ order เป็น key โดยตรงเพื่อความแม่นยำในการ Sort
       if (!acc[order]) acc[order] = [];
       acc[order].push(curr);
       return acc;
@@ -68,10 +59,10 @@ const ReportHistorySection: React.FC<Props> = ({
     {} as Record<number, SurgicalDiagnosis[]>,
   );
 
-  // 2. Sort กลุ่มตาม Order (ล่าสุดขึ้นก่อน)
+  // Highest order (most recent) first
   const sortedOrders = Object.keys(groupedReports)
     .map(Number)
-    .sort((a, b) => b - a); // Order มาก (ล่าสุด) อยู่บน
+    .sort((a, b) => b - a);
 
   return (
     <section id="history-section">
@@ -110,7 +101,6 @@ const ReportHistorySection: React.FC<Props> = ({
         <Flex vertical style={{ width: "100%" }} gap={16}>
           {sortedOrders.map((order) => {
             const items = groupedReports[order];
-            // หาข้อมูลทั่วไปของกลุ่มจากตัวแรก
             const firstItem = items[0];
             const isGroupSigned = items.every((r) => r.status === "signed");
             const hasCaseLevel = items.some(
@@ -124,12 +114,11 @@ const ReportHistorySection: React.FC<Props> = ({
 
             const sortedItems = [...items]
               .filter((r) => {
-                // 🚩 [แก้ไขจุดที่ 2] กรองตามความเป็นจริงของรอบนั้น
+                // Show only CASE-level entries if this round has one signed at
+                // CASE level, otherwise show only SPECIMEN-level entries
                 if (hasCaseLevel) {
-                  // ถ้ารอบนี้มีการเซ็นแบบ CASE ให้โชว์เฉพาะตัว CASE เท่านั้น
                   return r.diagnosis_level === "CASE";
                 }
-                // ถ้ารอบนี้ไม่มี CASE ให้โชว์เฉพาะ SPECIMEN
                 return r.diagnosis_level === "SPECIMEN";
               })
               .sort((a, b) => {
@@ -174,7 +163,7 @@ const ReportHistorySection: React.FC<Props> = ({
                         Order: {order}
                       </Text>
                       {matchedReport && (
-                        <Tooltip title="ดู PDF">
+                        <Tooltip title="View PDF">
                           <Button
                             type="text"
                             size="small"
@@ -207,7 +196,7 @@ const ReportHistorySection: React.FC<Props> = ({
                   let specTitle = "";
 
                   if (r.diagnosis_level === "CASE") {
-                    // ดึงจาก linked_specimen_ids หรือถ้าไม่มี ให้หาช่วง A-B จาก specimens ทั้งหมด
+                    // From linked_specimen_ids, or fall back to the A-B range across all specimens
                     const labels = sortedItems[0].linked_specimen_ids?.length
                       ? specimens
                           .filter((s) =>

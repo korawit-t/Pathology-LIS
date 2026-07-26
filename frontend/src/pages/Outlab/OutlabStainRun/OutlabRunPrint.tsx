@@ -24,7 +24,7 @@ interface PrintDetail {
   testName?: string;
 }
 
-interface OutlabRunPrintData extends OutlabRun {
+interface OutlabRunPrintData extends Omit<OutlabRun, "details"> {
   operator?: { full_name?: string; username?: string };
   details?: PrintDetail[];
 }

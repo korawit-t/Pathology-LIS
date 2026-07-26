@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from app.crud.gyne_cyto_report import publish_gyne_report
 from app.crud.gyne_diagnosis import create_initial_diagnosis
+from app.models.gyne_diagnosis import GyneSpecimenAdequacy
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate
 from tests.factories import make_bare_gyne_case, make_system_setting
 from tests.conftest import _make_user
@@ -113,6 +114,37 @@ class TestGyneRandomNilmQc:
                 db, case.id,
                 signers=[{"user_id": cyto.id, "role": "cytotechnologist"}],
                 current_user_id=cyto.id, is_abnormal=True,
+            )
+
+        assert case.needs_review is True
+        assert case.review_reason == "abnormal"
+        assert case.status == "pending_review"
+
+    def test_unsatisfactory_adequacy_always_reviewed_even_if_client_flag_false(self, db, admin_user):
+        """Unsatisfactory specimens must route to pathologist QC review just like an
+        abnormal category — re-derived server-side so a stale/wrong client is_abnormal
+        flag can't let one slip into the random NILM pool or straight to publish."""
+        registrar, _ = admin_user
+        make_system_setting(db, enable_gyne_qc_system=True, nilm_review_every_n=10)
+        cyto = _cytotech(db)
+        case = make_bare_gyne_case(db, registrar_id=registrar.id)
+        case.cytotechnologist_id = cyto.id
+        db.commit()
+
+        adequacy = GyneSpecimenAdequacy(
+            group_type="ADEQUACY", text="Unsatisfactory for evaluation (PAP)", code="031",
+        )
+        db.add(adequacy)
+        db.commit()
+        create_initial_diagnosis(
+            db, GyneDiagnosisCreate(case_id=case.id, adequacy_id=adequacy.id)
+        )
+
+        with patch(_RND, return_value=0.99):  # would NOT sample, but unsatisfactory forces review
+            publish_gyne_report(
+                db, case.id,
+                signers=[{"user_id": cyto.id, "role": "cytotechnologist"}],
+                current_user_id=cyto.id, is_abnormal=False,
             )
 
         assert case.needs_review is True

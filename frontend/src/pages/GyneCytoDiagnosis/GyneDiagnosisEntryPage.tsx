@@ -17,8 +17,6 @@ import {
   Tooltip,
   Switch,
   Checkbox,
-  Drawer,
-  Timeline,
   Table,
   Popover,
 } from "antd";
@@ -31,12 +29,9 @@ import {
   LockOutlined,
   ExclamationCircleOutlined,
   HistoryOutlined,
-  FilePdfOutlined,
-  FileAddOutlined,
   QuestionCircleOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
-import type { GyneDiagnosisResponse } from "../../types/gyne-diagnosis";
+import type { GyneDiagnosisResponse, GyneDiagnosisUpdate } from "../../types/gyne-diagnosis";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
 import StyledCard from "../../components/Layout/StyledCard";
 import GyneCytologyImageCaptureModal from "./components/GyneCytologyImageCaptureModal";
@@ -45,7 +40,7 @@ import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
 import NotificationRuleService from "../../services/notificationRuleService";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
-import GynePathologistDiagnosisManager from "./components/GynePathologistDiagnosisManager";
+import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/PathologistDiagnosisManager";
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
@@ -59,6 +54,9 @@ import GyneCytologyImagesSection from "./components/GyneCytologyImagesSection";
 import GyneQCReviewSection from "./components/GyneQCReviewSection";
 import GyneSignOffPage from "./components/GyneSignOffPage";
 import { getConsultLockState } from "../Pathologist/utils/consultLockState";
+import { toPathologistOptions } from "../../utils/pathologistOptions";
+import GyneCompletedCaseModal, { CompletedReportSummary } from "./components/GyneCompletedCaseModal";
+import GyneDiagnosisHistoryDrawer from "./components/GyneDiagnosisHistoryDrawer";
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -145,7 +143,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
 
   const completedCasePopupShownRef = useRef(false);
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
-  const [completedReports, setCompletedReports] = useState<any[]>([]);
+  const [completedReports, setCompletedReports] = useState<CompletedReportSummary[]>([]);
   const [completedReportsLoading, setCompletedReportsLoading] = useState(false);
   const [selectedPopupReportId, setSelectedPopupReportId] = useState<number | null>(null);
   const [popupPdfUrl, setPopupPdfUrl] = useState<string | null>(null);
@@ -160,6 +158,12 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   const isLimitedAdequacy = /limited by/i.test(selectedAdequacyText);
   const showZoneField = !isUnsatisfactoryAdequacy;
   const showQualityField = isUnsatisfactoryAdequacy || isLimitedAdequacy;
+  // Unsatisfactory specimens force the same pathologist-review routing as an
+  // abnormal category, but shouldn't visually flip the "Abnormal" switch —
+  // that switch reflects the diagnostic category only. This is what every
+  // actual enforcement path (signer completion, publish payload, button
+  // routing/label) should read instead of the raw switch state.
+  const requiresPathologistReview = isAbnormal || isUnsatisfactoryAdequacy;
 
   const selectedCat1 = Form.useWatch("category_1_id", form);
   const subCategories = useMemo(
@@ -207,13 +211,14 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   }, [loading, diagnosis, caseData, defaultSigners, form]);
 
-  // Force pathologist review for Unsatisfactory specimens, same as abnormal
-  // (LSIL/HSIL+) categories — either condition routes to a pathologist.
+  // Sync the "Abnormal" switch from the selected category only — Unsatisfactory
+  // adequacy still forces pathologist review (see requiresPathologistReview
+  // above), it just doesn't flip this switch, since it isn't the same thing
+  // as an abnormal diagnostic category.
   useEffect(() => {
     const cat = mainCategories.find((c) => c.id === selectedCat1);
-    const categoryAbnormal = cat?.code?.startsWith("3") ?? false;
-    setIsAbnormal(categoryAbnormal || isUnsatisfactoryAdequacy);
-  }, [selectedCat1, mainCategories, isUnsatisfactoryAdequacy]);
+    setIsAbnormal(cat?.code?.startsWith("3") ?? false);
+  }, [selectedCat1, mainCategories]);
 
   useEffect(() => {
     if (!caseId || !diagnosis) return;
@@ -247,9 +252,10 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     if (!completedCasePopupOpen || !caseId) return;
     setCompletedReportsLoading(true);
     GyneDiagnosisService.getReportsByCase(Number(caseId))
-      .then((reports: any[]) => {
-        setCompletedReports(reports);
-        if (reports[0]) setSelectedPopupReportId(reports[0].id);
+      .then((reports) => {
+        const typed = reports as CompletedReportSummary[];
+        setCompletedReports(typed);
+        if (typed[0]) setSelectedPopupReportId(typed[0].id);
       })
       .catch(() => {})
       .finally(() => setCompletedReportsLoading(false));
@@ -293,9 +299,9 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     }
   };
 
-  const sanitizeSigners = (values: any) => {
+  const sanitizeSigners = (values: GyneDiagnosisUpdate) => {
     if (values.signers) {
-      values.signers = values.signers.map((s: any) => ({
+      values.signers = values.signers.map((s) => ({
         ...s,
         signed_at: s.signed_at || null,
       }));
@@ -303,7 +309,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     return values;
   };
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: GyneDiagnosisUpdate) => {
     try {
       setSubmitting(true);
       // Convert undefined → null so cleared fields are sent in the payload
@@ -423,7 +429,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
           return;
         }
         allSigned = updatedSigners.every((s) => !!s.signed_at);
-      } else if (isAbnormal) {
+      } else if (requiresPathologistReview) {
         // Sending to a pathologist for review — only the current user's own
         // entry is actually signed right now. The pathologist's signature is
         // recorded later, at the moment they complete the QC review, so the
@@ -458,7 +464,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         const result = await GyneDiagnosisService.publishReport(
           Number(caseId),
           updatedSigners,
-          isAbnormal,
+          requiresPathologistReview,
           outLab ? true : undefined,
           outLab?.reason,
         );
@@ -747,17 +753,17 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                         icon={<CheckCircleOutlined />}
                         loading={finalizing}
                         onClick={
-                          isAbnormal
+                          requiresPathologistReview
                             ? handleSendToPathologistClick
                             : handleFinalizeClick
                         }
                         disabled={submitting || isFinalizeLocked}
                         style={{
-                          background: isAbnormal ? "#fa8c16" : "#cf1322",
+                          background: requiresPathologistReview ? "#fa8c16" : "#cf1322",
                           border: "none",
                         }}
                       >
-                        {isAbnormal ? "Send to Pathologist" : "Sign-off"}
+                        {requiresPathologistReview ? "Send to Pathologist" : "Sign-off"}
                       </Button>
                     )}
                   </>
@@ -1038,7 +1044,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                           type="secondary"
                           style={{ fontSize: 12 }}
                         >
-                          {isAbnormal
+                          {requiresPathologistReview
                             ? "Will route to pathologist for review"
                             : "Normal result — will finalize after sign-off"}
                         </Typography.Text>
@@ -1135,8 +1141,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
             />
 
             {/* ── Signers ── */}
-            <GynePathologistDiagnosisManager
-              form={form}
+            <PathologistDiagnosisManager
               pathologists={pathologists}
               defaultSigners={defaultSigners}
               isLocked={isEditorLocked}
@@ -1172,10 +1177,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
                   onSuccess={() => setConsultHistoryKey((k) => k + 1)}
                   caseType="gyne"
                   reportId={activeReportId}
-                  pathologists={pathologists.map((p: any) => ({
-                    value: p.id ?? p.value,
-                    label: p.full_name ?? p.label,
-                  }))}
+                  pathologists={toPathologistOptions(pathologists)}
                 />
               </>
             )}
@@ -1254,191 +1256,29 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         onSuccess={() => fetchImages()}
       />
 
-      {/* ── Case Already Signed Off popup ── */}
-      <Modal
+      <GyneCompletedCaseModal
         open={completedCasePopupOpen}
-        onCancel={() => setCompletedCasePopupOpen(false)}
-        footer={null}
-        width={1100}
-        centered
-        closable
-        style={{ top: 20 }}
-      >
-        <Row gutter={24}>
-          <Col
-            span={9}
-            style={{
-              borderRight: "1px solid #f0f0f0",
-              paddingRight: 24,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                background: "#f6ffed",
-                border: "1px solid #b7eb8f",
-                borderRadius: 8,
-                padding: "10px 14px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-                <Typography.Text strong style={{ fontSize: 15 }}>
-                  {caseData?.accession_no}
-                </Typography.Text>
-                <Tag color="green" style={{ margin: 0 }}>SIGNED</Tag>
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {[caseData?.patient?.title?.title, caseData?.patient?.name, caseData?.patient?.ln]
-                  .filter(Boolean).join(" ") || "—"}
-              </div>
-              <div style={{ fontSize: 12, color: "#595959", marginTop: 2 }}>
-                HN: {caseData?.patient?.hn || "—"}
-              </div>
-            </div>
+        onClose={() => setCompletedCasePopupOpen(false)}
+        onBack={onBack}
+        onReviseReport={() => {
+          form.setFieldValue("revised_reason", undefined);
+          setIsRevision(true);
+          setCompletedCasePopupOpen(false);
+        }}
+        caseData={caseData}
+        completedReports={completedReports}
+        completedReportsLoading={completedReportsLoading}
+        selectedReportId={selectedPopupReportId}
+        onSelectReport={setSelectedPopupReportId}
+        pdfUrl={popupPdfUrl}
+        pdfLoading={popupPdfLoading}
+      />
 
-            <div style={{ textAlign: "center" }}>
-              <CheckCircleOutlined style={{ fontSize: 36, color: "#52c41a", marginBottom: 6 }} />
-              <Typography.Title level={5} style={{ margin: "0 0 4px" }}>
-                Case Already Signed Off
-              </Typography.Title>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                You are in view-only mode.
-              </Typography.Text>
-              <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 12 }}>
-                <Button onClick={onBack}>Go Back</Button>
-                <Button
-                  type="primary"
-                  icon={<FileAddOutlined />}
-                  danger
-                  onClick={() => {
-                    form.setFieldValue("revised_reason", undefined);
-                    setIsRevision(true);
-                    setCompletedCasePopupOpen(false);
-                  }}
-                >
-                  Revise Report
-                </Button>
-              </div>
-            </div>
-
-            <Table
-              size="small"
-              loading={completedReportsLoading}
-              dataSource={completedReports}
-              rowKey="id"
-              pagination={false}
-              scroll={{ y: 300 }}
-              onRow={(record: any) => ({
-                onClick: () => setSelectedPopupReportId(record.id),
-                style: {
-                  cursor: "pointer",
-                  background: selectedPopupReportId === record.id ? "#e6f4ff" : undefined,
-                },
-              })}
-              columns={[
-                {
-                  title: "Ver.",
-                  dataIndex: "version_no",
-                  width: 50,
-                  render: (_: any, __: any, idx: number) => `#${idx + 1}`,
-                },
-                {
-                  title: "Status",
-                  dataIndex: "status",
-                  width: 100,
-                  render: (s: string) => (
-                    <Tag
-                      color={s === "published" ? "green" : s === "pending_approval" ? "orange" : "default"}
-                      style={{ margin: 0 }}
-                    >
-                      {s?.replace("_", " ").toUpperCase()}
-                    </Tag>
-                  ),
-                },
-                {
-                  title: "Date",
-                  dataIndex: "created_at",
-                  render: (d: string) => d ? dayjs(d).format("DD/MM/YY HH:mm") : "—",
-                },
-              ]}
-            />
-          </Col>
-
-          <Col span={15}>
-            <div
-              style={{
-                height: "70vh",
-                background: "#f5f5f5",
-                borderRadius: 8,
-                border: "1px solid #d9d9d9",
-                overflow: "hidden",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {popupPdfLoading ? (
-                <Spin tip="Loading PDF..." size="large" />
-              ) : popupPdfUrl ? (
-                <iframe src={popupPdfUrl} width="100%" height="100%" style={{ border: "none" }} title="Report PDF" />
-              ) : (
-                <div style={{ textAlign: "center", color: "#999" }}>
-                  <FilePdfOutlined style={{ fontSize: 48, marginBottom: 8 }} />
-                  <p>Select a report to preview</p>
-                </div>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Modal>
-
-      <Drawer
-        title="Diagnosis History"
+      <GyneDiagnosisHistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
-        width={480}
-      >
-        <Timeline
-          items={historyList.map((h) => ({
-            color: h.is_current ? "green" : "gray",
-            children: (
-              <div>
-                <Space>
-                  <Text strong>Version {h.version}</Text>
-                  {h.is_current && <Tag color="green">Current</Tag>}
-                </Space>
-                <div style={{ color: "#595959", fontSize: 12, marginTop: 2 }}>
-                  {h.updated_at
-                    ? new Date(h.updated_at).toLocaleString()
-                    : new Date(h.created_at).toLocaleString()}
-                </div>
-                {h.revised_reason && (
-                  <div style={{ marginTop: 4, color: "#fa8c16", fontSize: 12 }}>
-                    Reason: {h.revised_reason}
-                  </div>
-                )}
-                {h.adequacy_obj && (
-                  <div style={{ fontSize: 12, marginTop: 2, color: "#434343" }}>
-                    Adequacy: {h.adequacy_obj.text}
-                  </div>
-                )}
-                {h.category_1_obj && (
-                  <div style={{ fontSize: 12, color: "#434343" }}>
-                    Category: {h.category_1_obj.code} — {h.category_1_obj.text}
-                  </div>
-                )}
-                {h.category_2_obj && (
-                  <div style={{ fontSize: 12, color: "#434343" }}>
-                    Sub Category: {h.category_2_obj.code} — {h.category_2_obj.text}
-                  </div>
-                )}
-              </div>
-            ),
-          }))}
-        />
-      </Drawer>
+        historyList={historyList}
+      />
     </PageContainer>
   );
 };

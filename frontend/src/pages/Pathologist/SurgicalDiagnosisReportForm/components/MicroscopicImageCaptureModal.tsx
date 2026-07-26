@@ -1,15 +1,13 @@
 import React, {
   useRef,
   useState,
-  useCallback,
   FC,
-  ChangeEvent,
   useEffect,
 } from "react";
 import {
   Modal,
   Button,
-  message,
+  App,
   Space,
   Typography,
   Divider,
@@ -28,12 +26,15 @@ import {
   EditOutlined,
 } from "@ant-design/icons";
 import Webcam from "react-webcam";
-import styles from "./MicroscopicImageCaptureModal.module.css"; // ใช้สไตล์เดียวกับ Gross ได้
+import styles from "../../../../styles/imageCaptureModal.module.css";
 import { MicroscopicImage } from "../../../../types/image";
 import MicroscopicImageService from "../../../../services/microscopicImageService";
 import { useSecureSrc } from "../../../../components/SecureImage";
-import { ImageEditor } from "../../../Gross/components/GrossImageCaptureModal/ImageEditor"; // 🌟 นำเข้า ImageEditor
+import { ImageEditor } from "../../../../components/ImageEditor";
 import type { Specimen } from "../../../../components/SpecimenManagerSection/SpecimenManagerSection";
+import { HqCaptureToggle } from "../../../../components/HqCaptureToggle";
+import { DEFAULT_VIDEO_CONSTRAINTS } from "../../../../utils/imageCapture";
+import { useImageCapture } from "../../../../hooks/useImageCapture";
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -44,7 +45,6 @@ interface MicroscopicImageCaptureModalProps {
   onClose: () => void;
   onSuccess: () => void;
   specimens: Specimen[];
-  // 🚩 ปรับ callback ให้ส่ง metadata (magnification, stain) กลับไปด้วย
   onCaptureAndUpload: (
     imageSrc: string,
     specimenId: number,
@@ -52,12 +52,6 @@ interface MicroscopicImageCaptureModalProps {
   ) => void;
   editingImage?: MicroscopicImage | null;
 }
-
-const videoConstraints = {
-  width: 1920, // แนะนำความละเอียดสูงสำหรับภาพจากกล้องจุลทรรศน์
-  height: 1080,
-  facingMode: "environment",
-};
 
 const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   open,
@@ -68,6 +62,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   specimens,
   onCaptureAndUpload,
 }) => {
+  const { message } = App.useApp();
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -81,46 +76,22 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   const [stain, setStain] = useState<string>("H&E");
   const [description, setDescription] = useState<string>("");
 
-  const [showEditor, setShowEditor] = useState(false); // 🌟 ใช้เปิด/ปิด Image Editor
+  const [showEditor, setShowEditor] = useState(false);
 
-  const capture = useCallback(() => {
-    if (webcamRef.current) {
-      const image = webcamRef.current.getScreenshot();
-      if (image) {
-        setImageSrc(image);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("บันทึกภาพตัวอย่างสำเร็จ");
-      }
-    }
-  }, [webcamRef]);
-
-  // 🚩 ฟังก์ชันจัดการการเลือกไฟล์จากเครื่อง
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        // จำกัด 10MB
-        message.error("ขนาดไฟล์ใหญ่เกินไป (จำกัด 10MB)");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageSrc(reader.result as string);
-        setShowEditor(true); // 🌟 เปิดหน้า Editor
-        message.success("โหลดไฟล์ภาพสำเร็จ");
-      };
-      reader.readAsDataURL(file);
-    }
+  const onCaptured = (dataUrl: string) => {
+    setImageSrc(dataUrl);
+    setShowEditor(true);
   };
+  const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
+    useImageCapture(webcamRef, onCaptured);
 
-  // 🚩 ฟังก์ชันเปิดหน้าต่างเลือกไฟล์
   const triggerFileSelect = () => {
     fileInputRef.current?.click();
   };
 
   const handleUpload = () => {
     if (!imageSrc || !selectedSpecimenId) {
-      message.error("กรุณาเลือกชิ้นเนื้อและถ่ายภาพก่อนอัปโหลด");
+      message.error("Please select a specimen and capture an image before uploading");
       return;
     }
     onCaptureAndUpload(imageSrc, selectedSpecimenId, {
@@ -129,7 +100,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
       description,
     });
     setImageSrc(null);
-    setShowEditor(false);    
+    setShowEditor(false);
     onClose();
   };
 
@@ -138,7 +109,6 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
     setShowEditor(false);
   };
 
-  // 🚩 ใช้ useEffect เพื่อโหลดข้อมูลเก่าใส่ State เมื่อมีการกดแก้ไข
   useEffect(() => {
     if (editingImage) {
       setEditingApiUrl(MicroscopicImageService.getSecureImageUrl(editingImage.image_url));
@@ -158,19 +128,23 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
   return (
     <Modal
       title={
-        <Space>
-          {/* 🚩 เปลี่ยน Icon ตามโหมด */}
-          {editingImage ? (
-            <EditOutlined style={{ color: "#52c41a" }} />
-          ) : (
-            <CameraOutlined style={{ color: "#1890ff" }} />
+        <div>
+          <Space>
+            {editingImage ? (
+              <EditOutlined style={{ color: "#52c41a" }} />
+            ) : (
+              <CameraOutlined style={{ color: "#1890ff" }} />
+            )}
+            <Text strong>
+              {editingImage
+                ? "Edit Microscopic Image Info"
+                : "Microscopic Image Capture"}
+            </Text>
+          </Space>
+          {!editingImage && (
+            <HqCaptureToggle hqMode={hqMode} hqSupported={hqSupported} onChange={setHqMode} />
           )}
-          <Text strong>
-            {editingImage
-              ? "Edit Microscopic Image Info"
-              : "Microscopic Image Capture"}
-          </Text>
-        </Space>
+        </div>
       }
       open={open}
       onCancel={onClose}
@@ -179,10 +153,10 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
       destroyOnClose
       footer={[
         <Button key="cancel" icon={<CloseOutlined />} onClick={onClose}>
-          ยกเลิก
+          Cancel
         </Button>,
 
-        // 🚩 ซ่อนปุ่ม ถ่ายใหม่/เลือกไฟล์/กดถ่าย ถ้าเป็นการแก้ไข (เพราะไฟล์อัปโหลดไปแล้ว)
+        // Retake/select-file/capture are hidden when editing — the file is already uploaded
         !editingImage && (
           <Button
             key="retake"
@@ -194,7 +168,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
             }}
             disabled={!imageSrc}
           >
-            ถ่ายใหม่
+            Retake
           </Button>
         ),
         !editingImage && (
@@ -204,7 +178,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
             onClick={triggerFileSelect}
             disabled={!!imageSrc}
           >
-            เลือกจากไฟล์
+            Select File
           </Button>
         ),
         !editingImage && (
@@ -212,14 +186,14 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
             key="capture"
             type="primary"
             icon={<CameraOutlined />}
-            onClick={capture}
-            disabled={!!imageSrc}
+            onClick={() => capture("Image captured successfully")}
+            loading={capturing}
+            disabled={!!imageSrc || capturing}
           >
-            กดถ่ายรูป
+            Capture
           </Button>
         ),
 
-        // 🚩 ปุ่มยืนยัน: เปลี่ยนข้อความตามสถานะ
         <Button
           key="upload"
           type="primary"
@@ -233,7 +207,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
           onClick={handleUpload}
           disabled={!imageSrc || !selectedSpecimenId}
         >
-          {editingImage ? "บันทึกการแก้ไข" : "ยืนยันและอัปโหลด"}
+          {editingImage ? "Save Changes" : "Confirm & Upload"}
         </Button>,
       ]}
       styles={{ body: { padding: showEditor ? 0 : 24 } }}
@@ -244,7 +218,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         ref={fileInputRef}
         style={{ display: "none" }}
         accept="image/*"
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e, "File loaded successfully")}
       />
 
       {showEditor && imageSrc ? (
@@ -258,17 +232,14 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
         <div className={styles.metadataHeader}>
           <Row gutter={[16, 16]}>
             {" "}
-            {/* 🚩 เพิ่ม gutter แถวตั้งเผื่อจอแคบ */}
             <Col span={9}>
               <Space direction="vertical" style={{ width: "100%" }} size={2}>
                 <Text strong>Specimen Relation:</Text>
                 <Select
                   style={{ width: "100%" }}
-                  placeholder="เลือกชิ้นเนื้อ"
+                  placeholder="Select specimen"
                   value={selectedSpecimenId}
                   onChange={setSelectedSpecimenId}
-                  // 🚩 โหมดแก้ไขอาจจะไม่ควรเปลี่ยนชิ้นเนื้อที่ผูกไว้ (แล้วแต่ Business Logic)
-                  // disabled={!!editingImage}
                 >
                   {specimens.map((spec) => (
                     <Select.Option key={spec.id} value={spec.id}>
@@ -314,7 +285,6 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
             </Col>
           </Row>
 
-          {/* 🚩 ย้าย Description มาไว้อีก Row เพื่อให้พิมพ์ได้ยาวขึ้น */}
           <Row style={{ marginTop: 12 }}>
             <Col span={24}>
               <Space direction="vertical" style={{ width: "100%" }} size={2}>
@@ -322,7 +292,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
                   <EditOutlined /> Description:
                 </Text>
                 <Input
-                  placeholder="กรอกรายละเอียดพยาธิสภาพของภาพนี้..."
+                  placeholder="Enter pathology details for this image..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   allowClear
@@ -340,7 +310,6 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
                 alt="Preview"
                 className={styles.capturedImage}
               />
-              {/* 🚩 แสดง Badge บอกสถานะว่าเป็นการ Preview รูปเก่าหรือรูปใหม่ */}
               <div className={styles.overlayText}>
                 {editingImage ? "Current Image" : "Preview Mode"}
               </div>
@@ -351,7 +320,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
               ref={webcamRef}
               mirrored={false}
               screenshotFormat="image/jpeg"
-              videoConstraints={videoConstraints}
+              videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
               className={styles.webcam}
             />
           )}

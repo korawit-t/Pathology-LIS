@@ -126,6 +126,12 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       render: (v: string) => v ? dayjs(v).format("DD MMM YYYY") : "—",
     },
     {
+      title: "Uploaded",
+      dataIndex: "out_lab_result_uploaded_at",
+      width: 140,
+      render: (v: string | null) => v ? dayjs(v).format("DD MMM YYYY") : "—",
+    },
+    {
       title: "Action",
       key: "action",
       width: 220,

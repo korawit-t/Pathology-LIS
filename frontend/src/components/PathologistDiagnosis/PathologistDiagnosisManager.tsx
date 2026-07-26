@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import {
   Form,
   Select,
@@ -19,14 +19,12 @@ import {
   InfoCircleOutlined,
   ClockCircleOutlined,
 } from "@ant-design/icons";
-import StyledCard from "../../../components/Layout/StyledCard";
-import type { FormInstance } from "antd";
-import type { SystemSetting } from "../../../types/system";
+import StyledCard from "../Layout/StyledCard";
+import type { SystemSetting } from "../../types/system";
 
 const { Text, Title } = Typography;
 
-interface GynePathologistDiagnosisManagerProps {
-  form: FormInstance;
+interface PathologistDiagnosisManagerProps {
   pathologists: { id: number; full_name?: string }[];
   defaultPathologistId?: number;
   defaultSigners?: {
@@ -40,18 +38,17 @@ interface GynePathologistDiagnosisManagerProps {
   hideCT?: boolean;
 }
 
-const GynePathologistDiagnosisManager: React.FC<
-  GynePathologistDiagnosisManagerProps
+const PathologistDiagnosisManager: React.FC<
+  PathologistDiagnosisManagerProps
 > = ({
-  form,
   pathologists,
   defaultPathologistId,
-  defaultSigners,
   isLocked,
   namePath,
   settings,
   hideCT,
 }) => {
+  const form = Form.useFormInstance();
   // Logic from surgical: use setting or default to true
   const isRequireAllSign = settings?.require_all_pathologists_sign ?? true;
 
@@ -335,4 +332,4 @@ const GynePathologistDiagnosisManager: React.FC<
   );
 };
 
-export default GynePathologistDiagnosisManager;
+export default PathologistDiagnosisManager;

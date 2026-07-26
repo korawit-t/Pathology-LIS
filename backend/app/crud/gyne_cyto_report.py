@@ -289,7 +289,10 @@ def publish_gyne_report(
     # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
     # re-publish (e.g. revising an already-abnormal, already-reviewed case),
     # a stale/wrong frontend flag must not let it slip into the random NILM
-    # QC pool. Re-derive from the current diagnosis's own category.
+    # QC pool. Re-derive from the current diagnosis's own category, and from
+    # specimen adequacy — Unsatisfactory specimens must route to a pathologist
+    # the same as an abnormal category, but adequacy is a separate column
+    # (GyneDiagnosis.adequacy_obj) from category_1_obj so it needs its own check.
     db_diag_for_check = (
         db.query(GyneDiagnosis)
         .filter(GyneDiagnosis.case_id == case_id, GyneDiagnosis.is_current == True)
@@ -300,7 +303,12 @@ def publish_gyne_report(
         and db_diag_for_check.category_1_obj
         and (db_diag_for_check.category_1_obj.code or "").startswith("3")
     )
-    is_abnormal = bool(is_abnormal) or category_is_abnormal
+    adequacy_is_unsatisfactory = bool(
+        db_diag_for_check
+        and db_diag_for_check.adequacy_obj
+        and "unsatisfactory" in (db_diag_for_check.adequacy_obj.text or "").lower()
+    )
+    is_abnormal = bool(is_abnormal) or category_is_abnormal or adequacy_is_unsatisfactory
 
     existing_count = db.query(GyneCytoReport).filter(GyneCytoReport.case_id == case_id).count()
     report_data["version_no"] = existing_count + 1

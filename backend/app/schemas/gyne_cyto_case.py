@@ -121,6 +121,7 @@ class GyneCytologyCaseUpdate(BaseModel):
     is_out_lab_consult: Optional[bool] = None
     is_out_lab: Optional[bool] = None
     out_lab_result_pdf_path: Optional[str] = None
+    out_lab_result_uploaded_at: Optional[datetime] = None
     consult_status: Optional[str] = None
     consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
@@ -139,11 +140,13 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     id: int
     status: str
     registered_at: datetime
+    report_at: Optional[datetime] = None
     registrar_id: int
     is_express: bool = False
     is_out_lab_consult: bool = False
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
+    out_lab_result_uploaded_at: Optional[datetime] = None
     outlab_result_approved_by_id: Optional[int] = None
     outlab_result_approved_at: Optional[datetime] = None
     consult_status: Optional[str] = None
