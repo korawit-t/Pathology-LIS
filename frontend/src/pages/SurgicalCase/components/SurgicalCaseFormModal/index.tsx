@@ -53,17 +53,11 @@ import type { MedicalScheme } from "../../../../types/medicalScheme";
 import type { User } from "../../../../types/user";
 import PrintPreviewModal from "../PrintPreviewModal";
 import logger from "../../../../utils/logger";
+import type { CaseFormModalProps } from "../../../../types/caseFormModal";
 
 const { Option } = Select;
 
-
-interface SurgicalCaseFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: SurgicalCase | null) => void;
-  onRefresh?: () => void;
-}
+type SurgicalCaseFormModalProps = CaseFormModalProps<SurgicalCase>;
 
 const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   open,

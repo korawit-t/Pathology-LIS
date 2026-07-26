@@ -43,14 +43,9 @@ import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
 import type { MedicalScheme } from "../../../types/medicalScheme";
 import type { User } from "../../../types/user";
+import type { CaseFormModalProps } from "../../../types/caseFormModal";
 
-interface GyneCytoFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: GyneCytologyCase | null) => void;
-  onRefresh?: () => void;
-}
+type GyneCytoFormModalProps = CaseFormModalProps<GyneCytologyCase>;
 
 const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   open,

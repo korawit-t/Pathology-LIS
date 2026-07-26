@@ -48,16 +48,11 @@ import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
 import type { MedicalScheme } from "../../../types/medicalScheme";
 import type { User } from "../../../types/user";
+import type { CaseFormModalProps } from "../../../types/caseFormModal";
 
 const { Option } = Select;
 
-interface NongyneCaseFormModalProps {
-  open: boolean;
-  editingId: number | null;
-  onCancel: () => void;
-  onSuccess: (savedData: NongyneCytologyCase | null) => void;
-  onRefresh?: () => void;
-}
+type NongyneCaseFormModalProps = CaseFormModalProps<NongyneCytologyCase>;
 
 const DEFAULT_SPECIMEN_TYPES: SpecimenTemplate[] = [
   "Fluid",
