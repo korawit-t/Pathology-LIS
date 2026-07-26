@@ -74,6 +74,7 @@ const NongyneFinalizedResultCard: React.FC<NongyneFinalizedResultCardProps> = ({
         <Descriptions.Item label="Clinical History">
           <div
             dangerouslySetInnerHTML={{
+              // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
               __html: sanitizeHtml(caseData.clinical_history),
             }}
           />
@@ -83,6 +84,7 @@ const NongyneFinalizedResultCard: React.FC<NongyneFinalizedResultCardProps> = ({
         <Descriptions.Item label="Gross Description">
           <div
             dangerouslySetInnerHTML={{
+              // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
               __html: sanitizeHtml(diagnosis.gross_description),
             }}
           />
@@ -92,6 +94,7 @@ const NongyneFinalizedResultCard: React.FC<NongyneFinalizedResultCardProps> = ({
         {diagnosis.microscopic_description ? (
           <div
             dangerouslySetInnerHTML={{
+              // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
               __html: sanitizeHtml(diagnosis.microscopic_description),
             }}
           />
@@ -104,6 +107,7 @@ const NongyneFinalizedResultCard: React.FC<NongyneFinalizedResultCardProps> = ({
           <div
             style={{ fontWeight: 500 }}
             dangerouslySetInnerHTML={{
+              // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
               __html: sanitizeHtml(diagnosis.diagnosis),
             }}
           />
