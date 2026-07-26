@@ -27,14 +27,10 @@ import {
   WarningOutlined,
   ExclamationCircleOutlined,
   AlertOutlined,
-  CameraOutlined,
-  DeleteOutlined,
-  PlusOutlined,
   ExperimentOutlined,
   EyeOutlined,
   PictureOutlined,
   UserOutlined,
-  EditOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { UserRole } from "../../constants/roles.constants";
@@ -47,7 +43,6 @@ import NongyneReportService from "../../services/nongyneReportService";
 import NongyneCaseImageService, {
   NongyneCaseImage,
 } from "../../services/nongyneCaseImageService";
-import { API_BASE_URL } from "../../services/httpClient";
 import UserService from "../../services/userService";
 import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
@@ -63,8 +58,8 @@ import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import NongyneIHCResultPanel from "./components/NongyneIHCResultPanel";
 import NongyneCytologyImageCaptureModal from "./components/NongyneCytologyImageCaptureModal";
 import NongyneFinalizedResultCard from "./components/NongyneFinalizedResultCard";
+import NongyneCytologyImageGrid from "./components/NongyneCytologyImageGrid";
 import logger from "../../utils/logger";
-import SecureImage from "../../components/SecureImage";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
@@ -984,104 +979,22 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                         />
                       </Form.Item>
                     </section>
-                    <section>
-                      <div style={{ marginBottom: 8 }}>
-                        <Space>
-                          <CameraOutlined style={{ color: "#595959" }} />
-                          <Text strong style={{ textTransform: "uppercase" }}>
-                            Cytology Images
-                          </Text>
-                        </Space>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 12,
-                          marginBottom: images.length > 0 ? 12 : 0,
-                        }}
-                      >
-                        {images.map((img) => (
-                          <div
-                            key={img.id}
-                            style={{ position: "relative", width: 160 }}
-                          >
-                            <SecureImage
-                              src={`${API_BASE_URL}${img.image_url}`}
-                              width={160}
-                              height={120}
-                              style={{
-                                objectFit: "cover",
-                                borderRadius: 4,
-                                border: "1px solid #d9d9d9",
-                              }}
-                              preview={true}
-                            />
-                            <Input
-                              size="small"
-                              placeholder="Description..."
-                              value={descMap[img.id] ?? ""}
-                              disabled={isFormLocked}
-                              style={{ marginTop: 4, fontSize: 11 }}
-                              onChange={(e) =>
-                                setDescMap((prev) => ({
-                                  ...prev,
-                                  [img.id]: e.target.value,
-                                }))
-                              }
-                              onBlur={() => saveDesc(img.id)}
-                              onPressEnter={() => saveDesc(img.id)}
-                            />
-                            <div
-                              style={{ display: "flex", gap: 6, marginTop: 4 }}
-                            >
-                              <Switch
-                                size="small"
-                                checked={img.show_in_report}
-                                checkedChildren="In Report"
-                                unCheckedChildren="Hidden"
-                                onChange={async (checked) => {
-                                  await NongyneCaseImageService.update(img.id, {
-                                    show_in_report: checked,
-                                  });
-                                  fetchImages();
-                                }}
-                              />
-                              {!isFormLocked && (
-                                <Button
-                                  size="small"
-                                  icon={<EditOutlined />}
-                                  onClick={() => {
-                                    setEditingImage(img);
-                                    setImageCaptureOpen(true);
-                                  }}
-                                />
-                              )}
-                              <Button
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={async () => {
-                                  await NongyneCaseImageService.delete(img.id);
-                                  fetchImages();
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {!isFormLocked && (
-                        <Button
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            setEditingImage(null);
-                            setImageCaptureOpen(true);
-                          }}
-                        >
-                          Capture / Upload Image
-                        </Button>
-                      )}
-                    </section>
+                    <NongyneCytologyImageGrid
+                      images={images}
+                      descMap={descMap}
+                      setDescMap={setDescMap}
+                      saveDesc={saveDesc}
+                      fetchImages={fetchImages}
+                      disabled={isFormLocked}
+                      onEditImage={(img) => {
+                        setEditingImage(img);
+                        setImageCaptureOpen(true);
+                      }}
+                      onAddImage={() => {
+                        setEditingImage(null);
+                        setImageCaptureOpen(true);
+                      }}
+                    />
                   </div>
                 </Col>
               </Row>
