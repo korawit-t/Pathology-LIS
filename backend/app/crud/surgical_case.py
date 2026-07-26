@@ -2,7 +2,7 @@ import logging
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_, and_, exists, select, case
 from fastapi import HTTPException, status
-from datetime import datetime
+from datetime import datetime, date
 from app.utils.time import local_now
 from app.models.surgical_case import SurgicalCase
 
@@ -14,6 +14,7 @@ from app.schemas.surgical_case import SurgicalCaseCreate, SurgicalCaseUpdate
 from app.models.patient import Patient
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import SurgicalReport, ReportSigner
+from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 
 
 def _get_next_accession_no(db: Session) -> str:
@@ -911,3 +912,474 @@ def get_dashboard_summary(db: Session) -> dict:
             "express_days": express_tat_days,
         },
     }
+
+
+def get_workload_summary(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> dict:
+    """Workload statistics: cases, blocks, stain counts, consults — filtered by registration date.
+    Pass pathologist_id to restrict to a specific pathologist's personal workload."""
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    case_filter = and_(*filters)
+
+    total_cases = db.query(func.count(SurgicalCase.id)).filter(case_filter).scalar() or 0
+
+    signed_cases = (
+        db.query(func.count(SurgicalCase.id.distinct()))
+        .join(SurgicalDiagnosis, SurgicalDiagnosis.case_id == SurgicalCase.id)
+        .filter(case_filter, SurgicalDiagnosis.status == "signed")
+        .scalar() or 0
+    ) if pathologist_id is not None else None
+
+    total_blocks = (
+        db.query(func.count(SurgicalBlock.id))
+        .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+        .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+        .filter(case_filter)
+        .scalar() or 0
+    )
+
+    def _stain_count(*extra_filters):
+        return (
+            db.query(func.count(SurgicalBlockStain.id))
+            .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+            .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .filter(case_filter, *extra_filters)
+            .scalar() or 0
+        )
+
+    he_slides = _stain_count(AnatomicalPathologyTest.name.ilike("%H&E%"))
+    special_stain_slides = _stain_count(
+        AnatomicalPathologyTest.category == "Histochem",
+        ~AnatomicalPathologyTest.name.ilike("%H&E%"),
+    )
+    ihc_slides = _stain_count(AnatomicalPathologyTest.category == "IHC")
+
+    consult_cases = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(case_filter, SurgicalCase.is_out_lab_consult == True)
+        .scalar() or 0
+    )
+
+    result = {
+        "total_cases": total_cases,
+        "total_blocks": total_blocks,
+        "he_slides": he_slides,
+        "special_stain_slides": special_stain_slides,
+        "ihc_slides": ihc_slides,
+        "consult_cases": consult_cases,
+    }
+    if signed_cases is not None:
+        result["signed_cases"] = signed_cases
+    return result
+
+
+def get_workload_daily(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> list:
+    """Per-day workload breakdown for chart display."""
+    from datetime import time, timedelta
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+    case_filter = and_(*filters)
+
+    day_col = func.date(SurgicalCase.registered_at).label("day")
+
+    daily_cases = {
+        str(r.day): r.cnt
+        for r in db.query(day_col, func.count(SurgicalCase.id).label("cnt"))
+        .filter(case_filter)
+        .group_by(func.date(SurgicalCase.registered_at))
+        .all()
+    }
+
+    def _daily_stain(label, *extra):
+        return {
+            str(r.day): r.cnt
+            for r in db.query(
+                func.date(SurgicalCase.registered_at).label("day"),
+                func.count(SurgicalBlockStain.id).label("cnt"),
+            )
+            .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+            .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .filter(case_filter, *extra)
+            .group_by(func.date(SurgicalCase.registered_at))
+            .all()
+        }
+
+    daily_he = _daily_stain("he", AnatomicalPathologyTest.name.ilike("%H&E%"))
+    daily_special = _daily_stain(
+        "special",
+        AnatomicalPathologyTest.category == "Histochem",
+        ~AnatomicalPathologyTest.name.ilike("%H&E%"),
+    )
+    daily_ihc = _daily_stain("ihc", AnatomicalPathologyTest.category == "IHC")
+
+    # Generate every date in range so days with 0 cases still appear
+    if date_from and date_to:
+        all_dates = [
+            str(date_from + timedelta(days=i))
+            for i in range((date_to - date_from).days + 1)
+        ]
+    else:
+        all_dates = sorted(set(daily_cases) | set(daily_he) | set(daily_special) | set(daily_ihc))
+
+    return [
+        {
+            "date": d,
+            "cases": daily_cases.get(d, 0),
+            "he_slides": daily_he.get(d, 0),
+            "special_stain_slides": daily_special.get(d, 0),
+            "ihc_slides": daily_ihc.get(d, 0),
+        }
+        for d in all_dates
+    ]
+
+
+def get_workload_ihc_top(db: Session, date_from=None, date_to=None, pathologist_id: int = None, limit: int = 10) -> list:
+    """Top N IHC markers ordered by a pathologist in the given date range."""
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    rows = (
+        db.query(
+            AnatomicalPathologyTest.name,
+            func.count(SurgicalBlockStain.id).label("count"),
+        )
+        .join(SurgicalBlockStain, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+        .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+        .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+        .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+        .filter(AnatomicalPathologyTest.category == "IHC", and_(*filters))
+        .group_by(AnatomicalPathologyTest.name)
+        .order_by(func.count(SurgicalBlockStain.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return [{"name": r.name, "count": r.count} for r in rows]
+
+
+def get_immuno_stats(db: Session) -> dict:
+    """Count distinct cases with pending IHC or Special Stain block stains."""
+    from app.models.molecular_case import MolecularCase
+
+    def _count(category_filter, is_external=None):
+        q = (
+            db.query(func.count(SurgicalCase.id.distinct()))
+            .join(SurgicalSpecimen, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .join(SurgicalBlock, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalBlockStain, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(AnatomicalPathologyTest, AnatomicalPathologyTest.id == SurgicalBlockStain.test_id)
+            .filter(
+                SurgicalBlockStain.status == "pending",
+                AnatomicalPathologyTest.category == category_filter,
+                SurgicalCase.status != "cancelled",
+            )
+        )
+        if category_filter == "Histochem":
+            q = q.filter(~AnatomicalPathologyTest.name.ilike("%H&E%"))
+        if is_external is not None:
+            q = q.filter(AnatomicalPathologyTest.is_external == is_external)
+        return q.scalar() or 0
+
+    return {
+        "pending_ihc": _count("IHC"),
+        "pending_special_stain": _count("Histochem"),
+        "pending_ihc_internal": _count("IHC", is_external=False),
+        "pending_special_stain_internal": _count("Histochem", is_external=False),
+        "pending_ihc_outlab": _count("IHC", is_external=True),
+        "pending_special_stain_outlab": _count("Histochem", is_external=True),
+        "pending_molecular_outlab": (
+            db.query(func.count(MolecularCase.id))
+            .filter(MolecularCase.status == "pending", MolecularCase.is_cancelled == False)  # noqa: E712
+            .scalar()
+            or 0
+        ),
+    }
+
+
+def get_cancer_registry_summary(db: Session, date_from=None, date_to=None) -> dict:
+    """Cancer registry: malignancy counts by month and by specimen name."""
+    from collections import defaultdict
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+
+    total = db.query(func.count(SurgicalCase.id)).filter(*filters).scalar() or 0
+    malignant = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(*filters, SurgicalCase.has_malignancy == True)
+        .scalar() or 0
+    )
+    benign = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(*filters, SurgicalCase.has_malignancy == False)
+        .scalar() or 0
+    )
+
+    # Monthly breakdown (Python-level grouping for DB compatibility)
+    monthly_cases = (
+        db.query(
+            SurgicalCase.registered_at,
+            SurgicalCase.has_malignancy,
+        )
+        .filter(*filters)
+        .all()
+    )
+    monthly_map: dict = defaultdict(lambda: {"malignant": 0, "benign": 0, "indeterminate": 0})
+    for c in monthly_cases:
+        k = c.registered_at.strftime("%Y-%m")
+        if c.has_malignancy is True:
+            monthly_map[k]["malignant"] += 1
+        elif c.has_malignancy is False:
+            monthly_map[k]["benign"] += 1
+        else:
+            monthly_map[k]["indeterminate"] += 1
+
+    # Top specimen names
+    specimen_rows = (
+        db.query(
+            SurgicalSpecimen.specimen_name,
+            func.count(SurgicalSpecimen.id.distinct()).label("total"),
+        )
+        .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
+        .filter(*filters, SurgicalCase.has_malignancy == True)
+        .group_by(SurgicalSpecimen.specimen_name)
+        .order_by(func.count(SurgicalSpecimen.id.distinct()).desc())
+        .limit(15)
+        .all()
+    )
+
+    return {
+        "total": total,
+        "malignant": malignant,
+        "benign": benign,
+        "indeterminate": total - malignant - benign,
+        "malignancy_rate": round(malignant / total * 100, 1) if total else 0,
+        "monthly": [
+            {"month": k, **v} for k, v in sorted(monthly_map.items())
+        ],
+        "by_specimen": [
+            {"specimen_name": r.specimen_name, "count": r.total}
+            for r in specimen_rows
+        ],
+    }
+
+
+def get_slide_quality_stats(db: Session, start_date: str, end_date: str) -> dict:
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+
+    rows = (
+        db.query(SurgicalCase.slide_quality, func.count(SurgicalCase.id))
+        .filter(
+            SurgicalCase.is_cancelled == False,
+            func.date(SurgicalCase.registered_at) >= start,
+            func.date(SurgicalCase.registered_at) <= end,
+        )
+        .group_by(SurgicalCase.slide_quality)
+        .all()
+    )
+    result = {"good": 0, "fair": 0, "poor": 0, "unspecified": 0}
+    for val, cnt in rows:
+        key = val if val in result else "unspecified"
+        result[key] += cnt
+    return {"total": sum(result.values()), "slide_quality": result, "stain_quality": None}
+
+
+def _tat_bucket(tat_days: float) -> str:
+    """Shared by get_tat_stats and get_tat_cases — previously each
+    reimplemented this boundary rule independently (a drift risk if one
+    were ever edited without the other)."""
+    if tat_days < 3:
+        return "lt3"
+    elif tat_days < 5:
+        return "t3_5"
+    elif tat_days <= 10:
+        return "t5_10"
+    return "gt10"
+
+
+def get_tat_stats(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> dict:
+    """TAT statistics: average business days (weekends/holidays excluded), distribution buckets, monthly breakdown."""
+    from collections import defaultdict
+    from datetime import time
+    from app.models.system_setting import SystemSetting
+    from app.utils.tat import get_holiday_dates, business_days_between
+
+    setting = db.query(SystemSetting).first()
+    target_days = (setting.surgical_tat_days if setting else None) or 10
+    express_target_days = (setting.surgical_express_tat_days if setting else None) or 3
+    holidays = get_holiday_dates(db)
+
+    filters = [
+        SurgicalCase.is_cancelled == False,
+        SurgicalCase.report_at.isnot(None),
+        SurgicalCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    cases = (
+        db.query(
+            SurgicalCase.id,
+            SurgicalCase.registered_at,
+            SurgicalCase.report_at,
+            SurgicalCase.is_express,
+        )
+        .filter(*filters)
+        .all()
+    )
+
+    empty_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    if not cases:
+        return {
+            "avg_tat_days": 0,
+            "routine_avg_days": 0,
+            "express_avg_days": 0,
+            "total_reported": 0,
+            "on_time_count": 0,
+            "on_time_pct": 0,
+            "target_days": target_days,
+            "express_target_days": express_target_days,
+            "distribution": {**empty_dist},
+            "routine_distribution": {**empty_dist},
+            "express_distribution": {**empty_dist},
+            "monthly": [],
+        }
+
+    monthly_map: dict = defaultdict(lambda: {"count": 0, "total_days": 0.0})
+    dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    express_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_total, routine_n = 0.0, 0
+    express_total, express_n = 0.0, 0
+    on_time_count = 0
+
+    for c in cases:
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
+        month_key = c.registered_at.strftime("%Y-%m")
+        monthly_map[month_key]["count"] += 1
+        monthly_map[month_key]["total_days"] += tat
+
+        t = express_target_days if c.is_express else target_days
+        if tat <= t:
+            on_time_count += 1
+
+        sub_dist = express_dist if c.is_express else routine_dist
+        if c.is_express:
+            express_total += tat
+            express_n += 1
+        else:
+            routine_total += tat
+            routine_n += 1
+
+        for d in (dist, sub_dist):
+            d[_tat_bucket(tat)] += 1
+
+    total_n = len(cases)
+    grand_total = routine_total + express_total
+
+    return {
+        "avg_tat_days": round(grand_total / total_n, 1),
+        "routine_avg_days": round(routine_total / routine_n, 1) if routine_n else 0,
+        "express_avg_days": round(express_total / express_n, 1) if express_n else 0,
+        "total_reported": total_n,
+        "on_time_count": on_time_count,
+        "on_time_pct": round(on_time_count / total_n * 100, 1),
+        "target_days": target_days,
+        "express_target_days": express_target_days,
+        "distribution": dist,
+        "routine_distribution": routine_dist,
+        "express_distribution": express_dist,
+        "monthly": [
+            {
+                "month": k,
+                "case_count": v["count"],
+                "avg_days": round(v["total_days"] / v["count"], 1),
+            }
+            for k, v in sorted(monthly_map.items())
+        ],
+    }
+
+
+def get_tat_cases(db: Session, bucket: str, date_from=None, date_to=None, pathologist_id: int = None, is_express: bool = None) -> list:
+    """List cases (accession_no, patient, tat days) belonging to a TAT distribution bucket."""
+    from datetime import time
+    from app.models.patient import Patient
+    from app.utils.tat import get_holiday_dates, business_days_between
+
+    holidays = get_holiday_dates(db)
+
+    filters = [
+        SurgicalCase.is_cancelled == False,
+        SurgicalCase.report_at.isnot(None),
+        SurgicalCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+    if is_express is not None:
+        filters.append(SurgicalCase.is_express == is_express)
+
+    cases = (
+        db.query(SurgicalCase)
+        .join(Patient)
+        .filter(*filters)
+        .order_by(SurgicalCase.registered_at.desc())
+        .all()
+    )
+
+    result = []
+    for c in cases:
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
+        if _tat_bucket(tat) != bucket:
+            continue
+        result.append(
+            {
+                "id": c.id,
+                "accession_no": c.accession_no,
+                "patient_title": c.patient.title.title if c.patient and c.patient.title else None,
+                "patient_name": c.patient.name if c.patient else "Unknown",
+                "patient_ln": c.patient.ln if c.patient else None,
+                "registered_at": c.registered_at,
+                "report_at": c.report_at,
+                "tat_days": round(tat, 1),
+                "is_express": c.is_express,
+            }
+        )
+
+    return result
