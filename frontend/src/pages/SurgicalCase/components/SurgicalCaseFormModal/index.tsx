@@ -9,21 +9,19 @@ import {
   Col,
   Popconfirm,
   message,
-  Upload,
   Space,
   Divider,
 } from "antd";
-import type { UploadFile, UploadProps } from "antd";
+import type { UploadFile } from "antd";
 import {
   PrinterOutlined,
   DeleteOutlined,
   CloseCircleOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../../hooks/usePatientSearch";
+import { useCaseFileUpload } from "../../../../hooks/useCaseFileUpload";
 import PatientFormModal from "../../../../components/PatientFormModal";
 import HisPatientSearchModal from "../HisPatientSearchModal";
 import type { HisPatientResult } from "../../../../services/hisService";
@@ -42,7 +40,6 @@ import UserService from "../../../../services/userService";
 // Constants & Types
 import {
   SurgicalCase,
-  RequestFile,
   SurgicalCaseCreatePayload,
 } from "../../../../types/surgical";
 import type { Patient } from "../../../../types/patient";
@@ -91,9 +88,17 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [caseData, setCaseData] = useState<SurgicalCase | null>(null);
 
-  // File Upload States
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  // File Upload
+  const {
+    fileList,
+    setFileList,
+    isUploading,
+    uploadProps,
+    handleConfirmDownload,
+    handleConfirmDeleteFile,
+    flushPendingUploads,
+    toUploadFileList,
+  } = useCaseFileUpload(SurgicalCaseService, editingId);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
@@ -151,19 +156,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
 
       if (data.patient) setPatients([data.patient as Patient]);
 
-      if (data.request_files) {
-        setFileList(
-          data.request_files.map((file: RequestFile) => ({
-            uid: String(file.id),
-            name: file.file_name,
-            status: "done",
-            url: file.file_path, // Could be used if serving directly via URL
-            type: file.file_type,
-          })),
-        );
-      } else {
-        setFileList([]);
-      }
+      setFileList(toUploadFileList(data.request_files));
 
       // 🌟 ปรับปรุงการ Mapping ข้อมูลก่อนเข้า Form
       form.setFieldsValue({
@@ -378,22 +371,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         );
 
         // Upload any queued files now that we have a case ID
-        const pendingFiles = fileList.filter((f) => f.originFileObj);
-        if (pendingFiles.length > 0) {
-          const newCaseId = savedResult.id;
-          await Promise.allSettled(
-            pendingFiles.map((pf) =>
-              SurgicalCaseService.uploadRequestFile(
-                newCaseId,
-                pf.originFileObj as File,
-              ).catch(() => {
-                message.warning(
-                  `Failed to upload "${pf.name}". Please retry in edit mode.`,
-                );
-              }),
-            ),
-          );
-        }
+        await flushPendingUploads(savedResult.id);
 
         message.success("Case registered successfully");
       }
@@ -435,25 +413,13 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         is_slide_prepped: false,
         is_reported: false,
         collect_at: values.collect_at
-          ? (values.collect_at as any).toISOString()
+          ? (values.collect_at as Dayjs).toISOString()
           : null,
       };
       const saved = await SurgicalCaseService.createCase(
         formattedValues as unknown as SurgicalCaseCreatePayload,
       );
-      const pendingFiles = fileList.filter((f) => f.originFileObj);
-      if (pendingFiles.length > 0) {
-        await Promise.allSettled(
-          pendingFiles.map((pf) =>
-            SurgicalCaseService.uploadRequestFile(
-              saved.id,
-              pf.originFileObj as File,
-            ).catch(() => {
-              message.warning(`Failed to upload "${pf.name}"`);
-            }),
-          ),
-        );
-      }
+      await flushPendingUploads(saved.id);
       message.success(`ลงทะเบียนสำเร็จ (${saved.accession_no})`);
       onRefresh?.();
       setCaseData(saved);
@@ -511,118 +477,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     } catch (err) {
       message.error("Failed to open file");
     }
-  };
-
-  // --- Confirm Download ---
-  const handleConfirmDownload = (file: UploadFile) => {
-    Modal.confirm({
-      title: "Download File",
-      icon: <DownloadOutlined style={{ color: "#1890ff" }} />,
-      content: `Download "${file.name}"?`,
-      okText: "Download",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await SurgicalCaseService.downloadRequestFile(
-            Number(file.uid),
-            file.name,
-          );
-          message.success("File downloaded successfully");
-        } catch (err) {
-          message.error("Failed to download file");
-        }
-      },
-    });
-  };
-
-  // --- Confirm Delete ---
-  const handleConfirmDeleteFile = (file: UploadFile) => {
-    if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-")) {
-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-      return;
-    }
-    Modal.confirm({
-      title: "Delete File",
-      icon: <ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />,
-      content: `Delete "${file.name}"? This cannot be undone.`,
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await SurgicalCaseService.deleteRequestFile(Number(file.uid));
-          message.success("File deleted");
-          setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-        } catch (error) {
-          message.error("Failed to delete file");
-        }
-      },
-    });
-  };
-
-  const handleUploadRequest = async (options: {
-    file: File;
-    onSuccess: (res: string) => void;
-    onError: (err: { err: unknown }) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    if (!editingId) {
-      message.warning("Please save the case before uploading files");
-      onError({ err: new Error("Case not created yet") });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const res = await SurgicalCaseService.uploadRequestFile(
-        editingId,
-        file as File,
-      );
-      const newFile: UploadFile = {
-        uid: String(res.file_id),
-        name: file.name,
-        status: "done",
-        type: file.type,
-      };
-      setFileList((prev) => [...prev, newFile]);
-      onSuccess("ok");
-      message.success(`${file.name} uploaded successfully`);
-    } catch (err) {
-      onError({ err });
-      message.error(`Failed to upload ${file.name}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadProps: UploadProps = {
-    customRequest:
-      handleUploadRequest as unknown as UploadProps["customRequest"],
-    onRemove: () => false,
-    fileList,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error("File must be smaller than 10MB");
-        return Upload.LIST_IGNORE;
-      }
-      if (!editingId) {
-        // Queue locally — will upload after case is created
-        setFileList((prev) => [
-          ...prev,
-          {
-            uid: `pending-${crypto.randomUUID()}`,
-            name: file.name,
-            status: "done",
-            type: file.type,
-            originFileObj: file as any,
-          },
-        ]);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
   };
 
   const handleCancel = () => {

@@ -8,16 +8,17 @@ import {
   Col,
   Checkbox,
   Space,
-  Upload,
   Select,
   message,
   Popconfirm,
   Divider,
 } from "antd";
-import type { UploadFile, UploadProps } from "antd";
+import type { UploadFile } from "antd";
 import { DeleteOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import { usePatientSearch } from "../../../hooks/usePatientSearch";
+import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
 
 // Components & Services
 import PatientFormModal from "../../../components/PatientFormModal";
@@ -33,10 +34,9 @@ import DepartmentService from "../../../services/departmentService";
 import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
-import type { RequestFile } from "../../../types/surgical";
 import TitleService from "../../../services/titleService";
 import SpecimenTemplateService from "../../../services/specimenTemplateService";
-import type { GyneCytologyCase } from "../../../types/gyne-cytology";
+import type { GyneCytologyCase, GyneCytologyCaseCreate } from "../../../types/gyne-cytology";
 import type { Patient } from "../../../types/patient";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
@@ -60,8 +60,16 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     null,
   );
   const pendingResetRef = React.useRef(false);
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const {
+    fileList,
+    setFileList,
+    isUploading,
+    uploadProps,
+    handleConfirmDownload,
+    handleConfirmDeleteFile,
+    flushPendingUploads,
+    toUploadFileList,
+  } = useCaseFileUpload(GyneCytologyCaseService, editingId);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
@@ -138,16 +146,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     try {
       const data = await GyneCytologyCaseService.getById(editingId!);
       if (data.patient) setPatients([data.patient]);
-      if (data.request_files) {
-        setFileList(
-          data.request_files.map((f: RequestFile) => ({
-            uid: String(f.id),
-            name: f.file_name,
-            status: "done" as const,
-            type: f.file_type,
-          })),
-        );
-      }
+      setFileList(toUploadFileList(data.request_files));
       setTimeout(() => {
         form.setFieldsValue({
           ...data,
@@ -194,113 +193,6 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     } catch {
       message.error("Failed to open file");
     }
-  };
-
-  const handleConfirmDownload = (file: UploadFile) => {
-    Modal.confirm({
-      title: "Download File",
-      content: `Download "${file.name}"?`,
-      okText: "Download",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await GyneCytologyCaseService.downloadRequestFile(
-            Number(file.uid),
-            file.name,
-          );
-          message.success("File downloaded successfully");
-        } catch {
-          message.error("Failed to download file");
-        }
-      },
-    });
-  };
-
-  const handleConfirmDeleteFile = (file: UploadFile) => {
-    if (file.uid.startsWith("rc-upload") || file.uid.startsWith("pending-")) {
-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-      return;
-    }
-    Modal.confirm({
-      title: "Delete File",
-      content: `Delete "${file.name}"? This cannot be undone.`,
-      okText: "Delete",
-      okType: "danger",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          await GyneCytologyCaseService.deleteRequestFile(Number(file.uid));
-          message.success("File deleted");
-          setFileList((prev) => prev.filter((item) => item.uid !== file.uid));
-        } catch {
-          message.error("Failed to delete file");
-        }
-      },
-    });
-  };
-
-  const handleUploadRequest = async (options: {
-    file: File;
-    onSuccess: (res: string) => void;
-    onError: (err: { err: unknown }) => void;
-  }) => {
-    const { file, onSuccess, onError } = options;
-    if (!editingId) {
-      message.warning("Please save the case before uploading files");
-      onError({ err: new Error("Case not created yet") });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const res = await GyneCytologyCaseService.uploadRequestFile(
-        editingId,
-        file,
-      );
-      const newFile: UploadFile = {
-        uid: String(res.file_id),
-        name: file.name,
-        status: "done",
-        type: file.type,
-      };
-      setFileList((prev) => [...prev, newFile]);
-      onSuccess("ok");
-      message.success(`${file.name} uploaded successfully`);
-    } catch (err) {
-      onError({ err });
-      message.error(`Failed to upload ${file.name}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadProps: UploadProps = {
-    customRequest:
-      handleUploadRequest as unknown as UploadProps["customRequest"],
-    onRemove: () => false,
-    fileList,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error("File must be smaller than 10MB");
-        return Upload.LIST_IGNORE;
-      }
-      if (!editingId) {
-        setFileList((prev) => [
-          ...prev,
-          {
-            uid: `pending-${Date.now()}`,
-            name: file.name,
-            status: "done",
-            type: file.type,
-            originFileObj: file as any,
-          },
-        ]);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
   };
 
   const handleDelete = async () => {
@@ -355,18 +247,26 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     });
   };
 
-  const doSave = async (values: any) => {
+  const doSave = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
       const payload = {
         ...values,
-        last_menstrual_period:
-          values.last_menstrual_period?.format("YYYY-MM-DD"),
-        collect_at: values.collect_at?.toISOString(),
+        last_menstrual_period: (
+          values.last_menstrual_period as { format: (f: string) => string } | undefined
+        )?.format("YYYY-MM-DD"),
+        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
       };
       const res = editingId
         ? await GyneCytologyCaseService.update(editingId, payload)
-        : await GyneCytologyCaseService.create(payload);
+        : await GyneCytologyCaseService.create(
+            payload as unknown as GyneCytologyCaseCreate,
+          );
+      // Upload any queued files now that we have a case ID (create only —
+      // an edit-mode save has nothing pending, files upload immediately).
+      if (!editingId) {
+        await flushPendingUploads(res.id);
+      }
       message.success(editingId ? "Updated successfully" : "Registered successfully");
       onSuccess(res);
     } catch (err) {
@@ -376,7 +276,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: Record<string, unknown>) => {
     if (!values.cytotechnologist_id) {
       Modal.confirm({
         title: "Cytotechnologist not specified",
@@ -391,16 +291,20 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     await doSave(values);
   };
 
-  const doSaveAndNew = async (values: any) => {
+  const doSaveAndNew = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
       const payload = {
         ...values,
-        last_menstrual_period:
-          values.last_menstrual_period?.format("YYYY-MM-DD"),
-        collect_at: values.collect_at?.toISOString(),
+        last_menstrual_period: (
+          values.last_menstrual_period as { format: (f: string) => string } | undefined
+        )?.format("YYYY-MM-DD"),
+        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
       };
-      const res = await GyneCytologyCaseService.create(payload);
+      const res = await GyneCytologyCaseService.create(
+        payload as unknown as GyneCytologyCaseCreate,
+      );
+      await flushPendingUploads(res.id);
       message.success(`Registered successfully (${res.accession_no})`);
       onRefresh?.();
       setFileList([]);
@@ -414,7 +318,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   };
 
   const handleSaveAndNew = async () => {
-    let values: any;
+    let values: Record<string, unknown>;
     try {
       values = await form.validateFields();
     } catch {
