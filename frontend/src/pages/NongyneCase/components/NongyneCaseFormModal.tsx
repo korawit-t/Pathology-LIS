@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -21,7 +21,7 @@ import {
   FireOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import debounce from "lodash/debounce";
+import { usePatientSearch } from "../../../hooks/usePatientSearch";
 import PatientFormModal from "../../../components/PatientFormModal";
 import HisPatientSearchModal from "../../SurgicalCase/components/HisPatientSearchModal";
 import NongynePrintPreviewModal from "./NongynePrintPreviewModal";
@@ -98,14 +98,20 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
   const [previewTitle, setPreviewTitle] = useState("");
 
   // Master Data States
-  const [patients, setPatients] = useState<(Patient | PatientRef)[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [pathologists, setPathologists] = useState<User[]>([]);
   const [cytotechnologists, setCytotechnologists] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch<PatientRef>(form, hospitals);
   const [specimenTypes, setSpecimenTypes] = useState<SpecimenTemplate[]>(
     DEFAULT_SPECIMEN_TYPES,
   );
@@ -192,56 +198,6 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       message.error("Failed to load case data");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]);
-          return;
-        }
-        setIsSearching(true);
-        try {
-          const patients = await PatientService.getPatients(value);
-          setPatients(patients);
-        } catch (err) {
-          logger.error("Search Patient Error:", err);
-          setPatients([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    form.setFieldsValue({
-      patient_id: newPatient.id,
-    });
-    message.success(
-      `Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`,
-    );
-    setIsPatientModalOpen(false);
-  };
-
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
     }
   };
 

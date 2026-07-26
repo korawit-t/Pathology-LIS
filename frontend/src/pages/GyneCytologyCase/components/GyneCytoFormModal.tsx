@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -17,7 +17,7 @@ import {
 import type { UploadFile, UploadProps } from "antd";
 import { DeleteOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import debounce from "lodash/debounce";
+import { usePatientSearch } from "../../../hooks/usePatientSearch";
 
 // Components & Services
 import PatientFormModal from "../../../components/PatientFormModal";
@@ -72,13 +72,19 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   const [previewTitle, setPreviewTitle] = useState("");
 
   // Master Data
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [staffs, setStaffs] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch(form, hospitals);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isHisModalOpen, setIsHisModalOpen] = useState(false);
   const [gyneSpecimenTypes, setGyneSpecimenTypes] = useState<string[]>([
@@ -173,39 +179,6 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
       message.error("Failed to load case data");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (v: string) => {
-        if (!v || v.length < 3) return;
-        setIsSearching(true);
-        try {
-          const res = await PatientService.getPatients(v);
-          setPatients(res);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
     }
   };
 
@@ -693,14 +666,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
       <PatientFormModal
         open={isPatientModalOpen}
         onClose={() => setIsPatientModalOpen(false)}
-        onSuccess={(p) => {
-          setPatients([p, ...patients]);
-          form.setFieldsValue({
-            patient_id: p.id,
-            hn: p.hn || form.getFieldValue("hn"),
-          });
-          setIsPatientModalOpen(false);
-        }}
+        onSuccess={handlePatientCreationSuccess}
         titles={titles}
         hospitals={hospitals}
       />

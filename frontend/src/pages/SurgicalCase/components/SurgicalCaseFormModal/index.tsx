@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -23,7 +23,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import debounce from "lodash/debounce";
+import { usePatientSearch } from "../../../../hooks/usePatientSearch";
 import PatientFormModal from "../../../../components/PatientFormModal";
 import HisPatientSearchModal from "../HisPatientSearchModal";
 import type { HisPatientResult } from "../../../../services/hisService";
@@ -77,13 +77,19 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
   const pendingResetRef = React.useRef(false);
 
   // Master Data States
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [titles, setTitles] = useState<Title[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [schemes, setSchemes] = useState<MedicalScheme[]>([]);
   const [pathologists, setPathologists] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch(form, hospitals);
 
   // State ควบคุม Modal Patient
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
@@ -182,43 +188,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  // 3. Search Patient Logic
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]); // ล้างข้อมูลเมื่อคำค้นหาสั้นเกินไป
-          return;
-        }
-        setIsSearching(true);
-        try {
-          const patients = await PatientService.getPatients(value);
-          setPatients(patients);
-        } catch (err) {
-          logger.error("Search Patient Error:", err);
-          setPatients([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    // 1. เพิ่มคนไข้ใหม่เข้าไปใน List เพื่อให้ Select หาเจอ
-    setPatients((prev) => [newPatient, ...prev]);
-
-    // 2. ตั้งค่าให้ Form เลือกคนใหม่นี้ทันที
-    form.setFieldsValue({
-      patient_id: newPatient.id,
-    });
-
-    message.success(
-      `Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`,
-    );
-    setIsPatientModalOpen(false);
   };
 
   // Handle patient selection from HIS modal
@@ -372,25 +341,6 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         "Failed to import HIS data: " +
           (err.response?.data?.detail || err.message || "Unknown error"),
       );
-    }
-  };
-
-  // 4. HN Auto-fill Logic
-  const handleSelectSpecificHN = (
-    e: React.MouseEvent,
-    hnItem: string,
-    patientId: number,
-  ) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({
-        patient_id: patientId,
-        hn: hNumber,
-        hospital_id: targetHospital?.id,
-      });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
     }
   };
 

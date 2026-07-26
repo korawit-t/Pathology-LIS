@@ -3,6 +3,7 @@ import { Modal, Form, Select, Input, DatePicker, Segmented, message, Spin, Row, 
 import debounce from "lodash/debounce";
 import dayjs from "dayjs";
 
+import { usePatientSearch } from "../../hooks/usePatientSearch";
 import PatientFormModal from "../../components/PatientFormModal";
 import HisPatientSearchModal from "../SurgicalCase/components/HisPatientSearchModal";
 import type { HisPatientResult } from "../../services/hisService";
@@ -57,8 +58,14 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
   const [loadingCase, setLoadingCase] = useState(false);
 
   // --- "Standalone" mode ---
-  const [patients, setPatients] = useState<(Patient | MolecularCasePatientRef)[]>([]);
-  const [isPatientSearching, setIsPatientSearching] = useState(false);
+  const {
+    patients,
+    setPatients,
+    isSearching: isPatientSearching,
+    debouncedSearchPatient,
+    handleSelectSpecificHN,
+    handlePatientCreationSuccess,
+  } = usePatientSearch<MolecularCasePatientRef>(form, hospitals);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isHisModalOpen, setIsHisModalOpen] = useState(false);
 
@@ -142,25 +149,6 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
     [],
   );
 
-  const debouncedSearchPatient = useMemo(
-    () =>
-      debounce(async (value: string) => {
-        if (!value || value.trim().length < 3) {
-          setPatients([]);
-          return;
-        }
-        setIsPatientSearching(true);
-        try {
-          setPatients(await PatientService.getPatients(value));
-        } catch {
-          setPatients([]);
-        } finally {
-          setIsPatientSearching(false);
-        }
-      }, 500),
-    [],
-  );
-
   const handleSelectCase = async (caseId: number) => {
     setLoadingCase(true);
     form.setFieldsValue({ block_id: undefined });
@@ -184,23 +172,6 @@ const MolecularCaseFormModal: React.FC<MolecularCaseFormModalProps> = ({ open, e
       })),
     );
   }, [selectedCase]);
-
-  const handlePatientCreationSuccess = (newPatient: Patient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    form.setFieldsValue({ patient_id: newPatient.id });
-    message.success(`Patient ${newPatient.name}${newPatient.ln ? " " + newPatient.ln : ""} selected`);
-    setIsPatientModalOpen(false);
-  };
-
-  const handleSelectSpecificHN = (e: React.MouseEvent, hnItem: string, patientId: number) => {
-    e.stopPropagation();
-    if (hnItem.includes(": ")) {
-      const [hName, hNumber] = hnItem.split(": ");
-      const targetHospital = hospitals.find((h) => h.name === hName);
-      form.setFieldsValue({ patient_id: patientId, hn: hNumber, hospital_id: targetHospital?.id });
-      message.success(`HN: ${hNumber} (${hName}) selected`);
-    }
-  };
 
   const handleHisPatientSelect = async (record: HisPatientResult) => {
     setIsHisModalOpen(false);
