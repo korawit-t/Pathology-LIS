@@ -380,7 +380,7 @@ const StatPanel: React.FC<StatPanelProps> = ({ type }) => {
                       tickFormatter={(tick) => dayjs(tick).format("DD/MM")}
                     />
                     <YAxis allowDecimals={false} />
-                    <Tooltip labelFormatter={(l) => dayjs(l).format("DD MMM YYYY")} />
+                    <Tooltip labelFormatter={(l) => dayjs(l as string).format("DD MMM YYYY")} />
                     <Legend />
                     <Bar dataKey="total_cases" name="Total Cases" fill="#13c2c2" radius={[4, 4, 0, 0]} />
                   </BarChart>
