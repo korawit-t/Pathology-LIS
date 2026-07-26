@@ -5,7 +5,7 @@ from typing import Union, Any
 from jose import jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
-from jose import JWTError, jwt
+from jose import JWTError
 from fastapi import HTTPException, status
 
 # 1. โหลดค่า Config จากไฟล์ .env

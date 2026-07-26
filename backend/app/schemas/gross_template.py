@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List
 
 class BlockTemplateItem(BaseModel):
     tissue_description: Optional[str] = None

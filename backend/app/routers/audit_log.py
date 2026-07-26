@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.db.database import get_db
 from app.models.audit_log import AuditLog
-from app.schemas.audit_log import AuditLogListResponse, AuditLogResponse
+from app.schemas.audit_log import AuditLogListResponse
 from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/audit-logs", tags=["Audit"])

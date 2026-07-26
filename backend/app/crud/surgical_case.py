@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy.orm import Session, selectinload, joinedload
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, or_, and_, exists, select, case
 from fastapi import HTTPException, status
 from datetime import datetime, date
@@ -659,12 +659,12 @@ def bulk_update_storage_status(db: Session, case_ids: list[int], container_numbe
     updated_cases = []
     
     now = local_now()
-    for case in cases:
-        case.specimen_storage_status = "Stored"
-        case.specimen_storage_container = container_number
-        case.specimen_storage_at = now
-        case.specimen_storage_by_id = user_id
-        updated_cases.append(case)
+    for c in cases:
+        c.specimen_storage_status = "Stored"
+        c.specimen_storage_container = container_number
+        c.specimen_storage_at = now
+        c.specimen_storage_by_id = user_id
+        updated_cases.append(c)
         
     try:
         db.commit()
@@ -679,12 +679,12 @@ def bulk_dispose_storage(db: Session, case_ids: list[int], user_id: int):
     updated_cases = []
     
     now = local_now()
-    for case in cases:
-        case.specimen_storage_status = "Discarded"
-        case.discard_status = True
-        case.discard_at = now
-        case.discard_by_id = user_id
-        updated_cases.append(case)
+    for c in cases:
+        c.specimen_storage_status = "Discarded"
+        c.discard_status = True
+        c.discard_at = now
+        c.discard_by_id = user_id
+        updated_cases.append(c)
         
     try:
         db.commit()
@@ -799,20 +799,20 @@ def get_hospital_billing_summary(
     items = []
     all_cases_grand_total = 0.0
 
-    for case in cases:
-        cost_summary = get_case_cost_summary(db, case.id)
+    for c in cases:
+        cost_summary = get_case_cost_summary(db, c.id)
         case_total = cost_summary.get("grand_total", 0.0)
         case_items = cost_summary.get("items", [])
-        
-        patient_name = case.patient.name if case.patient else "Unknown"
-        
+
+        patient_name = c.patient.name if c.patient else "Unknown"
+
         items.append({
-            "case_id": case.id,
-            "accession_no": case.accession_no,
-            "hn": case.hn,
+            "case_id": c.id,
+            "accession_no": c.accession_no,
+            "hn": c.hn,
             "patient_name": patient_name,
-            "status": case.status,
-            "registered_at": case.registered_at,
+            "status": c.status,
+            "registered_at": c.registered_at,
             "items": case_items,
             "grand_total": case_total
         })

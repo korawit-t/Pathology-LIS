@@ -1,6 +1,5 @@
 # app/crud/embedding.py
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
 from app.utils.time import local_now
 from app.models.embedding import EmbeddingRun, EmbeddingDetail
 from app.models.surgical_block import SurgicalBlock

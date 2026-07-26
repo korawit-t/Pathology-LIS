@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func as sql_func
-from datetime import datetime
 from app.utils.time import local_now
 from app.utils.consult_lock import assert_consult_not_locked
 

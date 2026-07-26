@@ -1,5 +1,5 @@
 from pydantic import ConfigDict, BaseModel
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 # --- Image Base/Create ---

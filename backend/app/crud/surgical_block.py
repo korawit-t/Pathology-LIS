@@ -1,8 +1,6 @@
 import logging
 from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException
-from typing import List
-from datetime import datetime
 from app.models.surgical_block import SurgicalBlock
 
 logger = logging.getLogger(__name__)

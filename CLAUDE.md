@@ -26,6 +26,9 @@ pytest                        # all tests
 pytest -k auth                # tests matching a keyword
 pytest tests/test_surgical_cases.py::TestListCases::test_admin_can_list_cases  # single test
 
+# Lint
+ruff check .                  # pyflakes only (unused imports/vars, redefinitions) — see backend/pyproject.toml for what's deliberately excluded and why
+
 # Migrations
 alembic revision --autogenerate -m "message"
 alembic upgrade head
@@ -58,7 +61,7 @@ docker compose exec backend alembic upgrade head       # apply migrations
 
 ### CI
 
-`.github/workflows/tests.yml` runs backend pytest (with a Postgres 16 service container), frontend vitest, and a blocking `frontend-quality` job (`tsc --noEmit` + `eslint`) on every push/PR to `main`. `.github/workflows/security.yml` runs gitleaks, pip-audit, bandit, and npm audit.
+`.github/workflows/tests.yml` runs backend pytest (with a Postgres 16 service container), a blocking `backend-quality` job (`ruff check .`, pyflakes-only), frontend vitest, and a blocking `frontend-quality` job (`tsc --noEmit` + `eslint`) on every push/PR to `main`. `.github/workflows/security.yml` runs gitleaks, pip-audit, bandit, and npm audit.
 
 ## Architecture
 

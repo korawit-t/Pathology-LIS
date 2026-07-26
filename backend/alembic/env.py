@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from alembic import context
 
 from app.db.database import Base
-import app.models  # Register all models
+import app.models  # noqa: F401 — registers all models
 target_metadata = Base.metadata
 
 load_dotenv()

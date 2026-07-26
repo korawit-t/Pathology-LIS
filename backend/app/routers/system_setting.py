@@ -3,15 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pathlib import Path
 import uuid
-import os
 from app.utils.file_handler import validate_and_sanitize
 from pydantic import BaseModel
-from typing import Optional
 
 from app.db.database import get_db
 from app.schemas.system_setting import SystemSettingResponse, SystemSettingUpdate
 from app.crud import system_setting as crud
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_MANAGE_SYSTEM_SETTINGS
 
 router = APIRouter(prefix="/system-settings", tags=["System Settings"])
@@ -71,9 +69,6 @@ async def upload_logo(
     db: Session = Depends(get_db),
     current_user=Depends(CAN_MANAGE_SYSTEM_SETTINGS),
 ):
-    import logging
-    logger = logging.getLogger(__name__)
-
     if logo_type not in ["report", "login"]:
         raise HTTPException(status_code=400, detail="Invalid logo type")
 

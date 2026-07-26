@@ -6,8 +6,6 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     func,
-    UniqueConstraint,
-    Index,
 )
 from sqlalchemy.orm import relationship
 from app.db.database import Base

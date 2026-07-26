@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.db.database import get_db
-from app.schemas.stain_run import StainRunCreate, StainRunResponse, StainRunUpdate
+from app.schemas.stain_run import StainRunCreate, StainRunResponse
 from app.crud import stain_run as crud
 from app.dependencies.auth import get_current_user
 from app.models.user import User

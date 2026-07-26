@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List
 from app.db.database import get_db
 from app.schemas.surgical_block import (
     SurgicalBlockCreate,
@@ -11,12 +10,9 @@ from app.schemas.surgical_block import (
 from app.crud.surgical_block import (
     create_block,
     list_blocks,
-    get_block,
     update_block,
     delete_block,
 )
-from app.models.surgical_block import SurgicalBlock
-from app.dependencies.auth import get_current_user, RoleChecker
 from app.core.roles import CAN_ACCESS_SURGICAL_BLOCK
 
 router = APIRouter(

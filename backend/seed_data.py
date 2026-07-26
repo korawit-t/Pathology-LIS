@@ -3,9 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.organization import Title, Position, Hospital
 from app.models.user import User
-from app.models.external_lab import (
-    ExternalLab,
-)  # must load before AnatomicalPathologyTest
+from app.models.external_lab import ExternalLab  # noqa: F401 — must load before AnatomicalPathologyTest
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.ihc_marker_option import IHCMarkerOption
 from app.models.gross_template import GrossTemplate
@@ -13,8 +11,6 @@ from app.models.diagnostic_template import DiagnosticTemplate
 from app.models.specimen_template import SpecimenTemplate
 from app.core.security import get_password_hash
 from app.models.gyne_diagnosis import GyneDiagnosisCategory, GyneSpecimenAdequacy
-from app.models.notification_channel import NotificationChannel
-from app.models.system_setting import SystemSetting
 from app.models.notification_rule import NotificationRule
 from app.models.tissue_processing import ProcessorMachine, ProcessingProgram
 from app.models.stain_panel import StainPanel, StainPanelItem
@@ -127,10 +123,10 @@ def seed_admin(db: Session):
     db.commit()
     db.refresh(admin_user)
 
-    print(f"   🎉 Admin user created successfully!")
-    print(f"   Username: admin")
-    print(f"   Temporary password: admin1234")
-    print(f"   ⚠️  You will be required to change this password on first login.")
+    print("   🎉 Admin user created successfully!")
+    print("   Username: admin")
+    print("   Temporary password: admin1234")
+    print("   ⚠️  You will be required to change this password on first login.")
 
 
 def seed_surgical_pathology_from_official(db: Session):

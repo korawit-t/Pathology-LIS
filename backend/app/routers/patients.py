@@ -7,7 +7,7 @@ from app.schemas.patient import PatientCreate, PatientUpdate, PatientResponse
 from app.crud import patient as crud
 from app.models.surgical_case import SurgicalCase
 from app.schemas.surgical_case import SurgicalCaseResponse
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import RoleChecker
 from app.core.roles import CAN_ACCESS_PATIENT
 
 router = APIRouter(

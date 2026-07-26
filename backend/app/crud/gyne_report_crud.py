@@ -2,12 +2,10 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneReportSigner
 from app.models.gyne_cyto_case import GyneCytologyCase
-from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.cyto_approval_log import CytoReportAuditLog
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.report_approval import ReportApproveRequest
-from datetime import datetime
 from app.utils.time import local_now
 
 

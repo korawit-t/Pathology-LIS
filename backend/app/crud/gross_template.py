@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-from datetime import datetime
 from app.utils.time import local_now
 from typing import Optional
 

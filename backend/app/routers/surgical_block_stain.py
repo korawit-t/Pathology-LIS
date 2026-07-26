@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
-from io import BytesIO
 
 def _nk(s: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
@@ -16,8 +15,6 @@ def _pad_block_code(code: str) -> str:
         return code or ""
     letters, digits = m.groups()
     return f"{letters}{digits.zfill(2)}"
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
 from pydantic import BaseModel
 
 from app.db.database import get_db
@@ -33,7 +30,7 @@ from app.schemas.surgical_block_stain import (
     OutlabRunReceiveDetails,
 )
 from app.crud import surgical_block_stain as crud
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user
 from app.models.surgical_block_stain import SurgicalStainRun, SurgicalStainRunDetail
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen

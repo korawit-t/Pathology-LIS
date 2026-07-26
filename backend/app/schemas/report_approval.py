@@ -1,7 +1,6 @@
 from pydantic import ConfigDict, BaseModel
 from datetime import datetime
 from typing import Optional
-from app.models.surgical_report import ReportStatus
 
 
 # สำหรับรับค่าตอนกด Approve/Reject

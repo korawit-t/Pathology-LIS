@@ -7,7 +7,6 @@ from sqlalchemy import (
     func,
     Boolean,
     UniqueConstraint,
-    Index,
 )
 from sqlalchemy.orm import relationship
 from app.db.database import Base

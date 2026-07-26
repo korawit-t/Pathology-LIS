@@ -1,5 +1,4 @@
 from fastapi import UploadFile, HTTPException
-import shutil
 import os
 import io
 import uuid

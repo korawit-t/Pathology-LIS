@@ -532,7 +532,6 @@ def prepare_report_data(
     settings = db.query(SystemSetting).first()
 
     is_approve_enabled = settings.enable_approve_system if settings else False
-    show_specimen_name = settings.show_specimen_name if settings else True
 
     lab_name_th = settings.lab_name_th if settings else "ชื่อห้องปฏิบัติการ"
     footer_text = (settings.surgical_report_footer or settings.report_footer_text or "") if settings else ""

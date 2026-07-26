@@ -10,7 +10,6 @@ from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
-from app.models.organization import Hospital
 from app.crud.organization import resolve_lab_header
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException

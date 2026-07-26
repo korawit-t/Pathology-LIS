@@ -482,7 +482,7 @@ def get_storage_stats(db: Session, start_date: date, end_date: date):
         .all()
     )
 
-    from collections import defaultdict, OrderedDict
+    from collections import OrderedDict
     slide_map: dict = OrderedDict()
     for r in sld_rows:
         uid = r[0]

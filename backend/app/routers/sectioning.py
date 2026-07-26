@@ -4,7 +4,7 @@ from typing import List
 from app.db.database import get_db
 from app.crud import sectioning as crud
 from app.schemas import sectioning as schemas
-from app.dependencies.auth import get_current_user, RoleChecker
+from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_ACCESS_SURGICAL_BLOCK
 from app.models.user import User
 
@@ -18,14 +18,6 @@ router = APIRouter(
 @router.post("/runs", response_model=schemas.SectioningRun)
 def create_run(obj_in: schemas.SectioningRunCreate, db: Session = Depends(get_db)):
     return crud.create_sectioning_run(db=db, obj_in=obj_in)
-
-
-@router.get("/runs/{run_id}", response_model=schemas.SectioningRun)
-def read_run(run_id: int, db: Session = Depends(get_db)):
-    db_obj = crud.get_sectioning_run_detail(db, run_id=run_id)
-    if not db_obj:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return db_obj
 
 
 @router.post("/runs/{run_id}/details", response_model=schemas.SectioningDetail)

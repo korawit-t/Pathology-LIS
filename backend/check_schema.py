@@ -5,11 +5,11 @@
 """
 import os
 import sys
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect
 
 # โหลด models ทั้งหมด
 from app.db.database import Base
-import app.models  # noqa: registers all models
+import app.models  # noqa: F401 — registers all models
 
 def check_schema(database_url: str):
     engine = create_engine(database_url)
@@ -51,7 +51,7 @@ def check_schema(database_url: str):
         print(f"\n✅ All tables exist ({len(ok_tables)} tables)")
 
     if missing_columns:
-        print(f"\n❌ MISSING COLUMNS:")
+        print("\n❌ MISSING COLUMNS:")
         for table_name, cols in sorted(missing_columns):
             print(f"\n   Table: {table_name}")
             for col in cols:
@@ -67,7 +67,7 @@ def check_schema(database_url: str):
                 default = f" DEFAULT {col.server_default.arg}" if col.server_default else ""
                 print(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_type}{nullable}{default};")
     else:
-        print(f"✅ All columns exist")
+        print("✅ All columns exist")
 
     print(f"{'='*60}\n")
 

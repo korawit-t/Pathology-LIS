@@ -122,7 +122,6 @@ def check_password_status(
     settings = db.query(SystemSetting).first()
     expiry_days = (settings.password_expiry_days or 0) if settings else 0
     if expiry_days > 0 and current_user.last_update_password:
-        from datetime import timedelta
         age = (local_now() - current_user.last_update_password).days
         if age >= expiry_days:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PASSWORD_EXPIRED")

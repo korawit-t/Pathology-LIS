@@ -1,5 +1,5 @@
 from pydantic import ConfigDict, BaseModel
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional, List
 from app.models.gyne_cyto_report import GyneReportStatus, GyneReportType
 

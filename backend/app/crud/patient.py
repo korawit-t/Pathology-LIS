@@ -4,10 +4,9 @@ from app.models.patient import Patient
 from app.models.surgical_case import SurgicalCase
 from app.models.organization import Hospital
 from app.schemas.patient import PatientCreate, PatientUpdate
-from app.models.organization import MedicalScheme
 
 
-from sqlalchemy import or_, func  # 🌟 เพิ่ม func เข้ามา
+from sqlalchemy import func  # 🌟 เพิ่ม func เข้ามา
 
 
 def get_patients(db: Session, q: str = None, skip: int = 0, limit: int = 20):

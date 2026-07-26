@@ -4,7 +4,6 @@ from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.ihc_marker_option import IHCMarkerOption
 from app.schemas.ihc import NongyneIHCResultUpsert
-from typing import List
 
 
 def _sync_stain_status(db: Session, case_id: int, ap_test_id: int, has_result: bool) -> None:

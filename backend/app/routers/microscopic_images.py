@@ -2,7 +2,6 @@ import os
 import uuid
 from pathlib import Path
 from app.utils.file_handler import validate_and_sanitize
-from app import models
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session

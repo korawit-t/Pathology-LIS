@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from app.db.database import Base, engine, SessionLocal
-import app.models  # registers all models with Base.metadata via __init__.py
+import app.models  # noqa: F401 — registers all models with Base.metadata via __init__.py
 
 print("Creating tables...")
 Base.metadata.create_all(bind=engine)

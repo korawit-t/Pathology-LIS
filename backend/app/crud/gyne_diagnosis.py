@@ -4,7 +4,7 @@ from app.models.gyne_diagnosis import GyneDiagnosis, GyneSpecimenAdequacy, GyneD
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate, GyneDiagnosisUpdate
 from app.utils.consult_lock import assert_consult_not_locked
-from typing import Optional, List
+from typing import Optional
 
 
 # --- Master Data CRUD ---

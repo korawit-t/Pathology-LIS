@@ -23,16 +23,13 @@ from sqlalchemy import (
     String,
     DateTime,
     ForeignKey,
-    Boolean,
     Text,
     func,
     UniqueConstraint,
-    Index,
     Enum,
     JSON,
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from app.db.database import Base
 from app.enums.surgical_diagnosis_enums import DiagnosisLevel
 

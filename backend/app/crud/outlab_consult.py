@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException, status
-from datetime import datetime
 from app.utils.time import local_now
 
 from app.models.outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
