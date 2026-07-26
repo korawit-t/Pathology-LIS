@@ -25,6 +25,7 @@ import { usePatientSearch } from "../../../hooks/usePatientSearch";
 import { useCaseFileUpload } from "../../../hooks/useCaseFileUpload";
 import { useCaseLifecycleActions } from "../../../hooks/useCaseLifecycleActions";
 import { loadMasterData } from "../../../utils/caseMasterData";
+import { importHisPatient } from "../../../utils/hisPatientImport";
 import PatientFormModal from "../../../components/PatientFormModal";
 import HisPatientSearchModal from "../../SurgicalCase/components/HisPatientSearchModal";
 import NongynePrintPreviewModal from "./NongynePrintPreviewModal";
@@ -37,14 +38,12 @@ import SpecimenTemplateService from "../../../services/specimenTemplateService";
 import type { SpecimenTemplate } from "../../../services/specimenTemplateService";
 
 import NongyneCytologyCaseService from "../../../services/nongyneCytoCaseService";
-import PatientService from "../../../services/patientService";
 import HospitalService from "../../../services/hospitalService";
 import DepartmentService from "../../../services/departmentService";
 import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import logger from "../../../utils/logger";
 import { NongyneCytologyCase, NongyneCytologyCaseCreate, PatientRef } from "../../../types/nongyne";
-import type { Patient } from "../../../types/patient";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
 import type { Department } from "../../../types/department";
@@ -542,98 +541,19 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
         onSelect={async (record: HisPatientResult) => {
           setIsHisModalOpen(false);
           try {
-            const firstName = record.fname?.trim() || "";
-            const lastName = record.lname?.trim() || "";
-            let patient: Patient | null = null;
-
-            if (record.cid && record.cid.trim()) {
-              const existing = await PatientService.getPatients(record.cid);
-              patient = existing.find((p) => p.cid === record.cid);
-            }
-            if (!patient && firstName) {
-              const existing = await PatientService.getPatients(firstName);
-              patient = existing.find(
-                (p) => p.name === firstName && (p.ln || "") === lastName,
-              );
-            }
-            if (!patient) {
-              let gender: string | undefined;
-              if (record.gender_code === 1) gender = "Male";
-              else if (record.gender_code === 2) gender = "Female";
-
-              const matchedTitle = titles.find(
-                (t) => record.pname && t.title === record.pname,
-              );
-              patient = await PatientService.createPatient({
-                title_id: matchedTitle?.id || undefined,
-                name: firstName,
-                ln: lastName || undefined,
-                gender,
-                cid: record.cid || undefined,
-                birth_date: record.birthday
-                  ? record.birthday.split(" ")[0]
-                  : undefined,
+            const { patient, matchedHospitalId, matchedDepartmentId, matchedSchemeId, collectAt } =
+              await importHisPatient<PatientRef>(record, {
+                titles,
+                schemes,
+                departments,
+                hospitals,
+                setTitles,
+                setSchemes,
+                setDepartments,
+                setPatients,
+                backfillExistingPatientTitle: true,
               });
-              message.success(
-                `New patient created: ${firstName} ${lastName}`.trim(),
-              );
-            }
 
-            setPatients((prev) => {
-              const exists = prev.find((p) => p.id === patient.id);
-              return exists ? prev : [patient, ...prev];
-            });
-
-            const matchedHospitalId = hospitals[0]?.id;
-
-            let matchedDepartmentId: number | undefined;
-            if (record.department?.trim()) {
-              const existing = departments.find((d) => {
-                const dn = d.name?.toLowerCase().trim() ?? "";
-                const rn = record.department!.toLowerCase().trim();
-                return dn === rn || dn.includes(rn) || rn.includes(dn);
-              });
-              if (existing) {
-                matchedDepartmentId = existing.id;
-              } else {
-                const created = await DepartmentService.createDepartment({
-                  name: record.department.trim(),
-                  is_active: true,
-                });
-                matchedDepartmentId = created.id;
-                setDepartments((prev) => [...prev, created]);
-                message.info(`New department added: ${created.name}`);
-              }
-            }
-
-            let matchedSchemeId: number | undefined;
-            if (record.pttype?.trim()) {
-              const pt = record.pttype.trim().toLowerCase();
-              const existing = schemes.find(
-                (s) =>
-                  s.name?.toLowerCase() === pt ||
-                  s.name?.toLowerCase().includes(pt) ||
-                  pt.includes(s.name?.toLowerCase() ?? ""),
-              );
-              if (existing) {
-                matchedSchemeId = existing.id;
-              } else {
-                try {
-                  const created = await MedicalSchemeService.createScheme({
-                    name: record.pttype.trim(),
-                  });
-                  matchedSchemeId = created.id;
-                  setSchemes((prev) => [...prev, created]);
-                  message.info(`เพิ่มสิทธิ์การรักษาใหม่: ${created.name}`);
-                } catch {
-                  /* ไม่มีสิทธิ์สร้าง */
-                }
-              }
-            }
-
-            const dayObj = record.order_date
-              ? dayjs(record.order_date)
-              : undefined;
             form.setFieldsValue({
               patient_id: patient.id,
               hn: record.hn || undefined,
@@ -641,12 +561,17 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
               department_id: matchedDepartmentId,
               medical_scheme_id: matchedSchemeId,
               clinician_name: record.doctor || undefined,
-              collect_at: dayObj?.isValid() ? dayObj : undefined,
+              collect_at: collectAt?.isValid() ? collectAt : undefined,
               lab_number: record.lab_order_number || undefined,
             });
             message.success("HIS data imported successfully");
-          } catch (err: any) {
-            message.error("Failed to import HIS data: " + (err.message || ""));
+          } catch (err: unknown) {
+            logger.error("HIS patient select error:", err);
+            const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+            message.error(
+              "Failed to import HIS data: " +
+                (axiosErr.response?.data?.detail || axiosErr.message || ""),
+            );
           }
         }}
       />
