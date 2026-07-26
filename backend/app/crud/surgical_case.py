@@ -14,6 +14,7 @@ from app.schemas.surgical_case import SurgicalCaseCreate, SurgicalCaseUpdate
 from app.models.patient import Patient
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import SurgicalReport, ReportSigner
+from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 
 
 def _get_next_accession_no(db: Session) -> str:
@@ -911,3 +912,72 @@ def get_dashboard_summary(db: Session) -> dict:
             "express_days": express_tat_days,
         },
     }
+
+
+def get_workload_summary(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> dict:
+    """Workload statistics: cases, blocks, stain counts, consults — filtered by registration date.
+    Pass pathologist_id to restrict to a specific pathologist's personal workload."""
+    from datetime import time
+
+    filters = [SurgicalCase.is_cancelled == False]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    case_filter = and_(*filters)
+
+    total_cases = db.query(func.count(SurgicalCase.id)).filter(case_filter).scalar() or 0
+
+    signed_cases = (
+        db.query(func.count(SurgicalCase.id.distinct()))
+        .join(SurgicalDiagnosis, SurgicalDiagnosis.case_id == SurgicalCase.id)
+        .filter(case_filter, SurgicalDiagnosis.status == "signed")
+        .scalar() or 0
+    ) if pathologist_id is not None else None
+
+    total_blocks = (
+        db.query(func.count(SurgicalBlock.id))
+        .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+        .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+        .filter(case_filter)
+        .scalar() or 0
+    )
+
+    def _stain_count(*extra_filters):
+        return (
+            db.query(func.count(SurgicalBlockStain.id))
+            .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+            .join(SurgicalBlock, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .join(SurgicalCase, SurgicalSpecimen.case_id == SurgicalCase.id)
+            .filter(case_filter, *extra_filters)
+            .scalar() or 0
+        )
+
+    he_slides = _stain_count(AnatomicalPathologyTest.name.ilike("%H&E%"))
+    special_stain_slides = _stain_count(
+        AnatomicalPathologyTest.category == "Histochem",
+        ~AnatomicalPathologyTest.name.ilike("%H&E%"),
+    )
+    ihc_slides = _stain_count(AnatomicalPathologyTest.category == "IHC")
+
+    consult_cases = (
+        db.query(func.count(SurgicalCase.id))
+        .filter(case_filter, SurgicalCase.is_out_lab_consult == True)
+        .scalar() or 0
+    )
+
+    result = {
+        "total_cases": total_cases,
+        "total_blocks": total_blocks,
+        "he_slides": he_slides,
+        "special_stain_slides": special_stain_slides,
+        "ihc_slides": ihc_slides,
+        "consult_cases": consult_cases,
+    }
+    if signed_cases is not None:
+        result["signed_cases"] = signed_cases
+    return result
