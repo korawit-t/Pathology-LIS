@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useState, useMemo } from "react";
-import { sanitizeHtml } from "../../utils/sanitize";
 import {
   Form,
   Input,
   Select,
   Button,
-  Descriptions,
   Tag,
   Space,
   message,
@@ -29,16 +27,13 @@ import {
   WarningOutlined,
   ExclamationCircleOutlined,
   AlertOutlined,
-  CameraOutlined,
-  DeleteOutlined,
-  PlusOutlined,
   ExperimentOutlined,
   EyeOutlined,
   PictureOutlined,
   UserOutlined,
-  EditOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import type { UserRole } from "../../constants/roles.constants";
 
 import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
@@ -48,10 +43,9 @@ import NongyneReportService from "../../services/nongyneReportService";
 import NongyneCaseImageService, {
   NongyneCaseImage,
 } from "../../services/nongyneCaseImageService";
-import { API_BASE_URL } from "../../services/httpClient";
 import UserService from "../../services/userService";
-import { NongyneDiagnosisResponse } from "../../types/nongyneDiagnosis";
-import { NongyneCytologyCase } from "../../types/nongyne";
+import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
+import { NongyneCytologyCase, NongyneCytologyCaseUpdate } from "../../types/nongyne";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
 import PatientInfoCard from "../../components/PatientInfoCard";
@@ -63,12 +57,14 @@ import ConsultHistorySection from "../../components/InternalConsult/ConsultHisto
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import NongyneIHCResultPanel from "./components/NongyneIHCResultPanel";
 import NongyneCytologyImageCaptureModal from "./components/NongyneCytologyImageCaptureModal";
+import NongyneFinalizedResultCard from "./components/NongyneFinalizedResultCard";
+import NongyneCytologyImageGrid from "./components/NongyneCytologyImageGrid";
 import logger from "../../utils/logger";
-import SecureImage from "../../components/SecureImage";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
+import { toPathologistOptions } from "../../utils/pathologistOptions";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -77,6 +73,22 @@ interface NongyneDiagnosisEntryPageProps {
   caseId?: string | number;
   onBack?: () => void;
 }
+
+// Form values for onFinish: the case-level fields (saved via
+// NongyneCytologyCaseService.update) plus everything NongyneDiagnosisUpdate
+// covers (saved via NongyneDiagnosisService.update/create) — the form mixes
+// both onto one antd <Form>, so onFinish receives the union. Kept local
+// (not imported from the Pathologist sibling, which has its own identical
+// definition) — page-local shapes like this aren't centralized elsewhere in
+// this codebase either.
+type NongyneOnFinishValues = NongyneDiagnosisUpdate & {
+  clinical_history?: string | null;
+  specimen_type?: string;
+  collection_site?: string | null;
+  received_volume_ml?: string | null;
+  has_malignancy?: boolean;
+  has_critical?: boolean;
+};
 
 const CASE_STATUS_CONFIG: Record<
   string,
@@ -158,7 +170,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   >(null);
   const [slideDispatchEnabled, setSlideDispatchEnabled] = useState(true);
 
-  const PATHO_ROLES: import("../../constants/roles.constants").UserRole[] = [
+  const PATHO_ROLES: UserRole[] = [
     "pathologist",
     "senior_pathologist",
   ];
@@ -269,10 +281,10 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
     fetchImages();
     NongyneReportService.getReportsByCase(Number(caseId))
       .then((reports) => {
-        const active = reports.find((r: any) =>
+        const active = reports.find((r) =>
           ["pending_approval", "published"].includes(r.status),
         );
-        setActiveReportId((active as any)?.id ?? null);
+        setActiveReportId(active?.id ?? null);
       })
       .catch((e) => logger.error(e));
   }, [caseId]);
@@ -319,50 +331,61 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const isFormMode = !diagnosis || !isFinalized;
   const isFormLocked = isFinalized;
 
-  const onFinish = async (values: any) => {
+  // Shared by onFinish, handlePathologistPickerConfirm, and handlePreviewPdf
+  // — all three save the same case-level fields + diagnosis update/create,
+  // just with different extra case fields and different post-save behavior
+  // (which stays visible at each call site, not hidden in here).
+  const persistDraft = async (
+    values: NongyneOnFinishValues,
+    extraCaseFields: Partial<NongyneCytologyCaseUpdate> = {},
+  ) => {
+    const {
+      clinical_history,
+      specimen_type,
+      collection_site,
+      received_volume_ml,
+      has_malignancy,
+      has_critical,
+      signers: _s,
+      ...diagnosisValues
+    } = values;
+
+    await NongyneCytologyCaseService.update(Number(caseId), {
+      clinical_history: clinical_history ?? null,
+      specimen_type,
+      collection_site: collection_site ?? null,
+      received_volume_ml: received_volume_ml ?? null,
+      has_malignancy: has_malignancy ?? false,
+      has_critical: has_critical ?? false,
+      ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
+      ...extraCaseFields,
+    });
+
+    if (diagnosis) {
+      await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
+    } else {
+      await NongyneDiagnosisService.create({
+        ...diagnosisValues,
+        case_id: Number(caseId),
+      });
+    }
+
+    return {
+      clinical_history,
+      specimen_type,
+      collection_site,
+      received_volume_ml,
+      has_malignancy,
+      has_critical,
+    };
+  };
+
+  const onFinish = async (values: NongyneOnFinishValues) => {
     try {
       setSubmitting(true);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _signers,
-        ...diagnosisValues
-      } = values;
-
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
-      });
-      setCaseData((prev) => ({
-        ...prev,
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-      }));
-
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-        message.success("Draft saved.");
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-        message.success("Draft saved.");
-      }
+      const savedFields = await persistDraft(values);
+      setCaseData((prev) => ({ ...prev, ...savedFields }));
+      message.success("Draft saved.");
       fetchDiagnosis();
     } catch (err) {
       logger.error(err);
@@ -385,38 +408,11 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
       // Save current form values as draft first
       const values = form.getFieldsValue();
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _s,
-        ...diagnosisValues
-      } = values;
-
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
+      await persistDraft(values, {
         pathologist_id: selectedPathologistId,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
         is_screened: true,
         ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
       });
-
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-      }
 
       setPathologistPickerOpen(false);
       message.success("Case sent to pathologist successfully");
@@ -434,33 +430,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       setLoading(true);
       // Auto-save current form values so PDF reflects latest edits
       const values = form.getFieldsValue();
-      const {
-        clinical_history,
-        specimen_type,
-        collection_site,
-        received_volume_ml,
-        has_malignancy,
-        has_critical,
-        signers: _s,
-        ...diagnosisValues
-      } = values;
-      await NongyneCytologyCaseService.update(Number(caseId), {
-        clinical_history: clinical_history ?? null,
-        specimen_type,
-        collection_site: collection_site ?? null,
-        received_volume_ml: received_volume_ml ?? null,
-        has_malignancy: has_malignancy ?? false,
-        has_critical: has_critical ?? false,
-        ...(currentUser?.id ? { cytotechnologist_id: currentUser.id } : {}),
-      });
-      if (diagnosis) {
-        await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
-      } else {
-        await NongyneDiagnosisService.create({
-          ...diagnosisValues,
-          case_id: Number(caseId),
-        });
-      }
+      await persistDraft(values);
       const blob = await NongyneDiagnosisService.previewReportPdf(
         Number(caseId),
       );
@@ -645,128 +615,12 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
         {/* ── Finalized read-only view ── */}
         {diagnosis && isFinalized && (
-          <StyledCard styles={{ body: { padding: "20px 24px" } }}>
-            <Descriptions
-              title={
-                <Space>
-                  <CheckCircleOutlined style={{ color: "#52c41a" }} />
-                  <Text strong style={{ fontSize: 15 }}>
-                    Reported Result
-                  </Text>
-                  {diagnosis.diagnosis_at && (
-                    <Text
-                      type="secondary"
-                      style={{ fontSize: 12, fontWeight: 400 }}
-                    >
-                      —{" "}
-                      {dayjs(diagnosis.diagnosis_at).format(
-                        "DD MMM YYYY HH:mm",
-                      )}
-                    </Text>
-                  )}
-                </Space>
-              }
-              column={1}
-              bordered
-              size="small"
-              labelStyle={{
-                width: 220,
-                fontWeight: 600,
-                background: "#fafafa",
-              }}
-            >
-              <Descriptions.Item label="Specimen / Site">
-                <Space size={8}>
-                  <Tag color={specimenColor} style={{ fontWeight: 600 }}>
-                    {caseData?.specimen_type || "—"}
-                  </Tag>
-                  {caseData?.collection_site && (
-                    <Text type="secondary">{caseData.collection_site}</Text>
-                  )}
-                </Space>
-              </Descriptions.Item>
-              {caseData?.received_volume_ml && (
-                <Descriptions.Item label="Received Volume">
-                  {caseData.received_volume_ml} ml
-                </Descriptions.Item>
-              )}
-              {caseData?.clinical_history && (
-                <Descriptions.Item label="Clinical History">
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(caseData.clinical_history),
-                    }}
-                  />
-                </Descriptions.Item>
-              )}
-              {diagnosis.gross_description && (
-                <Descriptions.Item label="Gross Description">
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.gross_description),
-                    }}
-                  />
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="Microscopic Description">
-                {diagnosis.microscopic_description ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.microscopic_description),
-                    }}
-                  />
-                ) : (
-                  <Text>—</Text>
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label="Diagnosis">
-                {diagnosis.diagnosis ? (
-                  <div
-                    style={{ fontWeight: 500 }}
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.diagnosis),
-                    }}
-                  />
-                ) : (
-                  <Text>—</Text>
-                )}
-              </Descriptions.Item>
-              {diagnosis.comment && (
-                <Descriptions.Item label="Comment">
-                  <Text style={{ whiteSpace: "pre-wrap" }}>
-                    {diagnosis.comment}
-                  </Text>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-            {images.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text strong style={{ fontSize: 12, color: "#722ed1" }}>
-                  Cytology Images
-                </Text>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginTop: 8,
-                  }}
-                >
-                  {images
-                    .filter((i) => i.show_in_report)
-                    .map((img) => (
-                      <SecureImage
-                        key={img.id}
-                        src={`${API_BASE_URL}${img.image_url}`}
-                        width={140}
-                        height={110}
-                        style={{ objectFit: "cover", borderRadius: 4 }}
-                      />
-                    ))}
-                </div>
-              </div>
-            )}
-          </StyledCard>
+          <NongyneFinalizedResultCard
+            diagnosis={diagnosis}
+            caseData={caseData}
+            images={images}
+            specimenColor={specimenColor}
+          />
         )}
 
         {/* ── Edit / Create Form ── */}
@@ -1083,104 +937,22 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                         />
                       </Form.Item>
                     </section>
-                    <section>
-                      <div style={{ marginBottom: 8 }}>
-                        <Space>
-                          <CameraOutlined style={{ color: "#595959" }} />
-                          <Text strong style={{ textTransform: "uppercase" }}>
-                            Cytology Images
-                          </Text>
-                        </Space>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 12,
-                          marginBottom: images.length > 0 ? 12 : 0,
-                        }}
-                      >
-                        {images.map((img) => (
-                          <div
-                            key={img.id}
-                            style={{ position: "relative", width: 160 }}
-                          >
-                            <SecureImage
-                              src={`${API_BASE_URL}${img.image_url}`}
-                              width={160}
-                              height={120}
-                              style={{
-                                objectFit: "cover",
-                                borderRadius: 4,
-                                border: "1px solid #d9d9d9",
-                              }}
-                              preview={true}
-                            />
-                            <Input
-                              size="small"
-                              placeholder="Description..."
-                              value={descMap[img.id] ?? ""}
-                              disabled={isFormLocked}
-                              style={{ marginTop: 4, fontSize: 11 }}
-                              onChange={(e) =>
-                                setDescMap((prev) => ({
-                                  ...prev,
-                                  [img.id]: e.target.value,
-                                }))
-                              }
-                              onBlur={() => saveDesc(img.id)}
-                              onPressEnter={() => saveDesc(img.id)}
-                            />
-                            <div
-                              style={{ display: "flex", gap: 6, marginTop: 4 }}
-                            >
-                              <Switch
-                                size="small"
-                                checked={img.show_in_report}
-                                checkedChildren="In Report"
-                                unCheckedChildren="Hidden"
-                                onChange={async (checked) => {
-                                  await NongyneCaseImageService.update(img.id, {
-                                    show_in_report: checked,
-                                  });
-                                  fetchImages();
-                                }}
-                              />
-                              {!isFormLocked && (
-                                <Button
-                                  size="small"
-                                  icon={<EditOutlined />}
-                                  onClick={() => {
-                                    setEditingImage(img);
-                                    setImageCaptureOpen(true);
-                                  }}
-                                />
-                              )}
-                              <Button
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={async () => {
-                                  await NongyneCaseImageService.delete(img.id);
-                                  fetchImages();
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {!isFormLocked && (
-                        <Button
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            setEditingImage(null);
-                            setImageCaptureOpen(true);
-                          }}
-                        >
-                          Capture / Upload Image
-                        </Button>
-                      )}
-                    </section>
+                    <NongyneCytologyImageGrid
+                      images={images}
+                      descMap={descMap}
+                      setDescMap={setDescMap}
+                      saveDesc={saveDesc}
+                      fetchImages={fetchImages}
+                      disabled={isFormLocked}
+                      onEditImage={(img) => {
+                        setEditingImage(img);
+                        setImageCaptureOpen(true);
+                      }}
+                      onAddImage={() => {
+                        setEditingImage(null);
+                        setImageCaptureOpen(true);
+                      }}
+                    />
                   </div>
                 </Col>
               </Row>
@@ -1243,10 +1015,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                   onSuccess={() => setConsultHistoryKey((k) => k + 1)}
                   caseType="nongyne"
                   reportId={activeReportId}
-                  pathologists={allUsers.map((u) => ({
-                    value: u.id,
-                    label: u.full_name ?? u.username ?? String(u.id),
-                  }))}
+                  pathologists={toPathologistOptions(allUsers)}
                 />
               </>
             )}

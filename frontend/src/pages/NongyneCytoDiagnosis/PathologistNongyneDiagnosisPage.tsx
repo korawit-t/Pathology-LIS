@@ -5,7 +5,6 @@ import {
   Input,
   Select,
   Button,
-  Descriptions,
   Tag,
   Space,
   message,
@@ -23,15 +22,12 @@ import {
 import {
   SaveOutlined,
   ArrowLeftOutlined,
-  EditOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
   LockOutlined,
   WarningOutlined,
   ExclamationCircleOutlined,
   AlertOutlined,
-  CameraOutlined,
-  DeleteOutlined,
   PlusOutlined,
   ExperimentOutlined,
   EyeOutlined,
@@ -47,7 +43,6 @@ import NongyneReportService from "../../services/nongyneReportService";
 import NongyneCaseImageService, {
   NongyneCaseImage,
 } from "../../services/nongyneCaseImageService";
-import { API_BASE_URL } from "../../services/httpClient";
 import UserService from "../../services/userService";
 import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
@@ -63,9 +58,10 @@ import ConsultHistorySection from "../../components/InternalConsult/ConsultHisto
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import NongyneIHCResultPanel from "./components/NongyneIHCResultPanel";
 import NongyneCompletedCaseModal from "./components/NongyneCompletedCaseModal";
+import NongyneFinalizedResultCard from "./components/NongyneFinalizedResultCard";
+import NongyneCytologyImageGrid from "./components/NongyneCytologyImageGrid";
 import NongyneCytologyImageCaptureModal from "./components/NongyneCytologyImageCaptureModal";
 import logger from "../../utils/logger";
-import SecureImage from "../../components/SecureImage";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
@@ -846,128 +842,12 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
 
         {/* ── Finalized read-only view ── */}
         {diagnosis && isFinalized && !isAddendumMode && diagnosis.diagnosis && (
-          <StyledCard styles={{ body: { padding: "20px 24px" } }}>
-            <Descriptions
-              title={
-                <Space>
-                  <CheckCircleOutlined style={{ color: "#52c41a" }} />
-                  <Text strong style={{ fontSize: 15 }}>
-                    Reported Result
-                  </Text>
-                  {diagnosis.diagnosis_at && (
-                    <Text
-                      type="secondary"
-                      style={{ fontSize: 12, fontWeight: 400 }}
-                    >
-                      —{" "}
-                      {dayjs(diagnosis.diagnosis_at).format(
-                        "DD MMM YYYY HH:mm",
-                      )}
-                    </Text>
-                  )}
-                </Space>
-              }
-              column={1}
-              bordered
-              size="small"
-              labelStyle={{
-                width: 220,
-                fontWeight: 600,
-                background: "#fafafa",
-              }}
-            >
-              <Descriptions.Item label="Specimen / Site">
-                <Space size={8}>
-                  <Tag color={specimenColor} style={{ fontWeight: 600 }}>
-                    {caseData?.specimen_type || "—"}
-                  </Tag>
-                  {caseData?.collection_site && (
-                    <Text type="secondary">{caseData.collection_site}</Text>
-                  )}
-                </Space>
-              </Descriptions.Item>
-              {caseData?.received_volume_ml && (
-                <Descriptions.Item label="Received Volume">
-                  {caseData.received_volume_ml} ml
-                </Descriptions.Item>
-              )}
-              {caseData?.clinical_history && (
-                <Descriptions.Item label="Clinical History">
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(caseData.clinical_history),
-                    }}
-                  />
-                </Descriptions.Item>
-              )}
-              {diagnosis.gross_description && (
-                <Descriptions.Item label="Gross Description">
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.gross_description),
-                    }}
-                  />
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="Microscopic Description">
-                {diagnosis.microscopic_description ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.microscopic_description),
-                    }}
-                  />
-                ) : (
-                  <Text>—</Text>
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label="Diagnosis">
-                {diagnosis.diagnosis ? (
-                  <div
-                    style={{ fontWeight: 500 }}
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHtml(diagnosis.diagnosis),
-                    }}
-                  />
-                ) : (
-                  <Text>—</Text>
-                )}
-              </Descriptions.Item>
-              {diagnosis.comment && (
-                <Descriptions.Item label="Comment">
-                  <Text style={{ whiteSpace: "pre-wrap" }}>
-                    {diagnosis.comment}
-                  </Text>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-            {images.filter((i) => i.show_in_report).length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text strong style={{ fontSize: 12, color: "#722ed1" }}>
-                  Cytology Images
-                </Text>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginTop: 8,
-                  }}
-                >
-                  {images
-                    .filter((i) => i.show_in_report)
-                    .map((img) => (
-                      <SecureImage
-                        key={img.id}
-                        src={`${API_BASE_URL}${img.image_url}`}
-                        width={140}
-                        height={110}
-                        style={{ objectFit: "cover", borderRadius: 4 }}
-                      />
-                    ))}
-                </div>
-              </div>
-            )}
-          </StyledCard>
+          <NongyneFinalizedResultCard
+            diagnosis={diagnosis}
+            caseData={caseData}
+            images={images}
+            specimenColor={specimenColor}
+          />
         )}
 
         {/* ── Edit / Create Form ── */}
@@ -1319,104 +1199,22 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                         />
                       </Form.Item>
                     </section>
-                    <section>
-                      <div style={{ marginBottom: 8 }}>
-                        <Space>
-                          <CameraOutlined style={{ color: "#595959" }} />
-                          <Text strong style={{ textTransform: "uppercase" }}>
-                            Cytology Images
-                          </Text>
-                        </Space>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 12,
-                          marginBottom: images.length > 0 ? 12 : 0,
-                        }}
-                      >
-                        {images.map((img) => (
-                          <div
-                            key={img.id}
-                            style={{ position: "relative", width: 160 }}
-                          >
-                            <SecureImage
-                              src={`${API_BASE_URL}${img.image_url}`}
-                              width={160}
-                              height={120}
-                              style={{
-                                objectFit: "cover",
-                                borderRadius: 4,
-                                border: "1px solid #d9d9d9",
-                              }}
-                              preview={true}
-                            />
-                            <Input
-                              size="small"
-                              placeholder="Description..."
-                              value={descMap[img.id] ?? ""}
-                              disabled={isEditorLocked}
-                              style={{ marginTop: 4, fontSize: 11 }}
-                              onChange={(e) =>
-                                setDescMap((prev) => ({
-                                  ...prev,
-                                  [img.id]: e.target.value,
-                                }))
-                              }
-                              onBlur={() => saveDesc(img.id)}
-                              onPressEnter={() => saveDesc(img.id)}
-                            />
-                            <div
-                              style={{ display: "flex", gap: 6, marginTop: 4 }}
-                            >
-                              <Switch
-                                size="small"
-                                checked={img.show_in_report}
-                                checkedChildren="In Report"
-                                unCheckedChildren="Hidden"
-                                onChange={async (checked) => {
-                                  await NongyneCaseImageService.update(img.id, {
-                                    show_in_report: checked,
-                                  });
-                                  fetchImages();
-                                }}
-                              />
-                              {!isEditorLocked && (
-                                <Button
-                                  size="small"
-                                  icon={<EditOutlined />}
-                                  onClick={() => {
-                                    setEditingImage(img);
-                                    setImageCaptureOpen(true);
-                                  }}
-                                />
-                              )}
-                              <Button
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={async () => {
-                                  await NongyneCaseImageService.delete(img.id);
-                                  fetchImages();
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {!isEditorLocked && (
-                        <Button
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            setEditingImage(null);
-                            setImageCaptureOpen(true);
-                          }}
-                        >
-                          Capture / Upload Image
-                        </Button>
-                      )}
-                    </section>
+                    <NongyneCytologyImageGrid
+                      images={images}
+                      descMap={descMap}
+                      setDescMap={setDescMap}
+                      saveDesc={saveDesc}
+                      fetchImages={fetchImages}
+                      disabled={isEditorLocked}
+                      onEditImage={(img) => {
+                        setEditingImage(img);
+                        setImageCaptureOpen(true);
+                      }}
+                      onAddImage={() => {
+                        setEditingImage(null);
+                        setImageCaptureOpen(true);
+                      }}
+                    />
                   </div>
                 </Col>
               </Row>
