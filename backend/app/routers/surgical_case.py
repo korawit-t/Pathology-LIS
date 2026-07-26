@@ -31,11 +31,6 @@ from app.db.database import get_db
 from app.models.user import User
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_request_file import SurgicalRequestFile
-from app.models.surgical_specimen import SurgicalSpecimen
-from app.models.surgical_block import SurgicalBlock
-from app.models.surgical_block_stain import SurgicalBlockStain
-from app.models.anatomical_pathology_test import AnatomicalPathologyTest
-from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import SurgicalReport
 from app.schemas.surgical_case import (
     SurgicalCaseCreate,
