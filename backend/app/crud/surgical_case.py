@@ -1211,3 +1211,175 @@ def get_slide_quality_stats(db: Session, start_date: str, end_date: str) -> dict
         key = val if val in result else "unspecified"
         result[key] += cnt
     return {"total": sum(result.values()), "slide_quality": result, "stain_quality": None}
+
+
+def _tat_bucket(tat_days: float) -> str:
+    """Shared by get_tat_stats and get_tat_cases — previously each
+    reimplemented this boundary rule independently (a drift risk if one
+    were ever edited without the other)."""
+    if tat_days < 3:
+        return "lt3"
+    elif tat_days < 5:
+        return "t3_5"
+    elif tat_days <= 10:
+        return "t5_10"
+    return "gt10"
+
+
+def get_tat_stats(db: Session, date_from=None, date_to=None, pathologist_id: int = None) -> dict:
+    """TAT statistics: average business days (weekends/holidays excluded), distribution buckets, monthly breakdown."""
+    from collections import defaultdict
+    from datetime import time
+    from app.models.system_setting import SystemSetting
+    from app.utils.tat import get_holiday_dates, business_days_between
+
+    setting = db.query(SystemSetting).first()
+    target_days = (setting.surgical_tat_days if setting else None) or 10
+    express_target_days = (setting.surgical_express_tat_days if setting else None) or 3
+    holidays = get_holiday_dates(db)
+
+    filters = [
+        SurgicalCase.is_cancelled == False,
+        SurgicalCase.report_at.isnot(None),
+        SurgicalCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+
+    cases = (
+        db.query(
+            SurgicalCase.id,
+            SurgicalCase.registered_at,
+            SurgicalCase.report_at,
+            SurgicalCase.is_express,
+        )
+        .filter(*filters)
+        .all()
+    )
+
+    empty_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    if not cases:
+        return {
+            "avg_tat_days": 0,
+            "routine_avg_days": 0,
+            "express_avg_days": 0,
+            "total_reported": 0,
+            "on_time_count": 0,
+            "on_time_pct": 0,
+            "target_days": target_days,
+            "express_target_days": express_target_days,
+            "distribution": {**empty_dist},
+            "routine_distribution": {**empty_dist},
+            "express_distribution": {**empty_dist},
+            "monthly": [],
+        }
+
+    monthly_map: dict = defaultdict(lambda: {"count": 0, "total_days": 0.0})
+    dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    express_dist = {"lt3": 0, "t3_5": 0, "t5_10": 0, "gt10": 0}
+    routine_total, routine_n = 0.0, 0
+    express_total, express_n = 0.0, 0
+    on_time_count = 0
+
+    for c in cases:
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
+        month_key = c.registered_at.strftime("%Y-%m")
+        monthly_map[month_key]["count"] += 1
+        monthly_map[month_key]["total_days"] += tat
+
+        t = express_target_days if c.is_express else target_days
+        if tat <= t:
+            on_time_count += 1
+
+        sub_dist = express_dist if c.is_express else routine_dist
+        if c.is_express:
+            express_total += tat
+            express_n += 1
+        else:
+            routine_total += tat
+            routine_n += 1
+
+        for d in (dist, sub_dist):
+            d[_tat_bucket(tat)] += 1
+
+    total_n = len(cases)
+    grand_total = routine_total + express_total
+
+    return {
+        "avg_tat_days": round(grand_total / total_n, 1),
+        "routine_avg_days": round(routine_total / routine_n, 1) if routine_n else 0,
+        "express_avg_days": round(express_total / express_n, 1) if express_n else 0,
+        "total_reported": total_n,
+        "on_time_count": on_time_count,
+        "on_time_pct": round(on_time_count / total_n * 100, 1),
+        "target_days": target_days,
+        "express_target_days": express_target_days,
+        "distribution": dist,
+        "routine_distribution": routine_dist,
+        "express_distribution": express_dist,
+        "monthly": [
+            {
+                "month": k,
+                "case_count": v["count"],
+                "avg_days": round(v["total_days"] / v["count"], 1),
+            }
+            for k, v in sorted(monthly_map.items())
+        ],
+    }
+
+
+def get_tat_cases(db: Session, bucket: str, date_from=None, date_to=None, pathologist_id: int = None, is_express: bool = None) -> list:
+    """List cases (accession_no, patient, tat days) belonging to a TAT distribution bucket."""
+    from datetime import time
+    from app.models.patient import Patient
+    from app.utils.tat import get_holiday_dates, business_days_between
+
+    holidays = get_holiday_dates(db)
+
+    filters = [
+        SurgicalCase.is_cancelled == False,
+        SurgicalCase.report_at.isnot(None),
+        SurgicalCase.registered_at.isnot(None),
+    ]
+    if date_from:
+        filters.append(SurgicalCase.registered_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        filters.append(SurgicalCase.registered_at <= datetime.combine(date_to, time.max))
+    if pathologist_id is not None:
+        filters.append(SurgicalCase.pathologist_id == pathologist_id)
+    if is_express is not None:
+        filters.append(SurgicalCase.is_express == is_express)
+
+    cases = (
+        db.query(SurgicalCase)
+        .join(Patient)
+        .filter(*filters)
+        .order_by(SurgicalCase.registered_at.desc())
+        .all()
+    )
+
+    result = []
+    for c in cases:
+        tat = business_days_between(c.registered_at, c.report_at, holidays)
+        if _tat_bucket(tat) != bucket:
+            continue
+        result.append(
+            {
+                "id": c.id,
+                "accession_no": c.accession_no,
+                "patient_title": c.patient.title.title if c.patient and c.patient.title else None,
+                "patient_name": c.patient.name if c.patient else "Unknown",
+                "patient_ln": c.patient.ln if c.patient else None,
+                "registered_at": c.registered_at,
+                "report_at": c.report_at,
+                "tat_days": round(tat, 1),
+                "is_express": c.is_express,
+            }
+        )
+
+    return result
