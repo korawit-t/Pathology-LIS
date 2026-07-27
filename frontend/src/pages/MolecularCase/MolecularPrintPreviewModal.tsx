@@ -3,6 +3,7 @@ import { Modal, Button, Spin, Empty, Typography } from "antd";
 import { PrinterOutlined } from "@ant-design/icons";
 import { useStickerPdf } from "../../hooks/useStickerPdf";
 import type { StickerLabelFields, StickerLabelStyle } from "../../utils/stickerLabel";
+import type { PrintPreviewModalProps } from "../../types/printPreviewModal";
 
 const { Text } = Typography;
 
@@ -18,11 +19,7 @@ export interface MolecularStickerData {
   registered_at?: string | null;
 }
 
-interface MolecularPrintPreviewModalProps {
-  open: boolean;
-  onCancel: () => void;
-  data: MolecularStickerData | null;
-}
+type MolecularPrintPreviewModalProps = PrintPreviewModalProps<MolecularStickerData>;
 
 const STICKER_STYLE: StickerLabelStyle = {
   accessionBold: true,

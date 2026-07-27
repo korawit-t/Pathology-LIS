@@ -4,13 +4,10 @@ import { PrinterOutlined } from "@ant-design/icons";
 import { GyneCytologyCase } from "../../../types/gyne-cytology";
 import { useStickerPdf } from "../../../hooks/useStickerPdf";
 import type { StickerLabelFields, StickerLabelStyle } from "../../../utils/stickerLabel";
+import type { PrintPreviewModalProps } from "../../../types/printPreviewModal";
 const { Text } = Typography;
 
-interface GynePrintPreviewModalProps {
-  open: boolean;
-  onCancel: () => void;
-  data: GyneCytologyCase | null;
-}
+type GynePrintPreviewModalProps = PrintPreviewModalProps<GyneCytologyCase>;
 
 const STICKER_STYLE: StickerLabelStyle = {
   accessionBold: true,

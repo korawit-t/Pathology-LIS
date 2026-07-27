@@ -4,14 +4,11 @@ import { PrinterOutlined } from "@ant-design/icons";
 import { SurgicalCase } from "../../../../types/surgical";
 import { useStickerPdf } from "../../../../hooks/useStickerPdf";
 import type { StickerLabelFields, StickerLabelStyle } from "../../../../utils/stickerLabel";
+import type { PrintPreviewModalProps } from "../../../../types/printPreviewModal";
 
 const { Text } = Typography;
 
-interface PrintPreviewModalProps {
-  open: boolean;
-  onCancel: () => void;
-  data: SurgicalCase | null;
-}
+type SurgicalPrintPreviewModalProps = PrintPreviewModalProps<SurgicalCase>;
 
 const STICKER_STYLE: StickerLabelStyle = {
   accessionBold: false,
@@ -29,7 +26,7 @@ const STICKER_STYLE: StickerLabelStyle = {
   regDateFontSize: 6,
 };
 
-const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
+const PrintPreviewModal: React.FC<SurgicalPrintPreviewModalProps> = ({
   open,
   onCancel,
   data,
