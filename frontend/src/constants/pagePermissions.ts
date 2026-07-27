@@ -13,6 +13,7 @@ export type PageKey =
   | "print-sticker-he"
   | "slide-dispatch"
   | "staining-manager"
+  | "he-control-slide"
   | "pathologist-page"
   | "surgical-report-form"
   | "all-report"
@@ -81,6 +82,7 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "print-sticker-he": ["histo", "lab_manager", "admin"],
   "slide-dispatch": ["histo", "lab_manager", "admin"],
   "staining-manager": ["histo", "lab_manager", "admin"],
+  "he-control-slide": ["histo", "lab_manager", "admin"],
   "molecular-cases": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
   "specimen-storage": ["gross", "histo", "lab_manager", "admin"],
   "block-storage": ["histo", "lab_manager", "admin"],

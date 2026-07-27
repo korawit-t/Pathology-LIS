@@ -26,6 +26,7 @@ from app.routers import (
     sectioning,
     surgical_block_stain,
     stain_run,
+    he_control_slide,
     surgical_diagnosis,
     surgical_report,
     microscopic_images,
@@ -257,6 +258,7 @@ app.include_router(system_setting.router)
 app.include_router(sectioning.router)
 app.include_router(surgical_block_stain.router)
 app.include_router(stain_run.router)
+app.include_router(he_control_slide.router)
 app.include_router(microscopic_images.router)
 app.include_router(diagnostic_templates.router)
 app.include_router(stain_panel.router)

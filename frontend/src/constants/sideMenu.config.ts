@@ -156,6 +156,12 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         roles: PAGE_PERMISSIONS["staining-manager"],
       },
       {
+        key: "he-control-slide",
+        label: "H&E Control Slide",
+        view: "he-control-slide",
+        roles: PAGE_PERMISSIONS["he-control-slide"],
+      },
+      {
         key: "slide-dispatch",
         label: "Slide Dispatch",
         view: "slide-dispatch",
