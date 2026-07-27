@@ -784,7 +784,7 @@ const UnifiedAccession: React.FC = () => {
       />
       <PrintPreviewModal
         open={surgPrint.open}
-        surgicalCase={surgPrint.data}
+        data={surgPrint.data}
         onCancel={() => setSurgPrint({ open: false, data: null })}
       />
 
