@@ -70,7 +70,7 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
     setShowEditor(true);
   };
   const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
-    useImageCapture(webcamRef, onCaptured);
+    useImageCapture(webcamRef, onCaptured, open);
 
   useEffect(() => {
     if (editingImage) {
@@ -206,7 +206,10 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
           {editingImage ? "Save Changes" : "Confirm & Upload"}
         </Button>,
       ]}
-      styles={{ body: { padding: showEditor ? 0 : 24 } }}
+      styles={{
+        header: { marginBottom: 4 },
+        body: { padding: showEditor ? 0 : 24, paddingTop: showEditor ? 0 : 8 },
+      }}
     >
       <input
         type="file"
@@ -278,6 +281,7 @@ const GyneCytologyImageCaptureModal: FC<GyneCytologyImageCaptureModalProps> = ({
                 ref={webcamRef}
                 mirrored={false}
                 screenshotFormat="image/jpeg"
+                forceScreenshotSourceSize
                 videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />

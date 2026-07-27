@@ -53,7 +53,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
     setShowEditor(true);
   };
   const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
-    useImageCapture(webcamRef, onCaptured);
+    useImageCapture(webcamRef, onCaptured, open);
 
   const triggerFileInput = () => {
     fileInputRef.current?.click();
@@ -146,7 +146,10 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
           Confirm & Upload
         </Button>,
       ]}
-      styles={{ body: { padding: showEditor ? 0 : 24 } }}
+      styles={{
+        header: { marginBottom: 4 },
+        body: { padding: showEditor ? 0 : 24, paddingTop: showEditor ? 0 : 8 },
+      }}
     >
       {showEditor && imageSrc ? (
         <ImageEditor
@@ -199,6 +202,7 @@ const GrossImageCaptureModal: FC<GrossImageCaptureModalProps> = ({
                 audio={false}
                 ref={webcamRef}
                 screenshotFormat="image/jpeg"
+                forceScreenshotSourceSize
                 videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />
