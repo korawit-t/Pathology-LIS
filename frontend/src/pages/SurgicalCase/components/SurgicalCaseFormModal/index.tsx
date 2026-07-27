@@ -586,7 +586,7 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
 
       <PrintPreviewModal
         open={isPrintModalOpen}
-        surgicalCase={caseData}
+        data={caseData}
         onCancel={() => {
           setIsPrintModalOpen(false);
           if (pendingResetRef.current) {

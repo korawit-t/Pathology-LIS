@@ -1,10 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useRef } from "react";
 import { Modal, Button, Spin, Empty, Typography } from "antd";
 import { PrinterOutlined } from "@ant-design/icons";
-import JsBarcode from "jsbarcode";
-import pdfMake from "../../pdfFonts";
-import dayjs from "dayjs";
-import logger from "../../utils/logger";
+import { useStickerPdf } from "../../hooks/useStickerPdf";
+import type { StickerLabelFields, StickerLabelStyle } from "../../utils/stickerLabel";
+import type { PrintPreviewModalProps } from "../../types/printPreviewModal";
 
 const { Text } = Typography;
 
@@ -20,105 +19,41 @@ export interface MolecularStickerData {
   registered_at?: string | null;
 }
 
-interface MolecularPrintPreviewModalProps {
-  open: boolean;
-  onCancel: () => void;
-  data: MolecularStickerData | null;
-}
+type MolecularPrintPreviewModalProps = PrintPreviewModalProps<MolecularStickerData>;
+
+const STICKER_STYLE: StickerLabelStyle = {
+  accessionBold: true,
+  accessionFontSize: 13,
+  barcodeImageHeight: 12,
+  patientNameBold: true,
+  patientNameNoWrap: true,
+  subLabelFontSize: 6.5,
+  regDateLabel: "Reg Date:",
+  regDateFontSize: 6.5,
+};
 
 const MolecularPrintPreviewModal: React.FC<MolecularPrintPreviewModalProps> = ({
   open,
   onCancel,
   data,
 }) => {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
-    if (open && data) {
-      generateMolecularSticker();
-    }
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  const fields = useMemo<StickerLabelFields | null>(() => {
+    if (!data) return null;
+    return {
+      accessionNo: data.accession_no,
+      hn: data.hn,
+      patientNameLine: data.patient_name || "-",
+      // Molecular test name (e.g. "EGFR MUTATION ANALYSIS") in place of
+      // hospital/specimen-type — the more useful thing to see on a
+      // Molecular label, since it names what's actually being tested.
+      subLabelText: (data.test_name || "MOLECULAR PATHOLOGY").toUpperCase(),
+      registeredAt: data.registered_at,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, data]);
+  }, [data]);
 
-  const generateMolecularSticker = () => {
-    if (!data) return;
-    setLoading(true);
-
-    try {
-      const canvas = document.createElement("canvas");
-      JsBarcode(canvas, data.accession_no, {
-        format: "CODE128",
-        displayValue: false,
-        height: 40,
-        margin: 0,
-      });
-      const barcodeBase64 = canvas.toDataURL();
-
-      // Same 142x70pt (~5x2.5cm) label size as Surgical/Gyne/Non-Gyne.
-      const docDefinition: any = {
-        pageSize: { width: 142, height: 70 },
-        pageMargins: [5, 4, 5, 2],
-        defaultStyle: { font: "Sarabun", fontSize: 8 },
-        content: [
-          {
-            columns: [
-              { text: data.accession_no, bold: true, fontSize: 13, color: "black" },
-              { text: `HN: ${data.hn || ""}`, alignment: "right", fontSize: 10 },
-            ],
-          },
-          {
-            image: barcodeBase64,
-            width: 120,
-            height: 12,
-            alignment: "center",
-            margin: [0, 1, 0, 0],
-          },
-          {
-            text: data.patient_name || "-",
-            fontSize: 9,
-            bold: true,
-            alignment: "center",
-            margin: [0, 2, 0, 0],
-            noWrap: true,
-          },
-          // Molecular test name (e.g. "EGFR MUTATION ANALYSIS") in place of
-          // hospital/specimen-type — the more useful thing to see on a
-          // Molecular label, since it names what's actually being tested.
-          {
-            text: (data.test_name || "MOLECULAR PATHOLOGY").toUpperCase(),
-            fontSize: 6.5,
-            alignment: "center",
-            color: "black",
-            margin: [0, 1, 0, 0],
-          },
-          {
-            text: `Reg Date: ${
-              data.registered_at ? dayjs(data.registered_at).format("DD/MM/YYYY") : "-"
-            }`,
-            fontSize: 6.5,
-            alignment: "center",
-            color: "black",
-            margin: [0, 0, 0, 0],
-          },
-        ],
-      };
-
-      const pdfDoc = (pdfMake as any).createPdf(docDefinition);
-      pdfDoc.getBlob((blob: Blob) => {
-        const url = URL.createObjectURL(blob);
-        setPdfUrl(url);
-        setLoading(false);
-      });
-    } catch (error) {
-      logger.error("Molecular PDF Error:", error);
-      setLoading(false);
-    }
-  };
+  const { pdfUrl, loading } = useStickerPdf(open, fields, STICKER_STYLE, "Molecular PDF Error:");
 
   const handlePrint = () => {
     iframeRef.current?.contentWindow?.print();
