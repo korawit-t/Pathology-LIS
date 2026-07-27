@@ -70,7 +70,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
     setShowEditor(true);
   };
   const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
-    useImageCapture(webcamRef, onCaptured);
+    useImageCapture(webcamRef, onCaptured, open);
 
   useEffect(() => {
     if (editingImage) {
@@ -205,7 +205,10 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
           {editingImage ? "Save Changes" : "Confirm & Upload"}
         </Button>,
       ]}
-      styles={{ body: { padding: showEditor ? 0 : 24 } }}
+      styles={{
+        header: { marginBottom: 4 },
+        body: { padding: showEditor ? 0 : 24, paddingTop: showEditor ? 0 : 8 },
+      }}
     >
       <input
         type="file"
@@ -277,6 +280,7 @@ const NongyneCytologyImageCaptureModal: FC<NongyneCytologyImageCaptureModalProps
                 ref={webcamRef}
                 mirrored={false}
                 screenshotFormat="image/jpeg"
+                forceScreenshotSourceSize
                 videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
                 className={styles.webcam}
               />

@@ -20,6 +20,7 @@ import { MAX_IMAGE_UPLOAD_BYTES } from "../constants/upload.constants";
 export function useImageCapture(
   webcamRef: RefObject<Webcam | null>,
   onCaptured: (dataUrl: string) => void,
+  open: boolean,
 ) {
   const { message } = App.useApp();
   const [hqMode, setHqMode] = useState(false);
@@ -29,6 +30,13 @@ export function useImageCapture(
   useEffect(() => {
     setHqSupported(isImageCaptureSupported());
   }, []);
+
+  // The modal component itself doesn't unmount when it closes (only its
+  // Modal children do, via destroyOnClose) — so this hook's state survives
+  // across opens/closes unless reset explicitly here.
+  useEffect(() => {
+    if (!open) setHqMode(false);
+  }, [open]);
 
   // Checked immediately after capture/file-select, before any crop/annotate
   // step — avoids wasting editor work on a file that ultimately can't upload.

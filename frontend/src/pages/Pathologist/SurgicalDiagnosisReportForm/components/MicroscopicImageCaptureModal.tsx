@@ -83,7 +83,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
     setShowEditor(true);
   };
   const { hqMode, setHqMode, hqSupported, capturing, capture, handleFileChange } =
-    useImageCapture(webcamRef, onCaptured);
+    useImageCapture(webcamRef, onCaptured, open);
 
   const triggerFileSelect = () => {
     fileInputRef.current?.click();
@@ -210,7 +210,10 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
           {editingImage ? "Save Changes" : "Confirm & Upload"}
         </Button>,
       ]}
-      styles={{ body: { padding: showEditor ? 0 : 24 } }}
+      styles={{
+        header: { marginBottom: 4 },
+        body: { padding: showEditor ? 0 : 24, paddingTop: showEditor ? 0 : 8 },
+      }}
     >
       {/* Hidden File Input */}
       <input
@@ -320,6 +323,7 @@ const MicroscopicImageCaptureModal: FC<MicroscopicImageCaptureModalProps> = ({
               ref={webcamRef}
               mirrored={false}
               screenshotFormat="image/jpeg"
+              forceScreenshotSourceSize
               videoConstraints={DEFAULT_VIDEO_CONSTRAINTS}
               className={styles.webcam}
             />
