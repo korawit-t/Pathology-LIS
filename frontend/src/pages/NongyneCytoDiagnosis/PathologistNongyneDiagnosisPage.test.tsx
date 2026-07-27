@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import PathologistNongyneDiagnosisPage from "./PathologistNongyneDiagnosisPage";
 import NongyneReportService from "../../services/nongyneReportService";
@@ -102,6 +102,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUseNongyneDiagnosisData.mockReturnValue(makeHookReturn());
   (NongyneReportService.getReportsByCase as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-report-pdf");
+  globalThis.URL.revokeObjectURL = vi.fn();
 });
 
 describe("PathologistNongyneDiagnosisPage", () => {
@@ -143,5 +145,24 @@ describe("PathologistNongyneDiagnosisPage", () => {
     renderPage();
     await screen.findByText("N26-00001");
     expect(screen.queryByText("Case Already Signed Off")).not.toBeInTheDocument();
+  });
+
+  it("selecting a report in the completed-case popup fetches and renders its PDF", async () => {
+    mockUseNongyneDiagnosisData.mockReturnValue(
+      makeHookReturn({ caseData: makeCaseData({ status: "published" }) }),
+    );
+    (NongyneReportService.getReportsByCase as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 901, status: "published", created_at: "2026-07-01T00:00:00Z" },
+    ]);
+    (NongyneReportService.getReportPdf as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Blob(["fake-pdf"], { type: "application/pdf" }),
+    );
+
+    renderPage();
+    await screen.findByText("Case Already Signed Off");
+
+    await waitFor(() => expect(NongyneReportService.getReportPdf).toHaveBeenCalledWith(901));
+    const iframe = await screen.findByTitle("Report PDF");
+    expect(iframe).toHaveAttribute("src", "blob:mock-report-pdf");
   });
 });

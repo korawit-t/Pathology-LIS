@@ -45,6 +45,7 @@ import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/no
 import { NongyneCytologyCase } from "../../types/nongyne";
 import type { BadgeProps } from "antd";
 import { useNongyneDiagnosisData } from "./hooks/useNongyneDiagnosisData";
+import { usePdfBlobUrl } from "../../hooks/usePdfBlobUrl";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
 import StyledCard from "../../components/Layout/StyledCard";
@@ -162,8 +163,6 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   const [selectedPopupReportId, setSelectedPopupReportId] = useState<
     number | null
   >(null);
-  const [popupPdfUrl, setPopupPdfUrl] = useState<string | null>(null);
-  const [popupPdfLoading, setPopupPdfLoading] = useState(false);
 
   const SIGNERS_PATH = useMemo(() => ["signers"], []);
 
@@ -287,22 +286,16 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   }, [completedCasePopupOpen, caseId]);
 
   // Load PDF for selected report in popup
-  useEffect(() => {
-    if (!selectedPopupReportId) {
-      setPopupPdfUrl(null);
-      return;
-    }
-    setPopupPdfLoading(true);
-    NongyneReportService.getReportPdf(selectedPopupReportId)
-      .then((blob) => {
-        setPopupPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(blob);
-        });
-      })
-      .catch(() => {})
-      .finally(() => setPopupPdfLoading(false));
-  }, [selectedPopupReportId]);
+  const popupPdfFetchFn = useMemo(
+    () =>
+      selectedPopupReportId
+        ? () => NongyneReportService.getReportPdf(selectedPopupReportId)
+        : null,
+    [selectedPopupReportId],
+  );
+  const { url: popupPdfUrl, loading: popupPdfLoading } = usePdfBlobUrl(popupPdfFetchFn, {
+    onError: (err) => logger.error("Failed to load popup report PDF:", err),
+  });
 
   const onFinish = async (values: NongyneOnFinishValues) => {
     try {
