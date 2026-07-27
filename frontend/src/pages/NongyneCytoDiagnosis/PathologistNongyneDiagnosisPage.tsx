@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { sanitizeHtml } from "../../utils/sanitize";
 import {
   Form,
@@ -40,14 +40,11 @@ import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
 import NotificationRuleService from "../../services/notificationRuleService";
 import NongyneReportService from "../../services/nongyneReportService";
-import NongyneCaseImageService, {
-  NongyneCaseImage,
-} from "../../services/nongyneCaseImageService";
-import UserService from "../../services/userService";
+import type { NongyneCaseImage } from "../../services/nongyneCaseImageService";
 import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
-import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
+import { useNongyneDiagnosisData } from "./hooks/useNongyneDiagnosisData";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
 import StyledCard from "../../components/Layout/StyledCard";
@@ -143,27 +140,17 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   const [form] = Form.useForm();
 
   const [isPatientInfoExpanded, setIsPatientInfoExpanded] = useState(false);
-  const [caseData, setCaseData] = useState<NongyneCytologyCase | null>(null);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [diagnosis, setDiagnosis] = useState<NongyneDiagnosisResponse | null>(
-    null,
-  );
   const [prevDiagnosis, setPrevDiagnosis] =
     useState<NongyneDiagnosisResponse | null>(null);
   const [isAddendumMode, setIsAddendumMode] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false);
-  const [images, setImages] = useState<NongyneCaseImage[]>([]);
   const [imageCaptureOpen, setImageCaptureOpen] = useState(false);
   const [editingImage, setEditingImage] = useState<NongyneCaseImage | null>(
     null,
   );
-  const [descMap, setDescMap] = useState<Record<number, string>>({});
   const [slideQualityModalOpen, setSlideQualityModalOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [activeReportId, setActiveReportId] = useState<number | null>(null);
   const [consultModalOpen, setConsultModalOpen] = useState(false);
   const [consultHistoryKey, setConsultHistoryKey] = useState(0);
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
@@ -180,25 +167,25 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
 
   const SIGNERS_PATH = useMemo(() => ["signers"], []);
 
-  const defaultSigners = useMemo(() => {
-    const signers: {
-      user_id: number;
-      role: string;
-      signed_at: string | null;
-    }[] = [];
-    const cytoId =
-      caseData?.cytotechnologist?.id || caseData?.cytotechnologist_id;
-    const pathoId = caseData?.pathologist?.id || caseData?.pathologist_id;
-    if (cytoId)
-      signers.push({
-        user_id: cytoId,
-        role: "cytotechnologist",
-        signed_at: null,
-      });
-    if (pathoId)
-      signers.push({ user_id: pathoId, role: "primary", signed_at: null });
-    return signers;
-  }, [caseData]);
+  const {
+    caseData,
+    setCaseData,
+    diagnosis,
+    setDiagnosis,
+    images,
+    descMap,
+    setDescMap,
+    allUsers,
+    currentUser,
+    loading,
+    setLoading,
+    activeReportId,
+    defaultSigners,
+    fetchDiagnosis,
+    fetchCaseData,
+    fetchImages,
+    saveDesc,
+  } = useNongyneDiagnosisData(caseId, form);
 
   const handleToggleOutLabConsult = async (checked: boolean) => {
     if (!caseId) return;
@@ -250,93 +237,11 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     }
   };
 
-  const fetchImages = () => {
-    if (!caseId) return;
-    NongyneCaseImageService.getImages(Number(caseId))
-      .then((imgs) => {
-        setImages(imgs);
-        setDescMap(
-          Object.fromEntries(imgs.map((i) => [i.id, i.description ?? ""])),
-        );
-      })
-      .catch((e) => logger.error(e));
-  };
-
-  const saveDesc = async (imgId: number) => {
-    await NongyneCaseImageService.update(imgId, {
-      description: descMap[imgId] ?? "",
-    });
-  };
-
-  useEffect(() => {
-    if (!caseId) return;
-    Promise.all([
-      NongyneCytologyCaseService.getById(Number(caseId)),
-      UserService.getUsers(),
-      UserService.getCurrentUser(),
-    ])
-      .then(([caseRes, users, me]) => {
-        setCaseData(caseRes);
-        setAllUsers(users);
-        setCurrentUser(me);
-        form.setFieldsValue({
-          clinical_history: caseRes.clinical_history,
-          specimen_type: caseRes.specimen_type,
-          collection_site: caseRes.collection_site,
-          received_volume_ml: caseRes.received_volume_ml,
-          has_malignancy: caseRes.has_malignancy ?? false,
-          has_critical: caseRes.has_critical ?? false,
-        });
-      })
-      .catch((e) => logger.error(e));
-    fetchImages();
-    NongyneReportService.getReportsByCase(Number(caseId))
-      .then((reports) => {
-        const active = reports.find((r) =>
-          ["pending_approval", "published"].includes(r.status),
-        );
-        setActiveReportId(active?.id ?? null);
-      })
-      .catch((e) => logger.error(e));
-  }, [caseId]);
-
-  const refetchCaseData = useCallback(() => {
-    if (!caseId) return;
-    NongyneCytologyCaseService.getById(Number(caseId))
-      .then(setCaseData)
-      .catch((e) => logger.error(e));
-  }, [caseId]);
-
   useEffect(() => {
     const current = form.getFieldValue("signers");
     if ((!current || current.length === 0) && defaultSigners.length > 0)
       form.setFieldValue("signers", defaultSigners);
   }, [loading, diagnosis, caseData, defaultSigners, form]);
-
-  const fetchDiagnosis = async (skipFormFill = false) => {
-    if (!caseId) {
-      setLoading(false);
-      return;
-    }
-    try {
-      setLoading(true);
-      const data = await NongyneDiagnosisService.getByCaseId(Number(caseId));
-      if (data?.length > 0) {
-        setDiagnosis(data[0]);
-        if (!skipFormFill) form.setFieldsValue(data[0]);
-      } else {
-        setDiagnosis(null);
-      }
-    } catch {
-      message.error("Failed to load diagnosis data.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDiagnosis();
-  }, [caseId, form]);
 
   const isFinalized = useMemo(
     () =>
@@ -836,7 +741,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
             onUpload={NongyneCytologyCaseService.uploadConsultPdf}
             onDelete={NongyneCytologyCaseService.deleteConsultPdf}
             onGetBlob={NongyneCytologyCaseService.getConsultPdfBlob}
-            onRefresh={refetchCaseData}
+            onRefresh={fetchCaseData}
           />
         )}
 
