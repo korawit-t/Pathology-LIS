@@ -1,11 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useRef } from "react";
 import { Modal, Button, Spin, Empty, Typography } from "antd";
 import { PrinterOutlined } from "@ant-design/icons";
-import JsBarcode from "jsbarcode";
-import pdfMake from "../../../pdfFonts";
 import { NongyneCytologyCase } from "../../../types/nongyne";
-import dayjs from "dayjs";
-import logger from "../../../utils/logger";
+import { useStickerPdf } from "../../../hooks/useStickerPdf";
+import type { StickerLabelFields, StickerLabelStyle } from "../../../utils/stickerLabel";
 const { Text } = Typography;
 
 interface NongynePrintPreviewModalProps {
@@ -14,111 +12,38 @@ interface NongynePrintPreviewModalProps {
   data: NongyneCytologyCase | null;
 }
 
+const STICKER_STYLE: StickerLabelStyle = {
+  accessionBold: true,
+  accessionFontSize: 13,
+  barcodeImageHeight: 12,
+  patientNameBold: true,
+  patientNameNoWrap: true,
+  subLabelFontSize: 6.5,
+  regDateLabel: "Reg Date:",
+  regDateFontSize: 6.5,
+};
+
 const NongynePrintPreviewModal: React.FC<NongynePrintPreviewModalProps> = ({
   open,
   onCancel,
   data,
 }) => {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
-    if (open && data) {
-      generateNongyneSticker();
-    }
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  const fields = useMemo<StickerLabelFields | null>(() => {
+    if (!data) return null;
+    return {
+      accessionNo: data.accession_no,
+      hn: data.hn,
+      patientNameLine: [data.patient?.title?.title, data.patient?.name, data.patient?.ln]
+        .filter(Boolean)
+        .join(" "),
+      subLabelText: (data.hospital?.name || "NON-GYNE CYTOLOGY").toUpperCase(),
+      registeredAt: data.registered_at,
     };
-  }, [open, data]);
+  }, [data]);
 
-  const generateNongyneSticker = () => {
-    if (!data) return;
-    setLoading(true);
-
-    try {
-      const canvas = document.createElement("canvas");
-      JsBarcode(canvas, data.accession_no, {
-        format: "CODE128",
-        displayValue: false,
-        height: 40,
-        margin: 0,
-      });
-      const barcodeBase64 = canvas.toDataURL();
-
-      // ขนาดสติ๊กเกอร์มาตรฐานสำหรับ Slide (มม.) แปลงเป็น Points (142x70 pts ประมาณ 5x2.5 cm)
-      const docDefinition: any = {
-        pageSize: { width: 142, height: 70 },
-        pageMargins: [5, 4, 5, 2],
-        defaultStyle: { font: "Sarabun", fontSize: 8 },
-        content: [
-          // 1. เลขเคส (สีฟ้า/น้ำเงิน) และ HN
-          {
-            columns: [
-              {
-                text: data.accession_no,
-                bold: true,
-                fontSize: 13,
-                color: "black",
-              },
-              {
-                text: `HN: ${data.hn || ""}`,
-                alignment: "right",
-                fontSize: 10,
-              },
-            ],
-          },
-          // 2. Barcode (Slim)
-          {
-            image: barcodeBase64,
-            width: 120,
-            height: 12,
-            alignment: "center",
-            margin: [0, 1, 0, 0],
-          },
-          // 3. ชื่อคนไข้
-          {
-            text: [data.patient?.title?.title, data.patient?.name, data.patient?.ln].filter(Boolean).join(" "),
-            fontSize: 9,
-            bold: true,
-            alignment: "center",
-            margin: [0, 2, 0, 0],
-            noWrap: true,
-          },
-          // 4. ประเภทสิ่งส่งตรวจ (Type) และ ชื่อหน่วยงาน/รพ.
-          {
-            text: (data.hospital?.name || "NON-GYNE CYTOLOGY").toUpperCase(),
-            fontSize: 6.5,
-            alignment: "center",
-            color: "black",
-            margin: [0, 1, 0, 0],
-          },
-          // 5. วันที่ลงทะเบียน
-          {
-            text: `Reg Date: ${
-              data.registered_at
-                ? dayjs(data.registered_at).format("DD/MM/YYYY")
-                : "-"
-            }`,
-            fontSize: 6.5,
-            alignment: "center",
-            color: "black",
-            margin: [0, 0, 0, 0],
-          },
-        ],
-      };
-
-      const pdfDoc = (pdfMake as any).createPdf(docDefinition);
-      pdfDoc.getBlob((blob: Blob) => {
-        const url = URL.createObjectURL(blob);
-        setPdfUrl(url);
-        setLoading(false);
-      });
-    } catch (error) {
-      logger.error("Nongyne PDF Error:", error);
-      setLoading(false);
-    }
-  };
+  const { pdfUrl, loading } = useStickerPdf(open, fields, STICKER_STYLE, "Nongyne PDF Error:");
 
   const handlePrint = () => {
     iframeRef.current?.contentWindow?.print();
