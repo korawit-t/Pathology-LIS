@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import PathologistNongyneDiagnosisPage from "./PathologistNongyneDiagnosisPage";
 import NongyneReportService from "../../services/nongyneReportService";
+import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import type { NongyneCytologyCase } from "../../types/nongyne";
 
 vi.mock("../../contexts/ThemeContext", () => ({
@@ -164,5 +165,24 @@ describe("PathologistNongyneDiagnosisPage", () => {
     await waitFor(() => expect(NongyneReportService.getReportPdf).toHaveBeenCalledWith(901));
     const iframe = await screen.findByTitle("Report PDF");
     expect(iframe).toHaveAttribute("src", "blob:mock-report-pdf");
+  });
+
+  it("revokes the previous preview PDF when Preview PDF is clicked twice without closing the modal", async () => {
+    let blobCounter = 0;
+    globalThis.URL.createObjectURL = vi.fn(() => `blob:mock-preview-${++blobCounter}`);
+    (NongyneDiagnosisService.previewReportPdf as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Blob(["fake-pdf"], { type: "application/pdf" }),
+    );
+
+    renderPage();
+    const previewButton = screen.getByRole("button", { name: /Preview PDF/i });
+
+    fireEvent.click(previewButton);
+    await waitFor(() => expect(globalThis.URL.createObjectURL).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(previewButton);
+    await waitFor(() => expect(globalThis.URL.createObjectURL).toHaveBeenCalledTimes(2));
+
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-preview-1");
   });
 });

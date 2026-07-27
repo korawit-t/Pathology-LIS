@@ -469,6 +469,18 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       { reason },
     );
 
+  // Both Preview PDF and View Report render regardless of
+  // isPreviewModalVisible, so a second click before closing the modal
+  // would otherwise overwrite previewPdfUrl without revoking the URL it
+  // replaces — a real, if minor, leak.
+  const showPreviewPdf = (blob: Blob) => {
+    setPreviewPdfUrl((prev) => {
+      if (prev) window.URL.revokeObjectURL(prev);
+      return window.URL.createObjectURL(blob);
+    });
+    setIsPreviewModalVisible(true);
+  };
+
   const handlePreviewPdf = async () => {
     try {
       setLoading(true);
@@ -504,8 +516,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       const blob = await NongyneDiagnosisService.previewReportPdf(
         Number(caseId),
       );
-      setPreviewPdfUrl(window.URL.createObjectURL(blob));
-      setIsPreviewModalVisible(true);
+      showPreviewPdf(blob);
     } catch {
       message.error("Failed to generate PDF preview.");
     } finally {
@@ -518,8 +529,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     try {
       setLoading(true);
       const blob = await NongyneDiagnosisService.getReportPdf(diagnosis.id);
-      setPreviewPdfUrl(window.URL.createObjectURL(blob));
-      setIsPreviewModalVisible(true);
+      showPreviewPdf(blob);
     } catch {
       message.error("Failed to load report PDF.");
     } finally {
