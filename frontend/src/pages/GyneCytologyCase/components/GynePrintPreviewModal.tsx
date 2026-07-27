@@ -5,6 +5,7 @@ import { GyneCytologyCase } from "../../../types/gyne-cytology";
 import { useStickerPdf } from "../../../hooks/useStickerPdf";
 import type { StickerLabelFields, StickerLabelStyle } from "../../../utils/stickerLabel";
 import type { PrintPreviewModalProps } from "../../../types/printPreviewModal";
+import { formatPatientName } from "../../../utils/patientName";
 const { Text } = Typography;
 
 type GynePrintPreviewModalProps = PrintPreviewModalProps<GyneCytologyCase>;
@@ -32,9 +33,7 @@ const GynePrintPreviewModal: React.FC<GynePrintPreviewModalProps> = ({
     return {
       accessionNo: data.accession_no,
       hn: data.hn,
-      patientNameLine: [data.patient?.title?.title, data.patient?.name, data.patient?.ln]
-        .filter(Boolean)
-        .join(" "),
+      patientNameLine: formatPatientName(data.patient),
       subLabelText: (data.hospital?.name || "GYNE CYTOLOGY").toUpperCase(),
       registeredAt: data.registered_at,
     };

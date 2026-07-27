@@ -5,6 +5,7 @@ import { SurgicalCase } from "../../../../types/surgical";
 import { useStickerPdf } from "../../../../hooks/useStickerPdf";
 import type { StickerLabelFields, StickerLabelStyle } from "../../../../utils/stickerLabel";
 import type { PrintPreviewModalProps } from "../../../../types/printPreviewModal";
+import { formatPatientName } from "../../../../utils/patientName";
 
 const { Text } = Typography;
 
@@ -38,9 +39,7 @@ const PrintPreviewModal: React.FC<SurgicalPrintPreviewModalProps> = ({
     return {
       accessionNo: data.accession_no,
       hn: data.hn,
-      patientNameLine: [data.patient?.title?.title, data.patient?.name, data.patient?.ln]
-        .filter(Boolean)
-        .join(" "),
+      patientNameLine: formatPatientName(data.patient),
       subLabelText: (data.hospital?.name || "PATHOLOGY UNIT").toUpperCase(),
       registeredAt: data.registered_at,
     };
