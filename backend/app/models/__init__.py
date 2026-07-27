@@ -79,6 +79,7 @@ from .wsi_slide_link import WsiSlideLink
 from .stain_panel import StainPanel, StainPanelItem
 from .his_export_log import HisExportLog
 from .molecular_case import MolecularCase
+from .he_control_slide import HEControlSlide
 
 # ... models อื่นๆ
 # การทำแบบนี้จะทำให้เวลาเราเขียน:
@@ -181,4 +182,5 @@ __all__ = [
     "StainPanelItem",
     "HisExportLog",
     "MolecularCase",
+    "HEControlSlide",
 ]

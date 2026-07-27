@@ -15,6 +15,7 @@ const SectioningManager = lazy(() => import("../Sectioning/SectioningManager"));
 const RoutineHEManager = lazy(() => import("../Stain/RoutineHE"));
 const StainingRun = lazy(() => import("../Stain/StainRun"));
 const StainManagement = lazy(() => import("../Stain/StainManagement"));
+const HEControlSlidePage = lazy(() => import("../HEControlSlide"));
 const SlideDispatchListPage = lazy(
   () => import("../SlideDispatch/SlideDispatchListPage.tsx"),
 );
@@ -137,6 +138,10 @@ const VIEW_CONFIG: Record<
   "staining-manager": {
     pageKey: "staining-manager",
     component: StainManagement,
+  },
+  "he-control-slide": {
+    pageKey: "he-control-slide",
+    component: HEControlSlidePage,
   },
   "print-sticker-he": {
     pageKey: "print-sticker-he",
