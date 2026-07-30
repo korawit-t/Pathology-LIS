@@ -100,6 +100,14 @@ const makeHookReturn = (overrides: Record<string, unknown> = {}) => ({
   fetchCaseData: vi.fn(),
   fetchImages: vi.fn(),
   saveDesc: vi.fn(),
+  submitting: false,
+  finalizing: false,
+  completingReview: false,
+  saveDraft: vi.fn().mockResolvedValue({ mode: "create" }),
+  persistDraftForPreview: vi.fn(),
+  finalize: vi.fn().mockResolvedValue(undefined),
+  completeReview: vi.fn().mockResolvedValue("agree"),
+  toggleOutLabConsult: vi.fn(),
   ...overrides,
 });
 
@@ -158,7 +166,8 @@ describe("GyneDiagnosisEntryPage", () => {
     expect(screen.queryByText("Case Already Signed Off")).not.toBeInTheDocument();
   });
 
-  it("routes an abnormal-adequacy case to a selected pathologist as the new primary signer", async () => {
+  it("routes an abnormal-adequacy case to a selected pathologist and finalizes as requiring pathologist review", async () => {
+    const finalizeMock = vi.fn().mockResolvedValue(undefined);
     mockUseGyneDiagnosisData.mockReturnValue(
       makeHookReturn({
         caseData: makeCaseData({ status: "screened" }),
@@ -167,6 +176,7 @@ describe("GyneDiagnosisEntryPage", () => {
           { id: 20, text: "Unsatisfactory - scant cellularity", group_type: "ADEQUACY" },
         ],
         pathologists: [{ id: 42, full_name: "Dr. Somchai", roles: ["pathologist"] }],
+        finalize: finalizeMock,
       }),
     );
     renderPage();
@@ -181,11 +191,16 @@ describe("GyneDiagnosisEntryPage", () => {
 
     fireEvent.click(screen.getByText("Confirm & Send"));
 
-    await waitFor(() => expect(GyneDiagnosisService.updateDiagnosis).toHaveBeenCalled());
-    const [, payload] = (GyneDiagnosisService.updateDiagnosis as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(payload.signers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ user_id: 42, role: "primary" })]),
+    // The deep signers-array/publish-payload behavior of finalize() itself is
+    // covered at the hook level (useGyneDiagnosisData.test.tsx) — this test
+    // only verifies the page's own routing decision: an Unsatisfactory
+    // adequacy selection must route through Send-to-Pathologist and finalize
+    // with requiresPathologistReview: true.
+    await waitFor(() =>
+      expect(finalizeMock).toHaveBeenCalledWith(null, null, undefined, {
+        forceEdit: false,
+        requiresPathologistReview: true,
+      }),
     );
-    expect(GyneCytologyCaseService.update).toHaveBeenCalled();
   });
 });

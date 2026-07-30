@@ -1,43 +1,18 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Form,
-  Input,
   Button,
-  Select,
-  Tag,
-  Space,
   App,
   Spin,
   Alert,
-  Typography,
   Row,
-  Col,
-  Modal,
-  Badge,
-  Tooltip,
-  Switch,
-  Checkbox,
-  Table,
-  Popover,
 } from "antd";
-import {
-  SaveOutlined,
-  ArrowLeftOutlined,
-  EditOutlined,
-  CheckCircleOutlined,
-  FileTextOutlined,
-  LockOutlined,
-  ExclamationCircleOutlined,
-  HistoryOutlined,
-  QuestionCircleOutlined,
-} from "@ant-design/icons";
+import { ExclamationCircleOutlined } from "@ant-design/icons";
 import type { GyneDiagnosisResponse, GyneDiagnosisUpdate } from "../../types/gyne-diagnosis";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
-import StyledCard from "../../components/Layout/StyledCard";
 import GyneCytologyImageCaptureModal from "./components/GyneCytologyImageCaptureModal";
 import GyneDiagnosisService from "../../services/gyneDiagnosisService";
 import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
-import NotificationRuleService from "../../services/notificationRuleService";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import PageContainer from "../../components/Layout/PageContainer";
 import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/PathologistDiagnosisManager";
@@ -49,6 +24,11 @@ import type { SurgicalCase } from "../../types/surgical";
 import logger from "../../utils/logger";
 import { useGyneDiagnosisData } from "./hooks/useGyneDiagnosisData";
 import GyneClinicalInfoCard from "./components/GyneClinicalInfoCard";
+import GyneAdequacyCard from "./components/GyneAdequacyCard";
+import GyneCategoryCard from "./components/GyneCategoryCard";
+import GyneNotesCard from "./components/GyneNotesCard";
+import GyneSendToPathologistModal from "./components/GyneSendToPathologistModal";
+import GyneDiagnosisToolbar from "./components/GyneDiagnosisToolbar";
 import GyneReportedResult from "./components/GyneReportedResult";
 import GyneCytologyImagesSection from "./components/GyneCytologyImagesSection";
 import GyneQCReviewSection from "./components/GyneQCReviewSection";
@@ -57,9 +37,6 @@ import { getConsultLockState } from "../Pathologist/utils/consultLockState";
 import { toPathologistOptions } from "../../utils/pathologistOptions";
 import GyneCompletedCaseModal, { CompletedReportSummary } from "./components/GyneCompletedCaseModal";
 import GyneDiagnosisHistoryDrawer from "./components/GyneDiagnosisHistoryDrawer";
-
-const { TextArea } = Input;
-const { Text, Title } = Typography;
 
 interface GyneDiagnosisEntryPageProps {
   caseId?: string | number;
@@ -90,14 +67,12 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
 ) => {
   const { caseId: propsCaseId, onBack } = props;
   const caseId = propsCaseId;
-  const { message, notification } = App.useApp();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
 
   const {
     caseData,
-    setCaseData,
     diagnosis,
-    setDiagnosis,
     images,
     descMap,
     setDescMap,
@@ -117,15 +92,21 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     fetchCaseData,
     fetchImages,
     saveDesc,
+    submitting,
+    setSubmitting,
+    finalizing,
+    completingReview,
+    saveDraft,
+    persistDraftForPreview,
+    finalize,
+    completeReview,
+    toggleOutLabConsult,
   } = useGyneDiagnosisData(caseId, form);
 
   const [isPatientInfoExpanded, setIsPatientInfoExpanded] = useState(false);
   const [isRevision, setIsRevision] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [finalizing, setFinalizing] = useState(false);
   const [forceEdit, setForceEdit] = useState(false);
   const [isAbnormal, setIsAbnormal] = useState(false);
-  const [completingReview, setCompletingReview] = useState(false);
   const [sendToPathoModalOpen, setSendToPathoModalOpen] = useState(false);
   const [selectedPathoId, setSelectedPathoId] = useState<number | null>(null);
   const [slideQualityModalOpen, setSlideQualityModalOpen] = useState(false);
@@ -276,67 +257,15 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     return () => { if (activeUrl) URL.revokeObjectURL(activeUrl); };
   }, [selectedPopupReportId]);
 
-  const handleToggleOutLabConsult = async (checked: boolean) => {
-    if (!caseId) return;
-    try {
-      await GyneCytologyCaseService.update(Number(caseId), {
-        is_out_lab_consult: checked,
-      });
-      setCaseData((prev) =>
-        prev ? { ...prev, is_out_lab_consult: checked } : prev,
-      );
-      message.success("Out-Lab Consult status updated.");
-      if (checked) {
-        NotificationRuleService.triggerEvent("outlab_consult", {
-          id_case: caseData?.accession_no ?? String(caseId),
-          accession_no: caseData?.accession_no ?? "",
-          sender: currentUser?.full_name ?? "-",
-          lab_name: "-",
-        }).catch(() => {});
-      }
-    } catch {
-      message.error("Failed to update Out-Lab Consult status.");
-    }
-  };
-
-  const sanitizeSigners = (values: GyneDiagnosisUpdate) => {
-    if (values.signers) {
-      values.signers = values.signers.map((s) => ({
-        ...s,
-        signed_at: s.signed_at || null,
-      }));
-    }
-    return values;
-  };
-
   const onFinish = async (values: GyneDiagnosisUpdate) => {
     try {
       setSubmitting(true);
-      // Convert undefined → null so cleared fields are sent in the payload
-      for (const key of Object.keys(values)) {
-        if (values[key] === undefined) values[key] = null;
-      }
-      sanitizeSigners(values);
-
-      if (diagnosis && isRevision) {
-        // Reset all signatures — revision starts unsigned
-        values.signers = (values.signers || []).map((s: GyneSigner) => ({
-          ...s,
-          signed_at: null,
-        }));
-
-        await GyneDiagnosisService.reviseReport(diagnosis.id, values);
+      const { mode } = await saveDraft(values, { isRevision });
+      if (mode === "revise") {
         message.success("Revised report saved successfully.");
         setIsRevision(false);
         await fetchCaseData();
-      } else if (diagnosis) {
-        await GyneDiagnosisService.updateDiagnosis(diagnosis.id, values);
-        message.success("Draft saved.");
       } else {
-        await GyneDiagnosisService.createInitial({
-          ...values,
-          case_id: Number(caseId),
-        });
         message.success("Draft saved.");
       }
       fetchDiagnosis();
@@ -351,11 +280,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   const handlePreviewPDF = async () => {
     if (!caseId) return;
     try {
-      if (diagnosis && !isRevision) {
-        const values = form.getFieldsValue();
-        sanitizeSigners(values);
-        await GyneDiagnosisService.updateDiagnosis(diagnosis.id, values);
-      }
+      await persistDraftForPreview(form.getFieldsValue(), isRevision);
       const blob = await GyneDiagnosisService.previewReportPdf(Number(caseId));
       setPdfUrl(URL.createObjectURL(blob));
       setPreviewOpen(true);
@@ -396,116 +321,15 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     setSlideQualityModalOpen(true);
   };
 
-  const finalizeCore = async (
-    sq: string | null = null,
-    stq: string | null = null,
-    outLab?: { reason: string },
-  ) => {
-    if (!caseId || !currentUser) return;
-    try {
-      setFinalizing(true);
-      const signers: GyneSigner[] = form.getFieldValue("signers") || [];
-      const isRequireAllSign = systemSettings?.require_all_gyne_sign ?? false;
-      const now = new Date().toISOString();
-      let updatedSigners: GyneSigner[] = [...signers];
-      let allSigned = true;
-
-      if (isRequireAllSign) {
-        let userFound = false;
-        updatedSigners = updatedSigners.map((s) => {
-          if (Number(s.user_id) === Number(currentUser?.id)) {
-            userFound = true;
-            if (!s.signed_at) return { ...s, signed_at: now };
-          } else if (forceEdit) {
-            return { ...s, signed_at: null };
-          }
-          return s;
-        });
-        if (!userFound) {
-          message.warning(
-            "You are not in the signers list. Please add yourself before finalizing.",
-          );
-          setFinalizing(false);
-          return;
-        }
-        allSigned = updatedSigners.every((s) => !!s.signed_at);
-      } else if (requiresPathologistReview) {
-        // Sending to a pathologist for review — only the current user's own
-        // entry is actually signed right now. The pathologist's signature is
-        // recorded later, at the moment they complete the QC review, so the
-        // report doesn't show both signed at the same send-time.
-        updatedSigners = updatedSigners.map((s) =>
-          Number(s.user_id) === Number(currentUser?.id)
-            ? { ...s, signed_at: s.signed_at || now }
-            : s,
-        );
-        allSigned = true;
-      } else {
-        updatedSigners = updatedSigners.map((s) => ({
-          ...s,
-          signed_at: s.signed_at || now,
-        }));
-        allSigned = true;
-      }
-
-      form.setFieldValue("signers", updatedSigners);
-      await GyneCytologyCaseService.update(Number(caseId), {
-        slide_quality: sq ?? undefined,
-        stain_quality: stq ?? undefined,
-      });
-      if (diagnosis) {
-        await GyneDiagnosisService.updateDiagnosis(diagnosis.id, {
-          signers: updatedSigners,
-        });
-        setDiagnosis({ ...diagnosis, signers: updatedSigners });
-      }
-
-      if (allSigned) {
-        const result = await GyneDiagnosisService.publishReport(
-          Number(caseId),
-          updatedSigners,
-          requiresPathologistReview,
-          outLab ? true : undefined,
-          outLab?.reason,
-        );
-        if (outLab) {
-          message.success("Report signed off — flagged for Out-Lab Consult");
-        } else if (result.status === "published") {
-          notification.success({
-            title: "NILM — Report Published",
-            description:
-              "Report has been published directly. No pathologist review required.",
-            placement: "topRight",
-          });
-        } else {
-          notification.warning({
-            title: "Awaiting Pathologist Review",
-            description:
-              "This case has been randomly selected for QC — please collect the slide and send for review before publishing.",
-            placement: "topRight",
-            duration: 0,
-          });
-        }
-
-      } else {
-        message.success("Signed. Waiting for other co-signers.");
-      }
-
-      fetchDiagnosis();
-      if (onBack) onBack();
-    } catch (err) {
-      logger.error(err);
-      message.error("Failed to finalize report.");
-    } finally {
-      setFinalizing(false);
-    }
+  const handleFinalize = async (sq: string | null = null, stq: string | null = null) => {
+    await finalize(sq, stq, undefined, { forceEdit, requiresPathologistReview });
+    if (onBack) onBack();
   };
 
-  const handleFinalize = (sq: string | null = null, stq: string | null = null) =>
-    finalizeCore(sq, stq);
-
-  const handleOutLabConsult = (reason: string, sq: string, stq: string) =>
-    finalizeCore(sq, stq, { reason });
+  const handleOutLabConsult = async (reason: string, sq: string, stq: string) => {
+    await finalize(sq, stq, { reason }, { forceEdit, requiresPathologistReview });
+    if (onBack) onBack();
+  };
 
   const handleSendToPathologistClick = () => {
     const signers: GyneSigner[] = form.getFieldValue("signers") || [];
@@ -538,35 +362,9 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     level?: "minor" | "major" | null,
     outLab?: { reason: string },
   ) => {
-    if (!caseId) return;
-    try {
-      setCompletingReview(true);
-      await GyneDiagnosisService.completeReview(
-        Number(caseId),
-        result,
-        note,
-        level ?? undefined,
-        outLab ? true : undefined,
-        outLab?.reason,
-      );
-      message.success(
-        outLab
-          ? "Agreed & published — flagged for Out-Lab Consult"
-          : result === "agree"
-            ? "Agreed — case published."
-            : "Discordance recorded — case returned to cytotechnologist.",
-      );
-      const updated = await GyneCytologyCaseService.getById(Number(caseId));
-      setCaseData(updated);
-      if (result === "agree" && onBack) onBack();
-      if (result === "disagree") {
-        setIsRevision(true);
-      }
-    } catch {
-      message.error("Failed to complete review.");
-    } finally {
-      setCompletingReview(false);
-    }
+    const outcome = await completeReview(result, note, level, outLab);
+    if (outcome === "agree" && onBack) onBack();
+    if (outcome === "disagree") setIsRevision(true);
   };
 
   const handleAgreeWithOutLabConsult = (reason: string) =>
@@ -586,51 +384,6 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     label: caseStatus,
   };
 
-  const sortedMainCategories = useMemo(
-    () =>
-      [...mainCategories].sort((a, b) =>
-        (a.code ?? "").localeCompare(b.code ?? ""),
-      ),
-    [mainCategories],
-  );
-
-  const resultTypeHelpContent = (
-    <div style={{ maxWidth: 380 }}>
-      <Typography.Paragraph style={{ marginBottom: 8, fontSize: 12 }}>
-        The case will be <b>forced to route to a Pathologist</b> (via the
-        "Send to Pathologist" button) when either condition is met:
-      </Typography.Paragraph>
-      <ul style={{ paddingLeft: 18, marginBottom: 12, fontSize: 12 }}>
-        <li>
-          Adequacy = <b>Unsatisfactory</b>
-        </li>
-        <li>Selected Diagnosis Category is in the Abnormal group (code starts with 3)</li>
-      </ul>
-      <Table
-        size="small"
-        pagination={false}
-        dataSource={sortedMainCategories}
-        rowKey="id"
-        scroll={{ y: 260 }}
-        columns={[
-          { title: "Code", dataIndex: "code", key: "code", width: 55 },
-          { title: "Category", dataIndex: "text", key: "text" },
-          {
-            title: "Result",
-            key: "result",
-            width: 90,
-            render: (_: unknown, c: { code: string }) =>
-              c.code?.startsWith("3") ? (
-                <Tag color="orange">Abnormal</Tag>
-              ) : (
-                <Tag color="green">NILM</Tag>
-              ),
-          },
-        ]}
-      />
-    </div>
-  );
-
   if (loading || loadingMaster)
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
@@ -641,138 +394,37 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   return (
     <PageContainer withCard>
       {/* ── Sticky Toolbar ───────────────────────────────────────────── */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-          background: "rgba(255,255,255,0.92)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #f0f0f0",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-          padding: "10px 24px",
-          marginBottom: 20,
+      <GyneDiagnosisToolbar
+        caseId={caseId}
+        caseData={caseData}
+        statusConfig={statusConfig}
+        isRevision={isRevision}
+        isEditorLocked={isEditorLocked}
+        isConsultEditorLocked={isConsultEditorLocked}
+        isFinalized={isFinalized}
+        isPendingReview={isPendingReview}
+        isFormMode={isFormMode}
+        isFinalizeLocked={isFinalizeLocked}
+        hasDiagnosis={!!diagnosis}
+        historyCount={historyCount}
+        isCurrentUserSigned={isCurrentUserSigned}
+        forceEdit={forceEdit}
+        submitting={submitting}
+        finalizing={finalizing}
+        requiresPathologistReview={requiresPathologistReview}
+        onBack={onBack}
+        onToggleOutLabConsult={toggleOutLabConsult}
+        onOpenHistory={handleOpenHistory}
+        onViewFinalPDF={handleViewFinalPDF}
+        onStartRevision={() => {
+          form.setFieldValue("revised_reason", undefined);
+          setIsRevision(true);
         }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          {/* Left */}
-          <Space size="large">
-            <Button icon={<ArrowLeftOutlined />} type="text" onClick={onBack} />
-            <Space size={8}>
-              <Text strong style={{ fontSize: 16 }}>
-                {caseData?.accession_no || `Case #${caseId}`}
-              </Text>
-              <Badge
-                status={statusConfig.color}
-                text={
-                  <Text style={{ fontSize: 13 }}>{statusConfig.label}</Text>
-                }
-              />
-              {isRevision && <Tag color="orange">Revision Mode</Tag>}
-              {isEditorLocked && (
-                <Tooltip title="Form is locked">
-                  <LockOutlined style={{ color: "#8c8c8c" }} />
-                </Tooltip>
-              )}
-            </Space>
-          </Space>
-
-          {/* Right */}
-          <Space>
-            <Checkbox
-              checked={caseData?.is_out_lab_consult || false}
-              onChange={(e) => handleToggleOutLabConsult(e.target.checked)}
-              disabled={isEditorLocked && !isRevision}
-            >
-              Out-Lab Consult
-            </Checkbox>
-
-            {diagnosis && historyCount > 0 && (
-              <Badge count={historyCount} size="small">
-                <Button icon={<HistoryOutlined />} onClick={handleOpenHistory}>
-                  History
-                </Button>
-              </Badge>
-            )}
-
-            {diagnosis && isFinalized && !isRevision && (
-              <>
-                <Button
-                  icon={<FileTextOutlined />}
-                  onClick={handleViewFinalPDF}
-                >
-                  View Report
-                </Button>
-                {!isPendingReview && (
-                  <Button
-                    danger
-                    icon={<EditOutlined />}
-                    onClick={() => {
-                      form.setFieldValue("revised_reason", undefined);
-                      setIsRevision(true);
-                    }}
-                  >
-                    Revise
-                  </Button>
-                )}
-              </>
-            )}
-
-            {isFormMode && (
-              <>
-                {!isCurrentUserSigned || forceEdit || isRevision ? (
-                  <>
-                    {diagnosis && (
-                      <Button
-                        icon={<FileTextOutlined />}
-                        onClick={handlePreviewPDF}
-                      >
-                        Preview PDF
-                      </Button>
-                    )}
-
-                    <Button
-                      type="primary"
-                      icon={<SaveOutlined />}
-                      loading={submitting}
-                      disabled={finalizing}
-                      onClick={() => form.submit()}
-                      style={{ background: "#52c41a", border: "none" }}
-                    >
-                      {isRevision ? "Save Draft Revision" : "Save Draft"}
-                    </Button>
-                    {(!isFinalized || isRevision || isConsultEditorLocked) && diagnosis && (
-                      <Button
-                        type="primary"
-                        icon={<CheckCircleOutlined />}
-                        loading={finalizing}
-                        onClick={
-                          requiresPathologistReview
-                            ? handleSendToPathologistClick
-                            : handleFinalizeClick
-                        }
-                        disabled={submitting || isFinalizeLocked}
-                        style={{
-                          background: requiresPathologistReview ? "#fa8c16" : "#cf1322",
-                          border: "none",
-                        }}
-                      >
-                        {requiresPathologistReview ? "Send to Pathologist" : "Sign-off"}
-                      </Button>
-                    )}
-                  </>
-                ) : null}
-              </>
-            )}
-          </Space>
-        </div>
-      </div>
+        onPreviewPDF={handlePreviewPDF}
+        onSaveDraft={() => form.submit()}
+        onSendToPathologistClick={handleSendToPathologistClick}
+        onFinalizeClick={handleFinalizeClick}
+      />
 
       {/* ── Patient Info ─────────────────────────────────────────────── */}
       <div style={{ padding: "0 24px 8px" }}>
@@ -864,261 +516,29 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
 
             <Row gutter={16} align="stretch" style={{ marginBottom: 16 }}>
               {/* ── Specimen Adequacy ── */}
-              <Col
-                xs={24}
-                lg={12}
-                style={{ display: "flex", flexDirection: "column" }}
-              >
-                <StyledCard
-                  size="small"
-                  title={
-                    <Title
-                      level={5}
-                      style={{
-                        margin: 0,
-                        textTransform: "uppercase",
-                        letterSpacing: "1.2px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Specimen Adequacy
-                    </Title>
-                  }
-                  style={{ flex: 1 }}
-                >
-                  <Form.Item
-                    name="adequacy_id"
-                    label="Adequacy"
-                    rules={[{ required: true, message: "Required" }]}
-                  >
-                    <Select
-                      placeholder="Select adequacy"
-                      allowClear
-                      size="large"
-                      onChange={(value) => {
-                        const text =
-                          adequacyOptions.find((o) => o.id === value)?.text ??
-                          "";
-                        if (/unsatisfactory/i.test(text)) {
-                          form.setFieldValue("endocervical_status_id", null);
-                        } else if (!/limited by/i.test(text)) {
-                          form.setFieldValue("quality_id", null);
-                        }
-                      }}
-                    >
-                      {adequacyOptions.map((opt) => (
-                        <Select.Option key={opt.id} value={opt.id}>
-                          {opt.code ? `(${opt.code}) ` : ""}
-                          {opt.text}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-
-                  {showZoneField && (
-                    <Form.Item
-                      name="endocervical_status_id"
-                      label="Endocervical / Transformation Zone"
-                    >
-                      <Select placeholder="Select status" allowClear size="large">
-                        {zoneOptions.map((opt) => (
-                          <Select.Option key={opt.id} value={opt.id}>
-                            {opt.code ? `(${opt.code}) ` : ""}
-                            {opt.text}
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  )}
-
-                  {showQualityField && (
-                    <Form.Item
-                      name="quality_id"
-                      label="Reason (Unsatisfactory / Limited by)"
-                      rules={[{ required: true, message: "Required" }]}
-                    >
-                      <Select placeholder="Select reason" allowClear size="large">
-                        {qualityOptions.map((opt) => (
-                          <Select.Option key={opt.id} value={opt.id}>
-                            {opt.code ? `(${opt.code}) ` : ""}
-                            {opt.text}
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  )}
-                </StyledCard>
-              </Col>
+              <GyneAdequacyCard
+                adequacyOptions={adequacyOptions}
+                zoneOptions={zoneOptions}
+                qualityOptions={qualityOptions}
+                showZoneField={showZoneField}
+                showQualityField={showQualityField}
+              />
 
               {/* ── Diagnosis Category ── */}
-              <Col
-                xs={24}
-                lg={12}
-                style={{ display: "flex", flexDirection: "column" }}
-              >
-                <StyledCard
-                  size="small"
-                  title={
-                    <Title
-                      level={5}
-                      style={{
-                        margin: 0,
-                        textTransform: "uppercase",
-                        letterSpacing: "1.2px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Diagnosis Category
-                    </Title>
-                  }
-                  style={{ flex: 1 }}
-                >
-                  <Form.Item
-                    name="category_1_id"
-                    label="Main Category"
-                  >
-                    <Select
-                      placeholder="Select main category"
-                      onChange={() => form.setFieldValue("category_2_id", null)}
-                      disabled={isEditorLocked}
-                      allowClear
-                      size="large"
-                    >
-                      {mainCategories.map((c) => (
-                        <Select.Option key={c.id} value={c.id}>
-                          <b>{c.code}</b> — {c.text}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-
-                  <Form.Item
-                    name="category_2_id"
-                    label="Sub Category"
-                    dependencies={["category_1_id"]}
-                  >
-                    <Select
-                      placeholder="Select sub category (optional)"
-                      allowClear
-                      disabled={!selectedCat1 || isEditorLocked}
-                      size="large"
-                    >
-                      {subCategories.map((c) => (
-                        <Select.Option key={c.id} value={c.id}>
-                          <b>{c.code}</b> — {c.text}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-
-                  {!isRevision && (
-                    <Form.Item
-                      label={
-                        <Space size={4}>
-                          <span>Result Type</span>
-                          <Popover
-                            content={resultTypeHelpContent}
-                            title="Pathologist Routing Criteria"
-                            trigger="click"
-                            placement="rightTop"
-                          >
-                            <QuestionCircleOutlined
-                              style={{ color: "#8c8c8c", cursor: "pointer" }}
-                            />
-                          </Popover>
-                        </Space>
-                      }
-                    >
-                      <Space>
-                        <Switch
-                          checked={isAbnormal}
-                          onChange={setIsAbnormal}
-                          checkedChildren="Abnormal"
-                          unCheckedChildren="NILM"
-                          disabled={isEditorLocked}
-                          style={{
-                            background: isAbnormal ? "#fa8c16" : undefined,
-                          }}
-                        />
-                        <Typography.Text
-                          type="secondary"
-                          style={{ fontSize: 12 }}
-                        >
-                          {requiresPathologistReview
-                            ? "Will route to pathologist for review"
-                            : "Normal result — will finalize after sign-off"}
-                        </Typography.Text>
-                      </Space>
-                    </Form.Item>
-                  )}
-
-                  <Form.Item name="interpretation" label="Interpretation">
-                    <TextArea
-                      rows={2}
-                      placeholder="Additional diagnostic details..."
-                      disabled={isEditorLocked}
-                    />
-                  </Form.Item>
-                </StyledCard>
-              </Col>
+              <GyneCategoryCard
+                mainCategories={mainCategories}
+                subCategories={subCategories}
+                selectedCat1={selectedCat1}
+                isEditorLocked={isEditorLocked}
+                isRevision={isRevision}
+                isAbnormal={isAbnormal}
+                setIsAbnormal={setIsAbnormal}
+                requiresPathologistReview={requiresPathologistReview}
+              />
             </Row>
 
             {/* ── Notes ── */}
-            <StyledCard
-              size="small"
-              title={
-                <Title
-                  level={5}
-                  style={{
-                    margin: 0,
-                    textTransform: "uppercase",
-                    letterSpacing: "1.2px",
-                    fontWeight: 600,
-                  }}
-                >
-                  Notes & Recommendation
-                </Title>
-              }
-              style={{ marginBottom: 16 }}
-            >
-              <Row gutter={16}>
-                <Col xs={24} lg={isRevision ? 12 : 24}>
-                  <Form.Item
-                    name="note"
-                    label="Additional Notes / Recommendation"
-                  >
-                    <TextArea
-                      rows={3}
-                      placeholder="Recommendations or remarks..."
-                      disabled={isEditorLocked}
-                    />
-                  </Form.Item>
-                </Col>
-                {isRevision && (
-                  <Col xs={24} lg={12}>
-                    <Form.Item
-                      name="revised_reason"
-                      label="Reason for Revision"
-                      rules={[
-                        {
-                          required: true,
-                          message: "Please specify the reason for revision.",
-                        },
-                        {
-                          min: 5,
-                          message: "Reason must be at least 5 characters.",
-                        },
-                      ]}
-                    >
-                      <TextArea
-                        rows={3}
-                        placeholder="Explain why this report is being revised..."
-                      />
-                    </Form.Item>
-                  </Col>
-                )}
-              </Row>
-            </StyledCard>
+            <GyneNotesCard isRevision={isRevision} isEditorLocked={isEditorLocked} />
 
             {/* ── Cytology Images ── */}
             <GyneCytologyImagesSection
@@ -1195,37 +615,15 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
       </div>
 
       {/* ── Send to Pathologist Modal ── */}
-      <Modal
-        title="Send to Pathologist"
+      <GyneSendToPathologistModal
         open={sendToPathoModalOpen}
         onCancel={() => setSendToPathoModalOpen(false)}
-        onOk={handleSendToPathoConfirm}
-        okText="Confirm & Send"
-        okButtonProps={{ style: { background: "#fa8c16", border: "none" } }}
+        onConfirm={handleSendToPathoConfirm}
         confirmLoading={finalizing}
-      >
-        <p style={{ marginBottom: 16, color: "#595959" }}>
-          This case is flagged as <b style={{ color: "#fa8c16" }}>abnormal</b>.
-          Select a pathologist to assign for review.
-        </p>
-        <Select
-          showSearch
-          placeholder="Select pathologist"
-          style={{ width: "100%" }}
-          value={selectedPathoId}
-          onChange={(val) => setSelectedPathoId(val)}
-          options={pathologists
-            .filter((p) =>
-              p.roles?.some(
-                (r) => r === "pathologist" || r === "senior_pathologist",
-              ),
-            )
-            .map((p) => ({
-              value: p.id,
-              label: p.full_name ?? `User #${p.id}`,
-            }))}
-        />
-      </Modal>
+        pathologists={pathologists}
+        selectedPathoId={selectedPathoId}
+        onSelectPatho={setSelectedPathoId}
+      />
 
       {/* ── Slide Quality Modal ── */}
       <GyneSignOffPage
