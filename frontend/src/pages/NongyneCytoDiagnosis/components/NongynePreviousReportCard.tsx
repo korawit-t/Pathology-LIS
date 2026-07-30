@@ -35,6 +35,7 @@ const NongynePreviousReportCard: React.FC<NongynePreviousReportCardProps> = ({
     <div
       style={{ fontSize: 13 }}
       dangerouslySetInnerHTML={{
+        // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
         __html: sanitizeHtml(prevDiagnosis.diagnosis),
       }}
     />
