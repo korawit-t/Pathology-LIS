@@ -12,13 +12,13 @@ vi.mock("../../../services/nongyneCaseImageService", () => ({
   default: { getImages: vi.fn(), update: vi.fn() },
 }));
 vi.mock("../../../services/nongyneDiagnosisService", () => ({
-  default: { getByCaseId: vi.fn() },
+  default: { getByCaseId: vi.fn(), update: vi.fn(), create: vi.fn() },
 }));
 vi.mock("../../../services/nongyneCytoCaseService", () => ({
-  default: { getById: vi.fn() },
+  default: { getById: vi.fn(), update: vi.fn() },
 }));
 vi.mock("../../../services/nongyneReportService", () => ({
-  default: { getReportsByCase: vi.fn() },
+  default: { getReportsByCase: vi.fn(), publishReport: vi.fn() },
 }));
 vi.mock("../../../services/userService", () => ({
   default: { getUsers: vi.fn(), getCurrentUser: vi.fn() },
@@ -28,7 +28,12 @@ vi.mock("antd", async () => {
   return { ...actual, message: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() } };
 });
 
-const makeForm = () => ({ setFieldsValue: vi.fn() }) as unknown as FormInstance;
+const makeForm = (fieldValues: Record<string, unknown> = {}) =>
+  ({
+    setFieldsValue: vi.fn(),
+    getFieldValue: vi.fn((name: string) => fieldValues[name]),
+    setFieldValue: vi.fn(),
+  }) as unknown as FormInstance;
 
 const makeCaseData = (overrides: Record<string, unknown> = {}) => ({
   id: 400,
@@ -215,5 +220,189 @@ describe("useNongyneDiagnosisData", () => {
     renderHook(() => useNongyneDiagnosisData("400", form));
 
     await waitFor(() => expect(UserService.getUsers).toHaveBeenCalledWith());
+  });
+
+  describe("saveDraft", () => {
+    const values = {
+      clinical_history: "Updated history",
+      specimen_type: "FNA",
+      collection_site: "Thyroid",
+      received_volume_ml: "10",
+      has_malignancy: true,
+      has_critical: false,
+      signers: [{ user_id: 1, role: "primary", signed_at: null }],
+      diagnosis: "Malignant cells present.",
+    };
+
+    it("updates the case and the existing diagnosis when one exists and not in addendum mode", async () => {
+      const diag = { id: 900, case_id: 400, status: "draft", diagnosis_order: 1, entry_type: "Initial" };
+      (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([diag]);
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+      await waitFor(() => expect(result.current.diagnosis).toEqual(diag));
+
+      let outcome: { isCreate: boolean } | undefined;
+      await act(async () => {
+        outcome = await result.current.saveDraft(values, { isAddendumMode: false, prevDiagnosis: null });
+      });
+
+      expect(outcome).toEqual({ isCreate: false });
+      // Regression guard: has_malignancy/has_critical must reach the CASE
+      // service (previously only onFinish did this — handlePreviewPdf let
+      // them silently fall through into the diagnosis payload instead).
+      expect(NongyneCytologyCaseService.update).toHaveBeenCalledWith(
+        400,
+        expect.objectContaining({ has_malignancy: true, has_critical: false }),
+      );
+      expect(NongyneDiagnosisService.update).toHaveBeenCalledWith(
+        900,
+        expect.objectContaining({ diagnosis: "Malignant cells present.", signers: values.signers }),
+      );
+      expect(NongyneDiagnosisService.create).not.toHaveBeenCalled();
+    });
+
+    it("creates a new diagnosis when none exists yet", async () => {
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let outcome: { isCreate: boolean } | undefined;
+      await act(async () => {
+        outcome = await result.current.saveDraft(values, { isAddendumMode: false, prevDiagnosis: null });
+      });
+
+      expect(outcome).toEqual({ isCreate: true });
+      expect(NongyneDiagnosisService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ case_id: 400, diagnosis: "Malignant cells present." }),
+      );
+    });
+
+    it("creates an addendum diagnosis with an incremented diagnosis_order when in addendum mode", async () => {
+      const diag = {
+        id: 900,
+        case_id: 400,
+        status: "signed",
+        diagnosis_order: 1,
+        entry_type: "Initial",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      };
+      (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([diag]);
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+      await waitFor(() => expect(result.current.diagnosis).toEqual(diag));
+
+      await act(async () => {
+        await result.current.saveDraft(values, { isAddendumMode: true, prevDiagnosis: diag });
+      });
+
+      expect(NongyneDiagnosisService.update).not.toHaveBeenCalled();
+      expect(NongyneDiagnosisService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ case_id: 400, diagnosis_order: 2, entry_type: "Addendum" }),
+      );
+    });
+  });
+
+  describe("finalize", () => {
+    const diag = { id: 900, case_id: 400, status: "draft", diagnosis_order: 1, entry_type: "Initial" };
+
+    beforeEach(() => {
+      (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([diag]);
+      (NongyneReportService.publishReport as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 1,
+        status: "published",
+      });
+    });
+
+    const setup = async () => {
+      const form = makeForm({
+        clinical_history: "Final history",
+        signers: [
+          { user_id: 1, role: "primary", signed_at: null },
+          { user_id: 2, role: "cytotechnologist", signed_at: null },
+        ],
+      });
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+      await waitFor(() => expect(result.current.diagnosis).toEqual(diag));
+      return { form, result };
+    };
+
+    it("returns false and does nothing when there is no diagnosis yet", async () => {
+      (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let ok: boolean | undefined;
+      await act(async () => {
+        ok = await result.current.finalize(1, "good", "good", false, "");
+      });
+
+      expect(ok).toBe(false);
+      expect(NongyneReportService.publishReport).not.toHaveBeenCalled();
+    });
+
+    it("stamps only the current user's signer entry and marks the diagnosis signed", async () => {
+      const { form, result } = await setup();
+
+      await act(async () => {
+        await result.current.finalize(1, "good", "good", false, "");
+      });
+
+      expect(form.setFieldValue).toHaveBeenCalledWith("signers", [
+        { user_id: 1, role: "primary", signed_at: expect.any(String) },
+        { user_id: 2, role: "cytotechnologist", signed_at: null },
+      ]);
+      expect(NongyneDiagnosisService.update).toHaveBeenCalledWith(900, { status: "signed" });
+    });
+
+    it("reports 'published' success messaging on the normal finalize path", async () => {
+      const { result } = await setup();
+
+      await act(async () => {
+        await result.current.finalize(1, "good", "good", false, "");
+      });
+
+      expect(message.success).toHaveBeenCalledWith("Report finalized and published.");
+      expect(NongyneReportService.publishReport).toHaveBeenCalledWith(
+        400,
+        expect.any(Array),
+        false,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it("reports the out-lab-consult success message and flags the publish call", async () => {
+      const { result } = await setup();
+
+      await act(async () => {
+        await result.current.finalize(1, "good", "good", true, "awaiting", { reason: "Need expert opinion" });
+      });
+
+      expect(message.success).toHaveBeenCalledWith("Report signed off — flagged for Out-Lab Consult");
+      expect(NongyneReportService.publishReport).toHaveBeenCalledWith(
+        400,
+        expect.any(Array),
+        true,
+        "awaiting",
+        true,
+        "Need expert opinion",
+      );
+    });
+
+    it("shows an error message and returns false when publishing fails", async () => {
+      (NongyneReportService.publishReport as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+      const { result } = await setup();
+
+      let ok: boolean | undefined;
+      await act(async () => {
+        ok = await result.current.finalize(1, "good", "good", false, "");
+      });
+
+      expect(ok).toBe(false);
+      expect(message.error).toHaveBeenCalledWith("Failed to finalize report.");
+    });
   });
 });

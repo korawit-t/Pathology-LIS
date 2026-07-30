@@ -79,12 +79,16 @@ const makeHookReturn = (overrides: Record<string, unknown> = {}) => ({
   currentUser: null,
   loading: false,
   setLoading: vi.fn(),
+  submitting: false,
+  setSubmitting: vi.fn(),
   activeReportId: null,
   defaultSigners: [],
   fetchDiagnosis: vi.fn(),
   fetchCaseData: vi.fn(),
   fetchImages: vi.fn(),
   saveDesc: vi.fn(),
+  saveDraft: vi.fn().mockResolvedValue({ isCreate: false }),
+  finalize: vi.fn().mockResolvedValue(true),
   ...overrides,
 });
 
