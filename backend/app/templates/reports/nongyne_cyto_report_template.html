@@ -202,8 +202,8 @@
         padding: 8px 15px 12px;
         min-height: 60px;
         page-break-inside: auto;
-        box-decoration-break: clone;
-        -webkit-box-decoration-break: clone;
+        /* no box-decoration-break: clone — combined with the floated .badge-container,
+           WeasyPrint mispositions the float once this box spans a page break */
       }
       .diagnosis-box p:first-child { margin-top: 0; }
       .diagnosis-box p:last-child { margin-bottom: 0; }
