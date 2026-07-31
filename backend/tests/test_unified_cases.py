@@ -148,6 +148,10 @@ class TestUnifiedCasesCrud:
         assert molecular_row["hn"] == marker
         assert molecular_row["accession_no"] != surg_case.accession_no
         assert molecular_row["accession_no"].startswith("M")
+        assert molecular_row["parent_case_accession_no"] == surg_case.accession_no
+
+        surgical_row = next(r for r in result["items"] if r["case_type"] == "surgical")
+        assert surgical_row["parent_case_accession_no"] is None
 
     def test_molecular_cancelled_case_reports_cancelled_status(self, db, admin_user):
         registrar, _ = admin_user

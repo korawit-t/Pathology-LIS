@@ -4,6 +4,7 @@ export interface UnifiedCaseItem {
   case_type: "surgical" | "gyne" | "nongyne" | "molecular";
   id: number;
   accession_no: string;
+  parent_case_accession_no?: string | null;
   hn: string | null;
   patient_name: string | null;
   hospital_name: string | null;

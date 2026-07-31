@@ -268,6 +268,7 @@ const UnifiedAccession: React.FC = () => {
           patient_name: row.patient_name,
           test_name: row.specimen,
           registered_at: row.registered_at,
+          parent_case_accession_no: row.parent_case_accession_no,
         },
       });
       return;
@@ -704,6 +705,7 @@ const UnifiedAccession: React.FC = () => {
                 patient_name: record.patient_name,
                 test_name: record.test_name,
                 registered_at: record.registered_at,
+                parent_case_accession_no: record.parent_case_accession_no,
               },
             })
           }

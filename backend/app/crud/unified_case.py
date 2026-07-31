@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, case, func, literal, or_, select, union_all
+from sqlalchemy import String, and_, case, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
@@ -74,6 +74,7 @@ def _surgical_branch(**filters):
             literal("surgical").label("case_type"),
             SurgicalCase.id.label("id"),
             SurgicalCase.accession_no.label("accession_no"),
+            literal(None, type_=String).label("parent_case_accession_no"),
             SurgicalCase.hn.label("hn"),
             _patient_name_expr().label("patient_name"),
             Hospital.name.label("hospital_name"),
@@ -109,6 +110,7 @@ def _gyne_branch(**filters):
             literal("gyne").label("case_type"),
             GyneCytologyCase.id.label("id"),
             GyneCytologyCase.accession_no.label("accession_no"),
+            literal(None, type_=String).label("parent_case_accession_no"),
             GyneCytologyCase.hn.label("hn"),
             _patient_name_expr().label("patient_name"),
             Hospital.name.label("hospital_name"),
@@ -144,6 +146,7 @@ def _nongyne_branch(**filters):
             literal("nongyne").label("case_type"),
             NongyneCytologyCase.id.label("id"),
             NongyneCytologyCase.accession_no.label("accession_no"),
+            literal(None, type_=String).label("parent_case_accession_no"),
             NongyneCytologyCase.hn.label("hn"),
             _patient_name_expr().label("patient_name"),
             Hospital.name.label("hospital_name"),
@@ -197,6 +200,7 @@ def _molecular_branch(**filters):
             literal("molecular").label("case_type"),
             MolecularCase.id.label("id"),
             MolecularCase.accession_no.label("accession_no"),
+            SurgicalCase.accession_no.label("parent_case_accession_no"),
             hn_expr.label("hn"),
             _patient_name_expr().label("patient_name"),
             Hospital.name.label("hospital_name"),
