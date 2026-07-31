@@ -243,6 +243,30 @@ class TestGetDiagnosisHtmlSummary:
 
         assert "ADDENDUM REPORT" in result["diagnosis_html"]
 
+    def test_strips_leading_and_trailing_empty_paragraphs(self, db, admin_user):
+        # A stray leading/trailing empty <p></p> in the stored HTML (e.g. an old
+        # record saved before paste sanitization existed) is invisible in the
+        # compact editor but must not leak into the PDF as a dangling <br/>.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        create_diagnosis(db, SurgicalDiagnosisCreate(
+            case_id=case.id, surgical_specimen_id=specimen.id,
+            diagnosis_level=DiagnosisLevel.SPECIMEN,
+            diagnosis="<p></p><p>Invasive ductal carcinoma.</p><p></p><p></p>",
+        ))
+        groups = _get_grouped_diagnoses(db, case.id)
+
+        result = _get_diagnosis_html_summary(db, case, groups, "individual", {"sorted_specimens": [specimen]}, True)
+
+        html = result["diagnosis_html"]
+        # A single <br/> between the specimen label and the diagnosis text is the
+        # intended separator; a doubled one is the leading-empty-<p> artifact.
+        assert "<br/><br/>" not in html
+        # A trailing empty <p> would leave a dangling <br/> right before the
+        # diagnosis text's closing </span>.
+        assert "carcinoma.<br/></span>" not in html
+        assert "Invasive ductal carcinoma." in html
+
 
 class TestPrepareReportData:
     def test_missing_case_returns_none(self, db, admin_user):
