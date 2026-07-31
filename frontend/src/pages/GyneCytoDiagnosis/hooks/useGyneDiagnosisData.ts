@@ -289,7 +289,17 @@ export function useGyneDiagnosisData(
       sq: string | null = null,
       stq: string | null = null,
       outLab: { reason: string } | undefined,
-      opts: { forceEdit: boolean; requiresPathologistReview: boolean },
+      opts: {
+        forceEdit: boolean;
+        requiresPathologistReview: boolean;
+        // Which signer-stamping branch to take — separate from
+        // requiresPathologistReview (which still always reaches
+        // publishReport unchanged). True only for the cytotech
+        // "send to pathologist" flow, where only the submitter's own
+        // signature should be stamped; a pathologist finalizing their own
+        // abnormal-category case must still stamp every signer.
+        signOnlyCurrentUser: boolean;
+      },
     ) => {
       if (!caseId || !currentUser) return;
       try {
@@ -319,7 +329,7 @@ export function useGyneDiagnosisData(
             return;
           }
           allSigned = updatedSigners.every((s) => !!s.signed_at);
-        } else if (opts.requiresPathologistReview) {
+        } else if (opts.signOnlyCurrentUser) {
           updatedSigners = updatedSigners.map((s) =>
             Number(s.user_id) === Number(currentUser?.id)
               ? { ...s, signed_at: s.signed_at || now }

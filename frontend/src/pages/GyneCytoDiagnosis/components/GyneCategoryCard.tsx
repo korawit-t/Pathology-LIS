@@ -16,6 +16,9 @@ interface GyneCategoryCardProps {
   isAbnormal: boolean;
   setIsAbnormal: (value: boolean) => void;
   requiresPathologistReview: boolean;
+  /** A co-signing pathologist doesn't set the diagnostic category, so they
+   * shouldn't see (or be able to flip) the Result Type switch. */
+  isCoSigner?: boolean;
 }
 
 const GyneCategoryCard: React.FC<GyneCategoryCardProps> = ({
@@ -27,6 +30,7 @@ const GyneCategoryCard: React.FC<GyneCategoryCardProps> = ({
   isAbnormal,
   setIsAbnormal,
   requiresPathologistReview,
+  isCoSigner = false,
 }) => {
   const form = Form.useFormInstance();
 
@@ -118,7 +122,7 @@ const GyneCategoryCard: React.FC<GyneCategoryCardProps> = ({
           </Select>
         </Form.Item>
 
-        {!isRevision && (
+        {!isRevision && !isCoSigner && (
           <Form.Item
             label={
               <Space size={4}>

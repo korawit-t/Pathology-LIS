@@ -200,6 +200,7 @@ describe("GyneDiagnosisEntryPage", () => {
       expect(finalizeMock).toHaveBeenCalledWith(null, null, undefined, {
         forceEdit: false,
         requiresPathologistReview: true,
+        signOnlyCurrentUser: true,
       }),
     );
   });

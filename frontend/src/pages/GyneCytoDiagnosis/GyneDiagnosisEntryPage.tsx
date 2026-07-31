@@ -322,12 +322,20 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
   };
 
   const handleFinalize = async (sq: string | null = null, stq: string | null = null) => {
-    await finalize(sq, stq, undefined, { forceEdit, requiresPathologistReview });
+    await finalize(sq, stq, undefined, {
+      forceEdit,
+      requiresPathologistReview,
+      signOnlyCurrentUser: requiresPathologistReview,
+    });
     if (onBack) onBack();
   };
 
   const handleOutLabConsult = async (reason: string, sq: string, stq: string) => {
-    await finalize(sq, stq, { reason }, { forceEdit, requiresPathologistReview });
+    await finalize(sq, stq, { reason }, {
+      forceEdit,
+      requiresPathologistReview,
+      signOnlyCurrentUser: requiresPathologistReview,
+    });
     if (onBack) onBack();
   };
 

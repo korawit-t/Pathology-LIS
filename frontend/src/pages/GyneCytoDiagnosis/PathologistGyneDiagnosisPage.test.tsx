@@ -99,6 +99,15 @@ const makeHookReturn = (overrides: Record<string, unknown> = {}) => ({
   fetchCaseData: vi.fn(),
   fetchImages: vi.fn(),
   saveDesc: vi.fn(),
+  submitting: false,
+  setSubmitting: vi.fn(),
+  finalizing: false,
+  completingReview: false,
+  saveDraft: vi.fn().mockResolvedValue({ mode: "revise" }),
+  persistDraftForPreview: vi.fn(),
+  finalize: vi.fn().mockResolvedValue(undefined),
+  completeReview: vi.fn().mockResolvedValue("agree"),
+  toggleOutLabConsult: vi.fn(),
   ...overrides,
 });
 
@@ -158,6 +167,7 @@ describe("PathologistGyneDiagnosisPage", () => {
   });
 
   it("adds the current pathologist as a co-signer when submitting a disagree-revision", async () => {
+    const saveDraftMock = vi.fn().mockResolvedValue({ mode: "revise" });
     mockUseGyneDiagnosisData.mockReturnValue(
       makeHookReturn({
         caseData: makeCaseData({ status: "published", review_result: "disagree" }),
@@ -165,6 +175,7 @@ describe("PathologistGyneDiagnosisPage", () => {
           signers: [{ user_id: 999, role: "primary", signed_at: "2026-01-01T00:00:00Z" }],
         }),
         adequacyOptions: [{ id: 10, text: "Satisfactory", group_type: "ADEQUACY" }],
+        saveDraft: saveDraftMock,
       }),
     );
     renderPage();
@@ -181,8 +192,13 @@ describe("PathologistGyneDiagnosisPage", () => {
 
     fireEvent.click(screen.getByText("Save Draft Revision"));
 
-    await waitFor(() => expect(GyneDiagnosisService.reviseReport).toHaveBeenCalled());
-    const [, payload] = (GyneDiagnosisService.reviseReport as ReturnType<typeof vi.fn>).mock.calls[0];
+    // The deep persistence behavior of saveDraft() itself is covered at the
+    // hook level (useGyneDiagnosisData.test.tsx) — this test only verifies
+    // the page's own pre-step: a disagree-revision must add the current
+    // pathologist as a co-signer before saveDraft is called.
+    await waitFor(() => expect(saveDraftMock).toHaveBeenCalled());
+    const [payload, opts] = saveDraftMock.mock.calls[0];
+    expect(opts).toEqual({ isRevision: true });
     expect(payload.signers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ user_id: 1, role: "co-sign pathologist" }),
