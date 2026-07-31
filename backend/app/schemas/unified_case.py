@@ -7,6 +7,7 @@ class UnifiedCaseItem(BaseModel):
     case_type: str  # "surgical" | "gyne" | "nongyne" | "molecular"
     id: int
     accession_no: str
+    parent_case_accession_no: Optional[str] = None
     hn: Optional[str] = None
     patient_name: Optional[str] = None
     hospital_name: Optional[str] = None

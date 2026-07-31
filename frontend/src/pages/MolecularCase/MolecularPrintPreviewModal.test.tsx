@@ -67,6 +67,26 @@ describe("MolecularPrintPreviewModal", () => {
     expect(docDefinition.content[3]).toMatchObject({ text: "MOLECULAR PATHOLOGY" });
   });
 
+  it("adds a Parent line when the case is ordered on an existing Surgical case's block", async () => {
+    render(
+      <MolecularPrintPreviewModal
+        open
+        data={{ ...fixture, parent_case_accession_no: "S26-00042" }}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(createPdfMock).toHaveBeenCalled());
+    const docDefinition = createPdfMock.mock.calls[0][0];
+    expect(docDefinition.content[5]).toMatchObject({ text: "Parent: S26-00042" });
+  });
+
+  it("omits the Parent line for standalone cases", async () => {
+    render(<MolecularPrintPreviewModal open data={fixture} onCancel={vi.fn()} />);
+    await waitFor(() => expect(createPdfMock).toHaveBeenCalled());
+    const docDefinition = createPdfMock.mock.calls[0][0];
+    expect(docDefinition.content).toHaveLength(5);
+  });
+
   it("prints via the iframe's contentWindow when Print is clicked", async () => {
     render(<MolecularPrintPreviewModal open data={fixture} onCancel={vi.fn()} />);
     const iframe = (await screen.findByTitle("Molecular Label Preview")) as HTMLIFrameElement;

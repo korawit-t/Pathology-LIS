@@ -26,6 +26,7 @@ export type UnifiedRow = {
   type: "surgical" | "gyne" | "nongyne" | "molecular";
   id: number;
   accession_no: string;
+  parent_case_accession_no?: string | null;
   hn: string;
   patient_name: string;
   specimen: string;

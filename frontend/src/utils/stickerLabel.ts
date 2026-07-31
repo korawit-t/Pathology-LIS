@@ -13,6 +13,11 @@ export interface StickerLabelFields {
   patientNameLine: string;
   subLabelText: string;
   registeredAt?: string | null;
+  /** Originating Surgical case's accession no, when this specimen was
+   * ordered on an existing case's block rather than registered standalone
+   * (currently only Molecular cases have this). Omitted from the layout
+   * entirely when absent, so Surgical/Gyne/Nongyne stickers are unaffected. */
+  parentAccessionNo?: string | null;
 }
 
 /** The visual-tuning knobs that differ per case type. Values live in each
@@ -51,57 +56,70 @@ export function buildStickerDocDefinition(
   // convention at each call site this replaces.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const content: any[] = [
+    {
+      columns: [
+        {
+          text: fields.accessionNo,
+          bold: style.accessionBold,
+          fontSize: style.accessionFontSize,
+        },
+        {
+          text: `HN: ${fields.hn || ""}`,
+          alignment: "right",
+          fontSize: 10,
+        },
+      ],
+    },
+    {
+      image: barcodeDataUrl,
+      width: 120,
+      height: style.barcodeImageHeight,
+      alignment: "center",
+      margin: [0, 1, 0, 0],
+    },
+    {
+      text: fields.patientNameLine,
+      fontSize: 9,
+      bold: style.patientNameBold,
+      noWrap: style.patientNameNoWrap,
+      alignment: "center",
+      margin: [0, 2, 0, 0],
+    },
+    {
+      text: fields.subLabelText,
+      fontSize: style.subLabelFontSize,
+      alignment: "center",
+      color: "black",
+      margin: [0, 1, 0, 0],
+    },
+    {
+      text: `${style.regDateLabel} ${
+        fields.registeredAt ? dayjs(fields.registeredAt).format("DD/MM/YYYY") : "-"
+      }`,
+      fontSize: style.regDateFontSize,
+      alignment: "center",
+      color: "black",
+      margin: [0, 0, 0, 0],
+    },
+  ];
+
+  if (fields.parentAccessionNo) {
+    content.push({
+      text: `Parent: ${fields.parentAccessionNo}`,
+      fontSize: style.regDateFontSize,
+      alignment: "center",
+      color: "black",
+      margin: [0, 0, 0, 0],
+    });
+  }
+
   return {
     pageSize: { width: 142, height: 70 },
     pageMargins: [5, 4, 5, 2],
     defaultStyle: { font: "Sarabun", fontSize: 8 },
-    content: [
-      {
-        columns: [
-          {
-            text: fields.accessionNo,
-            bold: style.accessionBold,
-            fontSize: style.accessionFontSize,
-          },
-          {
-            text: `HN: ${fields.hn || ""}`,
-            alignment: "right",
-            fontSize: 10,
-          },
-        ],
-      },
-      {
-        image: barcodeDataUrl,
-        width: 120,
-        height: style.barcodeImageHeight,
-        alignment: "center",
-        margin: [0, 1, 0, 0],
-      },
-      {
-        text: fields.patientNameLine,
-        fontSize: 9,
-        bold: style.patientNameBold,
-        noWrap: style.patientNameNoWrap,
-        alignment: "center",
-        margin: [0, 2, 0, 0],
-      },
-      {
-        text: fields.subLabelText,
-        fontSize: style.subLabelFontSize,
-        alignment: "center",
-        color: "black",
-        margin: [0, 1, 0, 0],
-      },
-      {
-        text: `${style.regDateLabel} ${
-          fields.registeredAt ? dayjs(fields.registeredAt).format("DD/MM/YYYY") : "-"
-        }`,
-        fontSize: style.regDateFontSize,
-        alignment: "center",
-        color: "black",
-        margin: [0, 0, 0, 0],
-      },
-    ],
+    content,
   };
 }
 

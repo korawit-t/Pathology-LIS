@@ -17,6 +17,10 @@ export interface MolecularStickerData {
   patient_name?: string | null;
   test_name?: string | null;
   registered_at?: string | null;
+  /** Set when this case was ordered on an existing Surgical case's block
+   * rather than registered standalone — printed on the sticker so staff can
+   * trace the specimen back to its originating case. */
+  parent_case_accession_no?: string | null;
 }
 
 type MolecularPrintPreviewModalProps = PrintPreviewModalProps<MolecularStickerData>;
@@ -50,6 +54,7 @@ const MolecularPrintPreviewModal: React.FC<MolecularPrintPreviewModalProps> = ({
       // Molecular label, since it names what's actually being tested.
       subLabelText: (data.test_name || "MOLECULAR PATHOLOGY").toUpperCase(),
       registeredAt: data.registered_at,
+      parentAccessionNo: data.parent_case_accession_no,
     };
   }, [data]);
 

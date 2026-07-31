@@ -117,6 +117,21 @@ describe("buildStickerDocDefinition", () => {
     const doc = buildStickerDocDefinition({ ...fields, hn: null }, "data:fake", surgicalStyle);
     expect(doc.content[0].columns[1].text).toBe("HN: ");
   });
+
+  it("omits the parent-case line when parentAccessionNo is not set", () => {
+    const doc = buildStickerDocDefinition(fields, "data:fake", surgicalStyle);
+    expect(doc.content).toHaveLength(5);
+  });
+
+  it("appends a parent-case line when parentAccessionNo is set", () => {
+    const doc = buildStickerDocDefinition(
+      { ...fields, parentAccessionNo: "S26-00001" },
+      "data:fake",
+      surgicalStyle,
+    );
+    expect(doc.content).toHaveLength(6);
+    expect(doc.content[5]).toMatchObject({ text: "Parent: S26-00001", fontSize: 6 });
+  });
 });
 
 describe("generateStickerPdfBlob", () => {

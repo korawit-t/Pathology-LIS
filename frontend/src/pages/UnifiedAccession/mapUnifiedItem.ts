@@ -9,6 +9,7 @@ export const mapUnifiedItem = (
   type: item.case_type,
   id: item.id,
   accession_no: item.accession_no,
+  parent_case_accession_no: item.parent_case_accession_no,
   hn: item.hn || "-",
   patient_name: item.patient_name || "-",
   specimen: item.specimen || "-",
