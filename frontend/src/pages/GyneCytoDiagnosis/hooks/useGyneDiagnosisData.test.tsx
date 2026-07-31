@@ -264,6 +264,7 @@ describe("useGyneDiagnosisData", () => {
         await result.current.finalize(null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
+          signOnlyCurrentUser: false,
         });
       });
 
@@ -275,7 +276,7 @@ describe("useGyneDiagnosisData", () => {
       expect(await screen.findByText("NILM — Report Published")).toBeInTheDocument();
     });
 
-    it("pathologist-review branch stamps only the current user and flags publish as requiring review", async () => {
+    it("signOnlyCurrentUser branch stamps only the current user and flags publish as requiring review (cytotech send-to-pathologist flow)", async () => {
       const signers = [
         { user_id: 1, role: "cytotechnologist", signed_at: null },
         { user_id: 42, role: "primary", signed_at: null },
@@ -286,6 +287,7 @@ describe("useGyneDiagnosisData", () => {
         await result.current.finalize(null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: true,
+          signOnlyCurrentUser: true,
         });
       });
 
@@ -297,6 +299,29 @@ describe("useGyneDiagnosisData", () => {
       expect(GyneDiagnosisService.publishReport).toHaveBeenCalledWith(300, updatedSigners, true, undefined, undefined);
     });
 
+    it("regression: a pathologist finalizing an abnormal case (requiresPathologistReview=true, signOnlyCurrentUser=false) still stamps every signer", async () => {
+      const signers = [
+        { user_id: 1, role: "primary", signed_at: null },
+        { user_id: 2, role: "cytotechnologist", signed_at: null },
+      ];
+      const { form, result } = await setup(signers);
+
+      await act(async () => {
+        await result.current.finalize(null, null, undefined, {
+          forceEdit: false,
+          requiresPathologistReview: true,
+          signOnlyCurrentUser: false,
+        });
+      });
+
+      const updatedSigners = (form.setFieldValue as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(updatedSigners).toEqual([
+        expect.objectContaining({ user_id: 1, signed_at: expect.any(String) }),
+        expect.objectContaining({ user_id: 2, signed_at: expect.any(String) }),
+      ]);
+      expect(GyneDiagnosisService.publishReport).toHaveBeenCalledWith(300, updatedSigners, true, undefined, undefined);
+    });
+
     it("out-lab branch reports the out-lab success message and flags the publish call", async () => {
       const { result } = await setup();
 
@@ -304,6 +329,7 @@ describe("useGyneDiagnosisData", () => {
         await result.current.finalize("good", "good", { reason: "Need expert opinion" }, {
           forceEdit: false,
           requiresPathologistReview: false,
+          signOnlyCurrentUser: false,
         });
       });
 
@@ -327,6 +353,7 @@ describe("useGyneDiagnosisData", () => {
         await result.current.finalize(null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
+          signOnlyCurrentUser: false,
         });
       });
 
@@ -349,6 +376,7 @@ describe("useGyneDiagnosisData", () => {
         await result.current.finalize(null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
+          signOnlyCurrentUser: false,
         });
       });
 

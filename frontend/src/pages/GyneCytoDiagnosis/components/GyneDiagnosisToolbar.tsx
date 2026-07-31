@@ -9,6 +9,7 @@ import {
   EditOutlined,
   SaveOutlined,
   CheckCircleOutlined,
+  CheckCircleFilled,
 } from "@ant-design/icons";
 import type { GyneCytologyCase } from "../../../types/gyne-cytology";
 
@@ -32,6 +33,15 @@ interface GyneDiagnosisToolbarProps {
   submitting: boolean;
   finalizing: boolean;
   requiresPathologistReview: boolean;
+  /** "entry" (default): Save Draft + Sign-off/Send-to-Pathologist, branched
+   * on requiresPathologistReview. "pathologist": Save Draft + Sign-off
+   * (never routes further), or a single "Confirm & Sign" button when
+   * canCoSignConfirm — see isPrimary/isCoSigner/isPrimarySigned below. */
+  variant?: "entry" | "pathologist";
+  isPrimary?: boolean;
+  isCoSigner?: boolean;
+  isPrimarySigned?: boolean;
+  canCoSignConfirm?: boolean;
   onBack?: () => void;
   onToggleOutLabConsult: (checked: boolean) => void;
   onOpenHistory: () => void;
@@ -61,6 +71,11 @@ const GyneDiagnosisToolbar: React.FC<GyneDiagnosisToolbarProps> = ({
   submitting,
   finalizing,
   requiresPathologistReview,
+  variant = "entry",
+  isPrimary,
+  isCoSigner,
+  isPrimarySigned,
+  canCoSignConfirm,
   onBack,
   onToggleOutLabConsult,
   onOpenHistory,
@@ -147,30 +162,57 @@ const GyneDiagnosisToolbar: React.FC<GyneDiagnosisToolbarProps> = ({
               </Button>
             )}
 
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={submitting}
-              disabled={finalizing}
-              onClick={onSaveDraft}
-              style={{ background: "#52c41a", border: "none" }}
-            >
-              {isRevision ? "Save Draft Revision" : "Save Draft"}
-            </Button>
-            {(!isFinalized || isRevision || isConsultEditorLocked) && hasDiagnosis && (
+            {variant === "pathologist" && canCoSignConfirm ? (
               <Button
                 type="primary"
-                icon={<CheckCircleOutlined />}
+                icon={<CheckCircleFilled />}
                 loading={finalizing}
-                onClick={requiresPathologistReview ? onSendToPathologistClick : onFinalizeClick}
-                disabled={submitting || isFinalizeLocked}
-                style={{
-                  background: requiresPathologistReview ? "#fa8c16" : "#cf1322",
-                  border: "none",
-                }}
+                onClick={onFinalizeClick}
+                style={{ background: "#52c41a", border: "none" }}
               >
-                {requiresPathologistReview ? "Send to Pathologist" : "Sign-off"}
+                Confirm & Sign
               </Button>
+            ) : (
+              <>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={submitting}
+                  disabled={finalizing}
+                  onClick={onSaveDraft}
+                  style={{ background: "#52c41a", border: "none" }}
+                >
+                  {isRevision ? "Save Draft Revision" : "Save Draft"}
+                </Button>
+                {(!isFinalized || isRevision || isConsultEditorLocked) && hasDiagnosis && (
+                  variant === "pathologist" ? (
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      loading={finalizing}
+                      onClick={onFinalizeClick}
+                      disabled={submitting || (isCoSigner && !isPrimarySigned) || isFinalizeLocked}
+                      style={{ background: "#cf1322", border: "none" }}
+                    >
+                      {isPrimary ? "Sign-off" : "Confirm & Sign-off"}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      loading={finalizing}
+                      onClick={requiresPathologistReview ? onSendToPathologistClick : onFinalizeClick}
+                      disabled={submitting || isFinalizeLocked}
+                      style={{
+                        background: requiresPathologistReview ? "#fa8c16" : "#cf1322",
+                        border: "none",
+                      }}
+                    >
+                      {requiresPathologistReview ? "Send to Pathologist" : "Sign-off"}
+                    </Button>
+                  )
+                )}
+              </>
             )}
           </>
         )}
