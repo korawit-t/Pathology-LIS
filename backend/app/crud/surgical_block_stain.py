@@ -49,7 +49,13 @@ def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
         # this, deleting the last one left the case stuck showing a pending
         # state forever (this function otherwise only ever sets the flag,
         # never clears it).
-        case.status = "stained"
+        #
+        # If the case already has an assigned pathologist, it was already
+        # dispatched at least once — resolve back to "pending diagnosis"
+        # rather than "stained", otherwise the case would reappear in the
+        # Slide Dispatch "Manual Select" list (ManualSelectModal.tsx queries
+        # status == "stained") as if it had never been sent out.
+        case.status = "pending diagnosis" if case.pathologist_id else "stained"
 
 
 def create_stain(db: Session, obj_in: StainCreate, registrar_id: int | None = None):

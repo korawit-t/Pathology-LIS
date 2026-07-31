@@ -14,7 +14,22 @@ from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 
 
 def _sync_case_status_from_he_stains(db: Session, stain_ids: list[int]) -> None:
-    """Set case status to 'stained' when all H&E routine stains in affected cases are done."""
+    """Set case status to 'stained' when all H&E routine stains in affected cases are
+    done, for the first time only.
+
+    is_slide_prepped is a one-way flag, only ever set True here, marking that the
+    case already reached this milestone once. Without checking it, finishing an
+    unrelated later stain run — e.g. a special stain/IHC ordered after the case was
+    already dispatched to a pathologist — would bounce the case's status back to
+    "stained" just because its original H&E set happens to already be complete,
+    making it reappear in the Slide Dispatch "Manual Select" list
+    (ManualSelectModal.tsx) even though it was already sent out. For those
+    already-prepped cases, re-derive from any still-pending IHC/Histochem block
+    stains instead, so a pending flag set by ordering that special stain/IHC still
+    correctly clears once it's actually done.
+    """
+    from app.crud.surgical_block_stain import _update_case_status_from_block_stains
+
     case_ids_query = (
         db.query(SurgicalCase.id)
         .distinct()
@@ -27,6 +42,14 @@ def _sync_case_status_from_he_stains(db: Session, stain_ids: list[int]) -> None:
     case_ids = [c[0] for c in case_ids_query]
 
     for case_id in case_ids:
+        case = db.get(SurgicalCase, case_id)
+        if not case:
+            continue
+
+        if case.is_slide_prepped:
+            _update_case_status_from_block_stains(db, case_id)
+            continue
+
         he_base = (
             db.query(SurgicalBlockStain)
             .join(SurgicalBlock)

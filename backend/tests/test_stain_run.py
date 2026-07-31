@@ -108,6 +108,68 @@ class TestCreateHeBatchRun:
         assert case.status == "stained"
 
 
+class TestSyncCaseStatusAlreadyDispatched:
+    """Regression test: ordering (and then processing) a special stain/IHC on a
+    block AFTER a case has already been dispatched to a pathologist must not
+    bounce the case's status back to "stained" — that would make it reappear
+    in the Slide Dispatch "Manual Select" list (ManualSelectModal.tsx queries
+    status == "stained") as if it had never been sent out."""
+
+    def test_completing_post_dispatch_special_stain_does_not_revert_to_stained(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        he_test = _he_test(db)
+        he_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
+        create_stain_run(db, StainRunCreate(stain_ids=[he_stain.id]), user_id=registrar.id)
+        db.refresh(case)
+        assert case.status == "stained"
+        assert case.is_slide_prepped is True
+
+        # Simulate dispatch to a pathologist (mirrors create_bulk_slide_dispatch).
+        case.status = "slide sent"
+        case.pathologist_id = registrar.id
+        db.commit()
+
+        # Pathologist orders an additional special stain mid-review.
+        histochem_test = make_anatomical_pathology_test(db, category="Histochem", name="Special Stain")
+        special_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=histochem_test.id, slide_no=2))
+        db.refresh(case)
+        assert case.status == "pending special stains"
+
+        # Histotech processes it through a stain run.
+        create_stain_run(db, StainRunCreate(stain_ids=[special_stain.id]), user_id=registrar.id)
+
+        db.refresh(case)
+        assert case.status != "stained"
+        assert case.status == "pending diagnosis"
+
+    def test_completing_post_dispatch_he_recut_does_not_revert_to_stained(self, db, admin_user):
+        """Same regression via an H&E recut instead of a special stain — an
+        already-"stained" case shouldn't be bounced back to "stained" just
+        because its H&E set is (still trivially) complete."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        he_test = _he_test(db)
+        he_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
+        create_stain_run(db, StainRunCreate(stain_ids=[he_stain.id]), user_id=registrar.id)
+        db.refresh(case)
+        assert case.status == "stained"
+
+        case.status = "pending diagnosis"
+        case.pathologist_id = registrar.id
+        db.commit()
+
+        recut = create_block_stain(
+            db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=2, is_recut=True)
+        )
+        create_stain_run(db, StainRunCreate(stain_ids=[recut.id]), user_id=registrar.id)
+
+        db.refresh(case)
+        assert case.status == "pending diagnosis"
+
+
 class TestGetRunDetails:
     def test_missing_run_returns_none(self, db):
         assert get_run_details(db, 999999) is None
