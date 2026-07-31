@@ -13,6 +13,8 @@ import {
   RedoOutlined,
 } from "@ant-design/icons";
 import type { Editor } from "@tiptap/core";
+import { Fragment, Slice } from "prosemirror-model";
+import type { EditorView } from "prosemirror-view";
 import { useTheme } from "../../contexts/ThemeContext";
 
 /* =======================
@@ -70,6 +72,44 @@ const TRAILING_EMPTY_P = new RegExp(`(?:${EMPTY_P_SOURCE})+$`, "i");
 // middle of the text are intentional formatting and are left alone.
 function trimEdgeEmptyParagraphs(html: string): string {
   return html.replace(LEADING_EMPTY_P, "").replace(TRAILING_EMPTY_P, "");
+}
+
+// Same idea as trimEdgeEmptyParagraphs above, but applied to a pasted Slice
+// instead of an HTML string. Copying a selection out of another editor in
+// this app (e.g. gross description) commonly grazes the blank spacer
+// paragraphs surrounding the selected line, and ProseMirror serializes the
+// whole selection verbatim — so pasting reconstructs those as real blank
+// lines here. Stripping them via a string/DOM pass on the pasted HTML
+// (transformPastedHTML) is unsafe: it desyncs the content from the
+// `data-pm-slice` openStart/openEnd metadata ProseMirror wrote for that HTML,
+// which then makes it mis-join the remaining content (e.g. jamming pasted
+// text directly against existing text with no space). Trimming the parsed
+// Slice's own edge nodes instead keeps openStart/openEnd honest: an edge we
+// remove is no longer "open" (nothing left there to join), so it's reset to
+// 0, while an untouched edge (no blank paragraph, e.g. copying just a run of
+// inline text) keeps whatever openStart/openEnd ProseMirror computed, so
+// verbatim inline pastes still merge into the destination text correctly.
+function trimEdgeEmptySliceParagraphs(slice: Slice): Slice {
+  const nodes = slice.content.content.slice();
+  let openStart = slice.openStart;
+  let openEnd = slice.openEnd;
+  let changed = false;
+
+  const isEmptyParagraph = (node: (typeof nodes)[number]) =>
+    node.type.name === "paragraph" && node.content.size === 0;
+
+  while (nodes.length > 1 && isEmptyParagraph(nodes[0])) {
+    nodes.shift();
+    openStart = 0;
+    changed = true;
+  }
+  while (nodes.length > 1 && isEmptyParagraph(nodes[nodes.length - 1])) {
+    nodes.pop();
+    openEnd = 0;
+    changed = true;
+  }
+
+  return changed ? new Slice(Fragment.fromArray(nodes), openStart, openEnd) : slice;
 }
 
 /* =======================
@@ -159,21 +199,8 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
             event.preventDefault();
           }
         },
-        // Copying a selection out of another Tiptap editor in this app (e.g. gross
-        // description) often drags in the blank spacer paragraphs surrounding the
-        // selected line, since ProseMirror serializes the whole selection verbatim
-        // to the clipboard. Pasting that HTML here then reconstructs those empty
-        // <p> as real blank lines. Strip them so paste only brings in real content.
-        transformPastedHTML: (html: string) => {
-          const parsed = new DOMParser().parseFromString(html, "text/html");
-          parsed.body.querySelectorAll("p").forEach((p) => {
-            const isEmpty =
-              !p.querySelector("img, table, hr") &&
-              (p.textContent ?? "").replace(/ /g, "").trim() === "";
-            if (isEmpty) p.remove();
-          });
-          return parsed.body.innerHTML;
-        },
+        transformPasted: (slice: Slice, _view: EditorView, _plain: boolean) =>
+          trimEdgeEmptySliceParagraphs(slice),
       },
       onUpdate: ({ editor }: { editor: Editor }) => {
         const html = editor.getHTML();
