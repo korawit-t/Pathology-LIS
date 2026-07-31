@@ -159,6 +159,21 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
             event.preventDefault();
           }
         },
+        // Copying a selection out of another Tiptap editor in this app (e.g. gross
+        // description) often drags in the blank spacer paragraphs surrounding the
+        // selected line, since ProseMirror serializes the whole selection verbatim
+        // to the clipboard. Pasting that HTML here then reconstructs those empty
+        // <p> as real blank lines. Strip them so paste only brings in real content.
+        transformPastedHTML: (html: string) => {
+          const parsed = new DOMParser().parseFromString(html, "text/html");
+          parsed.body.querySelectorAll("p").forEach((p) => {
+            const isEmpty =
+              !p.querySelector("img, table, hr") &&
+              (p.textContent ?? "").replace(/ /g, "").trim() === "";
+            if (isEmpty) p.remove();
+          });
+          return parsed.body.innerHTML;
+        },
       },
       onUpdate: ({ editor }: { editor: Editor }) => {
         const html = editor.getHTML();
