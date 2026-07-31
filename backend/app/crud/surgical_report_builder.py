@@ -433,11 +433,15 @@ def _get_diagnosis_html_summary(
                 else:
                     spec_display = f"<b>{label_range}:</b>"
 
-            clean_diag = (
-                (d.diagnosis or "").replace("</p>", "<br/>").replace("<p>", "").strip()
-            )
-            if clean_diag.endswith("<br/>"):
-                clean_diag = clean_diag[:-5]
+            clean_diag = (d.diagnosis or "").replace("</p>", "<br/>").replace("<p>", "")
+            # A leading/trailing empty <p></p> in the stored HTML (e.g. from an old
+            # record saved before paste sanitization existed, or a template-apply
+            # that never triggered the editor's own onBlur edge-trim) becomes a
+            # leading/trailing <br/> here. It's invisible in the compact editor but
+            # renders as a real blank line in the PDF's more generously spaced
+            # diagnosis box, so strip *every* leading/trailing <br/> — not just one.
+            clean_diag = re.sub(r"^(?:\s|<br\s*/?>)+", "", clean_diag)
+            clean_diag = re.sub(r"(?:\s|<br\s*/?>)+$", "", clean_diag)
 
             sep = " " if round_mode == "clean" or not show_specimen_name else "<br/>"
             diag_texts.append(
