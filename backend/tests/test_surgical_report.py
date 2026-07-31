@@ -93,6 +93,54 @@ class TestFinalizeRequireAllPathologistsSign:
         db.refresh(case)
         assert case.status == "pending peer review"
 
+    def test_primary_only_cosigner_signs_first_stays_draft(self, db, admin_user, two_pathologists):
+        make_system_setting(db, require_all_pathologists_sign=False)
+        registrar, _ = admin_user
+        path1, path2 = two_pathologists
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+
+        payload = build_bulk_save_payload(
+            case.id, specimen.id, path1.id,
+            pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
+        )
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path2.id)
+
+        assert report.status == ReportStatus.DRAFT
+        db.refresh(case)
+        assert case.status != "signed out"
+
+    def test_primary_only_primary_signs_publishes_despite_pending_cosigner(self, db, admin_user, two_pathologists):
+        make_system_setting(db, require_all_pathologists_sign=False)
+        registrar, _ = admin_user
+        path1, path2 = two_pathologists
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+
+        payload = build_bulk_save_payload(
+            case.id, specimen.id, path1.id,
+            pathologists=[{"user_id": path1.id, "role": "primary"}, {"user_id": path2.id, "role": "co-signer"}],
+        )
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
+
+        assert report.status == ReportStatus.PUBLISHED
+        db.refresh(case)
+        assert case.status == "signed out"
+
+    def test_primary_only_no_primary_signer_stays_draft(self, db, admin_user, two_pathologists):
+        make_system_setting(db, require_all_pathologists_sign=False)
+        registrar, _ = admin_user
+        path1, _ = two_pathologists
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+
+        payload = build_bulk_save_payload(
+            case.id, specimen.id, path1.id,
+            pathologists=[{"user_id": path1.id, "role": "co-signer"}],
+        )
+        report = finalize_and_snapshot_orchestrator(db, case.id, payload, path1.id)
+
+        assert report.status == ReportStatus.DRAFT
+        db.refresh(case)
+        assert case.status != "signed out"
+
 
 class TestFinalizeOtherBranches:
     def test_addendum_round_increments_diagnosis_order(self, db, admin_user, two_pathologists):

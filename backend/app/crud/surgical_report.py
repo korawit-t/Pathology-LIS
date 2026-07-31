@@ -412,7 +412,20 @@ def finalize_and_snapshot_orchestrator(
         )
         settings = db.query(SystemSetting).first()
         require_all = settings.require_all_pathologists_sign if settings else True
-        should_move_to_approval = (pending_count == 0) if require_all else True
+        if require_all:
+            should_move_to_approval = pending_count == 0
+        else:
+            should_move_to_approval = (
+                db.query(ReportSigner)
+                .filter(
+                    ReportSigner.report_id == report.id,
+                    ReportSigner.diagnosis_order == current_order_no,
+                    ReportSigner.role == "primary",
+                    ReportSigner.signed_at.isnot(None),
+                )
+                .first()
+                is not None
+            )
 
         if should_move_to_approval:
             db.query(SurgicalDiagnosis).filter(
