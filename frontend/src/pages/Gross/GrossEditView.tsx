@@ -101,7 +101,6 @@ const GrossEditView: React.FC<Props> = ({
   const { updateUser } = useAuth();
 
   const [loading, setLoading] = useState(false);
-  const [editorUpdateKey, setEditorUpdateKey] = useState(0);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [isAssistModalOpen, setIsAssistModalOpen] = useState(false);
   const [currentSpecimens, setCurrentSpecimens] = useState<any[]>([]);
@@ -188,15 +187,14 @@ const GrossEditView: React.FC<Props> = ({
 
   const handleTemplateUpdate = (newText: string, mode: "replace" | "append", specimenId: number) => {
     const currentDescriptions = form.getFieldValue("gross_descriptions") || {};
-    const currentHTML = currentDescriptions[specimenId] || "";
-    const finalHTML =
-      mode === "replace"
-        ? `<p>${newText}</p>`
-        : currentHTML + `<p>${newText}</p>`;
+    const currentText = currentDescriptions[specimenId] || "";
+    const finalText =
+      mode === "replace" || !currentText
+        ? newText
+        : `${currentText}\n\n${newText}`;
     form.setFieldsValue({
-      gross_descriptions: { ...currentDescriptions, [specimenId]: finalHTML },
+      gross_descriptions: { ...currentDescriptions, [specimenId]: finalText },
     });
-    setEditorUpdateKey((prev) => prev + 1);
   };
 
   const handleUpdatePatientInfoPreference = async (expanded: boolean) => {
@@ -361,7 +359,6 @@ const GrossEditView: React.FC<Props> = ({
       const updatedSpecs = updatedCase.specimens ?? [];
       setCurrentSpecimens(updatedSpecs);
       form.setFieldsValue(prepareGrossInitialValues(updatedCase, currentUserId));
-      setEditorUpdateKey((prev) => prev + 1);
 
       markClean();
       onCaseSaved();
@@ -382,7 +379,6 @@ const GrossEditView: React.FC<Props> = ({
       children: (
         <GrossDescriptionSection
           specimens={currentSpecimens}
-          editorUpdateKey={editorUpdateKey}
           onTemplateUpdate={handleTemplateUpdate}
           users={users}
         />

@@ -32,7 +32,6 @@ import SurgicalSpecimenService from "../../../../services/surgicalSpecimenServic
 import dayjs from "dayjs";
 
 // Components
-import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
 import BlockTableForm from "../../../Gross/components/BlockTableForm";
 import BlockGridView from "./BlockGridView/BlockGridView";
 import SurgicalDiagnosisEditor from "./SurgicalDiagnosisEditor";
@@ -382,9 +381,14 @@ const SpecimenIntegratedWorkblock: React.FC<
                                 name={["gross_descriptions", specimen.id]}
                                 noStyle
                               >
-                                <SimpleTiptapEditor
-                                  disabled={isLocked}
+                                <Input.TextArea
+                                  readOnly={isLocked}
                                   placeholder="Describe gross appearance..."
+                                  autoSize={{ minRows: 4, maxRows: 10 }}
+                                  style={{
+                                    background: isLocked ? "#f5f5f5" : "#fff",
+                                    cursor: isLocked ? "default" : "text",
+                                  }}
                                 />
                               </Form.Item>
                             ),
