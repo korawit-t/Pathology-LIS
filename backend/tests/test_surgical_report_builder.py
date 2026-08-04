@@ -23,6 +23,7 @@ from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.schemas.surgical_diagnosis import SurgicalDiagnosisCreate
 from app.enums.surgical_diagnosis_enums import DiagnosisLevel, DiagnosisStatus
 from app.models.surgical_report import ReportStatus
+from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.tumor_registry import TumorRegistry
 
 from tests.factories import (
@@ -266,6 +267,84 @@ class TestGetDiagnosisHtmlSummary:
         # diagnosis text's closing </span>.
         assert "carcinoma.<br/></span>" not in html
         assert "Invasive ductal carcinoma." in html
+
+
+class TestGrossDescriptionSummary:
+    """Covers the gross_combined loop inside _prepare_specimen_and_images, via
+    prepare_report_data's gross_description_summary output — exercised
+    through the same public entry point TestPrepareReportData below uses.
+    Specimen.gross_description may hold either legacy Tiptap/ProseMirror HTML
+    (pre-existing records) or new plain text (current save format) forever —
+    no DB migration — so both shapes, and a case mixing both, are covered.
+    """
+
+    def test_plain_text_ending_in_word_containing_br_chars_is_not_truncated(self, db, admin_user):
+        # Regression test: the old `.rstrip("<br/>").rstrip("<br />")` stripped
+        # a *character set*, not a literal suffix, silently chopping the tail
+        # off any description ending in a word containing b/r/</>/  (e.g.
+        # "tumor", "border").
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "Received in formalin, a well-defined tumor"
+        db.commit()
+
+        data = prepare_report_data(db, case.id)
+
+        assert "Received in formalin, a well-defined tumor" in data["gross_description_summary"]
+
+    def test_legacy_html_paragraphs_become_br_separated_lines(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "<p>Pink-tan tissue</p><p>Margin clear</p>"
+        db.commit()
+
+        data = prepare_report_data(db, case.id)
+
+        assert "Pink-tan tissue<br/>Margin clear" in data["gross_description_summary"]
+
+    def test_plain_text_with_blank_line_section_break(self, db, admin_user):
+        # A blank-line section break in plain text is user-intentional
+        # formatting (unlike a stray empty <p></p> artifact from legacy rich
+        # text) and is preserved verbatim as a real blank line in the PDF.
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "Section one.\n\nSection two."
+        db.commit()
+
+        data = prepare_report_data(db, case.id)
+
+        assert "Section one.<br/><br/>Section two." in data["gross_description_summary"]
+
+    def test_mixed_legacy_html_and_plain_text_specimens_in_one_case(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen_a = make_signable_case(db, registrar_id=registrar.id)
+        specimen_a.gross_description = "<p>Legacy HTML specimen A</p>"
+        specimen_b = SurgicalSpecimen(
+            case_id=case.id,
+            specimen_label="B",
+            specimen_name="Second Specimen",
+            gross_description="Plain text specimen B",
+        )
+        db.add(specimen_b)
+        db.commit()
+
+        data = prepare_report_data(db, case.id)
+
+        summary = data["gross_description_summary"]
+        assert "Legacy HTML specimen A" in summary
+        assert "Plain text specimen B" in summary
+
+    def test_literal_angle_bracket_and_ampersand_are_escaped_not_interpreted(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.gross_description = "Margin <1mm, tumor & stroma"
+        db.commit()
+
+        data = prepare_report_data(db, case.id)
+
+        summary = data["gross_description_summary"]
+        assert "Margin &lt;1mm, tumor &amp; stroma" in summary
+        assert "<1mm" not in summary
 
 
 class TestPrepareReportData:

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
+from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 from app.models.surgical_case import SurgicalCase
@@ -245,9 +246,8 @@ def _prepare_specimen_and_images(
         label = ss["specimen_label"]
         name = ss["specimen_name"]
         if s.gross_description:
-            clean_gross = re.sub(r"<p>(.*?)</p>", lambda m: m.group(1) + "<br/>", s.gross_description.strip(), flags=re.DOTALL)
-            clean_gross = re.sub(r"(<br\s*/?>){2,}", "<br/>", clean_gross)
-            clean_gross = clean_gross.strip().rstrip("<br/>").rstrip("<br />")
+            plain = html_or_plain_text_to_lines(s.gross_description)
+            clean_gross = text_to_escaped_html_br(plain)
             gross_text = f"<b>{label}: {name}</b><br/>{clean_gross}"
         else:
             gross_text = f"<b>{label}: {name}</b>"
