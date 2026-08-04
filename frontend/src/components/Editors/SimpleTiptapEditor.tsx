@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import type { Editor } from "@tiptap/core";
 import { Fragment, Slice } from "prosemirror-model";
+import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -138,6 +139,32 @@ const TabKeymap = Extension.create({
 });
 
 /* =======================
+   Read-only guard
+======================= */
+// A "disabled" editor used to be set to editable: false, which sets the DOM's
+// contenteditable attribute to "false". That makes the element unfocusable by
+// click in every browser tested (focus stays on <body>), which breaks Ctrl/Cmd+A:
+// with nothing actually focused inside the field, the browser's native
+// "select all" falls back to selecting the entire page instead of just this
+// field's text — copying that anywhere then dumps unrelated page content
+// (headings, other fields, buttons) in as extra lines. Keeping contenteditable
+// true and blocking modifications at the transaction level instead preserves
+// normal click-to-focus / drag-select / Ctrl+A / copy behavior while still
+// preventing edits.
+function createReadOnlyGuard(disabledRef: React.RefObject<boolean>) {
+  return Extension.create({
+    name: "readOnlyGuard",
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          filterTransaction: (tr) => !disabledRef.current || !tr.docChanged,
+        }),
+      ];
+    },
+  });
+}
+
+/* =======================
    Component
 ======================= */
 const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
@@ -161,6 +188,15 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
     // instances mounted at once, one per specimen).
     const lastEmittedHtml = useRef<string | null>(value ?? null);
 
+    // Kept in sync with the `disabled` prop below; read by the read-only
+    // guard plugin's filterTransaction closure (see createReadOnlyGuard).
+    const disabledRef = useRef(disabled);
+    disabledRef.current = disabled;
+    const readOnlyGuardRef = useRef<ReturnType<typeof createReadOnlyGuard> | null>(null);
+    if (!readOnlyGuardRef.current) {
+      readOnlyGuardRef.current = createReadOnlyGuard(disabledRef);
+    }
+
     // 🚩 3. กำหนดสีตามโหมด
     const themeColors = {
       border: isDarkMode ? "#434343" : "#d9d9d9",
@@ -182,13 +218,16 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
       extensions: [
         StarterKit,
         TabKeymap,
+        readOnlyGuardRef.current,
         Placeholder.configure({
           placeholder,
           emptyEditorClass: "is-editor-empty",
         }),
       ],
       content: value ?? "",
-      editable: !disabled, // 🚩 ตั้งค่าเริ่มต้นตามค่า disabled
+      // Always contenteditable — see createReadOnlyGuard for why "disabled"
+      // is enforced by blocking transactions instead of toggling this off.
+      editable: true,
       editorProps: {
         attributes: {
           class: "prose prose-sm focus:outline-none",
@@ -227,13 +266,6 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
         }
       },
     }));
-
-    // 🚩 เพิ่ม Effect เพื่อคอย Update สถานะ Read-only เมื่อมีการเปลี่ยนค่า disabled
-    useEffect(() => {
-      if (editor) {
-        editor.setEditable(!disabled);
-      }
-    }, [disabled, editor]);
 
     useEffect(() => {
       if (!editor || value === undefined) return;
