@@ -86,7 +86,7 @@ def get_block(db: Session, block_id: int):
     return block
 
 
-def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_fixing: bool = None, decal_history: bool = None, fix_history: bool = None, skip: int = 0, limit: int = 20):
+def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_fixing: bool = None, decal_history: bool = None, fix_history: bool = None, has_pending_outlab: bool = None, skip: int = 0, limit: int = 20):
     # 1. เตรียม Base Query (ยังไม่ต้องยิงคำสั่งไปที่ DB)
     query = db.query(SurgicalBlock)
 
@@ -106,14 +106,32 @@ def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_
     if decal_history is True:
         query = query.filter(SurgicalBlock.decal_end_at.isnot(None)).order_by(SurgicalBlock.decal_end_at.desc())
 
-    # specimen_id queries are small — return all without pagination
-    if specimen_id is not None and is_decal is None and is_fixing is None:
+    # Outlab dispatch queue: filter to blocks with at least one pending
+    # external-lab stain *before* ordering/limiting, so an old block that just
+    # had an IHC added doesn't get truncated out by the "most recent N blocks"
+    # window below (see PendingQueueTab — it used to fetch top-200-by-id and
+    # filter client-side, which silently dropped older blocks once the lab had
+    # created 200+ newer blocks since).
+    if has_pending_outlab is True:
+        query = (
+            query.join(SurgicalBlockStain, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
+            .filter(
+                SurgicalBlockStain.status == "pending",
+                AnatomicalPathologyTest.is_external == True,  # noqa: E712
+            )
+            .distinct()
+        )
+
+    # specimen_id / has_pending_outlab queries are small — return all without pagination
+    if (specimen_id is not None and is_decal is None and is_fixing is None) or has_pending_outlab is True:
         items = (
             query.options(
                 joinedload(SurgicalBlock.specimen).joinedload(SurgicalSpecimen.case),
                 selectinload(SurgicalBlock.stains).selectinload(SurgicalBlockStain.stained_by),
+                selectinload(SurgicalBlock.stains).joinedload(SurgicalBlockStain.test),
             )
-            .order_by(SurgicalBlock.block_no.asc())
+            .order_by(SurgicalBlock.block_no.asc() if has_pending_outlab is not True else SurgicalBlock.id.desc())
             .all()
         )
         return {"items": items, "total": len(items)}

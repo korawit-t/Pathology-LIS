@@ -11,6 +11,7 @@ interface GetBlocksParams {
   is_fixing?: boolean;
   decal_history?: boolean;
   fix_history?: boolean;
+  has_pending_outlab?: boolean;
 }
 
 const SurgicalBlockService = {

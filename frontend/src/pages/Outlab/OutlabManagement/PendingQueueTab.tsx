@@ -51,7 +51,12 @@ export const PendingQueueTab: React.FC<PendingQueueTabProps> = ({ onSent }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await SurgicalBlockService.getBlocks({ limit: 200 });
+      // Filtered server-side (has_pending_outlab) rather than "most recent 200
+      // blocks, then filter client-side" — that older approach silently
+      // dropped cases where an outlab IHC was ordered on a block created long
+      // before the 200 newest blocks in the system (e.g. additional immuno
+      // ordered after initial workup).
+      const res = await SurgicalBlockService.getBlocks({ has_pending_outlab: true });
       const data: OutlabBlock[] = res.items || (Array.isArray(res) ? res : []);
       const outlabBlocks = data.filter((block) => {
         if (!block.stains || !Array.isArray(block.stains)) return false;
