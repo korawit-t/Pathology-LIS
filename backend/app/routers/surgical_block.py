@@ -38,11 +38,12 @@ def list_all_blocks(
     is_fixing: bool = None,
     decal_history: bool = None,
     fix_history: bool = None,
+    has_pending_outlab: bool = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
 ):
-    return list_blocks(db, specimen_id=specimen_id, is_decal=is_decal, is_fixing=is_fixing, decal_history=decal_history, fix_history=fix_history, skip=skip, limit=limit)
+    return list_blocks(db, specimen_id=specimen_id, is_decal=is_decal, is_fixing=is_fixing, decal_history=decal_history, fix_history=fix_history, has_pending_outlab=has_pending_outlab, skip=skip, limit=limit)
 
 
 # --- Update ---

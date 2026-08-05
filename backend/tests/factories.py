@@ -171,7 +171,8 @@ def clear_system_settings(db) -> None:
 
 
 def make_anatomical_pathology_test(
-    db, category: str = "Cytology", system_code: str = None, name: str = "Test AP Test"
+    db, category: str = "Cytology", system_code: str = None, name: str = "Test AP Test",
+    is_external: bool = False,
 ) -> AnatomicalPathologyTest:
     """`system_code` is globally unique — if a prior test already committed a
     row with that code (e.g. "PAP_ROUTINE"), reuse it instead of trying to
@@ -185,7 +186,7 @@ def make_anatomical_pathology_test(
         )
         if existing:
             return existing
-    test = AnatomicalPathologyTest(name=name, category=category, system_code=system_code)
+    test = AnatomicalPathologyTest(name=name, category=category, system_code=system_code, is_external=is_external)
     db.add(test)
     db.commit()
     db.refresh(test)
