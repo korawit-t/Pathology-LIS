@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Form, Typography, Empty, Tag, Space, Button, Modal, Switch, message } from "antd";
+import { Form, Typography, Empty, Tag, Space, Button, Modal, Switch, Input, message } from "antd";
 import { HistoryOutlined, LayoutOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 import SurgicalBlockService from "../../../services/surgicalBlockService";
 import dayjs from "dayjs";
 
 import GrossTemplateSystem from "../../../pages/Gross/components/GrossTemplateSystem";
-import SimpleTiptapEditor from "../../Editors/SimpleTiptapEditor";
 import BlockTableForm from "../../../pages/Gross/components/BlockTableForm";
 import StyledCard from "../../Layout/StyledCard";
 import { SurgicalSpecimen, SurgicalBlock } from "../../../types/surgical";
@@ -21,7 +20,6 @@ const { Text } = Typography;
 
 interface GrossDescriptionSectionProps {
   specimens: SurgicalSpecimen[];
-  editorUpdateKey: number;
   onTemplateUpdate: (
     newText: string,
     mode: "replace" | "append",
@@ -32,12 +30,9 @@ interface GrossDescriptionSectionProps {
 
 const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
   specimens,
-  editorUpdateKey,
   onTemplateUpdate,
   users,
 }) => {
-  const form = Form.useFormInstance();
-
   const [submittedMap, setSubmittedMap] = useState<Record<number, boolean>>(() =>
     Object.fromEntries(specimens.map((s) => [s.id, s.is_entirely_submitted ?? false]))
   );
@@ -233,13 +228,9 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
               name={["gross_descriptions", spec.id]}
               style={{ marginBottom: 8 }}
             >
-              <SimpleTiptapEditor
-                value={form.getFieldValue(["gross_descriptions", spec.id])}
-                key={`${spec.id}-${editorUpdateKey}`}
-                onChange={(content) =>
-                  form.setFieldValue(["gross_descriptions", spec.id], content)
-                }
+              <Input.TextArea
                 placeholder={`Describe gross findings for ${spec.specimen_label}...`}
+                autoSize={{ minRows: 4, maxRows: 16 }}
               />
             </Form.Item>
 

@@ -24,7 +24,7 @@ import {
   EyeOutlined,
 } from "@ant-design/icons";
 import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
-import { sanitizeHtml } from "../../../../utils/sanitize";
+import { htmlToPlainText } from "../../../../utils/sanitize";
 import MicroscopicImageGallery from "./MicroscopicImageGallery";
 import DiagnosticTemplateSystem from "../../SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import IHCResultPanel from "./IHCResultPanel";
@@ -394,10 +394,9 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
               </Text>
             </div>
             {specimen.gross_description?.trim() ? (
-              <div
-                style={{ fontSize: 13, lineHeight: 1.75, color: "#262626" }}
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(specimen.gross_description) /* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml */ }}
-              />
+              <div style={{ fontSize: 13, lineHeight: 1.75, color: "#262626", whiteSpace: "pre-wrap" }}>
+                {htmlToPlainText(specimen.gross_description)}
+              </div>
             ) : (
               <Text type="secondary" style={{ fontStyle: "italic", fontSize: 13 }}>
                 No gross description recorded
