@@ -32,6 +32,12 @@ export interface LoadedPdf {
 export async function loadPdfDocument(file: File): Promise<LoadedPdf> {
   const { getDocument } = await loadPdfjs();
   const buffer = await file.arrayBuffer();
+  // The CVE-2026-16633 / GHSA-hq66-cqwq-w95j fix (arbitrary JS execution from a
+  // malicious PDF) is the pdfjs-dist>=6.2.108 bump in package.json. This code
+  // path additionally never executes embedded PDF JavaScript: it only calls
+  // getDocument + page.render() onto a canvas and never builds the annotation
+  // layer / PDFScriptingManager that would run it. (enableScripting is an
+  // annotation-layer/viewer option, not a getDocument DocumentInitParameter.)
   const loadingTask = getDocument({ data: buffer });
   const doc = await loadingTask.promise;
   return { doc, destroy: () => loadingTask.destroy() };

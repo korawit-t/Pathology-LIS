@@ -34,6 +34,23 @@ server {
     # Vite build output (hashed JS/CSS/images/fonts) — serve directly if the
     # file exists on disk, otherwise treat the request as an API/page route.
     location / {
+        # Security headers for the SPA shell + static assets. Declared HERE
+        # (per-location) rather than at server level on purpose: the @backend
+        # location below proxies to the API, which already sets its own
+        # security headers — adding them at server level would duplicate every
+        # header on those JSON responses. Because the API is same-origin
+        # (proxied through this nginx) the CSP can stay strict: connect-src and
+        # img-src need only 'self'.
+        #
+        # nginx quirk: add_header does NOT inherit into a location that has its
+        # own add_header, so @spa_fallback repeats this block.
+        add_header X-Frame-Options            "DENY"                              always;
+        add_header X-Content-Type-Options     "nosniff"                           always;
+        add_header Referrer-Policy            "strict-origin-when-cross-origin"   always;
+        add_header Permissions-Policy         "geolocation=(), microphone=(), camera=()" always;
+        add_header Strict-Transport-Security  "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
+
         # $uri/ is required so "/" itself (and any other directory-like
         # path) resolves to index.html via the `index` directive above,
         # instead of falling straight through to @backend — without it,
@@ -66,6 +83,15 @@ server {
         if ($http_sec_fetch_mode != "navigate") {
             return 404;
         }
+        # Same headers as `location /` — the SPA shell must carry them however
+        # it is reached (add_header does not inherit across locations).
+        add_header X-Frame-Options            "DENY"                              always;
+        add_header X-Content-Type-Options     "nosniff"                           always;
+        add_header Referrer-Policy            "strict-origin-when-cross-origin"   always;
+        add_header Permissions-Policy         "geolocation=(), microphone=(), camera=()" always;
+        add_header Strict-Transport-Security  "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
+
         try_files /index.html =404;
     }
 
