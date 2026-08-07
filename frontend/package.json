@@ -38,7 +38,7 @@
     "lodash": "^4.17.21",
     "openseadragon": "^6.0.2",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "pdfmake": "^0.2.20",
     "prosemirror-model": "^1.25.10",
     "prosemirror-state": "^1.4.4",
