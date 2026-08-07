@@ -28,7 +28,15 @@ def get_current_user(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         jti: Optional[str] = payload.get("jti")
+        token_type: Optional[str] = payload.get("type")
         if username is None:
+            raise credentials_exception
+        # Only access tokens may authenticate a request. Without this check a
+        # refresh token (type="refresh", 3-day TTL) presented as the
+        # access_token cookie or Bearer header would be accepted here, since it
+        # also carries a valid `sub`. Refresh tokens are only ever exchanged at
+        # /auth/refresh, never used directly for API calls.
+        if token_type != "access":
             raise credentials_exception
     except JWTError:
         raise credentials_exception
