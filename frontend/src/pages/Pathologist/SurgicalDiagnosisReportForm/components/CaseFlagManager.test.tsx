@@ -1,7 +1,9 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Form } from "antd";
 import CaseFlagManager from "./CaseFlagManager";
+
+type Props = React.ComponentProps<typeof CaseFlagManager>;
 
 vi.mock("../../../../contexts/ThemeContext", () => ({
   useTheme: () => ({ isDarkMode: false }),
@@ -21,12 +23,15 @@ vi.mock("./TumorRegistryModal", () => ({
 
 // CaseFlagManager reads the form via Form.useFormInstance(), so it must be
 // rendered as a descendant of a real <Form> rather than handed a form prop.
-const renderInForm = (initialValues: Record<string, unknown> = {}) => {
+const renderInForm = (
+  initialValues: Record<string, unknown> = {},
+  props: Partial<Props> = {},
+) => {
   const Wrapper = () => {
     const [form] = Form.useForm();
     return (
       <Form form={form} initialValues={initialValues}>
-        <CaseFlagManager />
+        <CaseFlagManager {...props} />
       </Form>
     );
   };
@@ -57,5 +62,79 @@ describe("CaseFlagManager", () => {
     expect(
       screen.getByPlaceholderText(/Reason for pending/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("CaseFlagManager — Out-Lab Consult", () => {
+  it("hides the row entirely when no request handler is wired up", () => {
+    renderInForm({}, { caseId: 1 });
+    expect(screen.queryByText("Out-Lab Consult")).not.toBeInTheDocument();
+  });
+
+  it("requests a consult with the typed reason, without signing off", async () => {
+    const onRequestOutLabConsult = vi.fn().mockResolvedValue(undefined);
+    renderInForm({}, { caseId: 1, onRequestOutLabConsult });
+
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }));
+    fireEvent.change(
+      screen.getByPlaceholderText(/Reason for Out-Lab Consult/i),
+      { target: { value: "Need subspecialty" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Send to Consult Queue/i }));
+
+    await waitFor(() =>
+      expect(onRequestOutLabConsult).toHaveBeenCalledWith("Need subspecialty"),
+    );
+  });
+
+  it("does not submit an empty reason", async () => {
+    const onRequestOutLabConsult = vi.fn().mockResolvedValue(undefined);
+    renderInForm({}, { caseId: 1, onRequestOutLabConsult });
+
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Send to Consult Queue/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Please enter a reason/i)).toBeInTheDocument(),
+    );
+    expect(onRequestOutLabConsult).not.toHaveBeenCalled();
+  });
+
+  it("offers Cancel while the consult is still queued", async () => {
+    const onCancelOutLabConsult = vi.fn().mockResolvedValue(undefined);
+    renderInForm(
+      {},
+      {
+        caseId: 1,
+        isOutLabConsult: true,
+        consultStatus: "pending",
+        consultReason: "Complex case",
+        onRequestOutLabConsult: vi.fn(),
+        onCancelOutLabConsult,
+      },
+    );
+
+    expect(screen.getByText("Queued for dispatch")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Remove$/i }));
+
+    await waitFor(() => expect(onCancelOutLabConsult).toHaveBeenCalled());
+  });
+
+  it("locks the row once the case has been dispatched", () => {
+    renderInForm(
+      {},
+      {
+        caseId: 1,
+        isOutLabConsult: true,
+        consultStatus: "processing",
+        onRequestOutLabConsult: vi.fn(),
+        onCancelOutLabConsult: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText("Sent to lab")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cancel/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
   });
 });

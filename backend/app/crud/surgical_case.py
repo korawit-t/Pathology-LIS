@@ -302,6 +302,60 @@ def cancel_surgical_case(db: Session, case_id: int, user_id: int, reason: str):
         raise e
 
 
+def request_out_lab_consult(db: Session, *, db_obj: SurgicalCase, reason: str):
+    """Flag a case for out-lab consult without touching the report.
+
+    The sign-off path (bulk_save_draft_orchestrator) sets the same three fields,
+    but couples them to finalizing the report. This lets the pathologist queue a
+    case for dispatch while the diagnosis is still a draft — the case then shows
+    up in Out-Lab Consult → Send to Consult (which filters on
+    is_out_lab_consult + consult_status="pending"), no sign-off required.
+    """
+    if db_obj.is_out_lab_consult and db_obj.consult_status in ("processing", "received"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Case has already been dispatched for out-lab consult.",
+        )
+
+    db_obj.is_out_lab_consult = True
+    db_obj.consult_reason = reason
+    if db_obj.consult_status is None:
+        db_obj.consult_status = "pending"
+
+    try:
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    except Exception:
+        db.rollback()
+        raise
+
+
+def cancel_out_lab_consult(db: Session, *, db_obj: SurgicalCase):
+    """Clear the out-lab consult flag — only while the case is still queued.
+
+    Once a consult run has been created the case is physically out of the lab,
+    so un-flagging is the Out-Lab module's job (cancelling the run), not this one.
+    """
+    if db_obj.consult_status in ("processing", "received"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Case has already been dispatched — cancel the consult run instead.",
+        )
+
+    db_obj.is_out_lab_consult = False
+    db_obj.consult_status = None
+    db_obj.consult_reason = None
+
+    try:
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    except Exception:
+        db.rollback()
+        raise
+
+
 def update_case(db: Session, *, db_obj: SurgicalCase, obj_in: SurgicalCaseUpdate):
     # ดึงเฉพาะฟิลด์ที่หน้าบ้านส่งมาจริงๆ
     update_data = obj_in.model_dump(exclude_unset=True)

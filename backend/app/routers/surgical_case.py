@@ -39,7 +39,10 @@ from app.schemas.surgical_case import (
     SpecimenDisposeBulkUpdate,
     CostSummaryResponse,
     HospitalBillingResponse,
+    OutLabConsultRequest,
+    OutLabConsultStateResponse,
 )
+from app.core.roles import CAN_REQUEST_CONSULT
 from app.crud import surgical_case as crud_case
 from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 
@@ -808,6 +811,41 @@ def approve_consult_pdf_endpoint(
         "consult_pdf_approved_by": display_name,
         "consult_pdf_approved_at": case.consult_pdf_approved_at.isoformat(),
     }
+
+
+# --- 📂 Out-Lab Consult Flag Endpoints ---
+# Flagging a case for out-lab consult used to be possible only as part of
+# sign-off (FinalizeReportPage → bulk_save_draft_orchestrator). These two let
+# the pathologist queue / un-queue a case from the Case Actions panel while the
+# diagnosis is still a draft.
+
+@router.post("/{case_id}/outlab-consult", response_model=OutLabConsultStateResponse)
+def request_outlab_consult(
+    case_id: int,
+    payload: OutLabConsultRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_REQUEST_CONSULT),
+):
+    case = crud_case.get_case(db=db, case_id=case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
+
+    return crud_case.request_out_lab_consult(db, db_obj=case, reason=payload.reason)
+
+
+@router.delete("/{case_id}/outlab-consult", response_model=OutLabConsultStateResponse)
+def cancel_outlab_consult(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_REQUEST_CONSULT),
+):
+    case = crud_case.get_case(db=db, case_id=case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
+
+    return crud_case.cancel_out_lab_consult(db, db_obj=case)
 
 
 # --- ฟังก์ชันสำหรับยกเลิก (Soft Delete) สำหรับเคสที่สถานะเลย Registered ไปแล้ว ---

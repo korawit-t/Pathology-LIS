@@ -1,7 +1,7 @@
 # app/schemas/surgical_case.py
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.enums.quality_enum import QualityEnum
 from app.schemas.surgical_specimen import (
     SurgicalSpecimenCreate,
@@ -187,6 +187,20 @@ class SurgicalCasePaginationResponse(BaseModel):
 
 class CaseCancelRequest(BaseModel):
     reason: str
+
+
+class OutLabConsultRequest(BaseModel):
+    """Flag a case for out-lab consult on its own, without signing the report off."""
+    reason: str = Field(..., min_length=1)
+
+
+class OutLabConsultStateResponse(BaseModel):
+    is_out_lab_consult: bool
+    consult_status: Optional[str] = None
+    consult_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class SpecimenStorageBulkUpdate(BaseModel):
     case_ids: List[int]

@@ -52,6 +52,8 @@ import styles from "../../../styles/LayoutWidget.module.css";
 import StyledCard from "../../../components/Layout/StyledCard";
 import UserService, { UserPreferences } from "../../../services/userService";
 import SurgicalReportService from "../../../services/surgicalReportService";
+import SurgicalCaseService from "../../../services/surgicalCaseService";
+import NotificationRuleService from "../../../services/notificationRuleService";
 import ReportGenerationService from "../../../services/reportGenerationService";
 import type { ReportGenRequest } from "../../../services/reportGenerationService";
 import AIGeneratePreviewModal from "./components/AIGeneratePreviewModal";
@@ -197,6 +199,62 @@ const handleOpenFinalizeModal = async () => {
     if (success) {
       setIsFinalizeModalOpen(false);
       onBack();
+    }
+  };
+
+  // Flag the case for out-lab consult straight from the Case Actions panel,
+  // without signing the report off (the Finalize page's Out-Lab button does both).
+  // The form fields are kept in sync because prepareBulkSavePayload sends
+  // is_out_lab_consult/consult_reason on every draft save — a stale `false` there
+  // would silently clear the flag we just set.
+  const handleRequestOutLabConsult = async (reason: string) => {
+    if (!surgicalCase?.id) return;
+    try {
+      const state = await SurgicalCaseService.requestOutLabConsult(
+        Number(surgicalCase.id),
+        reason,
+      );
+      form.setFieldsValue({ is_out_lab_consult: true, consult_reason: reason });
+      setSurgicalCase((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_out_lab_consult: state.is_out_lab_consult,
+              consult_status: state.consult_status ?? "pending",
+              consult_reason: state.consult_reason ?? reason,
+            }
+          : prev,
+      );
+      NotificationRuleService.triggerEvent("outlab_consult", {
+        id_case: surgicalCase.accession_no ?? String(surgicalCase.id),
+        accession_no: surgicalCase.accession_no ?? "",
+        sender: user?.full_name ?? "-",
+        lab_name: "-",
+      }).catch(() => {});
+      message.success("Case queued for Out-Lab Consult");
+    } catch (error: unknown) {
+      logger.error("Failed to flag case for out-lab consult", error);
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || "Failed to flag case for Out-Lab Consult");
+      throw error;
+    }
+  };
+
+  const handleCancelOutLabConsult = async () => {
+    if (!surgicalCase?.id) return;
+    try {
+      await SurgicalCaseService.cancelOutLabConsult(Number(surgicalCase.id));
+      form.setFieldsValue({ is_out_lab_consult: false, consult_reason: "" });
+      setSurgicalCase((prev) =>
+        prev
+          ? { ...prev, is_out_lab_consult: false, consult_status: "", consult_reason: null }
+          : prev,
+      );
+      message.success("Out-Lab Consult flag removed");
+    } catch (error: unknown) {
+      logger.error("Failed to clear out-lab consult flag", error);
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || "Failed to remove Out-Lab Consult flag");
     }
   };
 
@@ -904,6 +962,11 @@ const handleOpenFinalizeModal = async () => {
                           pathologists={pathologistOptions}
                           tumorRegistryEnabled={settings?.tumor_registry_enabled ?? false}
                           tumorRegistryAiEnabled={!!(settings?.tumor_registry_llm_profile_id)}
+                          isOutLabConsult={!!surgicalCase?.is_out_lab_consult}
+                          consultStatus={surgicalCase?.consult_status}
+                          consultReason={surgicalCase?.consult_reason}
+                          onRequestOutLabConsult={handleRequestOutLabConsult}
+                          onCancelOutLabConsult={handleCancelOutLabConsult}
                         />
                       </div>
                     </Col>
