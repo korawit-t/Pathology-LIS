@@ -13,6 +13,12 @@ interface CancelCasePayload {
   reason: string;
 }
 
+export interface OutLabConsultState {
+  is_out_lab_consult: boolean;
+  consult_status?: string | null;
+  consult_reason?: string | null;
+}
+
 const SurgicalCaseService = {
   // 1. ดึงรายการเคสทั้งหมด
   getCases: async (params: {
@@ -144,6 +150,26 @@ const SurgicalCaseService = {
   getHospitalUnreadCount: async (): Promise<number> => {
     const res = await api.get<{ unread: number }>(`/surgical-cases/hospital-cases/unread-count`);
     return res.data.unread;
+  },
+
+  // Out-Lab Consult flag — queue a case for external consultation on its own,
+  // without going through report sign-off.
+  requestOutLabConsult: async (
+    caseId: number,
+    reason: string,
+  ): Promise<OutLabConsultState> => {
+    const res = await api.post<OutLabConsultState>(
+      `/surgical-cases/${caseId}/outlab-consult`,
+      { reason },
+    );
+    return res.data;
+  },
+
+  cancelOutLabConsult: async (caseId: number): Promise<OutLabConsultState> => {
+    const res = await api.delete<OutLabConsultState>(
+      `/surgical-cases/${caseId}/outlab-consult`,
+    );
+    return res.data;
   },
 
   // Consult PDF Endpoints
