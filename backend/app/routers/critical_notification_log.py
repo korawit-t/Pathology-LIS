@@ -19,9 +19,10 @@ from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.patient import Patient
 from app.dependencies.auth import get_current_user
+from app.utils.patient_name import full_patient_name
 from app.services.notification_service import (
     broadcast_to_channels,
-    build_appointment_block,
+    build_his_patient_context,
     to_bangkok_str,
 )
 from app.crud import notification_rule as crud_rule
@@ -71,14 +72,9 @@ def _lookup_case_data(db: Session, case_id: int, case_type: str) -> dict:
     if not case:
         return {}
     patient = db.query(Patient).filter(Patient.id == case.patient_id).first()
-    name = ""
-    if patient:
-        name = patient.name or ""
-        if patient.ln:
-            name = f"{name} {patient.ln}".strip()
     return {
         "hn": case.hn or "-",
-        "name": name or "-",
+        "name": full_patient_name(patient, default="-"),
         "clinician": case.clinician_name or "-",
         "id_case": case.accession_no or str(case_id),
         "specimen": _lookup_specimen(db, case, case_type),
@@ -104,36 +100,43 @@ _DEFAULT_BROADCAST_TEMPLATE = (
     "แจ้งผลให้: {recipient_name}\n"
     "วัน/เวลา: {notified_at}\n"
     "หมายเหตุ: {note}"
+    "{admission}"
     "{appointments}"
 )
 
-# Malignancy alerts additionally carry what was examined and the patient's
-# upcoming HOSxP appointments — "cancer of what?" and "is this patient already
-# booked to be seen again?" are what the recipient acts on, and neither is
-# answerable from HN and name alone.
-_APPOINTMENT_TYPES = {"malignancy"}
-_SPECIMEN_PLACEHOLDER = "{specimen}"
-_APPOINTMENT_PLACEHOLDER = "{appointments}"
-_SPECIMEN_LINE = "\nชิ้นเนื้อ: {specimen}"
+# Malignancy alerts additionally carry what was examined, whether the patient
+# is currently an inpatient, and their upcoming HOSxP appointments — "cancer of
+# what?", "are they in a ward right now?" and "are they booked to be seen
+# again?" are what the recipient acts on, and none is answerable from HN and
+# name alone.
+_HIS_LOOKUP_TYPES = {"malignancy"}
+
+# In reading order. Templates saved before a field existed don't name its
+# placeholder; appending what's missing beats silently dropping the data, and
+# each one is inserted ahead of the first later placeholder already present so
+# the order holds whichever subset a stored template happens to carry.
+_LATE_PLACEHOLDERS = (
+    ("specimen", "{specimen}", "\nชิ้นเนื้อ: {specimen}"),
+    ("admission", "{admission}", "{admission}"),
+    ("appointments", "{appointments}", "{appointments}"),
+)
 
 
-def _augment_template(template: str, *, specimen: bool, appointments: bool) -> str:
+def _augment_template(template: str, **present: bool) -> str:
     """Add the placeholders that admin-configured templates predate.
 
-    Templates saved before these fields existed carry neither placeholder;
-    appending what's missing beats silently dropping the data. The specimen
-    line goes above the appointment block, which is a trailing section — an
-    admin who wants a different position just adds the placeholder by hand and
-    this leaves the template alone.
+    An admin who wants a field somewhere else just writes the placeholder into
+    the template by hand, and this leaves it exactly where they put it.
     """
-    if specimen and _SPECIMEN_PLACEHOLDER not in template:
-        at = template.find(_APPOINTMENT_PLACEHOLDER)
-        template = (
-            template[:at] + _SPECIMEN_LINE + template[at:] if at != -1
-            else template + _SPECIMEN_LINE
-        )
-    if appointments and _APPOINTMENT_PLACEHOLDER not in template:
-        template += _APPOINTMENT_PLACEHOLDER
+    for i, (key, placeholder, snippet) in enumerate(_LATE_PLACEHOLDERS):
+        if not present.get(key) or placeholder in template:
+            continue
+        at = -1
+        for _, later, _snippet in _LATE_PLACEHOLDERS[i + 1:]:
+            at = template.find(later)
+            if at != -1:
+                break
+        template = template[:at] + snippet + template[at:] if at != -1 else template + snippet
     return template
 
 
@@ -180,11 +183,14 @@ async def create(
             case_data = _lookup_case_data(db, obj_in.case_id, obj_in.case_type)
 
             specimen = case_data.get("specimen") or ""
-            appointments = ""
-            if obj_in.notification_type in _APPOINTMENT_TYPES:
-                appointments = build_appointment_block(case_data.get("hn"))
+            admission = appointments = ""
+            if obj_in.notification_type in _HIS_LOOKUP_TYPES:
+                admission, appointments = build_his_patient_context(case_data.get("hn"))
             template = _augment_template(
-                template, specimen=bool(specimen), appointments=bool(appointments)
+                template,
+                specimen=bool(specimen),
+                admission=bool(admission),
+                appointments=bool(appointments),
             )
 
             data = {
@@ -195,6 +201,7 @@ async def create(
                 "recipient_name": obj_in.recipient_name or "-",
                 "notified_at": to_bangkok_str(obj_in.notified_at),
                 "note": obj_in.note or "-",
+                "admission": admission,
                 "appointments": appointments,
                 **case_data,
                 # after **case_data: a gyne case has no specimen line, but a
