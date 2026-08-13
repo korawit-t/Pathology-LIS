@@ -180,29 +180,52 @@ def format_appointment_block(appointments) -> str:
     return "\n".join(lines)
 
 
-def build_appointment_block(hn: str) -> str:
-    """Fetch this patient's upcoming HOSxP appointments and render them.
+def format_admission_line(admission) -> str:
+    """Render '🏥 กำลัง admit — <ward>' for an inpatient, nothing otherwise.
+
+    Only the positive case gets a line: an admitted patient is reached by
+    walking to the ward rather than by phoning to move an appointment, so the
+    line exists to redirect the recipient. "Not admitted" is the norm and
+    saying so on every alert would be noise.
+    """
+    if not admission:
+        return ""
+    ward = admission.get("ward_name") or admission.get("ward") or "-"
+    detail = ", ".join(
+        part for part in (
+            f"AN {admission['an']}" if admission.get("an") else "",
+            f"ตั้งแต่ {_thai_date(admission['regdate'])}" if admission.get("regdate") else "",
+        ) if part
+    )
+    return f"\n\n🏥 กำลัง admit — {ward}" + (f" ({detail})" if detail else "")
+
+
+def build_his_patient_context(hn: str) -> tuple:
+    """(admission_line, appointment_block) for a patient, over one HIS session.
 
     Best-effort by design: if the HIS is unconfigured, unreachable, or errors,
-    this returns an empty string so the alert still goes out without the
-    block. A malignancy notification must never be lost because a secondary
-    lookup failed — and, per format_appointment_block, a failed lookup must
-    never be rendered as "no appointment found" either.
+    both come back empty so the alert still goes out without them. A
+    malignancy notification must never be lost because a secondary lookup
+    failed — and, per format_appointment_block, a failed lookup must never be
+    rendered as "no appointment found" either.
     """
     if not hn or hn == "-":
-        return ""
+        return "", ""
 
     from app.db.his_database import get_his_session_direct
-    from app.his_adapters.hosxp import get_future_appointments
+    from app.his_adapters.hosxp import get_active_admission, get_future_appointments
 
     his_db = None
     try:
         his_db = get_his_session_direct()
         if his_db is None:
-            return ""
-        return format_appointment_block(get_future_appointments(his_db, hn))
+            return "", ""
+        return (
+            format_admission_line(get_active_admission(his_db, hn)),
+            format_appointment_block(get_future_appointments(his_db, hn)),
+        )
     except Exception:
-        return ""
+        return "", ""
     finally:
         if his_db is not None:
             try:

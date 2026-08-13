@@ -13,7 +13,8 @@ from app.schemas.notification_channel import NotificationChannelCreate
 from app.services.notification_service import (
     _appt_time,
     _thai_date,
-    build_appointment_block,
+    build_his_patient_context,
+    format_admission_line,
     format_appointment_block,
 )
 
@@ -102,30 +103,65 @@ class TestFormatAppointmentBlock:
         assert format_appointment_block([_appt()]).startswith("\n\n")
 
 
-class TestBuildAppointmentBlock:
+def _admission(**overrides) -> dict:
+    row = dict(
+        an="690011773",
+        regdate="2026-08-12",
+        regtime="14:20:00",
+        ward="12",
+        ward_name="ตึกศัลยกรรมหญิง",
+        spclty="02",
+    )
+    row.update(overrides)
+    return row
+
+
+class TestFormatAdmissionLine:
+    def test_renders_ward_an_and_admit_date(self):
+        out = format_admission_line(_admission())
+        assert out == "\n\n🏥 กำลัง admit — ตึกศัลยกรรมหญิง (AN 690011773, ตั้งแต่ 12 ส.ค. 69)"
+
+    def test_not_admitted_renders_nothing(self):
+        # unlike appointments, there is no "not currently admitted" line —
+        # that is the norm and would be noise on every alert
+        assert format_admission_line(None) == ""
+
+    def test_falls_back_to_ward_code_when_the_join_misses(self):
+        assert "— 12 " in format_admission_line(_admission(ward_name=None)) + " "
+
+    def test_survives_missing_an_and_date(self):
+        out = format_admission_line(_admission(an=None, regdate=None))
+        assert out == "\n\n🏥 กำลัง admit — ตึกศัลยกรรมหญิง"
+
+
+class TestBuildHisPatientContext:
     def test_blank_hn_skips_lookup(self):
-        assert build_appointment_block("") == ""
-        assert build_appointment_block("-") == ""
+        assert build_his_patient_context("") == ("", "")
+        assert build_his_patient_context("-") == ("", "")
 
     def test_his_not_configured_returns_empty(self):
         with patch("app.db.his_database.get_his_session_direct", return_value=None):
-            assert build_appointment_block("0376632") == ""
+            assert build_his_patient_context("0376632") == ("", "")
 
     def test_his_error_degrades_to_empty_not_to_a_false_warning(self):
         with patch(
             "app.db.his_database.get_his_session_direct", side_effect=RuntimeError("HIS down")
         ):
-            out = build_appointment_block("0376632")
-        assert out == ""
-        assert "ไม่พบนัด" not in out
+            admission, appointments = build_his_patient_context("0376632")
+        assert (admission, appointments) == ("", "")
+        assert "ไม่พบนัด" not in appointments
 
-    def test_closes_the_his_session(self):
+    def test_fetches_both_over_one_session_and_closes_it(self):
         session = type("S", (), {"closed": False, "close": lambda self: setattr(self, "closed", True)})()
-        with patch("app.db.his_database.get_his_session_direct", return_value=session), patch(
+        with patch("app.db.his_database.get_his_session_direct", return_value=session) as opened, patch(
             "app.his_adapters.hosxp.get_future_appointments", return_value=[_appt()]
+        ), patch(
+            "app.his_adapters.hosxp.get_active_admission", return_value=_admission()
         ):
-            out = build_appointment_block("0376632")
-        assert "24 ส.ค. 69" in out
+            admission, appointments = build_his_patient_context("0376632")
+        assert "ตึกศัลยกรรมหญิง" in admission
+        assert "24 ส.ค. 69" in appointments
+        assert opened.call_count == 1
         assert session.closed is True
 
 
@@ -185,19 +221,23 @@ class TestLookupSpecimen:
 
 class TestAugmentTemplate:
     def test_specimen_line_lands_above_the_appointment_block(self):
-        out = _augment_template("HN: {hn}{appointments}", specimen=True, appointments=False)
+        out = _augment_template("HN: {hn}{appointments}", specimen=True)
         assert out == "HN: {hn}\nชิ้นเนื้อ: {specimen}{appointments}"
 
-    def test_appends_both_when_template_has_neither(self):
-        out = _augment_template("HN: {hn}", specimen=True, appointments=True)
-        assert out == "HN: {hn}\nชิ้นเนื้อ: {specimen}{appointments}"
+    def test_appends_all_three_in_reading_order(self):
+        out = _augment_template("HN: {hn}", specimen=True, admission=True, appointments=True)
+        assert out == "HN: {hn}\nชิ้นเนื้อ: {specimen}{admission}{appointments}"
+
+    def test_admission_slots_in_ahead_of_an_existing_appointment_block(self):
+        out = _augment_template("HN: {hn}{appointments}", admission=True)
+        assert out == "HN: {hn}{admission}{appointments}"
 
     def test_leaves_an_explicit_placeholder_where_the_admin_put_it(self):
-        tpl = "{specimen}\nHN: {hn}\n{appointments}ท้าย"
-        assert _augment_template(tpl, specimen=True, appointments=True) == tpl
+        tpl = "{appointments}\n{specimen}\nHN: {hn}\n{admission}ท้าย"
+        assert _augment_template(tpl, specimen=True, admission=True, appointments=True) == tpl
 
     def test_adds_nothing_when_there_is_no_value(self):
-        assert _augment_template("HN: {hn}", specimen=False, appointments=False) == "HN: {hn}"
+        assert _augment_template("HN: {hn}") == "HN: {hn}"
 
 
 class TestRouterWiring:
@@ -224,8 +264,8 @@ class TestRouterWiring:
         with patch(
             "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
         ) as broadcast, patch(
-            "app.routers.critical_notification_log.build_appointment_block",
-            return_value="\n\n📅 นัดที่ยังมาไม่ถึง (1)\n• 24 ส.ค. 69 07:00 — ศัลยกรรม",
+            "app.routers.critical_notification_log.build_his_patient_context",
+            return_value=("", "\n\n📅 นัดที่ยังมาไม่ถึง (1)\n• 24 ส.ค. 69 07:00 — ศัลยกรรม"),
         ):
             r = pathologist_client.post(
                 "/critical-notification-logs", json=self._payload(case.id, channel.id, "malignancy")
@@ -247,7 +287,7 @@ class TestRouterWiring:
         with patch(
             "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
         ) as broadcast, patch(
-            "app.routers.critical_notification_log.build_appointment_block", return_value=""
+            "app.routers.critical_notification_log.build_his_patient_context", return_value=("", "")
         ):
             pathologist_client.post(
                 "/critical-notification-logs", json=self._payload(case.id, channel.id, "critical_value")
@@ -265,7 +305,7 @@ class TestRouterWiring:
         with patch(
             "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
         ) as broadcast, patch(
-            "app.routers.critical_notification_log.build_appointment_block"
+            "app.routers.critical_notification_log.build_his_patient_context"
         ) as build:
             r = pathologist_client.post(
                 "/critical-notification-logs", json=self._payload(case.id, channel.id, "critical_value")
@@ -294,7 +334,7 @@ class TestRouterWiring:
         with patch(
             "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
         ) as broadcast, patch(
-            "app.routers.critical_notification_log.build_appointment_block", return_value="\n\n📅 x"
+            "app.routers.critical_notification_log.build_his_patient_context", return_value=("", "\n\n📅 x")
         ):
             pathologist_client.post(
                 "/critical-notification-logs", json=self._payload(case.id, channel.id, "malignancy")
@@ -312,7 +352,7 @@ class TestRouterWiring:
         with patch(
             "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
         ) as broadcast, patch(
-            "app.routers.critical_notification_log.build_appointment_block", return_value=""
+            "app.routers.critical_notification_log.build_his_patient_context", return_value=("", "")
         ):
             r = pathologist_client.post(
                 "/critical-notification-logs", json=self._payload(case.id, channel.id, "malignancy")

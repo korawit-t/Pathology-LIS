@@ -104,6 +104,40 @@ def get_future_appointments(his_db: Session, hn: str, limit: int = 10) -> List[D
     ]
 
 
+def get_active_admission(his_db: Session, hn: str) -> Optional[Dict]:
+    """The patient's current admission, or None when they aren't an inpatient.
+
+    An open admission is an ipt row with no discharge date. HOSxP is often
+    described as leaving '0000-00-00' zero-dates here, but on this deployment
+    every one of the 331,097 discharged rows carries a real date and all 233
+    open ones are NULL — so a plain IS NULL covers it.
+
+    Note ipt has no bed-number column in this HOSxP version; ward (joined to
+    the ward table for its Thai name) is as specific as it gets.
+    """
+    row = his_db.execute(
+        text("""
+            SELECT i.an, i.regdate, i.regtime, i.ward, w.name, i.spclty
+            FROM ipt i LEFT JOIN ward w ON w.ward = i.ward
+            WHERE i.hn = :hn AND i.dchdate IS NULL
+            ORDER BY i.regdate DESC
+            LIMIT 1
+        """),
+        {"hn": hn},
+    ).fetchone()
+
+    if not row:
+        return None
+    return {
+        "an": row[0],
+        "regdate": str(row[1]) if row[1] else None,
+        "regtime": str(row[2]) if row[2] else None,
+        "ward": row[3],
+        "ward_name": row[4],
+        "spclty": row[5],
+    }
+
+
 def _load_form_names() -> dict:
     """
     Load FORM_NAME_MAP from environment variables.

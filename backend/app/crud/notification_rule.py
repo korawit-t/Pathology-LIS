@@ -22,7 +22,7 @@ PREDEFINED_EVENTS = [
         # it rendered as "-" in every real alert. {specimen} says what was
         # examined, which is the part the recipient acts on, and unlike the
         # full diagnosis it fits on one line.
-        "template": "⚠️ ผล Malignancy\nCase: {id_case}\nHN: {hn} | {name}\nชิ้นเนื้อ: {specimen}\nแพทย์: {clinician}{appointments}",
+        "template": "⚠️ ผล Malignancy\nCase: {id_case}\nHN: {hn} | {name}\nชิ้นเนื้อ: {specimen}\nแพทย์: {clinician}{admission}{appointments}",
     },
     {
         "event_key": "critical_case",
