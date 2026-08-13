@@ -48,7 +48,22 @@ const STATUS_TAG_COLOR = {
 const CAT_COLOR = {
   IHC: "purple",
   Histochem: "cyan",
+  "Special Stain": "cyan",
+  ISH: "geekblue",
+  Molecular: "magenta",
 };
+
+// Special stains carry two different category strings in the same database:
+// the seeded tests use "Histochem", while anything created or edited through
+// Admin → master data is saved as "Special Stain" (TEST_CATEGORY_OPTIONS in
+// constants/lab.constants.ts). They mean the same thing, so every check here
+// has to accept both — BlockGridView/StainManagementPage.tsx already does, and
+// this page not doing so is why "Special Stain" tests were invisible.
+const SPECIAL_STAIN_CATEGORIES = ["Histochem", "Special Stain"];
+const isSpecialStainCategory = (cat) => SPECIAL_STAIN_CATEGORIES.includes(cat);
+
+/** Short label for the category tag — special stains collapse to "SS". */
+const catLabel = (cat) => (isSpecialStainCategory(cat) ? "SS" : cat || "—");
 
 const isRelevantStain = (s) =>
   s.is_recut || (!s.test?.is_external && !s.test?.name?.includes("H&E"));
@@ -88,10 +103,10 @@ const BlockTable = ({ block, onDelete, onAddStain, onPrintStickers }) => {
         if (record.is_recut) {
           return <Tag color="red" style={{ margin: 0, fontSize: 12 }}>Recut</Tag>;
         }
-        const cat = record.test?.category || "—";
+        const cat = record.test?.category;
         return (
           <Tag color={CAT_COLOR[cat] || "default"} style={{ margin: 0, fontSize: 12 }}>
-            {cat}
+            {catLabel(cat)}
           </Tag>
         );
       },
@@ -319,10 +334,24 @@ const StainManagement = ({ onNavigate }) => {
       const ihcCount = allStains.filter(
         (s) => s.test?.category === "IHC",
       ).length;
-      const ssCount = allStains.filter(
-        (s) => s.test?.category === "Histochem",
+      const ssCount = allStains.filter((s) =>
+        isSpecialStainCategory(s.test?.category),
       ).length;
       const recutCount = allStains.filter((s) => s.is_recut).length;
+
+      // Which stains are actually on this case — the category counts alone
+      // never said *what* was ordered, and they silently dropped anything
+      // outside IHC/SS (ISH, Molecular, recuts).
+      const nameCounts = new Map();
+      for (const s of allStains) {
+        const name = s.is_recut ? "Recut" : s.test?.name || "Unknown";
+        nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+      }
+      const stainSummary = [...nameCounts.entries()].map(([name, count]) => ({
+        name,
+        count,
+      }));
+
       return {
         accNo,
         caseBlocks,
@@ -332,6 +361,7 @@ const StainManagement = ({ onNavigate }) => {
         ihcCount,
         ssCount,
         recutCount,
+        stainSummary,
       };
     });
   }, [grouped]);
@@ -375,7 +405,7 @@ const StainManagement = ({ onNavigate }) => {
   const getFilteredStainNames = (uiSelectedType) => {
     if (uiSelectedType === "Special stain")
       return masterTests.filter(
-        (t) => t.category === "Histochem" && !t.name.includes("H&E"),
+        (t) => isSpecialStainCategory(t.category) && !t.name.includes("H&E"),
       );
     if (uiSelectedType === "IHC")
       return masterTests.filter((t) => t.category === "IHC");
@@ -542,26 +572,43 @@ const StainManagement = ({ onNavigate }) => {
     },
     {
       title: "Stain Breakdown",
-      width: 200,
-      render: (_, record) => (
-        <Space size={4}>
-          {record.ihcCount > 0 && (
-            <Tag color="purple" style={{ margin: 0, fontSize: 12 }}>
-              IHC: {record.ihcCount}
-            </Tag>
-          )}
-          {record.ssCount > 0 && (
-            <Tag color="cyan" style={{ margin: 0, fontSize: 12 }}>
-              SS: {record.ssCount}
-            </Tag>
-          )}
-          {record.ihcCount === 0 && record.ssCount === 0 && (
+      width: 260,
+      render: (_, record) => {
+        if (record.slideCount === 0) {
+          return (
             <Text type="secondary" style={{ fontSize: 12 }}>
               —
             </Text>
-          )}
-        </Space>
-      ),
+          );
+        }
+        const names = record.stainSummary
+          .map((s) => (s.count > 1 ? `${s.name} ×${s.count}` : s.name))
+          .join(", ");
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Space size={4}>
+              {record.ihcCount > 0 && (
+                <Tag color="purple" style={{ margin: 0, fontSize: 12 }}>
+                  IHC: {record.ihcCount}
+                </Tag>
+              )}
+              {record.ssCount > 0 && (
+                <Tag color="cyan" style={{ margin: 0, fontSize: 12 }}>
+                  SS: {record.ssCount}
+                </Tag>
+              )}
+              {record.recutCount > 0 && (
+                <Tag color="red" style={{ margin: 0, fontSize: 12 }}>
+                  Recut: {record.recutCount}
+                </Tag>
+              )}
+            </Space>
+            <Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: names }}>
+              {names}
+            </Text>
+          </div>
+        );
+      },
     },
     {
       title: "Pending",
@@ -720,10 +767,11 @@ const StainManagement = ({ onNavigate }) => {
                 const filtered = getFilteredStainNames(val);
                 addForm.setFieldValue("test_id", filtered[0]?.id);
               }}
-            >
-              <Option value="Special stain">Special Stain</Option>
-              <Option value="IHC">IHC</Option>
-            </Select>
+              options={[
+                { value: "Special stain", label: "Special Stain" },
+                { value: "IHC", label: "IHC" },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item
