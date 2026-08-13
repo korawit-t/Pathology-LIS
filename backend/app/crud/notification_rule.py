@@ -18,7 +18,11 @@ PREDEFINED_EVENTS = [
     {
         "event_key": "malignancy_result",
         "label": "ผลออก Malignancy",
-        "template": "⚠️ ผล Malignancy\nCase: {id_case}\nHN: {hn} | {name}\nแพทย์: {clinician}\nการวินิจฉัย: {diagnosis}",
+        # {diagnosis} used to sit here, but the broadcast never populates it —
+        # it rendered as "-" in every real alert. {specimen} says what was
+        # examined, which is the part the recipient acts on, and unlike the
+        # full diagnosis it fits on one line.
+        "template": "⚠️ ผล Malignancy\nCase: {id_case}\nHN: {hn} | {name}\nชิ้นเนื้อ: {specimen}\nแพทย์: {clinician}{appointments}",
     },
     {
         "event_key": "critical_case",

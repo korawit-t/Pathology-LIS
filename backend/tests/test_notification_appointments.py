@@ -8,6 +8,7 @@ itself is always mocked — it talks to an external hospital MySQL server.
 from unittest.mock import AsyncMock, patch
 
 from app.crud.notification_channel import create_channel
+from app.routers.critical_notification_log import _augment_template, _lookup_specimen
 from app.schemas.notification_channel import NotificationChannelCreate
 from app.services.notification_service import (
     _appt_time,
@@ -128,6 +129,77 @@ class TestBuildAppointmentBlock:
         assert session.closed is True
 
 
+class TestLookupSpecimen:
+    def test_single_specimen_renders_bare(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.specimen_name = "Colonic mucosa, rectum, colonoscopy biopsy"
+        db.commit()
+
+        assert _lookup_specimen(db, case, "SURGICAL") == "Colonic mucosa, rectum, colonoscopy biopsy"
+
+    def test_reports_specimen_a_and_counts_the_rest(self, db, admin_user):
+        from app.models.surgical_specimen import SurgicalSpecimen
+
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.specimen_name = "Colon, left side colon, hemicolectomy"
+        # the kind of low-information extras real multi-specimen cases carry
+        db.add(SurgicalSpecimen(case_id=case.id, specimen_label="B", specimen_name="Proximal margin, excision"))
+        db.add(SurgicalSpecimen(case_id=case.id, specimen_label="C", specimen_name="Distal margin, excision"))
+        db.commit()
+
+        assert _lookup_specimen(db, case, "SURGICAL") == "Colon, left side colon, hemicolectomy (+2 ชิ้น)"
+
+    def test_picks_label_a_regardless_of_insert_order(self, db, admin_user):
+        from app.models.surgical_specimen import SurgicalSpecimen
+
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.specimen_label = "B"
+        specimen.specimen_name = "Lymph node group 8"
+        db.add(SurgicalSpecimen(case_id=case.id, specimen_label="A", specimen_name="Whipple's specimen"))
+        db.commit()
+
+        assert _lookup_specimen(db, case, "SURGICAL").startswith("Whipple's specimen")
+
+    def test_nongyne_uses_specimen_type(self, db, admin_user):
+        from tests.factories import make_bare_nongyne_case
+
+        registrar, _ = admin_user
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id)
+        case.specimen_type = "Pleural fluid"
+        db.commit()
+
+        assert _lookup_specimen(db, case, "NONGYNE_CYTO") == "Pleural fluid"
+
+    def test_gyne_is_excluded(self, db, admin_user):
+        from tests.factories import make_bare_gyne_case
+
+        registrar, _ = admin_user
+        case = make_bare_gyne_case(db, registrar_id=registrar.id)
+
+        # specimen_type here is the preparation method, not a site
+        assert _lookup_specimen(db, case, "GYNE_CYTO") == ""
+
+
+class TestAugmentTemplate:
+    def test_specimen_line_lands_above_the_appointment_block(self):
+        out = _augment_template("HN: {hn}{appointments}", specimen=True, appointments=False)
+        assert out == "HN: {hn}\nชิ้นเนื้อ: {specimen}{appointments}"
+
+    def test_appends_both_when_template_has_neither(self):
+        out = _augment_template("HN: {hn}", specimen=True, appointments=True)
+        assert out == "HN: {hn}\nชิ้นเนื้อ: {specimen}{appointments}"
+
+    def test_leaves_an_explicit_placeholder_where_the_admin_put_it(self):
+        tpl = "{specimen}\nHN: {hn}\n{appointments}ท้าย"
+        assert _augment_template(tpl, specimen=True, appointments=True) == tpl
+
+    def test_adds_nothing_when_there_is_no_value(self):
+        assert _augment_template("HN: {hn}", specimen=False, appointments=False) == "HN: {hn}"
+
+
 class TestRouterWiring:
     def _payload(self, case_id: int, channel_id: int, notification_type: str) -> dict:
         return dict(
@@ -164,6 +236,26 @@ class TestRouterWiring:
         assert "24 ส.ค. 69" in kwargs["data"]["appointments"]
         # appended even though the stored template has no {appointments}
         assert "{appointments}" in kwargs["template"]
+
+    def test_specimen_reaches_the_message_for_every_alert_type(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        specimen.specimen_name = "Colonic mucosa, rectum, colonoscopy biopsy"
+        db.commit()
+        channel = self._channel(db)
+
+        with patch(
+            "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
+        ) as broadcast, patch(
+            "app.routers.critical_notification_log.build_appointment_block", return_value=""
+        ):
+            pathologist_client.post(
+                "/critical-notification-logs", json=self._payload(case.id, channel.id, "critical_value")
+            )
+
+        kwargs = broadcast.call_args.kwargs
+        assert kwargs["data"]["specimen"] == "Colonic mucosa, rectum, colonoscopy biopsy"
+        assert "{specimen}" in kwargs["template"]
 
     def test_critical_value_alert_does_not_look_up_appointments(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user

@@ -14,6 +14,7 @@ from app.crud import critical_notification_log as crud
 from app.models.user import User
 from app.models.notification_channel import NotificationChannel
 from app.models.surgical_case import SurgicalCase
+from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.patient import Patient
@@ -26,8 +27,38 @@ from app.services.notification_service import (
 from app.crud import notification_rule as crud_rule
 
 
+def _lookup_specimen(db: Session, case, case_type: str) -> str:
+    """One line saying what was actually examined, for the alert body.
+
+    Surgical cases report specimen A only: 78% of malignant cases have a
+    single specimen, and where there are more the extras are usually margins
+    or segments ("Proximal end, excision") that add length without adding
+    information — specimen A is the main one by grossing convention. The rest
+    are reported as a count.
+
+    Gyne cytology is deliberately excluded: its specimen_type is the
+    preparation method (Conventional/LBC) rather than a site, and a pap is
+    always cervical, so the line would carry nothing.
+    """
+    ct = case_type.upper()
+    if ct == "SURGICAL":
+        rows = (
+            db.query(SurgicalSpecimen.specimen_name)
+            .filter(SurgicalSpecimen.case_id == case.id)
+            .order_by(SurgicalSpecimen.specimen_label)
+            .all()
+        )
+        names = [r[0] for r in rows if r[0]]
+        if not names:
+            return ""
+        return f"{names[0]} (+{len(names) - 1} ชิ้น)" if len(names) > 1 else names[0]
+    if ct == "NONGYNE_CYTO":
+        return case.specimen_type or ""
+    return ""
+
+
 def _lookup_case_data(db: Session, case_id: int, case_type: str) -> dict:
-    """Return hn, name, clinician, id_case for any case type."""
+    """Return hn, name, clinician, id_case, specimen for any case type."""
     model_map = {
         "SURGICAL": SurgicalCase,
         "GYNE_CYTO": GyneCytologyCase,
@@ -50,6 +81,7 @@ def _lookup_case_data(db: Session, case_id: int, case_type: str) -> dict:
         "name": name or "-",
         "clinician": case.clinician_name or "-",
         "id_case": case.accession_no or str(case_id),
+        "specimen": _lookup_specimen(db, case, case_type),
     }
 
 router = APIRouter(prefix="/critical-notification-logs", tags=["Critical Notification Log"])
@@ -68,19 +100,41 @@ _TYPE_LABEL = {
 _DEFAULT_BROADCAST_TEMPLATE = (
     "🚨 {type_label}\n"
     "Case: {case_type} #{case_id}\n"
+    "ชิ้นเนื้อ: {specimen}\n"
     "แจ้งผลให้: {recipient_name}\n"
     "วัน/เวลา: {notified_at}\n"
     "หมายเหตุ: {note}"
     "{appointments}"
 )
 
-# Malignancy alerts carry the patient's upcoming HOSxP appointments, since
-# "is this patient already booked to be seen again?" is the first thing the
-# recipient acts on. Admin-configured templates predate the placeholder, so
-# a template without {appointments} gets the block appended rather than
-# silently dropping it.
+# Malignancy alerts additionally carry what was examined and the patient's
+# upcoming HOSxP appointments — "cancer of what?" and "is this patient already
+# booked to be seen again?" are what the recipient acts on, and neither is
+# answerable from HN and name alone.
 _APPOINTMENT_TYPES = {"malignancy"}
+_SPECIMEN_PLACEHOLDER = "{specimen}"
 _APPOINTMENT_PLACEHOLDER = "{appointments}"
+_SPECIMEN_LINE = "\nชิ้นเนื้อ: {specimen}"
+
+
+def _augment_template(template: str, *, specimen: bool, appointments: bool) -> str:
+    """Add the placeholders that admin-configured templates predate.
+
+    Templates saved before these fields existed carry neither placeholder;
+    appending what's missing beats silently dropping the data. The specimen
+    line goes above the appointment block, which is a trailing section — an
+    admin who wants a different position just adds the placeholder by hand and
+    this leaves the template alone.
+    """
+    if specimen and _SPECIMEN_PLACEHOLDER not in template:
+        at = template.find(_APPOINTMENT_PLACEHOLDER)
+        template = (
+            template[:at] + _SPECIMEN_LINE + template[at:] if at != -1
+            else template + _SPECIMEN_LINE
+        )
+    if appointments and _APPOINTMENT_PLACEHOLDER not in template:
+        template += _APPOINTMENT_PLACEHOLDER
+    return template
 
 
 @router.get("", response_model=CriticalNotificationLogList)
@@ -125,11 +179,13 @@ async def create(
             template = rule.message_template if (rule and rule.message_template) else _DEFAULT_BROADCAST_TEMPLATE
             case_data = _lookup_case_data(db, obj_in.case_id, obj_in.case_type)
 
+            specimen = case_data.get("specimen") or ""
             appointments = ""
             if obj_in.notification_type in _APPOINTMENT_TYPES:
                 appointments = build_appointment_block(case_data.get("hn"))
-                if appointments and _APPOINTMENT_PLACEHOLDER not in template:
-                    template = template + _APPOINTMENT_PLACEHOLDER
+            template = _augment_template(
+                template, specimen=bool(specimen), appointments=bool(appointments)
+            )
 
             data = {
                 "type_label": _TYPE_LABEL.get(obj_in.notification_type, obj_in.notification_type),
@@ -141,6 +197,10 @@ async def create(
                 "note": obj_in.note or "-",
                 "appointments": appointments,
                 **case_data,
+                # after **case_data: a gyne case has no specimen line, but a
+                # template that names the placeholder anyway must not render a
+                # dangling "ชิ้นเนื้อ:" with nothing after it
+                "specimen": specimen or "-",
             }
             await broadcast_to_channels(channels=channels, template=template, data=data)
 
