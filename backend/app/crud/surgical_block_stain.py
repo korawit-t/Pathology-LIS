@@ -16,6 +16,7 @@ from app.models.surgical_block_stain import (
     SurgicalOutlabRun,
     SurgicalOutlabRunDetail,
 )
+from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
 
@@ -505,15 +506,7 @@ def get_unkeyed_outlab_by_hn(db: Session) -> dict:
         hn = case.hn
         if not hn:
             continue
-        patient = case.patient
-        name_parts = []
-        if patient:
-            if patient.title:
-                name_parts.append(patient.title.title)
-            name_parts.append(patient.name)
-            if patient.ln:
-                name_parts.append(patient.ln)
-        patient_name = " ".join(p for p in name_parts if p) or "-"
+        patient_name = full_patient_name(case.patient, default="-")
 
         entry = by_hn.setdefault(hn, {"patient_name": patient_name, "items": []})
         entry["items"].append({
@@ -566,8 +559,7 @@ def get_outlab_runs(db: Session, skip: int = 0, limit: int = 100):
                             accession_no = case.accession_no
                             hn = case.hn
                             if case.patient:
-                                parts = [case.patient.name or "", case.patient.ln or ""]
-                                patient_name = " ".join(p for p in parts if p) or None
+                                patient_name = full_patient_name(case.patient) or None
                     else:
                         block_code = str(block.block_no)
                 stain_dict = {

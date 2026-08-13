@@ -19,6 +19,7 @@ from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.patient import Patient
 from app.dependencies.auth import get_current_user
+from app.utils.patient_name import full_patient_name
 from app.services.notification_service import (
     broadcast_to_channels,
     build_his_patient_context,
@@ -71,14 +72,9 @@ def _lookup_case_data(db: Session, case_id: int, case_type: str) -> dict:
     if not case:
         return {}
     patient = db.query(Patient).filter(Patient.id == case.patient_id).first()
-    name = ""
-    if patient:
-        name = patient.name or ""
-        if patient.ln:
-            name = f"{name} {patient.ln}".strip()
     return {
         "hn": case.hn or "-",
-        "name": name or "-",
+        "name": full_patient_name(patient, default="-"),
         "clinician": case.clinician_name or "-",
         "id_case": case.accession_no or str(case_id),
         "specimen": _lookup_specimen(db, case, case_type),
