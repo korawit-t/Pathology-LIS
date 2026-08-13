@@ -416,3 +416,107 @@ describe("StainManagement — Process in Staining Run", () => {
     expect(screen.queryByRole("button", { name: /Process in Staining Run/i })).not.toBeInTheDocument();
   });
 });
+
+// The master-data admin page saves special stains as "Special Stain"
+// (TEST_CATEGORY_OPTIONS), while the seeded tests use "Histochem". This page
+// only recognised "Histochem", so anything created through Admin was invisible:
+// no SS count, and not offerable in the Add Stain dropdown.
+describe("StainManagement — 'Special Stain' category parity with 'Histochem'", () => {
+  it("counts a 'Special Stain' test toward SS in the case breakdown", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({
+          stains: [
+            stain({ id: 1, test: { name: "PAS", category: "Special Stain", is_external: false } }),
+            stain({ id: 2, test: { name: "AFB", category: "Histochem", is_external: false } }),
+          ],
+        }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
+    const row = screen.getByText("S26-00001").closest("tr");
+    // Both spellings roll up into one SS count.
+    expect(within(row).getByText("SS: 2")).toBeInTheDocument();
+  });
+
+  it("tags a 'Special Stain' slide as SS in the per-block table", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({ stains: [stain({ test: { name: "PAS", category: "Special Stain", is_external: false } })] }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+    fireEvent.click(await screen.findByText("S26-00001"));
+    await screen.findByText("Slide");
+
+    expect(screen.getByText("SS")).toBeInTheDocument();
+    expect(screen.queryByText("Special Stain")).not.toBeInTheDocument();
+  });
+
+  it("offers 'Special Stain' tests in the Add Stain dropdown", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block()], total: 1 });
+    AnatomicalPathologyTestService.getAllTests.mockResolvedValue({
+      data: [
+        { id: 10, name: "CK7", category: "IHC", price_tier_1: 500 },
+        { id: 11, name: "Masson Trichrome", category: "Special Stain", price_tier_1: 200 },
+      ],
+    });
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+    fireEvent.click(await screen.findByText("S26-00001"));
+    await screen.findByText("A1");
+    fireEvent.click(screen.getByRole("button", { name: /Add Stain/i }));
+    await screen.findByLabelText("Slide No.");
+
+    // default stain_type is "Special stain" — the "Special Stain" test must be offered
+    fireEvent.mouseDown(document.querySelectorAll(".ant-select")[1]);
+    expect(await screen.findByTitle("Masson Trichrome")).toBeInTheDocument();
+    expect(screen.queryByTitle("CK7")).not.toBeInTheDocument();
+  });
+});
+
+describe("StainManagement — stain names in the breakdown", () => {
+  it("lists which stains are on the case, collapsing duplicates", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({
+          stains: [
+            stain({ id: 1, test: { name: "CK7", category: "IHC", is_external: false } }),
+            stain({ id: 2, test: { name: "CK7", category: "IHC", is_external: false } }),
+            stain({ id: 3, test: { name: "PAS", category: "Special Stain", is_external: false } }),
+          ],
+        }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
+    const row = screen.getByText("S26-00001").closest("tr");
+    expect(within(row).getByText("CK7 ×2, PAS")).toBeInTheDocument();
+  });
+
+  it("labels recut slides as Recut rather than the underlying test name", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({
+          stains: [stain({ id: 1, is_recut: true, test: { name: "H&E", category: "Histochem", is_external: false } })],
+        }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
+    const row = screen.getByText("S26-00001").closest("tr");
+    expect(within(row).getByText("Recut")).toBeInTheDocument();
+    expect(within(row).getByText("Recut: 1")).toBeInTheDocument();
+  });
+});
