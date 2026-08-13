@@ -18,7 +18,11 @@ from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.patient import Patient
 from app.dependencies.auth import get_current_user
-from app.services.notification_service import broadcast_to_channels, to_bangkok_str
+from app.services.notification_service import (
+    broadcast_to_channels,
+    build_appointment_block,
+    to_bangkok_str,
+)
 from app.crud import notification_rule as crud_rule
 
 
@@ -67,7 +71,16 @@ _DEFAULT_BROADCAST_TEMPLATE = (
     "แจ้งผลให้: {recipient_name}\n"
     "วัน/เวลา: {notified_at}\n"
     "หมายเหตุ: {note}"
+    "{appointments}"
 )
+
+# Malignancy alerts carry the patient's upcoming HOSxP appointments, since
+# "is this patient already booked to be seen again?" is the first thing the
+# recipient acts on. Admin-configured templates predate the placeholder, so
+# a template without {appointments} gets the block appended rather than
+# silently dropping it.
+_APPOINTMENT_TYPES = {"malignancy"}
+_APPOINTMENT_PLACEHOLDER = "{appointments}"
 
 
 @router.get("", response_model=CriticalNotificationLogList)
@@ -111,6 +124,13 @@ async def create(
             rule = crud_rule.get_rule_by_event(db, event_key) if event_key else None
             template = rule.message_template if (rule and rule.message_template) else _DEFAULT_BROADCAST_TEMPLATE
             case_data = _lookup_case_data(db, obj_in.case_id, obj_in.case_type)
+
+            appointments = ""
+            if obj_in.notification_type in _APPOINTMENT_TYPES:
+                appointments = build_appointment_block(case_data.get("hn"))
+                if appointments and _APPOINTMENT_PLACEHOLDER not in template:
+                    template = template + _APPOINTMENT_PLACEHOLDER
+
             data = {
                 "type_label": _TYPE_LABEL.get(obj_in.notification_type, obj_in.notification_type),
                 "case_type": obj_in.case_type,
@@ -119,6 +139,7 @@ async def create(
                 "recipient_name": obj_in.recipient_name or "-",
                 "notified_at": to_bangkok_str(obj_in.notified_at),
                 "note": obj_in.note or "-",
+                "appointments": appointments,
                 **case_data,
             }
             await broadcast_to_channels(channels=channels, template=template, data=data)

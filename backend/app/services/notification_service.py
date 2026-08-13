@@ -111,6 +111,105 @@ def to_bangkok_str(dt) -> str:
     return dt.astimezone(_TZ_BANGKOK).strftime("%d/%m/%Y %H:%M")
 
 
+_THAI_MONTH_ABBR = (
+    "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+    "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
+)
+
+_APPT_NONE_LINE = "\n\n📅 ⚠️ ไม่พบนัดล่วงหน้าในระบบ"
+
+
+def _thai_date(iso_date: str) -> str:
+    """'2026-08-24' -> '24 ส.ค. 69' (Buddhist era, 2-digit year).
+
+    Matches how appointment dates are written by hand in HOSxP's own note
+    field ('17/8/69'), so staff read one convention across the message.
+    Returns the input unchanged if it isn't a parseable ISO date.
+    """
+    try:
+        y, m, d = (int(p) for p in iso_date.split("-"))
+        return f"{d} {_THAI_MONTH_ABBR[m - 1]} {(y + 543) % 100:02d}"
+    except (ValueError, IndexError, AttributeError):
+        return str(iso_date)
+
+
+def _appt_time(raw: str) -> str:
+    """'7:00:00' / '07:00:00' -> '07:00'. Empty for midnight (HOSxP's 'no
+    time set') and for anything unparseable."""
+    if not raw:
+        return ""
+    parts = str(raw).split(":")
+    if len(parts) < 2:
+        return ""
+    try:
+        h, mi = int(parts[0]), int(parts[1])
+    except ValueError:
+        return ""
+    return "" if (h == 0 and mi == 0) else f"{h:02d}:{mi:02d}"
+
+
+def format_appointment_block(appointments) -> str:
+    """Render the '📅 นัดที่ยังมาไม่ถึง' fragment appended to a notification.
+
+    Returns a string starting with blank lines so it can be concatenated onto
+    any template without leaving a stray gap when there is nothing to add.
+    An empty *list* means the patient genuinely has no upcoming appointment
+    and gets the warning line — callers must pass None instead when the HIS
+    could not be reached, since "we could not check" must never be shown as
+    "this patient has no appointment".
+    """
+    if appointments is None:
+        return ""
+    if not appointments:
+        return _APPT_NONE_LINE
+
+    shown, extra = appointments[:5], max(0, len(appointments) - 5)
+    lines = [f"\n\n📅 นัดที่ยังมาไม่ถึง ({len(appointments)})"]
+    for a in shown:
+        when = " ".join(x for x in (_thai_date(a.get("nextdate")), _appt_time(a.get("nexttime"))) if x)
+        where = a.get("department") or (f"คลินิก {a['clinic']}" if a.get("clinic") else "")
+        lines.append(f"• {when} — {where}" if where else f"• {when}")
+        # HOSxP notes routinely contain hard line breaks; left raw they wreck
+        # the message layout in LINE.
+        note = " ".join(str(a.get("note") or "").split())
+        if note:
+            lines.append(f"  {note[:80]}")
+    if extra:
+        lines.append(f"  …และอีก {extra} รายการ")
+    return "\n".join(lines)
+
+
+def build_appointment_block(hn: str) -> str:
+    """Fetch this patient's upcoming HOSxP appointments and render them.
+
+    Best-effort by design: if the HIS is unconfigured, unreachable, or errors,
+    this returns an empty string so the alert still goes out without the
+    block. A malignancy notification must never be lost because a secondary
+    lookup failed — and, per format_appointment_block, a failed lookup must
+    never be rendered as "no appointment found" either.
+    """
+    if not hn or hn == "-":
+        return ""
+
+    from app.db.his_database import get_his_session_direct
+    from app.his_adapters.hosxp import get_future_appointments
+
+    his_db = None
+    try:
+        his_db = get_his_session_direct()
+        if his_db is None:
+            return ""
+        return format_appointment_block(get_future_appointments(his_db, hn))
+    except Exception:
+        return ""
+    finally:
+        if his_db is not None:
+            try:
+                his_db.close()
+            except Exception:
+                pass
+
+
 def _send_line_sync(credentials: Dict[str, Any], message: str) -> None:
     token = credentials.get("channel_access_token", "")
     to = credentials.get("to_user_id", "")
