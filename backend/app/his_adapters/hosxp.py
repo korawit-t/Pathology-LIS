@@ -65,6 +65,45 @@ def get_appointments(his_db: Session, hn: str) -> List[Dict]:
     ]
 
 
+def get_future_appointments(his_db: Session, hn: str, limit: int = 10) -> List[Dict]:
+    """Appointments that haven't come around yet, soonest first.
+
+    Distinct from get_appointments(), which returns the 20 most recent rows
+    regardless of date — in practice mostly past ones (a real patient checked
+    during development had 5 rows of which only 1 was still upcoming). A
+    "what is this patient still scheduled for" notification needs the future
+    ones only, so the date filter is done in SQL rather than by the caller.
+
+    department comes from the kskdepartment join and is frequently NULL, so
+    callers should fall back to the raw clinic code for display.
+    """
+    rows = his_db.execute(
+        text("""
+            SELECT o.nextdate, o.nexttime, o.note, o.doctor, o.clinic,
+                   o.depcode, k.department
+            FROM oapp o
+            LEFT JOIN kskdepartment k ON k.depcode = o.depcode
+            WHERE o.hn = :hn AND o.nextdate >= CURDATE()
+            ORDER BY o.nextdate ASC, o.nexttime ASC
+            LIMIT :limit
+        """),
+        {"hn": hn, "limit": limit},
+    ).fetchall()
+
+    return [
+        {
+            "nextdate": str(r[0]) if r[0] else None,
+            "nexttime": str(r[1]) if r[1] else None,
+            "note": r[2],
+            "doctor": r[3],
+            "clinic": r[4],
+            "depcode": r[5],
+            "department": r[6],
+        }
+        for r in rows
+    ]
+
+
 def _load_form_names() -> dict:
     """
     Load FORM_NAME_MAP from environment variables.
