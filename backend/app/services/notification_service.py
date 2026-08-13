@@ -20,6 +20,7 @@ DUMMY_DATA = {
     "id_case": "S26-TEST",
     "accession_no": "S26-TEST",
     "diagnosis": "Adenocarcinoma (TEST)",
+    "specimen": "Colonic mucosa, sigmoid colon, colonoscopy biopsy (TEST)",
 }
 
 
