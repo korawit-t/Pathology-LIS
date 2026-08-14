@@ -251,13 +251,20 @@ class HOSxPAdapter(HisAdapterBase):
     def _map_row(row) -> HisPatientResult:
         """Map a DB row to HisPatientResult, splitting VN/AN by length."""
         raw_vn = str(row.get("an", "") or "").strip()
-        # HOSxP lab_head.vn stores both VN (9 digits) and AN (12 digits)
+        # lab_head.vn carries the OPD visit number for outpatients and the
+        # admission number for inpatients, told apart by length:
+        #   VN = 12 digits (YYMMDD + running)   — vn_stat, verified on site
+        #   AN =  9 digits (BE year + running)  — an_stat, verified on site
+        # This was previously inverted, so every OUTPATIENT case stored its VN
+        # in `an`. _build_barcode_value then took the AN branch and stamped the
+        # IPD prefix onto it, producing a barcode HOSxP could not resolve —
+        # inpatients were unaffected, which is why it went unnoticed.
         if len(raw_vn) > 9:
-            an_val = raw_vn
-            vn_val = ""
-        else:
             vn_val = raw_vn
             an_val = ""
+        else:
+            an_val = raw_vn
+            vn_val = ""
 
         return HisPatientResult(
             an=an_val,
