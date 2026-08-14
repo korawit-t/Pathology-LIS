@@ -369,7 +369,7 @@ def get_latest_finalized_report_pdf(
     if not report_data.get("patient_title") and fresh_data:
         report_data["patient_title"] = fresh_data.get("patient_title") or ""
 
-    report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M:%S")
+    report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
 
     from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
 
@@ -435,7 +435,7 @@ def get_historical_report_pdf(
 
     # 3. จัดการ Metadata เพิ่มเติม
     is_preview_mode = report.status != "published"
-    report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M:%S")
+    report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
 
     # 4. ส่งให้ PDF Service
     from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
