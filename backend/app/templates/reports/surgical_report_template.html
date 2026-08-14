@@ -57,6 +57,14 @@
         /* ปรับ margin-top ให้พอดีกับ Header เพื่อไม่ให้เนื้อหาในหน้า 2 เบียดเกินไป */
         margin: 0.8cm 1cm 1.5cm 1cm;
 
+        /* Margin boxes are not inside <body>, so they do not inherit its
+           font-family — without this they fall back to whatever the host
+           system's default font is, which differs between machines and made
+           the footer text a different width on Linux than on macOS (enough to
+           reach the barcode). Declaring it here also puts the Thai footer
+           snapshot in the same face as the rest of the report. */
+        font-family: "Sarabun", sans-serif;
+
         /* .footer-barcode (bottom: -1.2cm, 32px tall + label) sits centred in
            this 1.5cm band at exactly the height of these two boxes, so they
            can only be separated from it horizontally. Roughly 55mm is free on
