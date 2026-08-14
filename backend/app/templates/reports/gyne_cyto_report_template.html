@@ -51,6 +51,12 @@
         size: A4;
         margin: 0.8cm 1cm 1.5cm 1cm;
 
+        /* Margin boxes are not inside <body> and do not inherit its
+           font-family; without this they fall back to a host system font,
+           which differs between machines and renders the Thai footer snapshot
+           in a face that may not carry the glyphs well. */
+        font-family: "Sarabun", sans-serif;
+
         @bottom-left {
           content: "{{ report_footer_snapshot | safe }} | Printed: {{ preview_date | safe }}";
           font-size: 8px;
