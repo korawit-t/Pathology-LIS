@@ -96,17 +96,37 @@ cp frontend/.env.example frontend/.env
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string (use service name `db` inside Docker) |
 | `SECRET_KEY` | Random secret — generate with `openssl rand -hex 32` |
-| `ALLOWED_ORIGINS` | Comma-separated list of frontend URLs (IP:port) |
+| `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins (scheme + host + port). In `production` **all must be `https://`**; in `development` `http://` is allowed. |
+| `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
+| `TRUSTED_PROXY_IPS` | IP/CIDR of the reverse proxy directly in front of the backend (e.g. `127.0.0.1`). Drives the audit-log client IP **and** the per-IP login rate limiter — set it correctly or both break. |
+| `COOKIE_DOMAIN` | Only when frontend/backend are on different subdomains of one custom domain (e.g. `.yourdomain.com`). Leave blank otherwise. |
 | `HIS_TYPE` | `hosxp` or leave blank to disable HIS |
 | `HIS_DATABASE_URL` | HIS database connection string (if using HIS integration) |
 
-**`frontend/.env`** — required changes:
+#### Environment modes
 
-| Variable | What to set |
-|---|---|
-| `VITE_API_BASE_URL` | Backend URL as seen from the **browser** (e.g. `http://192.168.1.100:8000`) |
+`ENVIRONMENT` decides whether the app assumes there is **HTTPS in front of it** — not whether it is your "real" server:
 
-> ⚠️ Use the server's real IP address — not `localhost` — when accessing from other machines.
+| | `development` | `production` |
+|---|---|---|
+| Auth cookies | plain (work over HTTP) | `Secure` (HTTPS only) |
+| CORS | allows `http://` origins | rejects non-`https://`; **refuses to boot** on http/localhost origins |
+| Swagger `/docs` | enabled | disabled |
+| Use for | local dev, **hospital LAN over plain HTTP** | internet-facing / any HTTPS deployment |
+
+> ⚠️ If you serve over plain HTTP but set `ENVIRONMENT=production`, the backend refuses to start with `ALLOWED_ORIGINS contains plaintext origin ... but ENVIRONMENT=production`. Either keep `development`, or put HTTPS in front and switch the origins to `https://`.
+
+**`frontend/.env`** — `VITE_API_BASE_URL` is the backend URL as seen from the **browser**. It is **baked into the build** (`npm run build`), not read at runtime, so **each deployment target is a separate build** and any change means rebuilding:
+
+| Deployment | `VITE_API_BASE_URL` | How the browser reaches the API |
+|---|---|---|
+| Local dev (`npm run dev`) | `http://localhost:8000` | direct to the backend |
+| Docker / LAN (direct) | `http://<server-ip>:8000` | direct to the backend (different port = still same-site) |
+| On-prem IIS (reverse proxy) | `/api` | IIS rewrites `/api/*` → backend — see **4D** |
+| Cloud / Railway (`Dockerfile.railway`) | *(empty)* | nginx reverse-proxies to the backend |
+
+> ⚠️ Use the server's real IP — not `localhost` — when accessing from other machines. And don't set `/api` globally: it only applies to the IIS reverse-proxy setup (4D); on Railway it would 404 because that nginx doesn't strip `/api`.
 
 ---
 
@@ -149,6 +169,48 @@ Two ways to fix it, pick one:
 
 - **You own a custom domain** — put frontend and backend on subdomains of it (e.g. `app.yourdomain.com` + `api.yourdomain.com`) and set `COOKIE_DOMAIN=.yourdomain.com` in `backend/.env` (see the variable's comment in `backend/.env.example` for details).
 - **No custom domain** — build the frontend with `frontend/Dockerfile.railway` instead of `frontend/Dockerfile`. It serves the app and reverse-proxies API calls to the backend through the same nginx, so the browser only ever sees one origin. Requires setting `BACKEND_UPSTREAM=<backend-service>.railway.internal:8000` (get the exact hostname from the backend service's private-networking settings) and leaving `VITE_API_BASE_URL` empty. See the comments in `frontend/nginx.railway.conf.template` for the full explanation.
+
+### 4D. On-premise Windows (IIS reverse proxy, no Docker)
+
+For a Windows Server where IIS serves the frontend and the backend runs via `backend/start.ps1` (Uvicorn on port 8000). The browser is routed through **one origin** so the auth cookie works with no CORS or mixed-content issues.
+
+**1. Build the frontend with the `/api` base** (baked in — rebuild whenever it changes):
+
+```powershell
+cd frontend
+$env:VITE_API_BASE_URL="/api"; npm run build
+```
+
+Copy the contents of `frontend/dist/` into the IIS site folder (e.g. `C:\inetpub\wwwroot\pathology_web`).
+
+**2. Reverse-proxy `/api` → backend via IIS URL Rewrite + ARR.**
+`frontend/public/web.config` already ships the rule and is bundled into `dist/` on every build, so it survives redeploys (a rule added by hand to the server folder gets overwritten on the next deploy). It forwards `/api/*` → `http://127.0.0.1:8000/*`, stripping the `/api` prefix. For IIS to actually proxy to that URL you must set this up **once** (server-level — it lives in `applicationHost.config` and persists across redeploys):
+
+- Install **URL Rewrite 2.1** and **Application Request Routing 3.0** (from Microsoft).
+- IIS Manager → **server node** (top) → *Application Request Routing Cache* → **Server Proxy Settings…** → tick **Enable proxy** → Apply.
+
+**3. Backend `backend/.env`:**
+
+- IIS serves over **HTTPS** → `ENVIRONMENT=production`, `ALLOWED_ORIGINS=https://<host>`, `TRUSTED_PROXY_IPS=127.0.0.1`
+- IIS serves over plain **HTTP** → `ENVIRONMENT=development`, `ALLOWED_ORIGINS=http://<host>`
+
+**4. Verify on the server** (isolates which layer is wrong):
+
+```powershell
+# backend directly — must return JSON
+curl.exe "http://127.0.0.1:8000/system-settings/public?slug=master"
+
+# through IIS — must return the SAME JSON
+curl.exe -k "https://<host>/api/system-settings/public?slug=master"
+```
+
+| Symptom on the second call | Cause |
+|---|---|
+| StaticFile **404** (IIS tries a physical path `...\api\...`) | URL Rewrite rule not loaded — module not installed, or `web.config` missing from the site folder |
+| **502** | ARR proxy not enabled (step 2) |
+| Returns `index.html` | SPA rule caught `/api` first — the API rule must be **above** it with `stopProcessing="true"` |
+
+> `start.ps1` auto-runs `alembic upgrade head` before starting Uvicorn. `VITE_API_BASE_URL` is compiled in, so changing it means rebuilding the frontend and recopying `dist/`.
 
 ---
 
