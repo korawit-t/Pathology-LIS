@@ -19,12 +19,34 @@ _MODULE_WIDTH_MM = 1.3
 _MODULE_HEIGHT_MM = 24
 _QUIET_ZONE_MM = 6.5  # Code 39 spec minimum quiet zone; python-barcode's own default.
 
+# Report-footer sizing. The full-size label geometry above does not fit the
+# report's bottom margin band, so the footer barcode is generated smaller —
+# but generated at its final size, never CSS-scaled down from the big one.
+#
+# 0.35mm was measured, not guessed: a 7-step print-and-scan sweep
+# (0.423 -> 0.13mm) on this site's own report printer and HOSxP scanner read
+# down to 0.35mm and failed below it, the printer being the limiting factor.
+# 10mm is the bar height that sweep was run at — the two were validated
+# together, so changing one invalidates the result for the other.
+_REPORT_MODULE_WIDTH_MM = 0.35
+_REPORT_MODULE_HEIGHT_MM = 10
+
 _SVG_SIZE_RE = re.compile(r'width="([\d.]+)mm"\s+height="([\d.]+)mm"')
 
 
-def generate_code39_base64_img(data: str) -> tuple[str, float, float]:
+def generate_code39_base64_img(
+    data: str,
+    module_width_mm: float = _MODULE_WIDTH_MM,
+    module_height_mm: float = _MODULE_HEIGHT_MM,
+) -> tuple[str, float, float]:
     """
     Generate a Code 39 barcode and return (data_uri, width_mm, height_mm).
+
+    Callers that need a different physical size (the report footer, which
+    cannot fit the full label geometry) pass their own module dimensions so
+    the symbol is *generated* at its final size. Do not instead render the
+    default size and shrink it with CSS: that is what produced a 0.423mm
+    X-dimension in the surgical report and made it unscannable.
 
     Rendered as an SVG (vector rects), not a raster PNG. The old LIS this
     project replaces drew its barcode via mPDF's native <barcode type="c39">
@@ -56,8 +78,8 @@ def generate_code39_base64_img(data: str) -> tuple[str, float, float]:
     code39.write(
         svg_io,
         options={
-            "module_width": _MODULE_WIDTH_MM,
-            "module_height": _MODULE_HEIGHT_MM,
+            "module_width": module_width_mm,
+            "module_height": module_height_mm,
             "font_size": 0,  # Hide text (we render it separately in HTML)
             "text_distance": 1,
             "quiet_zone": _QUIET_ZONE_MM,

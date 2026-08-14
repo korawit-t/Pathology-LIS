@@ -362,9 +362,13 @@
   <body>
     {% if barcode_svg %}
     <div class="footer-barcode">
+      <!-- Pinned to the barcode's own physical size. A CSS height here scales
+           the whole symbol, and that is exactly what dropped the X-dimension
+           to 0.423mm and made it unscannable. See barcode_service.py. -->
       <img
         src="{{ barcode_svg | safe }}"
-        style="height: 32px; display: block; margin: 0 auto"
+        {% if barcode_width_mm %}width="{{ barcode_width_mm }}mm" height="{{ barcode_height_mm }}mm"{% endif %}
+        style="display: block; margin: 0 auto"
       />
       <div
         style="
