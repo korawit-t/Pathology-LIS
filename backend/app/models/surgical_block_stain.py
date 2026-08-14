@@ -32,6 +32,12 @@ class SurgicalBlockStain(Base):
     # ผู้ดำเนินการย้อม
     stained_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # การคีย์ค่าตรวจเข้า HosXP (งานย้อมภายในแล็บ)
+    # Outlab stains track this on SurgicalOutlabRunDetail instead — internal
+    # stains never get a run detail, so the flag lives on the stain itself.
+    is_hosxp_keyed = Column(Boolean, default=False, nullable=False)
+    hosxp_keyed_at = Column(DateTime, nullable=True)
+
     # Relationships
     # หมายเหตุ: ต้องมั่นใจว่าใน SurgicalBlock มี back_populates="stains" ด้วย
     block = relationship("SurgicalBlock", back_populates="stains")
