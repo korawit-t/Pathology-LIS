@@ -34,6 +34,11 @@ class GyneCytologyCase(Base):
     medical_scheme_id = Column(Integer, ForeignKey("medical_schemes.id"), nullable=True)
 
     hn = Column(String, index=True)
+    # Visit / admission number from HOSxP, mirroring NongyneCytologyCase.
+    # These drive the label barcode's OPD/IPD prefix; before they existed the
+    # gyne barcode had to fall back to the HN.
+    an = Column(String, nullable=True)
+    vn = Column(String, nullable=True)
     clinician_name = Column(String, nullable=True)
     collect_at = Column(DateTime, nullable=True)
 

@@ -61,6 +61,8 @@ class GyneCytologyBase(BaseModel):
     accession_no: Optional[str] = None
     lab_number: Optional[str] = None
     hn: Optional[str] = None
+    an: Optional[str] = None
+    vn: Optional[str] = None
     clinician_name: Optional[str] = None
     medical_scheme_id: Optional[int] = None
     collect_at: Optional[datetime] = None
@@ -94,6 +96,8 @@ class GyneCytologyCaseCreate(GyneCytologyBase):
 class GyneCytologyCaseUpdate(BaseModel):
     # ข้อมูลทั่วไป (ทำให้ Optional ทั้งหมดเพื่อใช้ Patch)
     hn: Optional[str] = None
+    an: Optional[str] = None
+    vn: Optional[str] = None
     hospital_id: Optional[int] = None
     department_id: Optional[int] = None
     clinician_name: Optional[str] = None

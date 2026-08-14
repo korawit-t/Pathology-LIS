@@ -6,6 +6,8 @@ export interface GyneCytologyCase {
   id: number;
   accession_no: string;
   hn: string;
+  an?: string;
+  vn?: string;
   patient_id: number;
   hospital_id?: number;
   department_id?: number;
@@ -99,6 +101,8 @@ export interface GyneCytologyCase {
 export interface GyneCytologyCaseCreate {
   accession_no: string;
   hn: string;
+  an?: string;
+  vn?: string;
   patient_id: number;
   hospital_id?: number;
   last_menstrual_period?: string;

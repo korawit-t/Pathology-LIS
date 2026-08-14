@@ -34,11 +34,23 @@ const GyneCytoFormFields: React.FC<GyneCytoFormFieldsProps> = ({
 }) => {
   return (
     <>
-      {/* Row 2: HN / Clinician / Department / Scheme */}
+      {/* Row 2: HN / VN / AN / Clinician — VN and AN drive the label barcode's
+          OPD/IPD prefix (see gyne_cyto_report.py); without them the barcode
+          falls back to the HN. */}
       <Row gutter={16}>
         <Col span={6}>
           <Form.Item name="hn" label="HN" rules={[{ required: true }]}>
             <Input placeholder="Hospital Number" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="vn" label="VN (Visit No.)">
+            <Input placeholder="Visit Number" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="an" label="AN (Admission No.)">
+            <Input placeholder="Admission Number" />
           </Form.Item>
         </Col>
         <Col span={6}>
