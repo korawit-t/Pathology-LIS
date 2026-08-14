@@ -38,11 +38,24 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
 
   return (
     <>
-      {/* Row: HN / Scheme / Lab No / Clinician */}
+      {/* Row: HN / VN / AN / Scheme — VN and AN drive the label barcode's
+          OPD/IPD prefix (see nongyne_cyto_report.py), so they have to be
+          captured here the way SurgicalCaseFormFields does. Without them the
+          barcode silently falls back to the accession number. */}
       <Row gutter={16}>
         <Col span={6}>
           <Form.Item name="hn" label="HN" rules={[{ required: true }]}>
             <Input placeholder="Hospital Number" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="vn" label="VN (Visit No.)">
+            <Input placeholder="Visit Number" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="an" label="AN (Admission No.)">
+            <Input placeholder="Admission Number" />
           </Form.Item>
         </Col>
         <Col span={6}>
@@ -56,6 +69,10 @@ const NongyneCaseFormFields: React.FC<NongyneCaseFormFieldsProps> = ({
             </Select>
           </Form.Item>
         </Col>
+      </Row>
+
+      {/* Row: Lab No / Clinician */}
+      <Row gutter={16}>
         <Col span={6}>
           <Form.Item name="lab_number" label="Lab No.">
             <Input placeholder="e.g., 612345" />
