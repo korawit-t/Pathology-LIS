@@ -309,27 +309,62 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
                     <div
                       style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}
                     >
-                      {record.blocks.map((item) => (
-                        <Tooltip
-                          key={item.id}
-                          title={`Status: ${item.status || "in_machine"}`}
-                        >
-                          <Tag
-                            color={
-                              item.status === "completed"
-                                ? "green"
-                                : item.status === "missing"
-                                  ? "red"
-                                  : "blue"
-                            }
+                      {record.blocks.map((item) => {
+                        const tissue = item.block?.is_tissue_uncountable
+                          ? "TNTC"
+                          : (item.block?.tissue_count ?? "-");
+                        return (
+                          <Tooltip
+                            key={item.id}
+                            title={`Status: ${item.status || "in_machine"} • ชิ้นเนื้อ: ${tissue}`}
                           >
-                            {item.block?.specimen_label}
-                            {item.block?.block_no}
-                          </Tag>
-                        </Tooltip>
-                      ))}
+                            <Tag
+                              color={
+                                item.status === "completed"
+                                  ? "green"
+                                  : item.status === "missing"
+                                    ? "red"
+                                    : "blue"
+                              }
+                            >
+                              {item.block?.specimen_label}
+                              {item.block?.block_no}
+                            </Tag>
+                          </Tooltip>
+                        );
+                      })}
                     </div>
                   ),
+                },
+                {
+                  title: "Tissue Count",
+                  width: 110,
+                  align: "center",
+                  render: (_, record: GroupedAccession) => {
+                    const total = record.blocks.reduce(
+                      (sum, item) => sum + (item.block?.tissue_count ?? 0),
+                      0,
+                    );
+                    const hasUncountable = record.blocks.some(
+                      (item) => item.block?.is_tissue_uncountable,
+                    );
+
+                    if (hasUncountable) {
+                      return (
+                        <Tooltip title="มีตลับที่นับจำนวนชิ้นไม่ได้ (Too numerous to count)">
+                          <Tag color="orange" style={{ margin: 0 }}>
+                            {total > 0 ? `${total}+ TNTC` : "TNTC"}
+                          </Tag>
+                        </Tooltip>
+                      );
+                    }
+
+                    return total > 0 ? (
+                      <Text strong>{total}</Text>
+                    ) : (
+                      <Text type="secondary">-</Text>
+                    );
+                  },
                 },
                 {
                   title: "Summary",
