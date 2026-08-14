@@ -119,6 +119,8 @@ export interface SurgicalBlockLite {
   specimen_label: string;
   block_no: string;
   accession_no?: string;
+  tissue_count?: number | null;
+  is_tissue_uncountable?: boolean;
   specimen?: {
     accession_no: string;
     lab_number?: string;
