@@ -429,7 +429,24 @@ def get_historical_report_pdf(
         type_code = (setting.barcode_surgical_type_code or "08") if setting else "08"
 
         barcode_value, barcode_type = _build_barcode_value(case, setting, type_code)
-        report_data["barcode_svg"], _, _ = generate_code39_base64_img(barcode_value)
+        # Footer sizing, and the true mm are carried through to the template so
+        # the <img> can be pinned to them. Letting CSS size it instead scaled
+        # the symbol to a 0.423mm X-dimension, below what the site's printer
+        # can resolve.
+        from app.services.barcode_service import (
+            _REPORT_MODULE_WIDTH_MM,
+            _REPORT_MODULE_HEIGHT_MM,
+        )
+
+        (
+            report_data["barcode_svg"],
+            report_data["barcode_width_mm"],
+            report_data["barcode_height_mm"],
+        ) = generate_code39_base64_img(
+            barcode_value,
+            module_width_mm=_REPORT_MODULE_WIDTH_MM,
+            module_height_mm=_REPORT_MODULE_HEIGHT_MM,
+        )
         report_data["barcode_value"] = barcode_value
         report_data["barcode_type"] = barcode_type
 

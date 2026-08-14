@@ -7,8 +7,8 @@ from typing import Optional
 
 class HisPatientResult(BaseModel):
     """Single patient/lab-order result from the HOSxP database."""
-    an: Optional[str] = None          # AN (admission number, 12 digits)
-    vn: Optional[str] = None          # VN (visit number, 9 digits)
+    an: Optional[str] = None          # AN (admission number, 9 digits: BE year + running)
+    vn: Optional[str] = None          # VN (visit number, 12 digits: YYMMDD + running)
     hn: Optional[str] = None          # Hospital Number
     gender: Optional[str] = None      # Gender name (ชาย/หญิง)
     gender_code: Optional[int] = None # Gender code (1=male, 2=female in HOSxP)
