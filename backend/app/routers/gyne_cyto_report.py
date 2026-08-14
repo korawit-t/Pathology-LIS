@@ -36,6 +36,25 @@ router = APIRouter(
     dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)],
 )
 
+def build_gyne_barcode_value(case, report, opd_prefix: str, ipd_prefix: str, type_code: str) -> str:
+    """Label barcode value for a gyne report, mirroring surgical's
+    _build_barcode_value: visit number with the OPD prefix, else admission
+    number with the IPD prefix, so HOSxP resolves every case type the same way.
+
+    Gyne had no vn/an columns until revision cbf87c42dd0b and keyed off the HN.
+    That remains the fallback, so cases registered before the columns existed —
+    and any where the HIS import found no visit — keep producing exactly the
+    barcode they always did.
+    """
+    vn = (getattr(case, "vn", "") or "").strip() if case else ""
+    an = (getattr(case, "an", "") or "").strip() if case else ""
+    if vn:
+        return f"{opd_prefix}{type_code}{vn}"
+    if an:
+        return f"{ipd_prefix}{type_code}{an}"
+    return f"{opd_prefix}{type_code}{report.patient_hn or report.accession_no}"
+
+
 class PublishReportRequest(BaseModel):
     signers: Optional[List[GyneReportSignerCreate]] = None
     is_abnormal: bool = False
@@ -255,16 +274,26 @@ def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
     if not report_ids:
         raise HTTPException(status_code=400, detail="report_ids is required")
 
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
     setting = db.query(SystemSetting).first()
     type_code = (setting.barcode_gyne_type_code or "09") if setting else "09"
     opd_prefix = (setting.barcode_opd_prefix or "2") if setting else "2"
+    ipd_prefix = (setting.barcode_ipd_prefix or "3") if setting else "3"
 
     labels = []
     for rid in report_ids:
         report = db.query(GyneCytoReport).filter(GyneCytoReport.id == rid).first()
         if not report:
             continue
-        barcode_value = f"{opd_prefix}{type_code}{report.patient_hn or report.accession_no}"
+        case = (
+            db.query(GyneCytologyCase).filter(GyneCytologyCase.id == report.case_id).first()
+            if report.case_id
+            else None
+        )
+        barcode_value = build_gyne_barcode_value(
+            case, report, opd_prefix, ipd_prefix, type_code
+        )
         barcode_svg, barcode_width_mm, barcode_height_mm = generate_code39_base64_img(barcode_value)
         labels.append({
             "accession_no": report.accession_no,

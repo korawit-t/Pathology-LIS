@@ -556,6 +556,8 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
             form.setFieldsValue({
               patient_id: patient.id,
               hn: record.hn || undefined,
+              vn: record.vn || undefined,
+              an: record.an || undefined,
               hospital_id: matchedHospitalId,
               department_id: matchedDepartmentId,
               medical_scheme_id: matchedSchemeId,
