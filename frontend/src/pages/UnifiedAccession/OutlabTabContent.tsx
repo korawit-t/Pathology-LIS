@@ -13,7 +13,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { TYPE_TAG } from "./constants";
-import type { OutlabConsultRunResponse, OutlabConsultRunDetailResponse } from "../../services/outlabConsultRunService";
+import ConsultRunExpansionPanel from "./ConsultRunExpansionPanel";
+import type { OutlabConsultRunResponse } from "../../services/outlabConsultRunService";
 
 const { Text } = Typography;
 
@@ -51,52 +52,16 @@ const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
       pagination={{ pageSize: 20, showTotal: (t) => `Total ${t} runs`, hideOnSinglePage: true }}
       scroll={{ x: 900, y: "calc(100vh - 380px)" }}
       sticky
+      onRow={(run: OutlabConsultRunResponse) => ({
+        style: run.details.length > 0 ? { cursor: "pointer" } : undefined,
+      })}
       expandable={{
+        // Click anywhere on the run row to see its cases — same affordance as
+        // OutlabManagement's TrackingTab, except the expand icon stays visible
+        // here so the tab advertises that a run has cases to look at.
+        expandRowByClick: true,
         expandedRowRender: (run: OutlabConsultRunResponse) => (
-          <Table
-            dataSource={run.details}
-            rowKey="id"
-            size="small"
-            pagination={false}
-            columns={[
-              {
-                title: "Type",
-                dataIndex: "case_type",
-                width: 90,
-                render: (v: string) => (
-                  <Tag color={TYPE_TAG[v]?.color || "default"}>{TYPE_TAG[v]?.label || v}</Tag>
-                ),
-              },
-              { title: "Accession No.", dataIndex: "accession_no", width: 150 },
-              { title: "Patient", dataIndex: "patient_name", width: 200 },
-              {
-                title: "Block",
-                dataIndex: "block_code",
-                width: 80,
-                render: (v: string) => v || "—",
-              },
-              {
-                title: "Report Out",
-                dataIndex: "report_out_at",
-                width: 150,
-                render: (v: string) =>
-                  v ? dayjs(v).format("DD/MM/YY HH:mm") : <Tag color="orange">Pending</Tag>,
-              },
-              {
-                title: "Block Returned",
-                key: "block_returned",
-                width: 140,
-                render: (_: unknown, d: OutlabConsultRunDetailResponse) =>
-                  d.block_returned ? (
-                    <Tag color="green" icon={<CheckCircleOutlined />}>
-                      Returned{d.block_returned_at ? ` ${dayjs(d.block_returned_at).format("DD/MM/YY")}` : ""}
-                    </Tag>
-                  ) : (
-                    <Tag color="default">Pending</Tag>
-                  ),
-              },
-            ]}
-          />
+          <ConsultRunExpansionPanel details={run.details} />
         ),
         rowExpandable: (run: OutlabConsultRunResponse) => run.details.length > 0,
       }}
@@ -153,6 +118,10 @@ const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
           key: "action",
           width: 110,
           fixed: "right" as const,
+          // Without this, clicking Receive (or its confirm popup, which bubbles
+          // through the React tree even though it renders in a portal) would
+          // also toggle the row's expansion.
+          onCell: () => ({ onClick: (e: React.MouseEvent) => e.stopPropagation() }),
           render: (_: unknown, r: OutlabConsultRunResponse) =>
             r.status !== "completed" ? (
               <Popconfirm
