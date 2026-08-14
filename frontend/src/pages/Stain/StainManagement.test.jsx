@@ -520,3 +520,50 @@ describe("StainManagement — stain names in the breakdown", () => {
     expect(within(row).getByText("Recut: 1")).toBeInTheDocument();
   });
 });
+
+describe("StainManagement — HosXP Key tab", () => {
+  it("exposes a HosXP Key tab alongside the stain orders list", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({
+          stains: [
+            stain({ id: 1, is_hosxp_keyed: false, test: { name: "AFB", category: "Histochem", is_external: false } }),
+            stain({ id: 2, is_hosxp_keyed: true, test: { name: "GMS", category: "Histochem", is_external: false } }),
+          ],
+        }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    // Stain Orders is the default tab
+    await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /HosXP Key/i }));
+
+    // both stains are keyable; only the unkeyed one counts toward Pending
+    expect(await screen.findByText("Pending (1)")).toBeInTheDocument();
+    expect(screen.getByText("Keyed (1)")).toBeInTheDocument();
+  });
+
+  it("badges the HosXP tab with the number of stains still to key", async () => {
+    SurgicalBlockService.getBlocks.mockResolvedValue({
+      items: [
+        block({
+          stains: [
+            stain({ id: 1, is_hosxp_keyed: false, test: { name: "AFB", category: "Histochem", is_external: false } }),
+            // recuts are not billable, so they must not inflate the badge
+            stain({ id: 2, is_recut: true, is_hosxp_keyed: false, test: { name: "H&E", category: "Histochem", is_external: false } }),
+          ],
+        }),
+      ],
+      total: 1,
+    });
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    const tab = await screen.findByRole("tab", { name: /HosXP Key/i });
+    expect(within(tab).getByText("1")).toBeInTheDocument();
+  });
+});

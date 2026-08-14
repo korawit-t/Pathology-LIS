@@ -73,6 +73,8 @@ class StainResponse(StainBase):
     block: Optional[BlockShortInfo] = None
     is_recut: bool = False
     recut_note: Optional[str] = None
+    is_hosxp_keyed: bool = False
+    hosxp_keyed_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 

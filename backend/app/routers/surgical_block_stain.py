@@ -143,6 +143,20 @@ def receive_outlab_run_details(
         raise HTTPException(status_code=404, detail="Outlab run not found")
     return result
 
+@router.patch("/{stain_id}/hosxp-key")
+def toggle_stain_hosxp_keyed(
+    stain_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Mark an internal stain as keyed into HosXP (billing)."""
+    result = crud.toggle_stain_hosxp_keyed(db, stain_id=stain_id, keyed=payload.get("keyed", True))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Stain not found")
+    return result
+
+
 @router.patch("/outlab-run-details/{detail_id}/hosxp-key")
 def toggle_hosxp_keyed(
     detail_id: int,

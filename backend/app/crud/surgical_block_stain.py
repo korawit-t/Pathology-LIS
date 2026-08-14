@@ -691,6 +691,23 @@ def update_outlab_run(db: Session, run_id: int, obj_in):
     return db_run
 
 
+def toggle_stain_hosxp_keyed(db: Session, stain_id: int, keyed: bool) -> dict | None:
+    """HosXP-keyed flag for an *internal* stain.
+
+    The outlab equivalent (toggle_hosxp_keyed, below) writes to the run detail
+    created when slides are dispatched. Internal stains never get one, so the
+    flag lives on the stain row itself.
+    """
+    stain = db.query(SurgicalBlockStain).filter(SurgicalBlockStain.id == stain_id).first()
+    if not stain:
+        return None
+    stain.is_hosxp_keyed = keyed
+    stain.hosxp_keyed_at = local_now() if keyed else None
+    db.commit()
+    db.refresh(stain)
+    return {"id": stain.id, "is_hosxp_keyed": stain.is_hosxp_keyed, "hosxp_keyed_at": stain.hosxp_keyed_at}
+
+
 def toggle_hosxp_keyed(db: Session, detail_id: int, keyed: bool) -> dict | None:
     detail = db.query(SurgicalOutlabRunDetail).filter(SurgicalOutlabRunDetail.id == detail_id).first()
     if not detail:

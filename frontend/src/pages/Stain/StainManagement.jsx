@@ -16,6 +16,7 @@ import {
   Empty,
   Segmented,
   Divider,
+  Tabs,
 } from "antd";
 import {
   PlusOutlined,
@@ -35,6 +36,14 @@ import SurgicalBlockStainService from "../../services/surgicalBlockStainService"
 import AnatomicalPathologyTestService from "../../services/anatomicalTestService";
 import PageContainer from "../../components/Layout/PageContainer";
 import { executePrint } from "./PrintStickerHE/utils/generateHEStickers";
+import InternalHosxpKeyTab from "./components/InternalHosxpKeyTab";
+import {
+  CAT_COLOR,
+  catLabel,
+  isKeyableStain,
+  isRelevantStain,
+  isSpecialStainCategory,
+} from "./stainFilters";
 
 const { Text, Title } = Typography;
 
@@ -44,29 +53,6 @@ const STATUS_TAG_COLOR = {
   sent: "orange",
   completed: "processing",
 };
-
-const CAT_COLOR = {
-  IHC: "purple",
-  Histochem: "cyan",
-  "Special Stain": "cyan",
-  ISH: "geekblue",
-  Molecular: "magenta",
-};
-
-// Special stains carry two different category strings in the same database:
-// the seeded tests use "Histochem", while anything created or edited through
-// Admin → master data is saved as "Special Stain" (TEST_CATEGORY_OPTIONS in
-// constants/lab.constants.ts). They mean the same thing, so every check here
-// has to accept both — BlockGridView/StainManagementPage.tsx already does, and
-// this page not doing so is why "Special Stain" tests were invisible.
-const SPECIAL_STAIN_CATEGORIES = ["Histochem", "Special Stain"];
-const isSpecialStainCategory = (cat) => SPECIAL_STAIN_CATEGORIES.includes(cat);
-
-/** Short label for the category tag — special stains collapse to "SS". */
-const catLabel = (cat) => (isSpecialStainCategory(cat) ? "SS" : cat || "—");
-
-const isRelevantStain = (s) =>
-  s.is_recut || (!s.test?.is_external && !s.test?.name?.includes("H&E"));
 
 
 // ── Compact per-block stain table (used inside the detail modal) ───────────────
@@ -270,6 +256,7 @@ const StainManagement = ({ onNavigate }) => {
   const [masterTests, setMasterTests] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [filterTab, setFilterTab] = useState("all");
+  const [mainTab, setMainTab] = useState("orders");
 
   const [currentView, setCurrentView] = useState("list");
   const [detailAccNo, setDetailAccNo] = useState(null);
@@ -399,6 +386,15 @@ const StainManagement = ({ onNavigate }) => {
       (b.stains || []).filter(
         (s) => isRelevantStain(s) && s.status === "stained",
       ).length,
+    0,
+  );
+
+  // Badge on the HosXP tab. Derived from the fetched blocks (server truth), so
+  // it reconciles on refresh rather than tracking the tab's optimistic toggles;
+  // the tab's own All/Pending/Keyed buttons are the live counts.
+  const unkeyedCount = blocks.reduce(
+    (sum, b) =>
+      sum + (b.stains || []).filter((s) => isKeyableStain(s) && !s.is_hosxp_keyed).length,
     0,
   );
 
@@ -679,36 +675,72 @@ const StainManagement = ({ onNavigate }) => {
     >
       {/* ── List view ── */}
       {currentView === "list" && (
-        <>
-          <div style={{ marginBottom: 16 }}>
-            <Segmented
-              value={filterTab}
-              onChange={setFilterTab}
-              options={[
-                { label: `All (${caseRows.length})`, value: "all" },
-                { label: `Has Pending (${pendingRows.length})`, value: "pending" },
-                { label: `Completed (${completedRows.length})`, value: "completed" },
-                { label: `Recut (${recutRows.length})`, value: "recut" },
-              ]}
-            />
-          </div>
-          {filteredRows.length === 0 ? (
-            <Empty description="No cases found" />
-          ) : (
-            <Table
-              dataSource={filteredRows}
-              columns={caseColumns}
-              rowKey="accNo"
-              size="middle"
-              loading={loading}
-              pagination={{ pageSize: 20, showSizeChanger: false }}
-              onRow={(record) => ({
-                onClick: () => handleOpenCase(record.accNo),
-                style: { cursor: "pointer" },
-              })}
-            />
-          )}
-        </>
+        <Tabs
+          activeKey={mainTab}
+          onChange={setMainTab}
+          items={[
+            {
+              key: "orders",
+              label: (
+                <span>
+                  <ExperimentOutlined /> Stain Orders
+                </span>
+              ),
+              children: (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <Segmented
+                      value={filterTab}
+                      onChange={setFilterTab}
+                      options={[
+                        { label: `All (${caseRows.length})`, value: "all" },
+                        { label: `Has Pending (${pendingRows.length})`, value: "pending" },
+                        { label: `Completed (${completedRows.length})`, value: "completed" },
+                        { label: `Recut (${recutRows.length})`, value: "recut" },
+                      ]}
+                    />
+                  </div>
+                  {filteredRows.length === 0 ? (
+                    <Empty description="No cases found" />
+                  ) : (
+                    <Table
+                      dataSource={filteredRows}
+                      columns={caseColumns}
+                      rowKey="accNo"
+                      size="middle"
+                      loading={loading}
+                      pagination={{ pageSize: 20, showSizeChanger: false }}
+                      onRow={(record) => ({
+                        onClick: () => handleOpenCase(record.accNo),
+                        style: { cursor: "pointer" },
+                      })}
+                    />
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "hosxp",
+              label: (
+                // Badge sits beside the label text rather than wrapping it —
+                // wrapping shrinks the tab font (see the Outlab tabs).
+                <span>
+                  <CheckCircleOutlined /> HosXP Key{" "}
+                  {unkeyedCount > 0 && (
+                    <Badge count={unkeyedCount} style={{ backgroundColor: "#faad14" }} />
+                  )}
+                </span>
+              ),
+              children: (
+                <InternalHosxpKeyTab
+                  blocks={blocks}
+                  loading={loading}
+                  onRefresh={fetchData}
+                />
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* ── Detail view ── */}

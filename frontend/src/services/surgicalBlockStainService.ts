@@ -240,6 +240,13 @@ const SurgicalBlockStainService = {
     const res = await api.patch(`/surgical-block-stains/outlab-run-details/${detailId}/hosxp-key`, { keyed });
     return res.data;
   },
+
+  // Internal (in-house) stains have no outlab run detail to hang the flag on,
+  // so it lives on the stain row — see toggleHosxpKeyed above for the outlab twin.
+  toggleStainHosxpKeyed: async (stainId: number, keyed: boolean): Promise<unknown> => {
+    const res = await api.patch(`/surgical-block-stains/${stainId}/hosxp-key`, { keyed });
+    return res.data;
+  },
 };
 
 export default SurgicalBlockStainService;
