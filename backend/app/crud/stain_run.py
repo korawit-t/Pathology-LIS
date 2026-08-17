@@ -11,6 +11,24 @@ from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
+from app.utils.block_workflow import assert_blocks_ready
+
+
+def _assert_stains_ready_to_run(db: Session, stain_ids: list[int]) -> None:
+    """Reject a run whose slides sit on blocks that haven't been cut yet.
+
+    Stain orders are keyed by stain id, so resolve them back to their blocks
+    before applying the pipeline gate.
+    """
+    if not stain_ids:
+        return
+    block_ids = [
+        row[0]
+        for row in db.query(SurgicalBlockStain.block_id)
+        .filter(SurgicalBlockStain.id.in_(stain_ids))
+        .all()
+    ]
+    assert_blocks_ready(db, "staining", block_ids)
 
 
 def _sync_case_status_from_he_stains(db: Session, stain_ids: list[int]) -> None:
@@ -131,6 +149,8 @@ def update_run_status(db: Session, run_id: int, status: str):
 
 
 def create_stain_run(db: Session, obj_in: StainRunCreate, user_id: int):
+    _assert_stains_ready_to_run(db, list(obj_in.stain_ids))
+
     today_str = local_now().strftime("%Y%m%d")
     prefix = f"RUN-{today_str}-"
     last_run = (
@@ -207,6 +227,12 @@ def list_active_runs(db: Session, test_id: int = None):
 
 
 def create_he_batch_run(db: Session, obj_in: dict, operator_id: int = None):
+    # 0. ตรวจก่อนสร้าง Run: ตลับต้องผ่าน Sectioning มาแล้ว
+    # (payload ใช้ชื่อ key ว่า block_id แต่ค่าจริงคือ stain id — ดูข้อ 3)
+    _assert_stains_ready_to_run(
+        db, [item.get("block_id") for item in obj_in.get("items", [])]
+    )
+
     # 1. รันเลข Run No ด้วยวิธีหาเลขล่าสุด (Max)
     today_str = local_now().strftime("%Y%m%d")
     prefix = f"HE-{today_str}-"

@@ -183,6 +183,31 @@ class TestCompleteProcessingRun:
         item = db.query(TissueProcessingItem).filter(TissueProcessingItem.run_id == run.id).first()
         assert item.status == "missing"
 
+    def test_confirmed_id_from_outside_the_run_is_ignored(self, db, admin_user):
+        """A block scanned at the process-out station that isn't part of this run
+        must not be promoted to "processed" — that's how blocks that never went
+        into a processor turned up in the Embedding pending list."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        in_run = make_block(db, specimen.id, block_no=1, status="grossed")
+        stranger = make_block(db, specimen.id, block_no=2, status="grossed")
+        run = create_processing_run(
+            db,
+            TissueProcessingRunCreate(
+                processor_name="M1", program_name="P1", start_at=datetime.now(),
+                block_ids=[in_run.id], created_by_id=registrar.id,
+            ),
+        )
+
+        complete_processing_run(
+            db, run.id, user_id=registrar.id, confirmed_block_ids=[in_run.id, stranger.id]
+        )
+
+        db.refresh(in_run)
+        db.refresh(stranger)
+        assert in_run.status == "processed"
+        assert stranger.status == "grossed"
+
     def test_no_confirmed_ids_treats_all_as_processed(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)

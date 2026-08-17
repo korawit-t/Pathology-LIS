@@ -42,7 +42,7 @@ class TestCreateRun:
     def test_creates_run_in_running_status(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
 
@@ -59,7 +59,7 @@ class TestReadAndUpdateStatus:
     def test_get_run_details(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         created = pathologist_client.post("/stain-runs", json={"stain_ids": [stain.id]}).json()
@@ -80,7 +80,7 @@ class TestReadAndUpdateStatus:
     def test_update_status(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         created = pathologist_client.post("/stain-runs", json={"stain_ids": [stain.id]}).json()
@@ -93,7 +93,7 @@ class TestReadAndUpdateStatus:
     def test_filter_by_test_id(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         pathologist_client.post("/stain-runs", json={"stain_ids": [stain.id]})

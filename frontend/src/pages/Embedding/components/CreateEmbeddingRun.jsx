@@ -262,6 +262,7 @@ const CreateEmbeddingRun = ({ onBack }) => {
       >
         <Alert
           message={`Total pending blocks: ${totalInTree} | Selected: ${selectedCountInModal}`}
+          description="Only blocks confirmed out of Tissue Processing are listed."
           type="info"
           showIcon
           style={{ marginBottom: 16 }}

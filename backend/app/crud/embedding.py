@@ -5,6 +5,7 @@ from app.models.embedding import EmbeddingRun, EmbeddingDetail
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
+from app.utils.block_workflow import assert_blocks_ready
 
 
 def generate_embedding_run_no(db: Session) -> str:
@@ -64,6 +65,11 @@ def add_multiple_blocks_to_embedding(db: Session, run_id: int, block_ids: list[i
     and promote the parent case to 'embedded' status once all its
     blocks have been embedded.
     """
+    # A block only enters embedding after it came out of the processor —
+    # enforced here too, not just in get_embedding_pending_tree, so a scan
+    # against a stale pending list can't skip Tissue Processing.
+    assert_blocks_ready(db, "embedding", block_ids)
+
     blocks = (
         db.query(SurgicalBlock)
         .options(joinedload(SurgicalBlock.specimen))

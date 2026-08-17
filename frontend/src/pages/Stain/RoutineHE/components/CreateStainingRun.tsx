@@ -336,6 +336,7 @@ const CreateStainingRun: React.FC<CreateStainingRunProps> = ({ onBack }) => {
       >
         <Alert
           message={`Total pending blocks: ${totalInTree}`}
+          description="Only blocks that have cleared the previous workflow step are listed."
           type="info"
           showIcon
           style={{ marginBottom: 16 }}

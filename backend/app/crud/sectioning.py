@@ -10,6 +10,7 @@ from app.schemas.sectioning import (
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
+from app.utils.block_workflow import assert_blocks_ready
 from app.utils.time import local_now
 
 
@@ -72,6 +73,9 @@ def generate_sectioning_run_number(db: Session):
 
 
 def create_sectioning_run_batch(db: Session, obj_in: SectioningRunCreateBatch):
+    # 0. ตลับต้อง Embed แล้วเท่านั้นถึงจะเข้ารอบตัดได้ (กันสแกนข้ามขั้นตอน)
+    assert_blocks_ready(db, "sectioning", [item.block_id for item in obj_in.items])
+
     # 1. เจนเลขรันจังหวะนี้เลย (จังหวะที่กด Finish จากหน้าจอ)
     auto_run_no = generate_sectioning_run_number(
         db
@@ -184,6 +188,8 @@ def delete_sectioning_run(db: Session, run_id: int):
 def batch_add_sectioning_details(
     db: Session, run_id: int, items: List[SectioningDetailCreate]
 ):
+    assert_blocks_ready(db, "sectioning", [item.block_id for item in items])
+
     db_objs = []
     for item in items:
         # ใช้ .dict() (หรือ .model_dump() ใน Pydantic v2) เพื่อแปลงเป็น dictionary

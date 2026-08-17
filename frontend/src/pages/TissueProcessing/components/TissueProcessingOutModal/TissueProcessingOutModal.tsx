@@ -33,15 +33,6 @@ interface ProcessOutModalProps {
   onSuccess: () => void;
 }
 
-// ✅ กำหนด Payload Interface สำหรับ API
-interface UpdateStatusPayload {
-  status: string;
-  completed_by_id: number;
-  block_out_total: number;
-  confirmed_block_ids: number[];
-  remark: string;
-}
-
 const ProcessOutModal: React.FC<ProcessOutModalProps> = ({
   runId,
   open,
@@ -105,7 +96,7 @@ const ProcessOutModal: React.FC<ProcessOutModalProps> = ({
     setInputValue("");
   };
 
-  const handleConfirmOut = async () => {
+  const submitOut = async () => {
     if (!runId) return;
 
     // ดึง User จาก localStorage (ควรมี Type ของ User ด้วยจะดีมาก)
@@ -118,6 +109,10 @@ const ProcessOutModal: React.FC<ProcessOutModalProps> = ({
       status: "completed",
       completed_by_id: user?.id || 1,
       block_out_total: scannedIds.length,
+      // Without this the backend falls back to "every block in the run came
+      // out", marking blocks nobody verified as processed — which is how
+      // un-processed blocks ended up in the Embedding pending list.
+      confirmed_block_ids: scannedIds,
       remark:
         scannedIds.length < totalIn
           ? `Manual Confirm: incomplete (missing ${totalIn - scannedIds.length})`
@@ -134,6 +129,23 @@ const ProcessOutModal: React.FC<ProcessOutModalProps> = ({
     }
   };
 
+  const handleConfirmOut = () => {
+    const missing = (runData?.items?.length || 0) - scannedIds.length;
+    if (missing > 0) {
+      Modal.confirm({
+        title: `${missing} block(s) not verified`,
+        content:
+          "Unverified blocks stay at the Tissue Processing step and will not " +
+          "appear in Embedding. Confirm process out anyway?",
+        okText: "Confirm anyway",
+        cancelText: "Back",
+        onOk: submitOut,
+      });
+      return;
+    }
+    submitOut();
+  };
+
   return (
     <Modal
       title={
@@ -147,6 +159,9 @@ const ProcessOutModal: React.FC<ProcessOutModalProps> = ({
       onOk={handleConfirmOut}
       onCancel={onClose}
       okText="Confirm Process Out"
+      // Confirming with nothing verified would send every block in the run back
+      // to grossed — scan/tick at least one, or close and abort the run instead.
+      okButtonProps={{ disabled: scannedIds.length === 0 }}
       width={650}
       destroyOnClose
     >

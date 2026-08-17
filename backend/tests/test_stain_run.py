@@ -26,7 +26,7 @@ class TestCreateStainRun:
     def test_marks_stains_stained_and_promotes_case_when_all_he_done(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
 
@@ -43,7 +43,7 @@ class TestCreateStainRun:
     def test_does_not_promote_case_when_some_he_stains_still_pending(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain1 = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=1))
         stain2 = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=2))
@@ -58,7 +58,7 @@ class TestCreateStainRun:
     def test_run_number_increments_same_day(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         s1 = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=1))
         s2 = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=2))
@@ -73,7 +73,7 @@ class TestUpdateRunStatus:
     def test_completing_run_marks_stains_and_syncs_case(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         # Build a run manually in "running" state (bypassing create_stain_run's
@@ -95,7 +95,7 @@ class TestCreateHeBatchRun:
     def test_marks_stains_and_promotes_case(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
 
@@ -118,7 +118,7 @@ class TestSyncCaseStatusAlreadyDispatched:
     def test_completing_post_dispatch_special_stain_does_not_revert_to_stained(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         he_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         create_stain_run(db, StainRunCreate(stain_ids=[he_stain.id]), user_id=registrar.id)
@@ -150,7 +150,7 @@ class TestSyncCaseStatusAlreadyDispatched:
         because its H&E set is (still trivially) complete."""
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         he_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         create_stain_run(db, StainRunCreate(stain_ids=[he_stain.id]), user_id=registrar.id)
@@ -177,7 +177,7 @@ class TestGetRunDetails:
     def test_returns_run_info_and_stains(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id))
         run = create_stain_run(db, StainRunCreate(stain_ids=[stain.id]), user_id=registrar.id)
@@ -192,7 +192,7 @@ class TestListActiveRuns:
     def test_filters_by_test_id(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        block = make_block(db, specimen.id)
+        block = make_block(db, specimen.id, status="sectioned")
         he_test = _he_test(db)
         other_test = make_anatomical_pathology_test(db, category="IHC")
         he_stain = create_block_stain(db, StainCreate(block_id=block.id, test_id=he_test.id, slide_no=1))
