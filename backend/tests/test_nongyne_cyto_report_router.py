@@ -11,6 +11,7 @@ from app.crud.nongyne_diagnosis import create_nongyne_diagnosis
 from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
 
 from tests.factories import make_bare_nongyne_case, make_pending_nongyne_report, make_system_setting
+from tests.pdf_probe import footer_barcode_bars
 
 
 class TestRbac:
@@ -147,6 +148,38 @@ class TestPdfAndPreview:
 
     def test_preview_pdf_missing_case_returns_404(self, pathologist_client):
         assert pathologist_client.get("/nongyne-cyto-reports/cases/999999/preview-pdf").status_code == 404
+
+    def test_with_barcode_puts_a_barcode_in_the_footer(self, db, pathologist_client, admin_user, pathologist_user):
+        """The print queue asks for with_barcode; every other caller must keep
+        getting the report exactly as it was, with a bare footer."""
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        make_system_setting(db)
+        case, report = make_pending_nongyne_report(db, registrar_id=registrar.id, pathologist_id=pathologist.id)
+        case.vn = "690807084156"
+        db.commit()
+
+        plain = pathologist_client.get(f"/nongyne-cyto-reports/{report.id}/pdf")
+        coded = pathologist_client.get(f"/nongyne-cyto-reports/{report.id}/pdf?with_barcode=true")
+
+        assert not footer_barcode_bars(plain.content)
+        assert footer_barcode_bars(coded.content)
+
+    def test_no_footer_barcode_when_the_case_has_no_visit(self, db, pathologist_client, admin_user, pathologist_user):
+        """Cases registered before non-gyne captured VN/AN have neither. The
+        label sheet still falls back to the accession number for in-lab
+        tracking, but the report footer would carry a barcode the HIS cannot
+        resolve, so it is left off."""
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        make_system_setting(db)
+        case, report = make_pending_nongyne_report(db, registrar_id=registrar.id, pathologist_id=pathologist.id)
+        assert not case.vn and not case.an
+
+        r = pathologist_client.get(f"/nongyne-cyto-reports/{report.id}/pdf?with_barcode=true")
+
+        assert r.status_code == 200
+        assert not footer_barcode_bars(r.content)
 
 
 class TestPrintStatusAndMarkRead:

@@ -98,3 +98,34 @@ def generate_code39_base64_img(
     data_uri = f"data:image/svg+xml;base64,{b64_encoded}"
 
     return data_uri, width_mm, height_mm
+
+
+def has_scannable_visit(case) -> bool:
+    """Whether a case carries a visit number the HIS can resolve.
+
+    The report footer barcode exists so the HIS can pull the signed report onto
+    a visit, so it is printed only when there is a VN or an AN to encode. Cases
+    without either — registered before their case type captured visit data, or
+    imported with no matching HIS visit — get no footer barcode at all rather
+    than one that scans to a dead end.
+
+    The label sheet is deliberately not gated on this: its accession-number
+    fallback is scanned for in-lab tracking, not by the HIS.
+    """
+    vn = ((getattr(case, "vn", "") or "") if case else "").strip()
+    an = ((getattr(case, "an", "") or "") if case else "").strip()
+    return bool(vn or an)
+
+
+def generate_report_footer_barcode(data: str) -> tuple[str, float, float]:
+    """Generate a barcode at the size the report footer band can hold.
+
+    Every report template that prints a footer barcode goes through here, so
+    the validated footer geometry stays in one place instead of each caller
+    reaching for the module-private constants.
+    """
+    return generate_code39_base64_img(
+        data,
+        module_width_mm=_REPORT_MODULE_WIDTH_MM,
+        module_height_mm=_REPORT_MODULE_HEIGHT_MM,
+    )
