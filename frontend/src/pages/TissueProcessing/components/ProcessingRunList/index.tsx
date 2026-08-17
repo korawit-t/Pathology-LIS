@@ -310,13 +310,15 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
                       style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}
                     >
                       {record.blocks.map((item) => {
+                        // ชิ้นเนื้อต่อตลับต่อท้ายชื่อบล็อก เช่น A1(2), B1(TNTC).
+                        // ตลับที่ยังไม่ได้บันทึกจำนวนแสดงชื่อบล็อกเปล่าๆ
                         const tissue = item.block?.is_tissue_uncountable
                           ? "TNTC"
-                          : (item.block?.tissue_count ?? "-");
+                          : item.block?.tissue_count;
                         return (
                           <Tooltip
                             key={item.id}
-                            title={`Status: ${item.status || "in_machine"} • ชิ้นเนื้อ: ${tissue}`}
+                            title={`Status: ${item.status || "in_machine"}`}
                           >
                             <Tag
                               color={
@@ -329,42 +331,13 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
                             >
                               {item.block?.specimen_label}
                               {item.block?.block_no}
+                              {tissue != null && `(${tissue})`}
                             </Tag>
                           </Tooltip>
                         );
                       })}
                     </div>
                   ),
-                },
-                {
-                  title: "Tissue Count",
-                  width: 110,
-                  align: "center",
-                  render: (_, record: GroupedAccession) => {
-                    const total = record.blocks.reduce(
-                      (sum, item) => sum + (item.block?.tissue_count ?? 0),
-                      0,
-                    );
-                    const hasUncountable = record.blocks.some(
-                      (item) => item.block?.is_tissue_uncountable,
-                    );
-
-                    if (hasUncountable) {
-                      return (
-                        <Tooltip title="มีตลับที่นับจำนวนชิ้นไม่ได้ (Too numerous to count)">
-                          <Tag color="orange" style={{ margin: 0 }}>
-                            {total > 0 ? `${total}+ TNTC` : "TNTC"}
-                          </Tag>
-                        </Tooltip>
-                      );
-                    }
-
-                    return total > 0 ? (
-                      <Text strong>{total}</Text>
-                    ) : (
-                      <Text type="secondary">-</Text>
-                    );
-                  },
                 },
                 {
                   title: "Summary",
