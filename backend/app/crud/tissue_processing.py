@@ -341,8 +341,11 @@ def complete_processing_run(
 
         # กรณีมีการส่งรายการตลับที่สแกนออกจริงมา (confirmed_block_ids)
         if confirmed_block_ids is not None:
-            processed_ids = confirmed_block_ids
-            missing_ids = list(set(all_item_block_ids) - set(confirmed_block_ids))
+            # ตัดเฉพาะตลับที่อยู่ใน Run นี้จริง กันสแกนตลับจาก Run/เคสอื่นหลุดเข้ามา
+            # แล้วถูก mark เป็น processed ทั้งที่ไม่เคยเข้าเครื่องรอบนี้
+            confirmed = set(confirmed_block_ids) & set(all_item_block_ids)
+            processed_ids = list(confirmed)
+            missing_ids = list(set(all_item_block_ids) - confirmed)
         else:
             # ถ้าไม่มีการส่งรายการมา (เช่นกดปุ่ม Complete ทันที) ให้ถือว่าครบทั้งหมด
             processed_ids = all_item_block_ids

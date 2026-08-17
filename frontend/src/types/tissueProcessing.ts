@@ -85,6 +85,11 @@ export interface UpdateTissueProcessingRunStatusPayload {
   completed_at?: string;
   completed_by_id?: number;
   remark?: string;
+  /** Blocks actually verified out of the processor. Blocks in the run that are
+   *  missing from this list are sent back to "grossed" instead of "processed",
+   *  so they can't move on to Embedding. Omitting it entirely makes the backend
+   *  treat the whole run as complete. */
+  confirmed_block_ids?: number[];
 }
 
 /**

@@ -16,6 +16,7 @@ from app.models.surgical_block_stain import (
     SurgicalOutlabRun,
     SurgicalOutlabRunDetail,
 )
+from app.utils.block_workflow import stage_filter
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
@@ -215,6 +216,11 @@ def get_stains(db: Session, skip: int = 0, limit: int = 100, status: str = None,
     )
     if status:
         query = query.filter(SurgicalBlockStain.status == status)
+    if status == "pending":
+        # "pending" is the queue of slides waiting to be stained (StainRun's
+        # selection list) — a slide can't be waiting on the stainer while its
+        # block is still upstream in the pipeline. Same gate as get_stains_tree.
+        query = query.join(SurgicalBlock).filter(stage_filter(db, "staining"))
     if is_external is not None or category is not None:
         query = query.join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
         if is_external is not None:
@@ -236,11 +242,16 @@ def get_pending_stains(db: Session, test_id: int = None):
 def get_stains_tree(
     db: Session, status: str = "pending", test_id: int = None
 ):  # 🚩 1. เปลี่ยนชื่อ param
+    # A pending H&E order exists from the moment the block is created at grossing
+    # (create_block seeds slide 1), so this list has to be gated on the block's
+    # own pipeline stage — otherwise a block that was never processed, embedded
+    # or cut would still be offered for staining.
     query = (
         db.query(SurgicalBlockStain)
         .join(SurgicalBlock)
         .join(SurgicalSpecimen)
         .join(SurgicalCase)
+        .filter(stage_filter(db, "staining"))
         # 🚩 2. โหลดความสัมพันธ์ของ 'test' (Master Data) เพิ่มเข้ามาด้วย
         .options(
             joinedload(SurgicalBlockStain.block)
