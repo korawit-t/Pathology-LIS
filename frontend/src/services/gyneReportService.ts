@@ -37,8 +37,9 @@ const GyneReportService = {
     return res.data;
   },
 
-  getReportPdf: async (reportId: number): Promise<Blob> => {
+  getReportPdf: async (reportId: number, withBarcode: boolean = false): Promise<Blob> => {
     const res = await api.get(`/gyne-cyto-reports/${reportId}/pdf`, {
+      params: { with_barcode: withBarcode },
       responseType: "blob",
     });
     return res.data;

@@ -13,6 +13,7 @@ preview pair was missed. Fixed by adding CAN_READ_REPORT to both, matching
 their siblings."""
 
 from tests.factories import make_signable_case, build_bulk_save_payload, make_system_setting
+from tests.pdf_probe import footer_barcode_bars
 
 
 class TestRbacReadEndpoints:
@@ -158,3 +159,26 @@ class TestMarkReadAndBarcode:
         assert r.status_code == 200
         assert r.headers["content-type"] == "application/pdf"
         assert r.content[:4] == b"%PDF"
+
+    def test_footer_barcode_follows_the_case_visit(
+        self, db, pathologist_client, admin_user, pathologist_user
+    ):
+        """with_barcode prints a footer barcode only when the case has a VN/AN
+        for the HIS to resolve. _build_barcode_value's accession fallback is
+        for the label sheet above, which is scanned in-lab instead."""
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        make_system_setting(db)
+        payload = build_bulk_save_payload(case.id, specimen.id, pathologist.id)
+        report_id = pathologist_client.post(
+            f"/surgical-reports/{case.id}/finalize-snapshot", json=payload.model_dump(mode="json")
+        ).json()["id"]
+        url = f"/surgical-reports/{report_id}/pdf?with_barcode=true"
+
+        assert not case.vn and not case.an
+        assert not footer_barcode_bars(pathologist_client.get(url).content)
+
+        case.vn = "690807084156"
+        db.commit()
+        assert footer_barcode_bars(pathologist_client.get(url).content)

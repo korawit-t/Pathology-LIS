@@ -3,7 +3,33 @@ generation, kept lean."""
 
 import base64
 
-from app.services.barcode_service import generate_code39_base64_img
+from app.services.barcode_service import generate_code39_base64_img, has_scannable_visit
+
+
+class TestHasScannableVisit:
+    """The report footer barcode is printed only for a visit the HIS can
+    resolve; every case type's builder falls back to an accession/HN that is
+    fine on a label sheet but dead weight on the report."""
+
+    class _Case:
+        def __init__(self, vn=None, an=None):
+            self.vn, self.an = vn, an
+
+    def test_outpatient_visit_counts(self):
+        assert has_scannable_visit(self._Case(vn="690807084156"))
+
+    def test_inpatient_admission_counts(self):
+        assert has_scannable_visit(self._Case(an="690008352"))
+
+    def test_neither_does_not(self):
+        assert not has_scannable_visit(self._Case())
+
+    def test_blank_strings_are_treated_as_absent(self):
+        assert not has_scannable_visit(self._Case(vn="   ", an=""))
+
+    def test_a_missing_case_does_not(self):
+        """report.case_id is nullable, so the case lookup can legitimately miss."""
+        assert not has_scannable_visit(None)
 
 
 class TestGenerateCode39Base64Img:

@@ -37,6 +37,28 @@ router = APIRouter(
 )
 
 
+def build_nongyne_barcode_value(
+    case, report, opd_prefix: str, ipd_prefix: str, type_code: str
+) -> tuple[str, str]:
+    """Barcode value for a non-gyne report, mirroring surgical's
+    _build_barcode_value: visit number with the OPD prefix, else admission
+    number with the IPD prefix, so HOSxP resolves every case type the same way.
+
+    Non-gyne registration did not capture VN/AN until commit 33a1b04, so cases
+    registered before it have neither and fall back to the accession number —
+    unprefixed, since there is no visit for HOSxP to resolve.
+
+    Returns (barcode_value, barcode_type_label).
+    """
+    vn = ((case.vn if case else "") or "").strip()
+    an = ((case.an if case else "") or "").strip()
+    if vn:
+        return f"{opd_prefix}{type_code}{vn}", f"OPD VN: {vn}"
+    if an:
+        return f"{ipd_prefix}{type_code}{an}", f"IPD AN: {an}"
+    return (report.accession_no or report.patient_hn or ""), "Accession No."
+
+
 class PublishReportRequest(BaseModel):
     signers: Optional[List[NongyneReportSignerCreate]] = None
     is_pending: bool = False
@@ -175,13 +197,50 @@ def preview_report_pdf(
 
 
 @router.get("/{report_id}/pdf")
-def get_report_pdf(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_report_pdf(
+    report_id: int,
+    with_barcode: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     assert_hospital_scoped_access(current_user, report.hospital_id)
 
     data = get_nongyne_snapshot_pdf_data(db, report)
+
+    if with_barcode:
+        from app.models.nongyne_cyto_case import NongyneCytologyCase
+        from app.models.system_setting import SystemSetting
+        from app.services.barcode_service import (
+            generate_report_footer_barcode,
+            has_scannable_visit,
+        )
+
+        case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == report.case_id).first()
+        # build_nongyne_barcode_value falls back to the accession number for the
+        # label sheet's benefit; on the report that is a barcode the HIS cannot
+        # resolve, so the footer is left off entirely instead.
+        if has_scannable_visit(case):
+            setting = db.query(SystemSetting).first()
+            barcode_value, barcode_type = build_nongyne_barcode_value(
+                case,
+                report,
+                (setting.barcode_opd_prefix or "2") if setting else "2",
+                (setting.barcode_ipd_prefix or "3") if setting else "3",
+                (setting.barcode_nongyne_type_code or "10") if setting else "10",
+            )
+            # The true mm are carried through so the template can pin the <img>
+            # to them — see the surgical footer's comment on why CSS must not
+            # size it.
+            (
+                data["barcode_svg"],
+                data["barcode_width_mm"],
+                data["barcode_height_mm"],
+            ) = generate_report_footer_barcode(barcode_value)
+            data["barcode_value"] = barcode_value
+            data["barcode_type"] = barcode_type
 
     from app.services import pdf_service
     pdf_blob = pdf_service.generate_pdf_blob(
@@ -229,17 +288,9 @@ def generate_nongyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
         if not report:
             continue
         case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == report.case_id).first()
-        vn = (case.vn or "").strip() if case else ""
-        an = (case.an or "").strip() if case else ""
-        if vn:
-            barcode_value = f"{opd_prefix}{type_code}{vn}"
-            barcode_type = f"OPD VN: {vn}"
-        elif an:
-            barcode_value = f"{ipd_prefix}{type_code}{an}"
-            barcode_type = f"IPD AN: {an}"
-        else:
-            barcode_value = report.accession_no or report.patient_hn or ""
-            barcode_type = "Accession No."
+        barcode_value, barcode_type = build_nongyne_barcode_value(
+            case, report, opd_prefix, ipd_prefix, type_code
+        )
         barcode_svg, barcode_width_mm, barcode_height_mm = generate_code39_base64_img(barcode_value)
         labels.append({
             "accession_no": report.accession_no,

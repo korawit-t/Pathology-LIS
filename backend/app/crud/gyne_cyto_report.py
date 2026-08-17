@@ -671,12 +671,25 @@ def _embed_case_images(db: Session, case_id: int) -> list:
     return result
 
 
-def get_gyne_report_pdf(db: Session, case_id: int, is_preview: bool = False, report_id: int = None):
-    """สร้าง PDF Blob สำหรับ Gyne Cyto Report"""
+def get_gyne_report_pdf(
+    db: Session,
+    case_id: int,
+    is_preview: bool = False,
+    report_id: int = None,
+    barcode: dict = None,
+):
+    """สร้าง PDF Blob สำหรับ Gyne Cyto Report
+
+    `barcode` carries the footer barcode fields when the caller wants one; the
+    template omits the footer entirely when they are absent.
+    """
     report_data = prepare_gyne_report_pdf_data(db, case_id, is_preview=is_preview, report_id=report_id)
     if not report_data:
         return None
-        
+
+    if barcode:
+        report_data.update(barcode)
+
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.gyne_report_template or 'gyne_cyto_report_template.html'}"
     pdf_blob = pdf_service.generate_pdf_blob(

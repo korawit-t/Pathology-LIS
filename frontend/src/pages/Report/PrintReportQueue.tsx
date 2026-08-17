@@ -143,13 +143,15 @@ const PrintReportQueue: React.FC = () => {
     fetchReports(activeTab, 1, pageSize, value);
   };
 
-  const getPdfBlob = async (item: PrintQueueItem, preview = true): Promise<Blob> => {
+  // Everything handed out from the print queue is going to paper, so all three
+  // types ask for the report with its footer barcode.
+  const getPdfBlob = async (item: PrintQueueItem): Promise<Blob> => {
     if (item._source === "surgical") {
-      return SurgicalReportService.getReportPdf(item.id, preview);
+      return SurgicalReportService.getReportPdf(item.id, true);
     } else if (item._source === "gyne") {
-      return GyneReportService.getReportPdf(item.id);
+      return GyneReportService.getReportPdf(item.id, true);
     } else {
-      return NongyneReportService.getReportPdf(item.id);
+      return NongyneReportService.getReportPdf(item.id, true);
     }
   };
 
@@ -158,7 +160,7 @@ const PrintReportQueue: React.FC = () => {
     try {
       setPreviewLoadingId(key);
       setPreviewFilename(`${item.patient_hn}.pdf`);
-      const blob = await getPdfBlob(item, true);
+      const blob = await getPdfBlob(item);
       const url = URL.createObjectURL(blob);
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
       setPdfUrl(url);
@@ -175,7 +177,7 @@ const PrintReportQueue: React.FC = () => {
     const key = rowKey(item);
     try {
       setDownloadingId(key);
-      const blob = await getPdfBlob(item, true);
+      const blob = await getPdfBlob(item);
       await downloadBlob(blob, `${item.patient_hn}.pdf`);
     } catch (error) {
       logger.error("Download PDF Error:", error);
@@ -282,7 +284,7 @@ const PrintReportQueue: React.FC = () => {
           key: "bulkDownload",
           duration: 0,
         });
-        const blob = await getPdfBlob(item, true);
+        const blob = await getPdfBlob(item);
         const filename = `${item.accession_no ?? item.patient_hn}_${item.patient_name ?? ""}.pdf`.replace(/\s+/g, "_");
         zip.file(filename, blob);
       }

@@ -55,6 +55,44 @@ def build_gyne_barcode_value(case, report, opd_prefix: str, ipd_prefix: str, typ
     return f"{opd_prefix}{type_code}{report.patient_hn or report.accession_no}"
 
 
+def _build_footer_barcode(db: Session, report) -> dict:
+    """Barcode fields for the report footer, keyed off the report's own case.
+
+    Empty when the case has no VN/AN: build_gyne_barcode_value falls back to the
+    HN for the label sheet's benefit, but on the report that is a barcode the
+    HIS cannot resolve, so the footer is left off entirely instead.
+
+    The true mm come back with the symbol so the template can pin the <img> to
+    them — see the surgical footer's comment on why CSS must not size it.
+    """
+    from app.models.gyne_cyto_case import GyneCytologyCase
+    from app.models.system_setting import SystemSetting
+    from app.services.barcode_service import (
+        generate_report_footer_barcode,
+        has_scannable_visit,
+    )
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == report.case_id).first()
+    if not has_scannable_visit(case):
+        return {}
+
+    setting = db.query(SystemSetting).first()
+    barcode_value = build_gyne_barcode_value(
+        case,
+        report,
+        (setting.barcode_opd_prefix or "2") if setting else "2",
+        (setting.barcode_ipd_prefix or "3") if setting else "3",
+        (setting.barcode_gyne_type_code or "09") if setting else "09",
+    )
+    svg, width_mm, height_mm = generate_report_footer_barcode(barcode_value)
+    return {
+        "barcode_svg": svg,
+        "barcode_value": barcode_value,
+        "barcode_width_mm": width_mm,
+        "barcode_height_mm": height_mm,
+    }
+
+
 class PublishReportRequest(BaseModel):
     signers: Optional[List[GyneReportSignerCreate]] = None
     is_abnormal: bool = False
@@ -222,15 +260,24 @@ def preview_report_data(case_id: int, db: Session = Depends(get_db)):
 from fastapi.responses import StreamingResponse
 
 @router.get("/{report_id}/pdf", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def get_report_pdf(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_report_pdf(
+    report_id: int,
+    with_barcode: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """ดาวน์โหลดรายงาน PDF"""
     report = get_report_by_id(db, report_id=report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     assert_hospital_scoped_access(current_user, report.hospital_id)
 
+    barcode = _build_footer_barcode(db, report) if with_barcode else None
+
     from app.crud.gyne_cyto_report import get_gyne_report_pdf
-    pdf_blob = get_gyne_report_pdf(db, case_id=report.case_id, is_preview=False, report_id=report_id)
+    pdf_blob = get_gyne_report_pdf(
+        db, case_id=report.case_id, is_preview=False, report_id=report_id, barcode=barcode
+    )
 
     return StreamingResponse(
         io.BytesIO(pdf_blob),

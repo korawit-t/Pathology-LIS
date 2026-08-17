@@ -57,19 +57,41 @@
            in a face that may not carry the glyphs well. */
         font-family: "Sarabun", sans-serif;
 
+        /* .footer-barcode (bottom: -1.2cm, its own height + label) sits centred
+           in this 1.5cm band at exactly the height of these two boxes, so they
+           can only be separated from it horizontally. Roughly 55mm is free on
+           each side of the barcode.
+
+           @bottom-left therefore holds ONLY the footer snapshot: it is
+           free-text configured per lab, so its width is unbounded and a long
+           one will run under the barcode. Don't add anything else to it.
+
+           "Printed:" lives on the right instead, where the date's fixed
+           %d/%m/%Y %H:%M format keeps the whole string a predictable
+           ~39 characters. */
         @bottom-left {
-          content: "{{ report_footer_snapshot | safe }} | Printed: {{ preview_date | safe }}";
+          content: "{{ report_footer_snapshot | safe }}";
           font-size: 8px;
           color: #64748b;
           padding-bottom: 20px;
         }
 
         @bottom-right {
-          content: "Page " counter(page) " of " counter(pages);
+          content: "Printed: {{ preview_date | safe }}  |  Page " counter(page)
+            " of " counter(pages);
           font-size: 8px;
           color: #64748b;
           padding-bottom: 20px;
         }
+      }
+
+      .footer-barcode {
+        position: fixed;
+        bottom: -1.2cm; /* place it inside the bottom margin zone */
+        left: 0;
+        right: 0;
+        text-align: center;
+        z-index: 1000;
       }
 
       body {
@@ -195,6 +217,30 @@
     </style>
   </head>
   <body>
+    {% if barcode_svg %}
+    <div class="footer-barcode">
+      <!-- Pinned to the barcode's own physical size. A CSS height here scales
+           the whole symbol, and that is exactly what dropped the X-dimension
+           to 0.423mm and made it unscannable. See barcode_service.py. -->
+      <img
+        src="{{ barcode_svg | safe }}"
+        {% if barcode_width_mm %}width="{{ barcode_width_mm }}mm" height="{{ barcode_height_mm }}mm"{% endif %}
+        style="display: block; margin: 0 auto"
+      />
+      <div
+        style="
+          font-size: 8px;
+          color: #475569;
+          font-weight: bold;
+          margin-top: 1px;
+          letter-spacing: 0.5px;
+        "
+      >
+        {{ patient_hn if barcode_value == patient_hn else accession_no }}
+      </div>
+    </div>
+    {% endif %}
+
     <table class="report-container">
       <thead>
         <tr>
