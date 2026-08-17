@@ -8,7 +8,14 @@ NOTABLE FINDING (documented, not fixed — see the consolidated RBAC
 report): every route here is any-authenticated-user (get_current_user
 only, no role check)."""
 
-from tests.factories import make_signable_case, make_system_setting
+import pytest
+
+from tests.factories import (
+    make_bare_gyne_case,
+    make_bare_nongyne_case,
+    make_signable_case,
+    make_system_setting,
+)
 
 
 class TestAuth:
@@ -88,4 +95,35 @@ class TestDeleteAndPdf:
 
         assert r.status_code == 200
         assert r.headers["content-type"] == "application/pdf"
+        assert r.content[:4] == b"%PDF"
+
+    @pytest.mark.parametrize(
+        "case_type,factory",
+        [
+            ("GYNE_CYTO", make_bare_gyne_case),
+            ("NONGYNE_CYTO", make_bare_nongyne_case),
+        ],
+    )
+    def test_form_pdf_generates_for_cytology_cases(
+        self, db, pathologist_client, admin_user, case_type, factory
+    ):
+        """The cytology branch of build_release_form_data used to blow up on a
+        string-named loader option (SQLAlchemy 2.x rejects those), so every
+        cyto release printed as a 500."""
+        registrar, _ = admin_user
+        case = factory(db, registrar_id=registrar.id)
+        make_system_setting(db)
+        created = pathologist_client.post(
+            "/slide-block-releases",
+            json={
+                "case_id": case.id,
+                "case_type": case_type,
+                "release_type": "SLIDE",
+                "recipient_name": "Dr. Somchai",
+            },
+        ).json()
+
+        r = pathologist_client.get(f"/slide-block-releases/{created['id']}/form-pdf")
+
+        assert r.status_code == 200
         assert r.content[:4] == b"%PDF"
