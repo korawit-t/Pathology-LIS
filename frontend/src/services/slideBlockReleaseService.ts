@@ -37,17 +37,15 @@ const SlideBlockReleaseService = {
     await api.delete(`/slide-block-releases/${id}`);
   },
 
-  openFormPdf: async (id: number, releaseNo: string): Promise<void> => {
+  openFormPdf: async (id: number): Promise<void> => {
     const res = await api.get(`/slide-block-releases/${id}/form-pdf`, {
       responseType: "blob",
     });
-    const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.click();
-    URL.revokeObjectURL(url);
+    const url = window.URL.createObjectURL(
+      new Blob([res.data], { type: "application/pdf" })
+    );
+    window.open(url, "_blank");
+    setTimeout(() => window.URL.revokeObjectURL(url), 60000);
   },
 };
 

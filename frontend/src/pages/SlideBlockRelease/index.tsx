@@ -384,7 +384,7 @@ const SlideBlockReleasePage: React.FC = () => {
                   title="Print consent form"
                   onClick={async () => {
                     try {
-                      await SlideBlockReleaseService.openFormPdf(record.id, record.release_no);
+                      await SlideBlockReleaseService.openFormPdf(record.id);
                     } catch {
                       message.error("Failed to generate form PDF");
                     }

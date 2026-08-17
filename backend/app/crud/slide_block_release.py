@@ -328,10 +328,7 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
         CaseModel = CASE_MODEL_MAP[release.case_type]
         case = (
             db.query(CaseModel)
-            .options(
-                joinedload(CaseModel.patient),
-                selectinload(CaseModel.stains).joinedload("test"),
-            )
+            .options(joinedload(CaseModel.patient))
             .filter(CaseModel.id == release.case_id)
             .first()
         )
@@ -353,7 +350,9 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
         pathologist_name = release.pathologist.full_name or release.pathologist.username or ""
 
     at = release.released_at
-    released_date = at.strftime("%-d/%m/%Y") if at else ""
+    # %-d is glibc-only — build the no-leading-zero day by hand so the on-prem
+    # Windows deploy doesn't raise ValueError here.
+    released_date = f"{at.day}/{at.strftime('%m/%Y')}" if at else ""
     released_time = at.strftime("%H:%M") if at else ""
 
     return {
