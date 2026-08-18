@@ -61,8 +61,18 @@ fi
 # ---------------------------------------------------------------------------
 
 DATE_LABEL=$(date '+%Y-%m-%d %H:%M')
-DB_DUMP_FILE="$BACKUP_ROOT/db_latest.dump"
-STORAGE_ARCHIVE="$BACKUP_ROOT/storage_latest.tar.gz"
+STAMP=$(date '+%Y-%m-%d_%H%M')
+
+# Dated filenames, not a single db_latest.dump that every run overwrites.
+# `pg_dump > file` truncates the target the instant the redirect is set up, so
+# the previous backup was destroyed before the new one had written a byte: a
+# run that died halfway left nothing usable, and the alert said only that this
+# run had failed. Each run now writes to .part, is verified, then renamed.
+DB_DUMP_FILE="$BACKUP_ROOT/db_${STAMP}.dump"
+STORAGE_ARCHIVE="$BACKUP_ROOT/storage_${STAMP}.tar.gz"
+DB_DUMP_TMP="${DB_DUMP_FILE}.part"
+STORAGE_TMP="${STORAGE_ARCHIVE}.part"
+KEEP="${BACKUP_KEEP:-14}"
 STATUS="SUCCESS"
 DETAIL=""
 DB_SIZE="-"
@@ -72,7 +82,10 @@ log_result() {
   if [[ ! -f "$LOG_CSV" ]]; then
     echo "timestamp,status,db_size_mb,storage_size_mb,detail" >> "$LOG_CSV"
   fi
-  echo "$(date '+%Y-%m-%d %H:%M:%S'),$STATUS,$DB_SIZE,$FILES_SIZE,$DETAIL" >> "$LOG_CSV"
+  # DETAIL is free text and routinely contains commas, which would shift every
+  # column after it.
+  local safe_detail="\"${DETAIL//\"/\"\"}\""
+  echo "$(date '+%Y-%m-%d %H:%M:%S'),$STATUS,$DB_SIZE,$FILES_SIZE,$safe_detail" >> "$LOG_CSV"
 }
 
 notify_slack() {
@@ -91,6 +104,8 @@ notify_slack() {
 
 fail() {
   STATUS="FAILED"; DETAIL="$1"
+  # Leave no half-written .part behind to be mistaken for a real backup.
+  rm -f "${DB_DUMP_TMP:-}" "${STORAGE_TMP:-}" 2>/dev/null || true
   echo "[ERROR] $1" >&2
   log_result; notify_slack; exit 1
 }
@@ -102,23 +117,33 @@ fail() {
 echo "=== Pathology LIS Backup: $DATE_LABEL ==="
 
 # 1. Backup Database (ทับไฟล์เดิม)
-echo "[1/2] Dumping PostgreSQL..."
+echo "[1/3] Dumping PostgreSQL..."
 if ! docker ps --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
   fail "Docker container '$DB_CONTAINER' is not running"
 fi
 
-PGPASSWORD="$DB_PASSWORD" docker exec -e PGPASSWORD="$DB_PASSWORD" "$DB_CONTAINER" \
+docker exec -e PGPASSWORD="$DB_PASSWORD" "$DB_CONTAINER" \
   pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --compress=9 \
-  > "$DB_DUMP_FILE" || fail "pg_dump failed"
+  > "$DB_DUMP_TMP" || fail "pg_dump failed"
 
+# Verify before promoting. A dump nobody has read back is not yet a backup:
+# pg_restore -l parses the archive's table of contents, so a truncated or
+# corrupt file fails here rather than on the day it is needed.
+# pg_restore with no file argument reads the archive from stdin.
+TABLE_COUNT=$(docker exec -i "$DB_CONTAINER" pg_restore -l < "$DB_DUMP_TMP" 2>/dev/null \
+  | grep -c "TABLE DATA" || true)
+[[ "${TABLE_COUNT:-0}" -ge 1 ]] || fail "dump is unreadable or contains no table data"
+
+mv -f "$DB_DUMP_TMP" "$DB_DUMP_FILE"
 DB_SIZE=$(du -m "$DB_DUMP_FILE" | cut -f1)
-echo "    -> $DB_DUMP_FILE (${DB_SIZE} MB)"
+echo "    -> $DB_DUMP_FILE (${DB_SIZE} MB, ${TABLE_COUNT} tables verified)"
 
-# 2. Backup Storage (ทับไฟล์เดิม)
-echo "[2/2] Archiving storage..."
+# 2. Backup Storage
+echo "[2/3] Archiving storage..."
 if [[ -d "$STORAGE_DIR" ]]; then
-  tar -czf "$STORAGE_ARCHIVE" -C "$(dirname "$STORAGE_DIR")" "$(basename "$STORAGE_DIR")" \
+  tar -czf "$STORAGE_TMP" -C "$(dirname "$STORAGE_DIR")" "$(basename "$STORAGE_DIR")" \
     || fail "tar archive failed"
+  mv -f "$STORAGE_TMP" "$STORAGE_ARCHIVE"
   FILES_SIZE=$(du -m "$STORAGE_ARCHIVE" | cut -f1)
   echo "    -> $STORAGE_ARCHIVE (${FILES_SIZE} MB)"
 else
@@ -126,6 +151,17 @@ else
   echo "    [WARN] $DETAIL"
 fi
 
-# 3. Log + Slack
+# 3. Prune old backups - only after a successful, verified run, so a run of
+# failures can never age out the last good copy.
+echo "[3/3] Pruning to the newest $KEEP of each..."
+for pattern in "db_*.dump" "storage_*.tar.gz"; do
+  # shellcheck disable=SC2012  # filenames here are script-generated timestamps
+  ls -1t "$BACKUP_ROOT"/$pattern 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r old_file; do
+    echo "    removing $(basename "$old_file")"
+    rm -f "$old_file"
+  done
+done
+
+# 4. Log + Slack
 log_result; notify_slack
 echo "=== Done. Log: $LOG_CSV ==="
