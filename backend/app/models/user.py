@@ -91,6 +91,13 @@ class User(Base):
 
     is_temporary_password = Column(Boolean, default=False, nullable=False)
 
+    # Summary flag only: true once this user has at least one *confirmed*
+    # factor in user_mfa_methods. The factors themselves live in that table —
+    # see app/models/user_mfa.py for why they are not columns here. Kept as a
+    # column so the login path can tell whether a second factor is required
+    # without joining on every attempt.
+    mfa_enabled = Column(Boolean, default=False, nullable=False, server_default="false")
+
     # Login throttling state. failed_login_attempts counts *consecutive*
     # failures and is cleared by any successful login; locked_until is the
     # instant the next attempt is allowed.
