@@ -24,8 +24,47 @@ from app.core.security import (
     ALGORITHM,
 )
 
-MAX_FAILED_LOGINS = 5
-LOCKOUT_MINUTES = 15
+# Login throttling, replacing an earlier 5-strikes / 15-minute hard lockout.
+#
+# A hard lock is a denial-of-service primitive: anyone holding a staff list
+# could keep a whole department permanently locked out, and in a lab that means
+# reports stop going out. NIST SP 800-63B prefers throttling over lockout for
+# exactly this reason.
+#
+# The first FREE_LOGIN_ATTEMPTS consecutive failures cost nothing, which covers
+# ordinary typos. Each failure after that doubles the wait, capped at
+# LOGIN_BACKOFF_MAX_SECONDS:
+#
+#     4th failure -> 30s, 5th -> 1m, 6th -> 2m, 7th -> 4m, 8th onwards -> 5m
+#
+# The cap is deliberately short. Someone who genuinely forgot their password
+# should be waiting minutes rather than a quarter of an hour, and bulk guessing
+# is already bounded by the per-IP rate limit on this endpoint. Past the free
+# allowance an attacker gets one guess per window — roughly 12 per hour once
+# the cap is reached.
+FREE_LOGIN_ATTEMPTS = 3
+LOGIN_BACKOFF_BASE_SECONDS = 30
+LOGIN_BACKOFF_MAX_SECONDS = 300
+
+
+def _login_backoff_seconds(consecutive_failures: int) -> int:
+    """How long logins stay blocked after `consecutive_failures` failures."""
+    over_allowance = consecutive_failures - FREE_LOGIN_ATTEMPTS
+    if over_allowance <= 0:
+        return 0
+    # Shift rather than 2 ** n, and clamp it: the counter is only reset by a
+    # successful login, so it can climb arbitrarily high under a sustained
+    # attack and an unclamped exponent would build a pointlessly huge integer.
+    shift = min(over_allowance - 1, 20)
+    return min(LOGIN_BACKOFF_BASE_SECONDS << shift, LOGIN_BACKOFF_MAX_SECONDS)
+
+
+def _humanize_seconds(seconds: int) -> str:
+    """Render a retry delay, rounding up so nobody is told to come back early."""
+    if seconds < 60:
+        return f"{seconds} second(s)"
+    return f"{(seconds + 59) // 60} minute(s)"
+
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -79,39 +118,62 @@ def login_for_access_token(
 
     ip = request.client.host if request.client else None
 
-    # Check if account is locked before verifying password (avoids timing oracle).
     now = datetime.now(timezone.utc)
-    if user and user.locked_until and user.locked_until > now:
-        remaining = int((user.locked_until - now).total_seconds() / 60) + 1
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Account locked. Try again in {remaining} minute(s).",
-        )
 
     # 🔒 Always run verify_password (against the real hash, or a fixed dummy
     # hash when the user doesn't exist) so a nonexistent-username attempt
     # takes the same time as a wrong-password attempt for a real account —
     # otherwise the response timing leaks whether the username exists.
+    #
+    # This now runs before the throttle check as well. The previous order —
+    # throttle first, returning 429 — made this endpoint a username oracle:
+    # a real account answered 429 once locked while an unknown one answered
+    # 401 forever, so login could be used to confirm which usernames exist.
+    # The early return also skipped the Argon2 work that _DUMMY_HASH exists
+    # to pay, leaking the same fact a second time through response timing.
     password_ok = verify_password(form_data.password, user.hashed_password if user else None)
-    if not user or not password_ok:
-        if user:
-            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
-            if user.failed_login_attempts >= MAX_FAILED_LOGINS:
-                user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
-                user.failed_login_attempts = 0
+
+    throttled = bool(user and user.locked_until and user.locked_until > now)
+
+    def _reject_unauthenticated():
+        """The single response anyone without valid credentials ever sees."""
         db.add(AuditLog(
             user_id=None,
             action="LOGIN_FAILED",
             resource_type="User",
-            new_values={"username": form_data.username},
+            new_values={"username": form_data.username, "throttled": throttled},
             ip_address=ip,
         ))
         db.commit()
-        raise HTTPException(
+        return HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if throttled:
+        # Attempts inside the window are refused whether or not the password is
+        # right, which is what actually slows guessing down. They deliberately
+        # do NOT advance the counter: letting them would hand an attacker an
+        # easy way to hold someone else's account at the maximum delay forever.
+        if not password_ok:
+            raise _reject_unauthenticated()
+        # Reaching here means the caller proved they know the password, so
+        # telling them how long to wait gives an attacker nothing.
+        retry_after = max(1, int((user.locked_until - now).total_seconds()) + 1)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Try again in {_humanize_seconds(retry_after)}.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    if not user or not password_ok:
+        if user:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            backoff = _login_backoff_seconds(user.failed_login_attempts)
+            user.locked_until = now + timedelta(seconds=backoff) if backoff else None
+        raise _reject_unauthenticated()
+
     if not user.status:
         raise HTTPException(status_code=400, detail="Inactive user")
 

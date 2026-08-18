@@ -2,14 +2,13 @@
 Integration tests for the authentication flow.
 
 Covers: login success/failure, inactive user, logout, unauthenticated access
-to protected routes, and the failed-login counter / account-lockout policy.
+to protected routes, and the failed-login counter / login backoff policy.
 
-The lockout classes near the bottom of this file are *characterization* tests:
-they pin down what `app/routers/auth.py` does today, before TODO.md item A1
-replaces the hard 5-strikes lockout with exponential backoff. Several of them
-assert behaviour that A1 is expected to change — each says so in its docstring.
-They are meant to fail loudly during that refactor so every change is a
-deliberate one, not a silent regression.
+The classes near the bottom cover the throttling in `app/routers/auth.py`.
+They started life as characterization tests for a 5-strikes / 15-minute hard
+lockout and were rewritten when that was replaced by exponential backoff; the
+two enumeration tests in particular used to assert the leak and now assert the
+guarantee.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -44,6 +43,25 @@ def _reload(db, user_id):
     """Re-read a user the ASGI app just mutated through its own DB session."""
     db.rollback()  # drop this session's snapshot so we see the app's commits
     return db.query(User).filter(User.id == user_id).one()
+
+
+def _arm_backoff(db, user_id, failures, seconds_remaining):
+    """Put a user straight into a given throttle state.
+
+    Driving the counter up over HTTP costs one request per failure and the
+    endpoint only allows 10 a minute, so tests that care about the *later*
+    rungs of the backoff ladder set the state directly instead. Pass
+    `seconds_remaining=0` for a window that has already lapsed.
+    """
+    user = _reload(db, user_id)
+    user.failed_login_attempts = failures
+    user.locked_until = (
+        datetime.now(timezone.utc) + timedelta(seconds=seconds_remaining)
+        if seconds_remaining
+        else datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    db.commit()
+    return user
 
 
 class TestCookieDomain:
@@ -190,19 +208,36 @@ class TestProtectedRoutes:
         assert r.status_code == 200
 
 
-class TestLockoutPolicyConstants:
-    def test_current_policy_is_five_strikes_for_fifteen_minutes(self):
-        """Pins the policy numbers so TODO.md A1 has to change them on purpose.
+class TestLoginBackoffSchedule:
+    """The delay curve itself, exercised directly rather than over HTTP."""
 
-        A1 replaces this with exponential backoff; when it lands, this test
-        should be rewritten rather than merely adjusted.
-        """
-        assert auth_router.MAX_FAILED_LOGINS == 5
-        assert auth_router.LOCKOUT_MINUTES == 15
+    def test_the_free_allowance_costs_nothing(self):
+        for failures in range(0, auth_router.FREE_LOGIN_ATTEMPTS + 1):
+            assert auth_router._login_backoff_seconds(failures) == 0
+
+    def test_each_further_failure_doubles_the_wait(self):
+        first_penalised = auth_router.FREE_LOGIN_ATTEMPTS + 1
+        assert auth_router._login_backoff_seconds(first_penalised) == 30
+        assert auth_router._login_backoff_seconds(first_penalised + 1) == 60
+        assert auth_router._login_backoff_seconds(first_penalised + 2) == 120
+        assert auth_router._login_backoff_seconds(first_penalised + 3) == 240
+
+    def test_the_wait_is_capped(self):
+        assert auth_router._login_backoff_seconds(50) == auth_router.LOGIN_BACKOFF_MAX_SECONDS
+
+    def test_a_runaway_counter_does_not_build_a_huge_integer(self):
+        """The counter only resets on a successful login, so it can climb a
+        long way under sustained attack; the shift is clamped for that."""
+        assert auth_router._login_backoff_seconds(10_000) == auth_router.LOGIN_BACKOFF_MAX_SECONDS
+
+    def test_humanized_delay_rounds_up(self):
+        assert auth_router._humanize_seconds(30) == "30 second(s)"
+        assert auth_router._humanize_seconds(61) == "2 minute(s)"
+        assert auth_router._humanize_seconds(300) == "5 minute(s)"
 
 
 class TestFailedLoginCounter:
-    """Invariants that must survive the A1 refactor."""
+    """Invariants that held under the old hard lockout and still hold now."""
 
     def test_wrong_password_increments_counter(self, client, db, admin_user):
         user, _ = admin_user
@@ -238,129 +273,128 @@ class TestFailedLoginCounter:
         assert rows[0].user_id is None
 
 
-class TestAccountLockout:
-    """Current 5-strikes/15-minute behaviour. A1 changes most of this."""
+class TestLoginBackoff:
+    """Exponential backoff on consecutive failures, exercised over HTTP."""
 
-    def test_final_allowed_failure_still_returns_401_not_429(self, client, admin_user):
-        """The Nth failure locks the account but still answers 401.
-
-        The 429 only appears on the *next* attempt, because the lock is checked
-        at the top of the handler before the password is verified.
-        """
+    def test_the_free_allowance_sets_no_delay(self, client, db, admin_user):
         user, _ = admin_user
-        last = _fail_login(client, user.username, times=auth_router.MAX_FAILED_LOGINS)
-        assert last.status_code == 401
+        _fail_login(client, user.username, times=auth_router.FREE_LOGIN_ATTEMPTS)
 
-    def test_attempt_after_the_limit_returns_429(self, client, admin_user):
+        after = _reload(db, user.id)
+        assert after.failed_login_attempts == auth_router.FREE_LOGIN_ATTEMPTS
+        assert after.locked_until is None
+
+    def test_the_first_penalised_failure_starts_the_delay(self, client, db, admin_user):
         user, _ = admin_user
-        _fail_login(client, user.username, times=auth_router.MAX_FAILED_LOGINS)
+        _fail_login(client, user.username, times=auth_router.FREE_LOGIN_ATTEMPTS + 1)
+
+        after = _reload(db, user.id)
+        assert after.locked_until is not None
+        remaining = (after.locked_until - datetime.now(timezone.utc)).total_seconds()
+        assert 0 < remaining <= auth_router.LOGIN_BACKOFF_BASE_SECONDS
+
+    def test_the_counter_keeps_climbing_rather_than_resetting(self, client, db, admin_user):
+        """The old hard lockout zeroed the counter every time it locked, which
+        is precisely what stopped the penalty from escalating."""
+        user, _ = admin_user
+        _fail_login(client, user.username, times=auth_router.FREE_LOGIN_ATTEMPTS + 1)
+
+        assert _reload(db, user.id).failed_login_attempts == auth_router.FREE_LOGIN_ATTEMPTS + 1
+
+    def test_each_further_failure_earns_a_longer_delay(self, client, db, admin_user):
+        user, _ = admin_user
+        _arm_backoff(db, user.id, failures=auth_router.FREE_LOGIN_ATTEMPTS + 1, seconds_remaining=0)
+
+        _fail_login(client, user.username)
+
+        after = _reload(db, user.id)
+        assert after.failed_login_attempts == auth_router.FREE_LOGIN_ATTEMPTS + 2
+        remaining = (after.locked_until - datetime.now(timezone.utc)).total_seconds()
+        # Second rung of the ladder: double the base, not the base again.
+        assert auth_router.LOGIN_BACKOFF_BASE_SECONDS < remaining <= auth_router.LOGIN_BACKOFF_BASE_SECONDS * 2
+
+    def test_correct_password_during_the_delay_is_refused_and_told_when_to_retry(
+        self, client, db, admin_user
+    ):
+        """Only a caller who already proved they know the password learns that
+        a delay is in force, so this leaks nothing to someone guessing."""
+        user, pwd = admin_user
+        _arm_backoff(db, user.id, failures=5, seconds_remaining=90)
+
+        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
+
+        assert r.status_code == 429
+        assert "Retry-After" in r.headers
+        assert 0 < int(r.headers["Retry-After"]) <= 91
+        assert "2 minute(s)" in r.json()["detail"]
+
+    def test_wrong_password_during_the_delay_does_not_extend_it(self, client, db, admin_user):
+        """Otherwise an attacker could hold someone else's account at the
+        maximum delay indefinitely just by keeping on guessing."""
+        user, _ = admin_user
+        armed = _arm_backoff(db, user.id, failures=5, seconds_remaining=90)
+        locked_until_before = armed.locked_until
 
         r = _fail_login(client, user.username)
-        assert r.status_code == 429
-        assert "locked" in r.json().get("detail", "").lower()
+        assert r.status_code == 401
 
-    def test_lockout_sets_locked_until_and_zeroes_the_counter(self, client, db, admin_user):
-        """On locking, the counter is reset to 0 — `locked_until` is the state
-        that matters, and the count restarts once the lock lapses."""
-        user, _ = admin_user
-        _fail_login(client, user.username, times=auth_router.MAX_FAILED_LOGINS)
+        after = _reload(db, user.id)
+        assert after.failed_login_attempts == 5
+        assert abs((after.locked_until - locked_until_before).total_seconds()) < 1
 
-        locked = _reload(db, user.id)
-        assert locked.locked_until is not None
-        assert locked.locked_until > datetime.now(timezone.utc)
-        assert locked.failed_login_attempts == 0
-
-    def test_locked_account_rejects_even_the_correct_password(self, client, db, admin_user):
-        """The lock check runs before `verify_password`, so a locked-out user
-        cannot log in during the window even with valid credentials."""
+    def test_login_succeeds_once_the_delay_lapses(self, client, db, admin_user):
         user, pwd = admin_user
-        target = _reload(db, user.id)
-        target.locked_until = datetime.now(timezone.utc) + timedelta(minutes=10)
-        db.commit()
-
-        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
-        assert r.status_code == 429
-
-    def test_lockout_message_rounds_remaining_minutes_up(self, client, db, admin_user):
-        """`int(seconds / 60) + 1` rounds up, so the user is never told to come
-        back sooner than the lock actually lifts.
-
-        The offset is deliberately half a minute off a whole-minute boundary:
-        at exactly 10 minutes the elapsed request time drops the delta just
-        under 600s and the message reads "10 minute(s)", which makes the
-        rounding look like truncation and the assertion boundary-fragile.
-        """
-        user, pwd = admin_user
-        target = _reload(db, user.id)
-        target.locked_until = datetime.now(timezone.utc) + timedelta(minutes=10, seconds=30)
-        db.commit()
-
-        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
-        assert "11 minute(s)" in r.json().get("detail", "")
-
-    def test_login_succeeds_once_the_lock_expires(self, client, db, admin_user):
-        user, pwd = admin_user
-        _fail_login(client, user.username, times=auth_router.MAX_FAILED_LOGINS)
-
-        expired = _reload(db, user.id)
-        assert expired.locked_until is not None
-        # Fast-forward rather than sleeping out the real 15 minutes.
-        expired.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
-        db.commit()
+        _arm_backoff(db, user.id, failures=5, seconds_remaining=0)
 
         r = client.post("/auth/login", data={"username": user.username, "password": pwd})
         assert r.status_code == 200
 
-    def test_successful_login_clears_locked_until(self, client, db, admin_user):
+    def test_successful_login_clears_the_counter_and_the_delay(self, client, db, admin_user):
         user, pwd = admin_user
-        target = _reload(db, user.id)
-        target.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
-        target.failed_login_attempts = 3
-        db.commit()
+        _arm_backoff(db, user.id, failures=5, seconds_remaining=0)
 
         r = client.post("/auth/login", data={"username": user.username, "password": pwd})
         assert r.status_code == 200
 
         after = _reload(db, user.id)
-        assert after.locked_until is None
         assert after.failed_login_attempts == 0
+        assert after.locked_until is None
 
     def test_inactive_user_with_wrong_password_is_still_counted(self, client, db, inactive_user):
         """`status` is only checked after the password check, so a disabled
-        account still accrues failures and can be locked."""
+        account still accrues failures."""
         user, _ = inactive_user
         _fail_login(client, user.username, times=2)
         assert _reload(db, user.id).failed_login_attempts == 2
 
 
-class TestLockoutDoesNotResistEnumeration:
-    """Documents two oracles the current lockout opens up.
+class TestLoginDoesNotRevealWhichUsernamesExist:
+    """The counterpart of the enumeration oracle the old lockout had.
 
-    Neither is a problem on a closed LAN, but both matter if the deployment is
-    ever exposed (TODO.md phase C), and A1's redesign is the natural place to
-    close them. These tests assert today's leaky behaviour on purpose: when A1
-    fixes it, they fail and get rewritten as the guarantee instead.
+    Back then a real account answered 429 once locked while an unknown one
+    answered 401 forever, so login could be used to confirm which usernames
+    existed; the throttle also returned before reaching Argon2, leaking the
+    same fact again through response timing. The throttle is now checked after
+    the password comparison, so everyone without valid credentials sees one
+    identical response.
     """
 
-    def test_unknown_username_never_locks_out(self, client):
-        """A nonexistent account answers 401 forever — no counter, no lock."""
-        last = _fail_login(client, "no_such_user_xyz", times=auth_router.MAX_FAILED_LOGINS + 1)
-        assert last.status_code == 401
+    def test_unknown_username_never_gets_a_429(self, client):
+        for _ in range(auth_router.FREE_LOGIN_ATTEMPTS + 3):
+            r = _fail_login(client, "no_such_user_xyz")
+            assert r.status_code == 401
 
-    def test_429_versus_401_reveals_that_an_account_exists(self, client, db, admin_user):
-        """Known account locks (429); unknown one keeps saying 401 — so an
-        attacker can enumerate valid usernames just by hammering login.
-
-        Locking a real account is also a denial-of-service in its own right:
-        with a staff list, a whole department can be kept locked out.
-        """
+    def test_throttled_account_is_indistinguishable_from_an_unknown_one(
+        self, client, db, admin_user
+    ):
         user, _ = admin_user
-        target = _reload(db, user.id)
-        target.locked_until = datetime.now(timezone.utc) + timedelta(minutes=10)
-        db.commit()
+        _arm_backoff(db, user.id, failures=5, seconds_remaining=90)
 
         real = _fail_login(client, user.username)
-        fake = _fail_login(client, "no_such_user_xyz")
+        unknown = _fail_login(client, "no_such_user_xyz")
 
-        assert real.status_code == 429
-        assert fake.status_code == 401
+        assert real.status_code == unknown.status_code == 401
+        assert real.json()["detail"] == unknown.json()["detail"]
+        # A Retry-After on one and not the other would give the game away.
+        assert "Retry-After" not in real.headers
+        assert "Retry-After" not in unknown.headers
