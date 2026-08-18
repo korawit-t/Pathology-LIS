@@ -91,9 +91,16 @@ class User(Base):
 
     is_temporary_password = Column(Boolean, default=False, nullable=False)
 
-    # Account lockout — incremented on every failed login; reset on success.
-    # After MAX_FAILED_LOGINS consecutive failures the account is locked until
-    # locked_until (set to now + LOCKOUT_DURATION_MINUTES in the auth router).
+    # Login throttling state. failed_login_attempts counts *consecutive*
+    # failures and is cleared by any successful login; locked_until is the
+    # instant the next attempt is allowed.
+    #
+    # These are the same two columns an earlier hard-lockout scheme used, and
+    # the names were kept to avoid a migration, but the semantics changed with
+    # the move to exponential backoff: the delay now grows with each failure
+    # past a free allowance instead of being a fixed window, and the counter is
+    # no longer zeroed when the delay is applied — see _login_backoff_seconds
+    # in app/routers/auth.py, which owns the schedule.
     failed_login_attempts = Column(Integer, default=0, nullable=False, server_default="0")
     locked_until = Column(DateTime(timezone=True), nullable=True)
 
