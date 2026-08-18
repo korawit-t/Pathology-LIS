@@ -318,6 +318,68 @@ alembic stamp b7e4a1c05f38
 
 ---
 
+## Backup and Restore
+
+`backup.ps1` (Windows, native PostgreSQL) and `backup.sh` (Linux, PostgreSQL in
+Docker) each take a compressed `pg_dump` of the database plus an archive of the
+uploads directory. Both read all their configuration from `backend/.env` —
+`BACKUP_ROOT`, `BACKUP_PG_BIN` (Windows), `DB_CONTAINER` (Linux), `STORAGE_DIR`,
+`BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
+
+Run one manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\path\to\Pathology_LIS\backup.ps1"
+```
+
+```bash
+./backup.sh
+```
+
+Each run writes `db_<timestamp>.dump` and `storage_<timestamp>.zip` (`.tar.gz`
+on Linux) to `BACKUP_ROOT`, appends a row to `backup_log.csv`, and keeps the
+newest `BACKUP_KEEP` of each (default 14). Pruning happens only after a run
+that succeeded and verified, so a spell of failures cannot age out the last
+good copy.
+
+The dump is checked with `pg_restore -l` before it is renamed into place. A
+run that fails partway leaves a discarded `.part` file and the previous
+backups untouched.
+
+> On Windows, `Compress-Archive` cannot produce a valid zip beyond 2 GB. The
+> script uses 7-Zip automatically when it is installed, warns from 1.5 GB, and
+> refuses to run past 2 GB without it rather than writing an archive that only
+> proves unreadable at restore time.
+
+### Verifying a backup
+
+A backup nobody has restored is not yet a backup. To prove one end to end,
+restore it into a throwaway database and compare row counts against the live
+one:
+
+```bash
+createdb lis_restore_check
+pg_restore -d lis_restore_check /path/to/db_<timestamp>.dump
+psql -d lis_restore_check -tAc "select count(*) from surgical_cases"
+psql -d <production_db> -tAc "select count(*) from surgical_cases"
+dropdb lis_restore_check
+```
+
+A quicker structural check, without restoring — this lists the archive's table
+of contents and should report roughly one line per table:
+
+```bash
+pg_restore -l /path/to/db_<timestamp>.dump | grep -c "TABLE DATA"
+```
+
+### Restoring for real
+
+Restore into a **new** database first and inspect it. Never restore straight
+over a live one — if the dump turns out to be older or thinner than expected,
+you have then lost the current state as well.
+
+---
+
 ## Setting the Starting Accession Number
 
 If your lab previously used a different system (paper-based or another LIS), run this script once to set the correct starting point before registering your first real case.
