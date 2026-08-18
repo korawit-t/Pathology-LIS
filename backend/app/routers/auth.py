@@ -6,6 +6,9 @@ from typing import Optional
 from jose import jwt, JWTError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from limits import parse as parse_rate_limit
+from limits.storage import MemoryStorage
+from limits.strategies import FixedWindowRateLimiter
 
 from datetime import datetime, timezone, timedelta
 from app.db.database import get_db
@@ -68,6 +71,48 @@ def _humanize_seconds(seconds: int) -> str:
 
 limiter = Limiter(key_func=get_remote_address)
 
+# Login is capped on two dimensions, and a third control sits behind them.
+#
+#   per IP                  — horizontal: how many accounts one source can rake
+#                             through. On the route, via slowapi.
+#   per (username, IP)      — vertical: how hard one source can lean on one
+#                             account. Below, in the handler.
+#   per account, any source — the failure backoff above, which is the only one
+#                             of the three that an attacker cannot escape by
+#                             rotating addresses.
+#
+# The pair is deliberate rather than a single per-username cap. Keying the
+# vertical cap on the username alone would let anyone deny a named user access
+# indefinitely by spending ten attempts a minute on them; including the address
+# means an attacker cannot touch the bucket the real user is logging in from.
+# It also means the cap is escapable by rotating addresses, which is exactly
+# what the per-account backoff is there to catch.
+#
+# The username dimension cannot be expressed as another @limiter.limit, because
+# slowapi calls its key_func synchronously, before the request body has been
+# read — so the submitted username simply is not available to it yet (see
+# slowapi/extension.py, `limit_key = lim.key_func(request)`). It is enforced in
+# the handler instead, against the same `limits` backend slowapi itself runs on,
+# so this adds no dependency.
+#
+# Having the vertical cap is what lets the horizontal one be loose. When per-IP
+# was the only cap it had to be tight, which meant an entire department sharing
+# one egress address — behind hospital NAT, or a reverse proxy whose
+# TRUSTED_PROXY_IPS was never configured, in which case every request appears to
+# come from the proxy — could lock each other out of logging in at shift change.
+# Per-account brute-force resistance no longer rests on the per-IP number.
+#
+# Keyed on the username as submitted whether or not any such account exists, so
+# it reveals nothing about which usernames are real.
+#
+# In-process storage, matching slowapi's own default here: correct for the
+# current single-worker deployment, and per-worker the moment that changes.
+LOGIN_ATTEMPTS_PER_IP = "60/minute"
+LOGIN_ATTEMPTS_PER_USERNAME = "10/minute"
+
+_username_rate_limiter = FixedWindowRateLimiter(MemoryStorage())
+_login_username_limit = parse_rate_limit(LOGIN_ATTEMPTS_PER_USERNAME)
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
@@ -101,13 +146,26 @@ def _clear_auth_cookies(response: Response):
 
 # --- Login ---
 @router.post("/login")
-@limiter.limit("10/minute")
+@limiter.limit(LOGIN_ATTEMPTS_PER_IP)
 def login_for_access_token(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    ip = request.client.host if request.client else None
+
+    # Vertical cap, checked before the user lookup so a flood costs no queries.
+    # Case-folded so cycling the capitalisation of a username cannot buy extra
+    # attempts, since the lookup below is exact and would reject them anyway.
+    if not _username_rate_limiter.hit(
+        _login_username_limit, "login", form_data.username.lower(), ip or "unknown"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please wait a moment and try again.",
+        )
+
     from sqlalchemy.orm import joinedload
     user = (
         db.query(User)
@@ -115,8 +173,6 @@ def login_for_access_token(
         .filter(User.username == form_data.username)
         .first()
     )
-
-    ip = request.client.host if request.client else None
 
     now = datetime.now(timezone.utc)
 

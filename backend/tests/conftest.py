@@ -52,10 +52,12 @@ _pwd = CryptContext(schemes=["argon2"], deprecated="auto")
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
-    """Clear all slowapi rate-limit counters before each test to prevent 429 errors.
+    """Clear all rate-limit counters before each test to prevent 429 errors.
 
-    auth.py defines its own Limiter instance separate from app.state.limiter,
-    so both must be reset.
+    Three separate counters exist: app.state.limiter, the Limiter auth.py
+    defines for itself, and the per-(username, IP) login cap auth.py enforces
+    by hand — that last one is not a slowapi Limiter at all, but it holds state
+    across requests just the same and bleeds between tests if left alone.
     """
     try:
         app.state.limiter._storage.reset()
@@ -64,6 +66,11 @@ def _reset_rate_limits():
     try:
         from app.routers.auth import limiter as _auth_limiter
         _auth_limiter._storage.reset()
+    except Exception:
+        pass
+    try:
+        from app.routers.auth import _username_rate_limiter
+        _username_rate_limiter.storage.reset()
     except Exception:
         pass
     yield
