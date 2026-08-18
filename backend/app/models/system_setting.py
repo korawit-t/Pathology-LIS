@@ -69,6 +69,22 @@ class SystemSetting(Base):
     password_min_length = Column(Integer, default=8, nullable=False)
     password_expiry_days = Column(Integer, default=0, nullable=False)  # 0 = no expiry
 
+    # --- Multi-Factor Authentication ---
+    # Master switch. Off (the default) means the login path behaves exactly as
+    # it did before MFA existed — no new branches are taken.
+    mfa_enabled = Column(Boolean, default=False, nullable=False, server_default="false")
+    # Roles that MUST enrol, e.g. ["admin", "senior_pathologist"]. Everyone else
+    # may still opt in per-user. Empty means nobody is compelled. Not exposed on
+    # the unauthenticated /system-settings/public response — knowing which roles
+    # are exempt is useful to an attacker and useless to a login screen.
+    mfa_required_roles = Column(JSON, nullable=True, default=list)
+    # How long a compelled user may keep logging in before enrolment is
+    # enforced. 0 enforces immediately.
+    mfa_grace_period_days = Column(Integer, default=7, nullable=False, server_default="7")
+    # Which factor types count. Lets a site require phishing-resistant WebAuthn
+    # for report sign-out once that ships, while leaving TOTP for everyone else.
+    mfa_allowed_methods = Column(JSON, nullable=True, default=lambda: ["totp"])
+
     # --- Workflow Control ---
     enable_approve_system = Column(Boolean, default=False) # Surgical (Legacy name)
     enable_gyne_qc_system = Column(Boolean, default=False) # Gyne — controls NILM random sampling
