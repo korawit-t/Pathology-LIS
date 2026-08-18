@@ -27,8 +27,9 @@ def _set_cookie_headers(response):
 def _fail_login(client, username, times=1):
     """POST a deliberately wrong password `times` times; return the last response.
 
-    Keep `times` small: /auth/login is rate limited to 10/minute and the
-    autouse `_reset_rate_limits` fixture only resets *between* tests.
+    Keep `times` under LOGIN_ATTEMPTS_PER_USERNAME unless the cap is the point
+    of the test: attempts on one username are capped per minute, and the autouse
+    `_reset_rate_limits` fixture only resets *between* tests.
     """
     last = None
     for _ in range(times):
@@ -48,10 +49,11 @@ def _reload(db, user_id):
 def _arm_backoff(db, user_id, failures, seconds_remaining):
     """Put a user straight into a given throttle state.
 
-    Driving the counter up over HTTP costs one request per failure and the
-    endpoint only allows 10 a minute, so tests that care about the *later*
-    rungs of the backoff ladder set the state directly instead. Pass
-    `seconds_remaining=0` for a window that has already lapsed.
+    Driving the counter up over HTTP costs one request per failure, and one
+    username only gets LOGIN_ATTEMPTS_PER_USERNAME of those a minute, so tests
+    that care about the *later* rungs of the backoff ladder set the state
+    directly instead. Pass `seconds_remaining=0` for a window that has already
+    lapsed.
     """
     user = _reload(db, user_id)
     user.failed_login_attempts = failures
@@ -366,6 +368,74 @@ class TestLoginBackoff:
         user, _ = inactive_user
         _fail_login(client, user.username, times=2)
         assert _reload(db, user.id).failed_login_attempts == 2
+
+
+class TestLoginRateCaps:
+    """The two request-rate dimensions, distinct from the failure backoff.
+
+    The backoff punishes *failures* and is per account; these cap *attempts*
+    and are what stop a flood before it reaches the password hash or the DB.
+    """
+
+    def test_attempts_on_one_username_are_capped(self, client, admin_user):
+        user, _ = admin_user
+        allowed = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+
+        _fail_login(client, user.username, times=allowed)
+        over = _fail_login(client, user.username)
+
+        assert over.status_code == 429
+        assert "Too many login attempts" in over.json()["detail"]
+
+    def test_the_cap_applies_to_a_correct_password_too(self, client, admin_user):
+        """Otherwise the cap would be trivially bypassed on the one attempt
+        that matters, and would leak which guess was right."""
+        user, pwd = admin_user
+        allowed = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+        _fail_login(client, user.username, times=allowed)
+
+        r = client.post("/auth/login", data={"username": user.username, "password": pwd})
+        assert r.status_code == 429
+
+    def test_a_second_username_from_the_same_address_has_its_own_budget(
+        self, client, admin_user, pathologist_user
+    ):
+        """The point of the username dimension: colleagues behind one shared
+        egress address must not spend each other's login budget."""
+        noisy, _ = admin_user
+        quiet, quiet_pwd = pathologist_user
+        allowed = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+
+        _fail_login(client, noisy.username, times=allowed + 1)
+
+        r = client.post("/auth/login", data={"username": quiet.username, "password": quiet_pwd})
+        assert r.status_code == 200
+
+    def test_the_cap_does_not_distinguish_real_from_unknown_usernames(self, client, admin_user):
+        user, _ = admin_user
+        allowed = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+
+        real = _fail_login(client, user.username, times=allowed + 1)
+        unknown = _fail_login(client, "no_such_user_xyz", times=allowed + 1)
+
+        assert real.status_code == unknown.status_code == 429
+        assert real.json()["detail"] == unknown.json()["detail"]
+
+    def test_changing_the_capitalisation_does_not_buy_more_attempts(self, client, admin_user):
+        user, _ = admin_user
+        allowed = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+        _fail_login(client, user.username, times=allowed)
+
+        r = _fail_login(client, user.username.upper())
+        assert r.status_code == 429
+
+    def test_the_per_ip_cap_is_looser_than_the_per_username_one(self):
+        """A department behind one address has to be able to log in; the per-IP
+        number stopped being the per-account defence when the username cap and
+        the failure backoff took that over."""
+        per_ip = int(auth_router.LOGIN_ATTEMPTS_PER_IP.split("/")[0])
+        per_username = int(auth_router.LOGIN_ATTEMPTS_PER_USERNAME.split("/")[0])
+        assert per_ip > per_username
 
 
 class TestLoginDoesNotRevealWhichUsernamesExist:
