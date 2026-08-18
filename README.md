@@ -290,6 +290,32 @@ source venv/bin/activate
 alembic upgrade head
 ```
 
+### Upgrading across the 2026-08-18 baseline
+
+Migration history before `b7e4a1c05f38` was squashed into a single baseline
+revision, because the old chain had become cyclic and `alembic upgrade head`
+consequently never terminated on a fresh database. New installs are unaffected
+and need no special handling — the baseline creates the whole schema in one
+step.
+
+An **existing** database must already be at `b7e4a1c05f38` before you deploy a
+version containing the baseline. If yours is on an older revision, upgrade it
+with the previous release first:
+
+```bash
+git checkout <the release you are currently running>
+alembic upgrade head
+```
+
+Then deploy as normal. A database stamped at an id that no longer exists fails
+with `Can't locate revision identified by ...` — loudly, and before the server
+starts, but it does fail. If you are certain a database already has the current
+schema, you can instead adopt the baseline directly:
+
+```bash
+alembic stamp b7e4a1c05f38
+```
+
 ---
 
 ## Setting the Starting Accession Number
