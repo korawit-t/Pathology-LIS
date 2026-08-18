@@ -1131,6 +1131,7 @@ const handleOpenFinalizeModal = async () => {
           stain_quality: surgicalCase?.stain_quality || undefined,
           tissue_quality: surgicalCase?.tissue_quality || undefined,
           slide_quality: surgicalCase?.slide_quality || undefined,
+          quality_comment: surgicalCase?.quality_comment || undefined,
           // Force the "provisional" toggle off when resolving a consult round —
           // the form field itself still holds the stale `true` set when the case
           // was originally dispatched to consult, so a plain `??` fallback here

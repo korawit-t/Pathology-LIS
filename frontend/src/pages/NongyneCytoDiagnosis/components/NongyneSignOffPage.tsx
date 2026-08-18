@@ -28,11 +28,13 @@ interface NongyneSignOffPageProps {
   finalizing: boolean;
   initialSlideQuality?: string | null;
   initialStainQuality?: string | null;
+  initialQualityComment?: string | null;
   initialIsCasePending?: boolean;
   onClose: () => void;
   onConfirm: (
     slideQuality: string | null,
     stainQuality: string | null,
+    qualityComment: string,
     isCasePending: boolean,
     pendingReason: string,
   ) => Promise<void>;
@@ -40,6 +42,7 @@ interface NongyneSignOffPageProps {
     reason: string,
     slideQuality: string,
     stainQuality: string,
+    qualityComment: string,
   ) => Promise<void>;
 }
 
@@ -50,6 +53,7 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
   finalizing,
   initialSlideQuality,
   initialStainQuality,
+  initialQualityComment,
   initialIsCasePending = false,
   onClose,
   onConfirm,
@@ -57,6 +61,7 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
 }) => {
   const [slideQuality, setSlideQuality] = useState<string | null>(null);
   const [stainQuality, setStainQuality] = useState<string | null>(null);
+  const [qualityComment, setQualityComment] = useState("");
   const [isCasePending, setIsCasePending] = useState(false);
   const [pendingReason, setPendingReason] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -69,6 +74,7 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
     if (open) {
       setSlideQuality(initialSlideQuality ?? null);
       setStainQuality(initialStainQuality ?? null);
+      setQualityComment(initialQualityComment ?? "");
       setIsCasePending(initialIsCasePending);
       setPendingReason("");
     }
@@ -116,7 +122,7 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
   const handleConfirm = async () => {
     if (!canFinalize) return;
     onClose();
-    await onConfirm(slideQuality, stainQuality, isCasePending, pendingReason);
+    await onConfirm(slideQuality, stainQuality, qualityComment, isCasePending, pendingReason);
   };
 
   const handleConfirmAndOutLabClick = () => {
@@ -132,7 +138,12 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
     }
     setOutLabOpen(false);
     onClose();
-    await onConfirmAndOutLab?.(outLabReason, slideQuality as string, stainQuality as string);
+    await onConfirmAndOutLab?.(
+      outLabReason,
+      slideQuality as string,
+      stainQuality as string,
+      qualityComment,
+    );
   };
 
   if (!open) return null;
@@ -228,6 +239,22 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
             </Radio.Group>
           </div>
 
+          {/* Quality Comment */}
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>
+              3. Quality Comment{" "}
+              <span style={{ color: "#8c8c8c", fontWeight: 400, fontSize: 12 }}>(optional)</span>
+            </div>
+            <Input.TextArea
+              rows={3}
+              maxLength={1000}
+              showCount
+              placeholder="e.g. Scant cellularity / thick smear"
+              value={qualityComment}
+              onChange={(e) => setQualityComment(e.target.value)}
+            />
+          </div>
+
           {!canFinalize && (
             <Text style={{ color: "#ff4d4f", fontSize: 12 }}>
               Please complete both assessments before proceeding.
@@ -236,7 +263,7 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
 
           {/* Report Completion */}
           <div style={{ paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>3. Report Completion</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>4. Report Completion</div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
               <Switch
                 checked={!isCasePending}

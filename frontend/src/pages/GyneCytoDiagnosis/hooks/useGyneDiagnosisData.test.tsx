@@ -261,7 +261,7 @@ describe("useGyneDiagnosisData", () => {
       const { form, result } = await setup();
 
       await act(async () => {
-        await result.current.finalize(null, null, undefined, {
+        await result.current.finalize(null, null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
           signOnlyCurrentUser: false,
@@ -284,7 +284,7 @@ describe("useGyneDiagnosisData", () => {
       const { form, result } = await setup(signers);
 
       await act(async () => {
-        await result.current.finalize(null, null, undefined, {
+        await result.current.finalize(null, null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: true,
           signOnlyCurrentUser: true,
@@ -307,7 +307,7 @@ describe("useGyneDiagnosisData", () => {
       const { form, result } = await setup(signers);
 
       await act(async () => {
-        await result.current.finalize(null, null, undefined, {
+        await result.current.finalize(null, null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: true,
           signOnlyCurrentUser: false,
@@ -326,7 +326,7 @@ describe("useGyneDiagnosisData", () => {
       const { result } = await setup();
 
       await act(async () => {
-        await result.current.finalize("good", "good", { reason: "Need expert opinion" }, {
+        await result.current.finalize("good", "good", "", { reason: "Need expert opinion" }, {
           forceEdit: false,
           requiresPathologistReview: false,
           signOnlyCurrentUser: false,
@@ -350,7 +350,7 @@ describe("useGyneDiagnosisData", () => {
       const { result } = await setup([{ user_id: 99, role: "primary", signed_at: null }]);
 
       await act(async () => {
-        await result.current.finalize(null, null, undefined, {
+        await result.current.finalize(null, null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
           signOnlyCurrentUser: false,
@@ -373,7 +373,7 @@ describe("useGyneDiagnosisData", () => {
       ]);
 
       await act(async () => {
-        await result.current.finalize(null, null, undefined, {
+        await result.current.finalize(null, null, null, undefined, {
           forceEdit: false,
           requiresPathologistReview: false,
           signOnlyCurrentUser: false,

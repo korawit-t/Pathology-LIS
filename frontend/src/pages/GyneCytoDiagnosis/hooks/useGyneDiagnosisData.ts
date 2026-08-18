@@ -288,6 +288,7 @@ export function useGyneDiagnosisData(
     async (
       sq: string | null = null,
       stq: string | null = null,
+      comment: string | null = null,
       outLab: { reason: string } | undefined,
       opts: {
         forceEdit: boolean;
@@ -348,6 +349,7 @@ export function useGyneDiagnosisData(
         await GyneCytologyCaseService.update(Number(caseId), {
           slide_quality: sq ?? undefined,
           stain_quality: stq ?? undefined,
+          quality_comment: comment?.trim() || undefined,
         });
         if (diagnosis) {
           await GyneDiagnosisService.updateDiagnosis(diagnosis.id, {

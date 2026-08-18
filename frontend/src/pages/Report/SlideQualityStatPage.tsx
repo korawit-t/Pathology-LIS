@@ -40,10 +40,20 @@ interface QualityBucket {
   unspecified: number;
 }
 
+interface QualityComment {
+  case_id: number;
+  accession_no: string;
+  registered_at: string | null;
+  slide_quality: string | null;
+  stain_quality: string | null;
+  comment: string;
+}
+
 interface QualityStatResult {
   total: number;
   slide_quality: QualityBucket;
   stain_quality: QualityBucket | null;
+  comments?: QualityComment[];
 }
 
 const QUALITY_COLORS: Record<string, string> = {
@@ -116,6 +126,55 @@ const QUALITY_EXPORT_COLS = [
   { header: "%", key: "pct", render: (v: unknown) => `${v}%` },
 ];
 
+const COMMENT_EXPORT_COLS = [
+  { header: "Accession No", key: "accession_no" },
+  {
+    header: "Registered",
+    key: "registered_at",
+    render: (v: unknown) => (v ? dayjs(v as string).format("DD/MM/YYYY") : ""),
+  },
+  { header: "Slide Quality", key: "slide_quality", render: (v: unknown) => QUALITY_LABELS[v as string] ?? "" },
+  { header: "Stain Quality", key: "stain_quality", render: (v: unknown) => QUALITY_LABELS[v as string] ?? "" },
+  { header: "Comment", key: "comment" },
+];
+
+const commentColumns = [
+  {
+    title: "Accession No",
+    dataIndex: "accession_no",
+    key: "accession_no",
+    width: 150,
+    render: (v: string) => <Text strong>{v}</Text>,
+  },
+  {
+    title: "Registered",
+    dataIndex: "registered_at",
+    key: "registered_at",
+    width: 120,
+    render: (v: string | null) => (v ? dayjs(v).format("DD/MM/YYYY") : "-"),
+  },
+  {
+    title: "Slide",
+    dataIndex: "slide_quality",
+    key: "slide_quality",
+    width: 110,
+    render: (v: string | null) => (v ? qualityTag(v) : "-"),
+  },
+  {
+    title: "Stain",
+    dataIndex: "stain_quality",
+    key: "stain_quality",
+    width: 110,
+    render: (v: string | null) => (v ? qualityTag(v) : "-"),
+  },
+  {
+    title: "Comment",
+    dataIndex: "comment",
+    key: "comment",
+    render: (v: string) => <span style={{ whiteSpace: "pre-wrap" }}>{v}</span>,
+  },
+];
+
 const QualitySection: React.FC<QualitySectionProps> = ({ title, data, loading, exportFilename }) => {
   const slideData = data ? bucketToChartData(data.slide_quality) : [];
   const stainData = data?.stain_quality ? bucketToChartData(data.stain_quality) : [];
@@ -135,6 +194,13 @@ const QualitySection: React.FC<QualitySectionProps> = ({ title, data, loading, e
               if (data.stain_quality) {
                 const stainRows = bucketToTableRows(data.stain_quality, data.total) as unknown as Record<string, unknown>[];
                 exportToCsv(`${base}-stain`, stainRows, QUALITY_EXPORT_COLS);
+              }
+              if (data.comments?.length) {
+                exportToCsv(
+                  `${base}-comments`,
+                  data.comments as unknown as Record<string, unknown>[],
+                  COMMENT_EXPORT_COLS,
+                );
               }
             }}
           >
@@ -214,6 +280,24 @@ const QualitySection: React.FC<QualitySectionProps> = ({ title, data, loading, e
                 </Col>
               )}
             </Row>
+
+            <Divider titlePlacement="left" style={{ marginTop: 24 }}>
+              <Space size={8}>
+                <span>Quality Comments</span>
+                <Tag>{data.comments?.length ?? 0}</Tag>
+              </Space>
+            </Divider>
+            {data.comments?.length ? (
+              <Table
+                size="small"
+                rowKey="case_id"
+                dataSource={data.comments}
+                columns={commentColumns}
+                pagination={{ pageSize: 10, hideOnSinglePage: true, size: "small" }}
+              />
+            ) : (
+              <Text type="secondary">No quality comments recorded in this period.</Text>
+            )}
           </>
         ) : (
           <Text type="secondary">No data — select a date range and click Search.</Text>

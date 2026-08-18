@@ -135,6 +135,7 @@ class GyneCytologyCaseUpdate(BaseModel):
     medical_scheme_id: Optional[int] = None
     slide_quality: Optional[str] = None
     stain_quality: Optional[str] = None
+    quality_comment: Optional[str] = None
 
 
 # --- Response Schemas ---
@@ -174,6 +175,8 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     review_note: Optional[str] = None
 
     department_id: Optional[int] = None
+
+    quality_comment: Optional[str] = None
 
     # Relationships (ข้อมูลที่โหลดแบบ Eager)
     patient: Optional[PatientMinimalResponse] = None

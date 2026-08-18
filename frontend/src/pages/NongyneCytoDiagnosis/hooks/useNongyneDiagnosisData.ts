@@ -254,6 +254,7 @@ export function useNongyneDiagnosisData(
       currentUserId: number | undefined,
       slideQuality: string | null,
       stainQuality: string | null,
+      qualityComment: string | null,
       isCasePending: boolean,
       pendingReason: string,
       outLab?: { reason: string },
@@ -280,6 +281,7 @@ export function useNongyneDiagnosisData(
           clinical_history: clinical_history ?? null,
           slide_quality: slideQuality ?? undefined,
           stain_quality: stainQuality ?? undefined,
+          quality_comment: qualityComment?.trim() || undefined,
         });
         setCaseData((prev) =>
           prev
@@ -288,6 +290,7 @@ export function useNongyneDiagnosisData(
                 clinical_history: clinical_history ?? null,
                 slide_quality: slideQuality ?? undefined,
                 stain_quality: stainQuality ?? undefined,
+                quality_comment: qualityComment?.trim() || undefined,
               }
             : prev,
         );

@@ -335,7 +335,7 @@ describe("useNongyneDiagnosisData", () => {
 
       let ok: boolean | undefined;
       await act(async () => {
-        ok = await result.current.finalize(1, "good", "good", false, "");
+        ok = await result.current.finalize(1, "good", "good", "", false, "");
       });
 
       expect(ok).toBe(false);
@@ -346,7 +346,7 @@ describe("useNongyneDiagnosisData", () => {
       const { form, result } = await setup();
 
       await act(async () => {
-        await result.current.finalize(1, "good", "good", false, "");
+        await result.current.finalize(1, "good", "good", "", false, "");
       });
 
       expect(form.setFieldValue).toHaveBeenCalledWith("signers", [
@@ -360,7 +360,7 @@ describe("useNongyneDiagnosisData", () => {
       const { result } = await setup();
 
       await act(async () => {
-        await result.current.finalize(1, "good", "good", false, "");
+        await result.current.finalize(1, "good", "good", "", false, "");
       });
 
       expect(message.success).toHaveBeenCalledWith("Report finalized and published.");
@@ -378,7 +378,7 @@ describe("useNongyneDiagnosisData", () => {
       const { result } = await setup();
 
       await act(async () => {
-        await result.current.finalize(1, "good", "good", true, "awaiting", { reason: "Need expert opinion" });
+        await result.current.finalize(1, "good", "good", "", true, "awaiting", { reason: "Need expert opinion" });
       });
 
       expect(message.success).toHaveBeenCalledWith("Report signed off — flagged for Out-Lab Consult");
@@ -398,7 +398,7 @@ describe("useNongyneDiagnosisData", () => {
 
       let ok: boolean | undefined;
       await act(async () => {
-        ok = await result.current.finalize(1, "good", "good", false, "");
+        ok = await result.current.finalize(1, "good", "good", "", false, "");
       });
 
       expect(ok).toBe(false);

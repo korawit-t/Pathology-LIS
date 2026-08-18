@@ -853,4 +853,32 @@ def get_gyne_slide_quality_stats(db: Session, start_date, end_date):
     slide = _count_quality(GyneCytologyCase.slide_quality)
     stain = _count_quality(GyneCytologyCase.stain_quality)
     total = sum(slide.values())
-    return {"total": total, "slide_quality": slide, "stain_quality": stain}
+
+    comment_rows = (
+        db.query(GyneCytologyCase)
+        .filter(
+            func.date(GyneCytologyCase.registered_at) >= start_date,
+            func.date(GyneCytologyCase.registered_at) <= end_date,
+            GyneCytologyCase.quality_comment.isnot(None),
+            func.trim(GyneCytologyCase.quality_comment) != "",
+        )
+        .order_by(GyneCytologyCase.registered_at.desc())
+        .all()
+    )
+
+    return {
+        "total": total,
+        "slide_quality": slide,
+        "stain_quality": stain,
+        "comments": [
+            {
+                "case_id": c.id,
+                "accession_no": c.accession_no,
+                "registered_at": c.registered_at.isoformat() if c.registered_at else None,
+                "slide_quality": c.slide_quality,
+                "stain_quality": c.stain_quality,
+                "comment": c.quality_comment,
+            }
+            for c in comment_rows
+        ],
+    }

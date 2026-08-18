@@ -336,6 +336,10 @@ def finalize_and_snapshot_orchestrator(
                 db_case.tissue_quality = data.tissue_quality
             if data.slide_quality:
                 db_case.slide_quality = data.slide_quality
+            # Unlike the enums above, an empty string is a meaningful edit here
+            # (the assessor cleared the comment), so only `None` means "untouched".
+            if data.quality_comment is not None:
+                db_case.quality_comment = data.quality_comment or None
             # db_case is already persistent (loaded via query above) — no need
             # to re-add it; doing so was implicated in a session identity-map
             # conflict when a report row was flushed earlier in this same

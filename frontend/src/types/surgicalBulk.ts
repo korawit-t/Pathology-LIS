@@ -30,6 +30,7 @@ export interface BulkSaveDraft {
   stain_quality?: string;
   tissue_quality?: string;
   slide_quality?: string;
+  quality_comment?: string;
 
   // 🚩 2. ข้อมูลระดับ SPECIMEN (ที่จะไปอัปเดตลงตาราง SurgicalSpecimen)
   gross_descriptions: { [specimen_id: string]: string };
