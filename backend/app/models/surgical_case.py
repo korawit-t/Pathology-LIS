@@ -86,6 +86,7 @@ class SurgicalCase(Base):
     stain_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
     tissue_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
     slide_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
+    quality_comment = Column(Text, nullable=True)
 
     # --- Release to Patient ---
     is_slide_released = Column(Boolean, default=False, index=True)

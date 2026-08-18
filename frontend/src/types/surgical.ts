@@ -119,6 +119,7 @@ export interface SurgicalCase {
   stain_quality?: string | null;
   tissue_quality?: string | null;
   slide_quality?: string | null;
+  quality_comment?: string | null;
 
   is_cancelled: boolean;
   cancelled_at?: string;

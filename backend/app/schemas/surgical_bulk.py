@@ -29,6 +29,7 @@ class BulkSaveDraft(BaseModel):
     stain_quality: Optional[str] = None
     tissue_quality: Optional[str] = None
     slide_quality: Optional[str] = None
+    quality_comment: Optional[str] = None
 
     # --- ส่วนที่ 2: ข้อมูลที่จะไป SurgicalSpecimen ---
     # 🚩 ห้ามเอาออก! เพราะหมอพิมพ์ Gross ที่หน้า Report แล้วกด Save Bulk

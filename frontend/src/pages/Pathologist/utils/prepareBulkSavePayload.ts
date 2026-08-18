@@ -19,6 +19,7 @@ interface PreparePayloadProps {
     stain_quality?: string;
     tissue_quality?: string;
     slide_quality?: string;
+    quality_comment?: string;
     has_malignancy?: boolean;
     has_critical?: boolean;
     is_pending?: boolean;
@@ -118,5 +119,6 @@ export const prepareBulkSavePayload = ({
     stain_quality: finalizeData?.stain_quality,
     tissue_quality: finalizeData?.tissue_quality,
     slide_quality: finalizeData?.slide_quality,
+    quality_comment: finalizeData?.quality_comment,
   };
 };

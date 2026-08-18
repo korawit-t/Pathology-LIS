@@ -43,6 +43,7 @@ export interface FinalizeData {
   stain_quality?: string;
   tissue_quality?: string;
   slide_quality?: string;
+  quality_comment?: string;
   is_pending?: boolean;
   pending_reason?: string;
 }
@@ -93,6 +94,7 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
     stain_quality: undefined,
     tissue_quality: undefined,
     slide_quality: undefined,
+    quality_comment: "",
     is_pending: false,
     pending_reason: "",
   });
@@ -109,6 +111,7 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
         stain_quality: initialData.stain_quality,
         tissue_quality: initialData.tissue_quality,
         slide_quality: initialData.slide_quality,
+        quality_comment: initialData.quality_comment || "",
         is_pending: initialData.is_pending ?? false,
         pending_reason: initialData.pending_reason || "",
       });
@@ -355,6 +358,20 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
                   </Radio.Group>
                 </Form.Item>
               ))}
+
+              <Form.Item
+                label={<Space>Quality Comment<Tooltip title="Optional free-text note about the quality assessment — shown in the Slide Quality report"><InfoCircleOutlined style={{ color: "#8c8c8c", cursor: "help" }} /></Tooltip></Space>}
+                style={{ marginBottom: 16 }}
+              >
+                <Input.TextArea
+                  rows={2}
+                  maxLength={1000}
+                  showCount
+                  placeholder="e.g. Section folded at the edge / weak nuclear staining"
+                  value={data.quality_comment}
+                  onChange={(e) => setData((prev) => ({ ...prev, quality_comment: e.target.value }))}
+                />
+              </Form.Item>
 
               {caseId && (
                 <CriticalNotificationSection caseId={caseId} caseType="SURGICAL" accessionNo={accessionNo} />

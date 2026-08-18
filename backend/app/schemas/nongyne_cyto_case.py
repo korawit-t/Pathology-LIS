@@ -132,6 +132,7 @@ class NongyneCytologyCaseUpdate(BaseModel):
 
     slide_quality: Optional[str] = None
     stain_quality: Optional[str] = None
+    quality_comment: Optional[str] = None
 
 
 # --- Response Schemas ---
@@ -188,6 +189,7 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
 
     slide_quality: Optional[str] = None
     stain_quality: Optional[str] = None
+    quality_comment: Optional[str] = None
 
     # Computed: current number of NongyneCytologyStain rows for this case
     # (only populated on the single-case fetch, see get_nongyne_case)

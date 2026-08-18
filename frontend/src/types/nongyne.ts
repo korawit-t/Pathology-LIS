@@ -91,6 +91,7 @@ export interface NongyneCytologyCase {
 
   slide_quality?: string;
   stain_quality?: string;
+  quality_comment?: string;
   slide_count?: number;
 
   request_files?: RequestFile[];
@@ -143,4 +144,5 @@ export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCr
   cell_block_prepared_by_id?: number;
   slide_quality?: string;
   stain_quality?: string;
+  quality_comment?: string;
 }

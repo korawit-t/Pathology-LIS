@@ -321,8 +321,12 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     setSlideQualityModalOpen(true);
   };
 
-  const handleFinalize = async (sq: string | null = null, stq: string | null = null) => {
-    await finalize(sq, stq, undefined, {
+  const handleFinalize = async (
+    sq: string | null = null,
+    stq: string | null = null,
+    comment: string | null = null,
+  ) => {
+    await finalize(sq, stq, comment, undefined, {
       forceEdit,
       requiresPathologistReview,
       signOnlyCurrentUser: requiresPathologistReview,
@@ -330,8 +334,13 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
     if (onBack) onBack();
   };
 
-  const handleOutLabConsult = async (reason: string, sq: string, stq: string) => {
-    await finalize(sq, stq, { reason }, {
+  const handleOutLabConsult = async (
+    reason: string,
+    sq: string,
+    stq: string,
+    comment: string,
+  ) => {
+    await finalize(sq, stq, comment, { reason }, {
       forceEdit,
       requiresPathologistReview,
       signOnlyCurrentUser: requiresPathologistReview,

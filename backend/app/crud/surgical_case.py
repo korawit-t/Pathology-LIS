@@ -1264,7 +1264,36 @@ def get_slide_quality_stats(db: Session, start_date: str, end_date: str) -> dict
     for val, cnt in rows:
         key = val if val in result else "unspecified"
         result[key] += cnt
-    return {"total": sum(result.values()), "slide_quality": result, "stain_quality": None}
+
+    comment_rows = (
+        db.query(SurgicalCase)
+        .filter(
+            SurgicalCase.is_cancelled == False,
+            func.date(SurgicalCase.registered_at) >= start,
+            func.date(SurgicalCase.registered_at) <= end,
+            SurgicalCase.quality_comment.isnot(None),
+            func.trim(SurgicalCase.quality_comment) != "",
+        )
+        .order_by(SurgicalCase.registered_at.desc())
+        .all()
+    )
+
+    return {
+        "total": sum(result.values()),
+        "slide_quality": result,
+        "stain_quality": None,
+        "comments": [
+            {
+                "case_id": c.id,
+                "accession_no": c.accession_no,
+                "registered_at": c.registered_at.isoformat() if c.registered_at else None,
+                "slide_quality": c.slide_quality,
+                "stain_quality": c.stain_quality,
+                "comment": c.quality_comment,
+            }
+            for c in comment_rows
+        ],
+    }
 
 
 def _tat_bucket(tat_days: float) -> str:

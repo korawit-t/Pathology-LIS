@@ -66,6 +66,7 @@ export interface GyneCytologyCase {
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;
   consult_report_out_at?: string | null;
+  quality_comment?: string | null;
 
   created_at: string;
   updated_at: string;
@@ -129,4 +130,5 @@ export interface GyneCytologyCaseUpdate extends Partial<GyneCytologyCaseCreate> 
   consult_report_out_at?: string | null;
   slide_quality?: string;
   stain_quality?: string;
+  quality_comment?: string;
 }

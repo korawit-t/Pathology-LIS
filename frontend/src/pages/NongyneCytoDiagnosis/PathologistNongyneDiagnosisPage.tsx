@@ -307,10 +307,18 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   const handleFinalize = async (
     slideQuality: string | null,
     stainQuality: string | null,
+    qualityComment: string,
     isCasePending: boolean,
     pendingReason: string,
   ) => {
-    const ok = await finalize(currentUser?.id, slideQuality, stainQuality, isCasePending, pendingReason);
+    const ok = await finalize(
+      currentUser?.id,
+      slideQuality,
+      stainQuality,
+      qualityComment,
+      isCasePending,
+      pendingReason,
+    );
     if (ok && onBack) setTimeout(onBack, 800);
   };
 
@@ -318,11 +326,13 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     reason: string,
     slideQuality: string,
     stainQuality: string,
+    qualityComment: string,
   ) => {
     const ok = await finalize(
       currentUser?.id,
       slideQuality,
       stainQuality,
+      qualityComment,
       true,
       "Out-Lab Consult — awaiting results",
       { reason },
@@ -672,6 +682,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
         finalizing={submitting}
         initialSlideQuality={caseData?.slide_quality ?? null}
         initialStainQuality={caseData?.stain_quality ?? null}
+        initialQualityComment={caseData?.quality_comment ?? null}
         initialIsCasePending={isConsultEditorLocked ? false : (caseData?.is_pending ?? false)}
         onClose={() => setSlideQualityModalOpen(false)}
         onConfirm={handleFinalize}

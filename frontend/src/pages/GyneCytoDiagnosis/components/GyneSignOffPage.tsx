@@ -21,11 +21,16 @@ interface GyneSignOffPageProps {
   caseData: GyneCytologyCase | null;
   finalizing: boolean;
   onClose: () => void;
-  onFinalize: (slideQuality: string | null, stainQuality: string | null) => Promise<void>;
+  onFinalize: (
+    slideQuality: string | null,
+    stainQuality: string | null,
+    qualityComment: string,
+  ) => Promise<void>;
   onConfirmAndOutLab?: (
     reason: string,
     slideQuality: string,
     stainQuality: string,
+    qualityComment: string,
   ) => Promise<void>;
 }
 
@@ -46,6 +51,7 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
 }) => {
   const [slideQuality, setSlideQuality] = useState<string | null>(null);
   const [stainQuality, setStainQuality] = useState<string | null>(null);
+  const [qualityComment, setQualityComment] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [outLabOpen, setOutLabOpen] = useState(false);
@@ -56,6 +62,7 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
     if (open && caseId) {
       setSlideQuality(null);
       setStainQuality(null);
+      setQualityComment(caseData?.quality_comment || "");
       setPdfLoading(true);
       GyneDiagnosisService.previewReportPdf(Number(caseId))
         .then((blob) => {
@@ -68,7 +75,7 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
       setPdfUrl(null);
     }
     return () => { if (activeUrl) URL.revokeObjectURL(activeUrl); };
-  }, [open, caseId]);
+  }, [open, caseId, caseData?.quality_comment]);
 
   useEffect(() => {
     if (open) {
@@ -84,7 +91,7 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
   const handleConfirm = async () => {
     if (!canFinalize) return;
     onClose();
-    await onFinalize(slideQuality, stainQuality);
+    await onFinalize(slideQuality, stainQuality, qualityComment);
   };
 
   const handleConfirmAndOutLabClick = () => {
@@ -100,7 +107,12 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
     }
     setOutLabOpen(false);
     onClose();
-    await onConfirmAndOutLab?.(outLabReason, slideQuality as string, stainQuality as string);
+    await onConfirmAndOutLab?.(
+      outLabReason,
+      slideQuality as string,
+      stainQuality as string,
+      qualityComment,
+    );
   };
 
   if (!open) return null;
@@ -194,6 +206,22 @@ const GyneSignOffPage: React.FC<GyneSignOffPageProps> = ({
                 ))}
               </Space>
             </Radio.Group>
+          </div>
+
+          {/* Quality Comment */}
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>
+              3. Quality Comment{" "}
+              <span style={{ color: "#8c8c8c", fontWeight: 400, fontSize: 12 }}>(optional)</span>
+            </div>
+            <Input.TextArea
+              rows={3}
+              maxLength={1000}
+              showCount
+              placeholder="e.g. Obscuring blood / air-drying artifact"
+              value={qualityComment}
+              onChange={(e) => setQualityComment(e.target.value)}
+            />
           </div>
 
           {!canFinalize && (

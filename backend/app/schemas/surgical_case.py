@@ -38,6 +38,7 @@ class SurgicalCaseBase(BaseModel):
     stain_quality: Optional[QualityEnum] = None
     tissue_quality: Optional[QualityEnum] = None
     slide_quality: Optional[QualityEnum] = None
+    quality_comment: Optional[str] = None
 
     specimen_storage_status: Optional[str] = None
     specimen_storage_container: Optional[str] = None
@@ -143,6 +144,7 @@ class SurgicalCaseResponse(SurgicalCaseBase):
     stain_quality: Optional[str] = None
     tissue_quality: Optional[str] = None
     slide_quality: Optional[str] = None
+    quality_comment: Optional[str] = None
 
     registered_at: datetime
     collect_at: Optional[datetime] = None

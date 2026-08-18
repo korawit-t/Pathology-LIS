@@ -197,7 +197,7 @@ describe("GyneDiagnosisEntryPage", () => {
     // adequacy selection must route through Send-to-Pathologist and finalize
     // with requiresPathologistReview: true.
     await waitFor(() =>
-      expect(finalizeMock).toHaveBeenCalledWith(null, null, undefined, {
+      expect(finalizeMock).toHaveBeenCalledWith(null, null, null, undefined, {
         forceEdit: false,
         requiresPathologistReview: true,
         signOnlyCurrentUser: true,

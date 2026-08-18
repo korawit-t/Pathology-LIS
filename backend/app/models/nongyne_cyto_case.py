@@ -93,6 +93,7 @@ class NongyneCytologyCase(Base):
     # --- 6. Quality Assessment ---
     stain_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
     slide_quality = Column(Enum(QualityEnum, native_enum=False), nullable=True)
+    quality_comment = Column(Text, nullable=True)
 
     # --- Cancellation & Soft Delete ---
     is_cancelled = Column(Boolean, default=False, server_default="false", nullable=False, index=True)
