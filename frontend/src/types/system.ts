@@ -30,6 +30,15 @@ export interface SystemSetting {
 
   // --- Session / Security ---
   idle_timeout_minutes?: number;
+
+  // --- Multi-Factor Authentication ---
+  // Present only on the authenticated read; the public branding endpoint
+  // deliberately omits them.
+  mfa_enabled?: boolean;
+  mfa_required_roles?: string[] | null;
+  mfa_grace_period_days?: number;
+  mfa_allowed_methods?: string[] | null;
+  mfa_trusted_device_days?: number;
   idle_warning_minutes?: number;
 
   // --- Workflow & Report Settings ---

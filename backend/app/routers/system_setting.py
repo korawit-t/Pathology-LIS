@@ -7,7 +7,7 @@ from app.utils.file_handler import validate_and_sanitize
 from pydantic import BaseModel
 
 from app.db.database import get_db
-from app.schemas.system_setting import SystemSettingResponse, SystemSettingUpdate
+from app.schemas.system_setting import SystemSettingAdminResponse, SystemSettingResponse, SystemSettingUpdate
 from app.crud import system_setting as crud
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_MANAGE_SYSTEM_SETTINGS
@@ -53,7 +53,7 @@ def get_public_settings(slug: str = "master", db: Session = Depends(get_db)):
 # trusted at login. No-op for users without MFA.
 @router.patch(
     "/update",
-    response_model=SystemSettingResponse,
+    response_model=SystemSettingAdminResponse,
     dependencies=[Depends(require_step_up)],
 )
 def update_settings(
@@ -317,7 +317,7 @@ def sticker_test_print(db: Session = Depends(get_db)):
     )
 
 
-@router.get("/{setting_id}", response_model=SystemSettingResponse)
+@router.get("/{setting_id}", response_model=SystemSettingAdminResponse)
 def get_settings_by_id(
     setting_id: int,
     slug: str = "master",

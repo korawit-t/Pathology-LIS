@@ -7,12 +7,16 @@ import {
   Col,
   Space,
   Button,
+  Switch,
+  Select,
+  Alert,
   message,
 } from "antd";
 import {
   ClockCircleOutlined,
   ControlOutlined,
   SaveOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import SystemSettingService from "../../../services/systemSettingService";
 
@@ -55,6 +59,8 @@ const SecurityTab: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const warningMinutes = Form.useWatch("idle_warning_minutes", form) ?? 1;
+  const mfaEnabled = Form.useWatch("mfa_enabled", form) ?? false;
+  const trustedDays = Form.useWatch("mfa_trusted_device_days", form) ?? 14;
 
   const load = async () => {
     try {
@@ -136,6 +142,96 @@ const SecurityTab: React.FC = () => {
               <Space>
                 <Form.Item name="password_expiry_days" noStyle>
                   <InputNumber min={0} max={365} style={{ width: 100 }} />
+                </Form.Item>
+                <Text type="secondary">days</Text>
+              </Space>
+            </SettingRow>
+          </div>
+        </div>
+
+        {/* Multi-Factor Authentication */}
+        <div style={{ marginBottom: 40 }}>
+          <Title level={5} style={{ marginBottom: 8 }}>
+            <SafetyCertificateOutlined /> Multi-Factor Authentication
+          </Title>
+
+          {mfaEnabled && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="Users enrol themselves at /mfa-setup"
+              description={
+                "Turning this on does not enrol anybody. People who have not set up " +
+                "an authenticator keep signing in with a password alone until they do. " +
+                "If someone loses their device an administrator resets it for them \u2014 " +
+                "there are no printed recovery codes."
+              }
+            />
+          )}
+
+          <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
+            <SettingRow
+              title="Require a second factor"
+              description="Master switch. Off means logging in works exactly as it did before."
+              icon={<SafetyCertificateOutlined style={{ color: "#52c41a" }} />}
+            >
+              <Form.Item name="mfa_enabled" valuePropName="checked" noStyle>
+                <Switch />
+              </Form.Item>
+            </SettingRow>
+
+            <SettingRow
+              title="Roles that must enrol"
+              description="Everyone else may still opt in. Leave empty to compel nobody."
+              icon={<ControlOutlined style={{ color: "#1890ff" }} />}
+            >
+              <Form.Item name="mfa_required_roles" noStyle>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  disabled={!mfaEnabled}
+                  placeholder="No roles required"
+                  style={{ width: 280 }}
+                  options={[
+                    { value: "admin", label: "Admin" },
+                    { value: "lab_manager", label: "Lab Manager" },
+                    { value: "senior_pathologist", label: "Senior Pathologist" },
+                    { value: "pathologist", label: "Pathologist" },
+                    { value: "cytotechnologist", label: "Cytotechnologist" },
+                    { value: "histo", label: "Histotechnologist" },
+                    { value: "gross", label: "Grossing" },
+                    { value: "register", label: "Registration" },
+                  ]}
+                />
+              </Form.Item>
+            </SettingRow>
+
+            <SettingRow
+              title="Remember a device for"
+              description={
+                trustedDays === 0
+                  ? "Set to 0 \u2014 a code is required at every login, on every browser."
+                  : "How long a browser may skip the code after the user ticks Remember this device. Signing out a report always asks again."
+              }
+              icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
+            >
+              <Space>
+                <Form.Item name="mfa_trusted_device_days" noStyle>
+                  <InputNumber min={0} max={90} disabled={!mfaEnabled} style={{ width: 100 }} />
+                </Form.Item>
+                <Text type="secondary">days</Text>
+              </Space>
+            </SettingRow>
+
+            <SettingRow
+              title="Grace period before enrolment is enforced"
+              description="Recorded but not yet enforced \u2014 enforcing it needs a record of when the requirement started."
+              icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
+            >
+              <Space>
+                <Form.Item name="mfa_grace_period_days" noStyle>
+                  <InputNumber min={0} max={90} disabled={!mfaEnabled} style={{ width: 100 }} />
                 </Form.Item>
                 <Text type="secondary">days</Text>
               </Space>
