@@ -96,6 +96,7 @@ cp frontend/.env.example frontend/.env
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string (use service name `db` inside Docker) |
 | `SECRET_KEY` | Random secret — generate with `openssl rand -hex 32` |
+| `MFA_ENCRYPTION_KEY` | Encrypts stored TOTP secrets. Only needed once MFA is enabled; the backend boots without it. **Must not be the same value as `SECRET_KEY`** - a signing key and an encryption key should be separate, and tying TOTP secrets to `SECRET_KEY` would make it impossible to rotate without locking out every enrolled user. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Accepts a comma-separated list to rotate: new key first, old key kept until nothing needs it. |
 | `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins (scheme + host + port). In `production` **all must be `https://`**; in `development` `http://` is allowed. |
 | `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
