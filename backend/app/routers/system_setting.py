@@ -11,6 +11,7 @@ from app.schemas.system_setting import SystemSettingResponse, SystemSettingUpdat
 from app.crud import system_setting as crud
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_MANAGE_SYSTEM_SETTINGS
+from app.dependencies.step_up import require_step_up
 
 router = APIRouter(prefix="/system-settings", tags=["System Settings"])
 
@@ -47,7 +48,14 @@ def get_public_settings(slug: str = "master", db: Session = Depends(get_db)):
     return settings
 
 
-@router.patch("/update", response_model=SystemSettingResponse)
+# Changing system settings can switch off the very controls being relied on —
+# MFA itself among them — so it re-checks the second factor even on a browser
+# trusted at login. No-op for users without MFA.
+@router.patch(
+    "/update",
+    response_model=SystemSettingResponse,
+    dependencies=[Depends(require_step_up)],
+)
 def update_settings(
     obj_in: SystemSettingUpdate,
     slug: str = "master",

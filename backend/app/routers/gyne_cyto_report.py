@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from app.utils.time import local_now
 from app.crud.report_archive import get_gyne_archive
 from app.schemas.archive import ArchivePage
+from app.dependencies.step_up import require_step_up
 
 router = APIRouter(
     prefix="/gyne-cyto-reports",
@@ -143,7 +144,9 @@ def read_gyne_archive(
 @router.post(
     "/{case_id}/publish",
     response_model=GyneCytoReportResponse,
-    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)]
+    # Publishing is not reversible, so it re-checks the second factor even on a
+    # browser trusted at login. No-op for users without MFA.
+    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT), Depends(require_step_up)]
 )
 def publish_report(
     case_id: int, 

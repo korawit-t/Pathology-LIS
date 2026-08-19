@@ -95,3 +95,13 @@ class TrustedDeviceRead(BaseModel):
     expires_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MfaStepUpRequest(BaseModel):
+    """One field, three acceptable answers: TOTP code, backup code, or password.
+
+    Making the client decide which it is only moves the guesswork somewhere it
+    has less information.
+    """
+
+    code: str = Field(min_length=1, max_length=200)

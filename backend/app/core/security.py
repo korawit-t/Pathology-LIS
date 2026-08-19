@@ -85,6 +85,29 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 3))
 MFA_CHALLENGE_EXPIRE_MINUTES = int(os.getenv("MFA_CHALLENGE_EXPIRE_MINUTES", 5))
 
 
+# How long a step-up lasts. Short by design: it is meant to cover the action the
+# user just asked for, not to open a window they forget is open.
+STEP_UP_EXPIRE_MINUTES = int(os.getenv("STEP_UP_EXPIRE_MINUTES", 5))
+
+
+def create_step_up_token(uid: int, access_jti: str) -> tuple[str, datetime]:
+    """Prove a factor was re-checked just now, for one session only.
+
+    Bound to the jti of the access token that requested it. Without that
+    binding a step-up performed in one browser would authorise an irreversible
+    action taken from another — which is exactly the situation a stolen session
+    creates, and exactly what this is meant to catch.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=STEP_UP_EXPIRE_MINUTES)
+    to_encode = {
+        "uid": uid,
+        "exp": expire,
+        "type": "step_up",
+        "ajti": access_jti,
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM), expire
+
+
 def create_mfa_challenge_token(subject: Union[str, Any], uid: int) -> tuple[str, str, datetime]:
     """Issue the between-steps token — returns (token, jti, expires_at).
 
