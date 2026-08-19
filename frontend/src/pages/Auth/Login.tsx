@@ -8,11 +8,18 @@ import {
   message,
   Divider,
   Skeleton,
+  Checkbox,
 } from "antd";
-import { UserOutlined, LockOutlined, NotificationOutlined } from "@ant-design/icons";
+import {
+  UserOutlined,
+  LockOutlined,
+  NotificationOutlined,
+  SafetyCertificateOutlined,
+  ArrowLeftOutlined,
+} from "@ant-design/icons";
 import { useParams, useNavigate } from "react-router-dom";
 
-import { LoginPayload, LoginResponse } from "../../types/auth";
+import { LoginPayload, LoginResponse, MfaChallengeResponse } from "../../types/auth";
 import AuthService from "../../services/authService";
 import { useAuth } from "../../hooks/useAuth";
 import { getHomeRoute } from "../../utils/hasRole";
@@ -30,6 +37,12 @@ const Login: React.FC = () => {
   const hospitalSlug = rawSlug && /^[a-zA-Z0-9-]+$/.test(rawSlug) ? rawSlug : undefined;
   const [form] = Form.useForm();
   const [loading, setLoading] = useState<boolean>(false);
+  // Held in component state only. The challenge is short-lived and is the one
+  // thing standing between a correct password and a session, so it has no
+  // business in localStorage where anything on the page could read it.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [rememberDevice, setRememberDevice] = useState<boolean>(false);
+  const [mfaForm] = Form.useForm();
   const [branding, setBranding] = useState<SystemSetting | null>(null);
   const [fetchingBranding, setFetchingBranding] = useState<boolean>(true);
 
@@ -63,29 +76,41 @@ const Login: React.FC = () => {
     fetchBranding();
   }, [hospitalSlug]);
 
+  /** Shared by both paths: a completed login looks the same either way. */
+  const finishLogin = (loginData: LoginResponse) => {
+    const { status: loginStatus } = handleLoginSuccess(loginData);
+
+    if (loginStatus === "force_change") {
+      message.warning("Please change your temporary password before continuing.");
+      // handleLoginSuccess already navigated to /force-change-password
+      return;
+    }
+
+    const destination = getHomeRoute(loginData.roles, loginData.user?.position_name);
+    const isExternal = destination === "/results" || destination === "/hospital-results";
+    message.success(isExternal ? "Logged in successfully (Referral Portal)" : "Logged in successfully");
+    navigate(destination);
+  };
+
   const onFinish = async (values: LoginPayload) => {
     setLoading(true);
     try {
       const response = await AuthService.login(values);
-      const loginData: LoginResponse = response.data;
+      const data = response.data;
+
+      // A second factor applies: the server has sent no cookie and no user
+      // details, only a challenge. Nothing is logged in yet.
+      if ((data as MfaChallengeResponse).mfa_required) {
+        setMfaToken((data as MfaChallengeResponse).mfa_token);
+        return;
+      }
 
       // 🔒 SECURITY: respect the force-change-password redirect from
       // handleLoginSuccess. Previously this code unconditionally set
       // window.location.href to the user's home route, which silently
       // stomped the navigate() to /force-change-password and let users
       // skip the temporary-password change.
-      const { status: loginStatus } = handleLoginSuccess(loginData);
-
-      if (loginStatus === "force_change") {
-        message.warning("Please change your temporary password before continuing.");
-        // handleLoginSuccess already navigated to /force-change-password
-        return;
-      }
-
-      const destination = getHomeRoute(loginData.roles, loginData.user?.position_name);
-      const isExternal = destination === "/results" || destination === "/hospital-results";
-      message.success(isExternal ? "Logged in successfully (Referral Portal)" : "Logged in successfully");
-      navigate(destination);
+      finishLogin(data as LoginResponse);
     } catch (err: any) {
       const status = err.response?.status;
       if (status === 401) {
@@ -103,6 +128,119 @@ const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const onSubmitCode = async ({ code }: { code: string }) => {
+    if (!mfaToken) return;
+    setLoading(true);
+    try {
+      const response = await AuthService.completeMfaLogin(mfaToken, code, rememberDevice);
+      finishLogin(response.data);
+    } catch (err: any) {
+      const status = err.response?.status;
+      if (status === 401) {
+        // Covers both a wrong code and a challenge that has expired or been
+        // spent. Offering "start again" matters because the second case cannot
+        // be recovered by retyping.
+        message.error(err.response?.data?.detail || "That code is not valid.");
+      } else if (status === 429) {
+        message.error(
+          err.response?.data?.detail ||
+            "Too many attempts. Please wait a moment and try again.",
+        );
+      } else {
+        logger.error("MFA login error:", err);
+        message.error("An error occurred. Please try again.");
+      }
+      mfaForm.resetFields(["code"]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restartLogin = () => {
+    setMfaToken(null);
+    setRememberDevice(false);
+    mfaForm.resetFields();
+    form.resetFields(["password"]);
+  };
+
+  const subtitle = mfaToken
+    ? "Enter the code from your authenticator app"
+    : "Please log in to continue";
+
+  // One definition used by both layouts. The card is rendered twice — with and
+  // without the announcement panel — and a third copy for the code step would
+  // be a third place to keep in sync.
+  const formSection = mfaToken ? (
+    <Form form={mfaForm} name="mfa_form" onFinish={onSubmitCode} layout="vertical" size="large">
+      <div style={{ textAlign: "center", marginBottom: 20 }}>
+        <SafetyCertificateOutlined style={{ fontSize: 32, color: "#4a7cf6" }} />
+      </div>
+      <Form.Item
+        name="code"
+        rules={[{ required: true, message: "Please enter the 6-digit code." }]}
+      >
+        <Input
+          prefix={<SafetyCertificateOutlined style={{ color: "#bfbfbf" }} />}
+          placeholder="6-digit code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          autoFocus
+        />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 12 }}>
+        <Checkbox
+          checked={rememberDevice}
+          onChange={(e) => setRememberDevice(e.target.checked)}
+        >
+          Remember this device
+        </Checkbox>
+        <div style={{ marginLeft: 24 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Skip this step on this browser next time. Do not tick it on a shared
+            computer.
+          </Text>
+        </div>
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 8 }}>
+        <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, fontSize: 16 }}>
+          Verify
+        </Button>
+      </Form.Item>
+      <Button type="link" block onClick={restartLogin} icon={<ArrowLeftOutlined />}>
+        Start again
+      </Button>
+      <div style={{ textAlign: "center", marginTop: 4 }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Lost your device? Ask an administrator to reset it for you.
+        </Text>
+      </div>
+    </Form>
+  ) : (
+    <Form form={form} name="login_form" onFinish={onFinish} layout="vertical" size="large">
+      <Form.Item name="username" rules={[{ required: true, message: "Please enter your username." }]}>
+        <Input
+          prefix={<UserOutlined style={{ color: "#bfbfbf" }} />}
+          placeholder="Username"
+          autoComplete="username"
+          autoFocus
+        />
+      </Form.Item>
+      <Form.Item name="password" rules={[{ required: true, message: "Please enter your password." }]}>
+        <Input.Password
+          prefix={<LockOutlined style={{ color: "#bfbfbf" }} />}
+          placeholder="Password"
+          autoComplete="current-password"
+        />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 0 }}>
+        <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, fontSize: 16 }}>
+          Login
+        </Button>
+      </Form.Item>
+    </Form>
+  );
 
   const hasAnnouncement = !!branding?.login_announcement;
 
@@ -234,31 +372,10 @@ const Login: React.FC = () => {
                   <Title level={3} style={{ margin: 0, color: isDarkMode ? "#fff" : "inherit" }}>
                     Pathology LIS
                   </Title>
-                  <Text type="secondary">Please log in to continue</Text>
+                  <Text type="secondary">{subtitle}</Text>
                 </div>
 
-                <Form form={form} name="login_form" onFinish={onFinish} layout="vertical" size="large">
-                  <Form.Item name="username" rules={[{ required: true, message: "Please enter your username." }]}>
-                    <Input
-                      prefix={<UserOutlined style={{ color: "#bfbfbf" }} />}
-                      placeholder="Username"
-                      autoComplete="username"
-                      autoFocus
-                    />
-                  </Form.Item>
-                  <Form.Item name="password" rules={[{ required: true, message: "Please enter your password." }]}>
-                    <Input.Password
-                      prefix={<LockOutlined style={{ color: "#bfbfbf" }} />}
-                      placeholder="Password"
-                      autoComplete="current-password"
-                    />
-                  </Form.Item>
-                  <Form.Item style={{ marginBottom: 0 }}>
-                    <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, fontSize: 16 }}>
-                      Login
-                    </Button>
-                  </Form.Item>
-                </Form>
+                {formSection}
               </div>
             )}
 
@@ -270,30 +387,9 @@ const Login: React.FC = () => {
                   <Title level={3} style={{ margin: 0, color: isDarkMode ? "#fff" : "inherit" }}>
                     Pathology LIS
                   </Title>
-                  <Text type="secondary">Please log in to continue</Text>
+                  <Text type="secondary">{subtitle}</Text>
                 </div>
-                <Form form={form} name="login_form" onFinish={onFinish} layout="vertical" size="large">
-                  <Form.Item name="username" rules={[{ required: true, message: "Please enter your username." }]}>
-                    <Input
-                      prefix={<UserOutlined style={{ color: "#bfbfbf" }} />}
-                      placeholder="Username"
-                      autoComplete="username"
-                      autoFocus
-                    />
-                  </Form.Item>
-                  <Form.Item name="password" rules={[{ required: true, message: "Please enter your password." }]}>
-                    <Input.Password
-                      prefix={<LockOutlined style={{ color: "#bfbfbf" }} />}
-                      placeholder="Password"
-                      autoComplete="current-password"
-                    />
-                  </Form.Item>
-                  <Form.Item style={{ marginBottom: 0 }}>
-                    <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, fontSize: 16 }}>
-                      Login
-                    </Button>
-                  </Form.Item>
-                </Form>
+                {formSection}
               </div>
             )}
 
