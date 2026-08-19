@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from app.routers import (
     users,
     auth,
+    user_mfa,
     audit_log,
     organization,
     patients,
@@ -240,6 +241,7 @@ from app.routers import wsi_links as wsi_links_router
 
 # Include Routers
 app.include_router(auth.router)
+app.include_router(user_mfa.router)
 app.include_router(users.router)
 app.include_router(organization.router)
 app.include_router(patients.router)
