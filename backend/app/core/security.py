@@ -78,6 +78,34 @@ def create_access_token(
 
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 3))
 
+# Short-lived token bridging the two halves of an MFA login. It is NOT a
+# credential: it says only "this password was accepted, the second factor is
+# still outstanding". Five minutes is long enough to fetch a phone and read a
+# code, short enough that one left on screen is not much use to anyone.
+MFA_CHALLENGE_EXPIRE_MINUTES = int(os.getenv("MFA_CHALLENGE_EXPIRE_MINUTES", 5))
+
+
+def create_mfa_challenge_token(subject: Union[str, Any], uid: int) -> tuple[str, str, datetime]:
+    """Issue the between-steps token — returns (token, jti, expires_at).
+
+    type="mfa_challenge" keeps it out of every authenticated endpoint:
+    get_current_user accepts type="access" only, so presenting this as the
+    access_token cookie or a Bearer header authenticates nothing. The jti lets
+    /auth/login/mfa revoke it once spent, so a captured token cannot be
+    redeemed a second time.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=MFA_CHALLENGE_EXPIRE_MINUTES)
+    jti = str(uuid.uuid4())
+    to_encode = {
+        "sub": str(subject),
+        "uid": uid,
+        "exp": expire,
+        "type": "mfa_challenge",
+        "jti": jti,
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM), jti, expire
+
+
 
 def create_refresh_token(subject: Union[str, Any]) -> tuple[str, str, datetime]:
     """สร้าง Refresh Token ที่มีอายุการใช้งานนานกว่า Access Token — returns

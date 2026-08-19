@@ -17,10 +17,13 @@ from app.models.audit_log import AuditLog
 from app.models.revoked_token import RevokedToken
 from app.context import current_user_id, current_ip
 from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
+from app.crud import user_mfa as mfa_crud
+from app.schemas.user_mfa import MfaLoginRequest
 from app.core.security import (
     verify_password,
     create_access_token,
     create_refresh_token,
+    create_mfa_challenge_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
     SECRET_KEY,
@@ -233,7 +236,52 @@ def login_for_access_token(
     if not user.status:
         raise HTTPException(status_code=400, detail="Inactive user")
 
-    # Reset failed counter on successful login.
+    # The password is right, but that is only the first factor. Everything the
+    # caller would want — identity, roles, hospitals, and both cookies — is
+    # withheld until the second one is produced, so a stolen password on its
+    # own reveals nothing beyond the fact that it was correct.
+    if _mfa_required_for_login(db, user):
+        challenge, jti, _exp = create_mfa_challenge_token(subject=user.username, uid=user.id)
+        db.add(AuditLog(
+            user_id=user.id,
+            action="MFA_CHALLENGE_ISSUED",
+            resource_type="User",
+            resource_id=user.id,
+            new_values={"jti": jti},
+            ip_address=ip,
+        ))
+        # The failure counter is deliberately left alone here. It is reset only
+        # once the login actually completes, so failures at the second step
+        # keep feeding the same backoff and cannot be cleared by replaying a
+        # known-good password.
+        db.commit()
+        return {"mfa_required": True, "mfa_token": challenge}
+
+    return _complete_login(db, response, user, ip, action="LOGIN")
+
+
+def _mfa_required_for_login(db: Session, user: User) -> bool:
+    """Whether this sign-in needs a second factor.
+
+    Both switches have to agree: the installation must have MFA on, and this
+    user must have a confirmed factor. Turning the master switch off therefore
+    lets everyone straight back in without unenrolling anyone.
+    """
+    from app.models.system_setting import SystemSetting
+
+    if not user.mfa_enabled:
+        return False
+    settings = db.query(SystemSetting).first()
+    return bool(settings and settings.mfa_enabled)
+
+
+def _complete_login(db: Session, response: Response, user: User, ip, action: str) -> dict:
+    """Issue cookies and build the session payload.
+
+    Shared by the one-step and two-step paths on purpose: the body a client
+    receives must not depend on which route it arrived by, or the frontend ends
+    up with two subtly different notions of a logged-in user.
+    """
     user.failed_login_attempts = 0
     user.locked_until = None
 
@@ -242,7 +290,7 @@ def login_for_access_token(
 
     db.add(AuditLog(
         user_id=user.id,
-        action="LOGIN",
+        action=action,
         resource_type="User",
         resource_id=user.id,
         ip_address=ip,
@@ -278,6 +326,110 @@ def login_for_access_token(
             "position_name": position_name,
         },
     }
+
+
+# --- Login step two: redeem the MFA challenge ---
+@router.post("/login/mfa")
+@limiter.limit(LOGIN_ATTEMPTS_PER_IP)
+def complete_mfa_login(
+    request: Request,
+    response: Response,
+    payload: MfaLoginRequest,
+    db: Session = Depends(get_db),
+):
+    """Exchange a challenge token plus a second factor for a session.
+
+    Accepts either a TOTP code or a backup code in the same field: users do not
+    reliably distinguish them, and treating them as separate inputs mostly
+    produces support calls.
+    """
+    ip = request.client.host if request.client else None
+    now = datetime.now(timezone.utc)
+
+    def _reject(detail: str = "Invalid or expired challenge"):
+        return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+    try:
+        decoded = jwt.decode(payload.mfa_token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise _reject()
+
+    if decoded.get("type") != "mfa_challenge":
+        raise _reject()
+    jti = decoded.get("jti")
+    username = decoded.get("sub")
+    if not jti or not username:
+        raise _reject()
+
+    # A challenge is single-use. Without this, anyone who captured one could
+    # keep retrying second factors against it for its whole five minutes.
+    if db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
+        raise _reject()
+
+    from sqlalchemy.orm import joinedload
+    user = (
+        db.query(User)
+        .options(joinedload(User.position), joinedload(User.hospitals))
+        .filter(User.username == username)
+        .first()
+    )
+    if not user or not user.status:
+        raise _reject()
+
+    # The same backoff that guards the password guards this step, so failures
+    # here are not a free, unthrottled way to grind at a six-digit code.
+    if user.locked_until and user.locked_until > now:
+        retry_after = max(1, int((user.locked_until - now).total_seconds()) + 1)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Try again in {_humanize_seconds(retry_after)}.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    method = mfa_crud.get_totp_method(db, user.id, confirmed=True)
+    used_backup_code = False
+    verified = bool(method and mfa_crud.verify_totp(db, method, payload.code))
+    if not verified:
+        verified = mfa_crud.consume_backup_code(db, user, payload.code)
+        used_backup_code = verified
+
+    if not verified:
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        backoff = _login_backoff_seconds(user.failed_login_attempts)
+        user.locked_until = now + timedelta(seconds=backoff) if backoff else None
+        db.add(AuditLog(
+            user_id=user.id,
+            action="MFA_FAILED",
+            resource_type="User",
+            resource_id=user.id,
+            ip_address=ip,
+        ))
+        db.commit()
+        raise _reject("That code is not valid.")
+
+    # Spend the challenge before issuing anything, so a replay of this exact
+    # request cannot mint a second session.
+    exp_ts = decoded.get("exp")
+    if exp_ts:
+        db.merge(RevokedToken(jti=jti, expires_at=datetime.fromtimestamp(exp_ts, tz=timezone.utc)))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+
+    if used_backup_code:
+        db.add(AuditLog(
+            user_id=user.id,
+            action="MFA_BACKUP_CODE_USED",
+            resource_type="User",
+            resource_id=user.id,
+            new_values={"remaining": mfa_crud.count_unused_backup_codes(db, user.id)},
+            ip_address=ip,
+        ))
+
+    body = _complete_login(db, response, user, ip, action="MFA_SUCCESS")
+    body["used_backup_code"] = used_backup_code
+    return body
 
 
 # --- Refresh (with rotation) ---

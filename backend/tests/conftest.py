@@ -52,27 +52,37 @@ _pwd = CryptContext(schemes=["argon2"], deprecated="auto")
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
-    """Clear all rate-limit counters before each test to prevent 429 errors.
+    """Clear every rate-limit counter before each test to prevent 429 errors.
 
-    Three separate counters exist: app.state.limiter, the Limiter auth.py
-    defines for itself, and the per-(username, IP) login cap auth.py enforces
-    by hand — that last one is not a slowapi Limiter at all, but it holds state
-    across requests just the same and bleeds between tests if left alone.
+    Routers define their own Limiter instances rather than sharing
+    app.state.limiter, and auth.py additionally keeps a per-(username, IP) cap
+    that is not a slowapi Limiter at all but holds state across requests just
+    the same. Both kinds bleed between tests if left alone.
+
+    Discovered rather than listed: a hardcoded list silently stops covering a
+    router the moment someone adds one, and the symptom — unrelated tests
+    failing with 429 once the suite grows — is thoroughly confusing to track
+    down.
     """
-    try:
-        app.state.limiter._storage.reset()
-    except Exception:
-        pass
-    try:
-        from app.routers.auth import limiter as _auth_limiter
-        _auth_limiter._storage.reset()
-    except Exception:
-        pass
-    try:
-        from app.routers.auth import _username_rate_limiter
-        _username_rate_limiter.storage.reset()
-    except Exception:
-        pass
+    import sys
+
+    stores = [getattr(app.state, "limiter", None)]
+    for name, module in list(sys.modules.items()):
+        if not name.startswith("app.routers"):
+            continue
+        for attr in vars(module).values():
+            if hasattr(attr, "_storage") or hasattr(attr, "storage"):
+                stores.append(attr)
+
+    for holder in stores:
+        for attr_name in ("_storage", "storage"):
+            storage = getattr(holder, attr_name, None)
+            reset = getattr(storage, "reset", None)
+            if callable(reset):
+                try:
+                    reset()
+                except Exception:
+                    pass
     yield
 
 
