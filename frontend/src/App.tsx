@@ -15,6 +15,7 @@ import WSIViewerPage from "./pages/WSIViewer/WSIViewerPage";
 import ResultPage from "./pages/Result/ResultPage";
 import HospitalResultPage from "./pages/Result/HospitalResultPage";
 import ForceChangePassword from "./pages/Auth/ForceChangePassword";
+import MfaSetup from "./pages/Auth/MfaSetup";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
@@ -67,6 +68,17 @@ const MainApp: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <ForceChangePassword />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* 🔒 ตั้งค่า Two-factor — เข้าเองโดยสมัครใจ ยังไม่มีการบังคับ
+                  (การบังคับตาม grace period ต้องมีคอลัมน์ anchor ก่อน) */}
+              <Route
+                path="/mfa-setup"
+                element={
+                  <ProtectedRoute>
+                    <MfaSetup />
                   </ProtectedRoute>
                 }
               />

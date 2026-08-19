@@ -20,6 +20,8 @@ vi.mock("../../hooks/useAuth", () => ({
 }));
 
 const mockedLogin = AuthService.login as unknown as ReturnType<typeof vi.fn>;
+const mockedCompleteMfa =
+  AuthService.completeMfaLogin as unknown as ReturnType<typeof vi.fn>;
 const mockedGetPublicSettings =
   SystemSettingService.getPublicSettings as unknown as ReturnType<typeof vi.fn>;
 
@@ -158,5 +160,124 @@ describe("Login", () => {
       await screen.findByText("Please change your temporary password before continuing."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Home")).not.toBeInTheDocument();
+  });
+});
+
+describe("Login — two-step with a second factor", () => {
+  const CHALLENGE = { data: { mfa_required: true, mfa_token: "challenge-token" } };
+  const SESSION = { data: { token_type: "bearer", roles: ["admin"] } };
+
+  const submitCredentials = async () => {
+    renderLogin();
+    await screen.findByPlaceholderText("Username");
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "alice" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "s3cret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetPublicSettings.mockResolvedValue(makeSetting());
+    mockHandleLoginSuccess.mockReturnValue({ status: "success" });
+  });
+
+  it("asks for a code instead of logging in when the server sends a challenge", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    await submitCredentials();
+
+    expect(await screen.findByPlaceholderText("6-digit code")).toBeInTheDocument();
+    // Nothing is logged in yet — the session only exists after the second step.
+    expect(mockHandleLoginSuccess).not.toHaveBeenCalled();
+  });
+
+  it("completes the login once a valid code is entered", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    mockedCompleteMfa.mockResolvedValue(SESSION);
+    await submitCredentials();
+
+    fireEvent.change(await screen.findByPlaceholderText("6-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    expect(await screen.findByText("Dashboard Home")).toBeInTheDocument();
+    expect(mockedCompleteMfa).toHaveBeenCalledWith("challenge-token", "123456", false);
+  });
+
+  it("passes the remember-device choice through", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    mockedCompleteMfa.mockResolvedValue(SESSION);
+    await submitCredentials();
+
+    fireEvent.change(await screen.findByPlaceholderText("6-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() =>
+      expect(mockedCompleteMfa).toHaveBeenCalledWith("challenge-token", "123456", true),
+    );
+  });
+
+  it("does not remember the device unless the box is ticked", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    mockedCompleteMfa.mockResolvedValue(SESSION);
+    await submitCredentials();
+
+    fireEvent.change(await screen.findByPlaceholderText("6-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() =>
+      expect(mockedCompleteMfa).toHaveBeenCalledWith("challenge-token", "123456", false),
+    );
+  });
+
+  it("keeps the user on the code step when the code is rejected", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    mockedCompleteMfa.mockRejectedValue({
+      response: { status: 401, data: { detail: "That code is not valid." } },
+    });
+    await submitCredentials();
+
+    fireEvent.change(await screen.findByPlaceholderText("6-digit code"), {
+      target: { value: "000000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    expect(await screen.findByText("That code is not valid.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("6-digit code")).toBeInTheDocument();
+    expect(mockHandleLoginSuccess).not.toHaveBeenCalled();
+  });
+
+  it("can go back to the credentials step", async () => {
+    // The challenge expires after five minutes and is single-use, so retyping
+    // the code is not always enough to recover — there has to be a way back.
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    await submitCredentials();
+    await screen.findByPlaceholderText("6-digit code");
+
+    fireEvent.click(screen.getByRole("button", { name: /Start again/ }));
+
+    expect(await screen.findByPlaceholderText("Username")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
+  });
+
+  it("does not send the username or password to the second step", async () => {
+    mockedLogin.mockResolvedValue(CHALLENGE);
+    mockedCompleteMfa.mockResolvedValue(SESSION);
+    await submitCredentials();
+
+    fireEvent.change(await screen.findByPlaceholderText("6-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() => expect(mockedCompleteMfa).toHaveBeenCalled());
+    const args = JSON.stringify(mockedCompleteMfa.mock.calls[0]);
+    expect(args).not.toContain("s3cret");
+    expect(args).not.toContain("alice");
   });
 });
