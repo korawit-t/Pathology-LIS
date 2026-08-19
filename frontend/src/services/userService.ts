@@ -57,6 +57,17 @@ const UserService = {
   deleteUser: async (id: number): Promise<void> => {
     await api.delete(`/users/${id}`);
   },
+
+  /**
+   * Clear a user's second factor after they lose their device.
+   *
+   * Fails with 403 step_up_required when the caller has MFA of their own —
+   * see StepUpModal. Removes the authenticator and every trusted browser, so
+   * the lost device stops working too.
+   */
+  resetMfa: async (id: number): Promise<void> => {
+    await api.post(`/users/${id}/mfa/reset`);
+  },
 };
 
 export default UserService;
