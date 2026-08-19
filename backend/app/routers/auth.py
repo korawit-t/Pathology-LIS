@@ -15,9 +15,11 @@ from app.db.database import get_db
 from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.revoked_token import RevokedToken
+from app.models.system_setting import SystemSetting
 from app.context import current_user_id, current_ip
 from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
 from app.crud import user_mfa as mfa_crud
+from app.crud import user_trusted_device as device_crud
 from app.schemas.user_mfa import MfaLoginRequest
 from app.core.security import (
     verify_password,
@@ -142,6 +144,19 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
     )
 
 
+def _set_trusted_device_cookie(response: Response, token: str, days: int):
+    response.set_cookie(
+        key=device_crud.COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite=COOKIE_SAMESITE,
+        max_age=days * 86400,
+        path="/",
+        domain=COOKIE_DOMAIN,
+    )
+
+
 def _clear_auth_cookies(response: Response):
     response.delete_cookie("access_token", path="/", domain=COOKIE_DOMAIN)
     response.delete_cookie("refresh_token", path="/", domain=COOKIE_DOMAIN)
@@ -154,6 +169,7 @@ def login_for_access_token(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
+    trusted_device: Optional[str] = Cookie(default=None, alias=device_crud.COOKIE_NAME),
     db: Session = Depends(get_db),
 ):
     ip = request.client.host if request.client else None
@@ -241,6 +257,16 @@ def login_for_access_token(
     # withheld until the second one is produced, so a stolen password on its
     # own reveals nothing beyond the fact that it was correct.
     if _mfa_required_for_login(db, user):
+        # A trusted browser skips the code, never the password — which has
+        # already been checked by this point. Revocation and expiry are read
+        # from the database on every login, so removing a device in the profile
+        # screen takes effect immediately rather than whenever a cookie happens
+        # to lapse.
+        device = device_crud.find_valid_device(db, user, trusted_device)
+        if device:
+            device_crud.touch(db, device)
+            return _complete_login(db, response, user, ip, action="LOGIN_TRUSTED_DEVICE")
+
         challenge, jti, _exp = create_mfa_challenge_token(subject=user.username, uid=user.id)
         db.add(AuditLog(
             user_id=user.id,
@@ -429,6 +455,31 @@ def complete_mfa_login(
 
     body = _complete_login(db, response, user, ip, action="MFA_SUCCESS")
     body["used_backup_code"] = used_backup_code
+
+    body["device_remembered"] = False
+    if payload.remember_device:
+        settings = db.query(SystemSetting).first()
+        days = device_crud.trusted_device_days(settings)
+        token = device_crud.remember_device(
+            db,
+            user,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=ip,
+            days=days,
+        )
+        if token:
+            db.add(AuditLog(
+                user_id=user.id,
+                action="MFA_DEVICE_TRUSTED",
+                resource_type="User",
+                resource_id=user.id,
+                new_values={"days": days},
+                ip_address=ip,
+            ))
+            db.commit()
+            _set_trusted_device_cookie(response, token, days)
+            body["device_remembered"] = True
+
     return body
 
 

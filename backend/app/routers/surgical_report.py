@@ -35,6 +35,7 @@ from app.models.surgical_report import SurgicalReport, ReportStatus
 from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
 from app.crud.report_archive import get_surgical_archive
 from app.schemas.archive import ArchivePage
+from app.dependencies.step_up import require_step_up
 
 router = APIRouter(prefix="/surgical-reports", tags=["Surgical Reports"])
 
@@ -186,7 +187,9 @@ def read_pending_cosign_worklist(
 @router.post(
     "/{case_id}/finalize-snapshot",
     response_model=SurgicalReportResponse,  # ใส่ Response Model เพื่อให้ Swagger สวยงาม
-    dependencies=[Depends(CAN_WRITE_REPORT)],  # คงเรื่อง Security ไว้
+    # Signing out a report is not reversible, so it re-checks the second factor
+    # even on a browser trusted at login. No-op for users without MFA.
+    dependencies=[Depends(CAN_WRITE_REPORT), Depends(require_step_up)],
 )
 def finalize_and_snapshot_endpoint(
     case_id: int,

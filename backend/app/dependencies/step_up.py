@@ -1,0 +1,85 @@
+"""Re-authentication in front of actions that cannot be taken back.
+
+Trusting a browser (see app/crud/user_trusted_device.py) means the second
+factor is not asked for on every login. That trade is only defensible while the
+irreversible actions still ask — signing out a report, amending an approved
+result, changing system settings. Otherwise a session left open on a ward
+machine is enough to publish a diagnosis in someone else's name.
+
+Deliberately a no-op for users without MFA. This has to be able to ship to
+installations that have never switched MFA on without changing how their staff
+sign out reports; the check only bites where there is a second factor to check
+against.
+"""
+
+from typing import Optional
+
+from fastapi import Cookie, Depends, Header, HTTPException, status
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+
+from app.core.security import ALGORITHM, SECRET_KEY
+from app.db.database import get_db
+from app.dependencies.auth import get_current_active_user
+from app.models.system_setting import SystemSetting
+from app.models.user import User
+
+COOKIE_NAME = "step_up"
+
+# Sent instead of a bare 403 so the frontend can tell "you may not do this" from
+# "confirm it is you" and put up the code prompt rather than an error.
+STEP_UP_REQUIRED_DETAIL = "step_up_required"
+
+
+def _access_jti(access_token: Optional[str], authorization: Optional[str]) -> Optional[str]:
+    token = access_token
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    return payload.get("jti")
+
+
+def require_step_up(
+    step_up: Optional[str] = Cookie(default=None, alias=COOKIE_NAME),
+    access_token: Optional[str] = Cookie(default=None),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+) -> User:
+    """Allow the request only if a factor was re-checked in the last few minutes."""
+    settings = db.query(SystemSetting).first()
+    mfa_on = bool(settings and settings.mfa_enabled)
+    if not mfa_on or not user.mfa_enabled:
+        return user
+
+    if not step_up:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=STEP_UP_REQUIRED_DETAIL
+        )
+
+    try:
+        payload = jwt.decode(step_up, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=STEP_UP_REQUIRED_DETAIL
+        )
+
+    if payload.get("type") != "step_up" or payload.get("uid") != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=STEP_UP_REQUIRED_DETAIL
+        )
+
+    # Bound to the session that asked for it: a step-up done in one browser must
+    # not authorise an action from another.
+    current_jti = _access_jti(access_token, authorization)
+    if not current_jti or payload.get("ajti") != current_jti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=STEP_UP_REQUIRED_DETAIL
+        )
+
+    return user

@@ -84,6 +84,10 @@ class SystemSetting(Base):
     # Which factor types count. Lets a site require phishing-resistant WebAuthn
     # for report sign-out once that ships, while leaving TOTP for everyone else.
     mfa_allowed_methods = Column(JSON, nullable=True, default=lambda: ["totp"])
+    # How long a browser stays trusted after the user ticks "remember this
+    # device". 0 disables trusted devices entirely, so a site that wants a code
+    # on every single login can have one.
+    mfa_trusted_device_days = Column(Integer, default=14, nullable=False, server_default="14")
 
     # --- Workflow Control ---
     enable_approve_system = Column(Boolean, default=False) # Surgical (Legacy name)

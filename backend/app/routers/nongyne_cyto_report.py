@@ -29,6 +29,7 @@ from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_
 from pydantic import BaseModel
 from app.crud.report_archive import get_nongyne_archive
 from app.schemas.archive import ArchivePage
+from app.dependencies.step_up import require_step_up
 
 router = APIRouter(
     prefix="/nongyne-cyto-reports",
@@ -102,7 +103,9 @@ def read_nongyne_archive(
 @router.post(
     "/{case_id}/publish",
     response_model=NongyneCytoReportResponse,
-    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT)],
+    # Publishing is not reversible, so it re-checks the second factor even on a
+    # browser trusted at login. No-op for users without MFA.
+    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT), Depends(require_step_up)],
 )
 def publish_report(
     case_id: int,

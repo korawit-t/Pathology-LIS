@@ -12,17 +12,23 @@ precisely what MFA exists to survive: without that check, whoever took one
 could enrol their own authenticator and lock the real owner out.
 """
 
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.context import current_ip
 from app.core.mfa_crypto import MfaEncryptionKeyError, is_configured
-from app.core.security import verify_password
+from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
+from app.dependencies import step_up as step_up_dep
+from app.core.security import STEP_UP_EXPIRE_MINUTES
+from jose import JWTError, jwt
+from app.core.security import ALGORITHM, SECRET_KEY
+from app.core.security import create_step_up_token, verify_password
 from app.crud import user_mfa as crud
+from app.crud import user_trusted_device as device_crud
 from app.db.database import get_db
 from app.dependencies.auth import get_current_active_user
 from app.models.audit_log import AuditLog
@@ -33,8 +39,10 @@ from app.schemas.user_mfa import (
     MfaConfirmResponse,
     MfaMethodRead,
     MfaPasswordConfirm,
+    MfaStepUpRequest,
     MfaSetupResponse,
     MfaStatusResponse,
+    TrustedDeviceRead,
 )
 
 limiter = Limiter(key_func=get_remote_address)
@@ -198,7 +206,10 @@ def disable_mfa(
         )
 
     crud.disable_mfa(db, user)
-    _audit(db, user, "MFA_DISABLED")
+    # A trust record that outlives the factor it was standing in for is a
+    # bypass nobody is watching any more.
+    revoked = device_crud.revoke_all(db, user.id)
+    _audit(db, user, "MFA_DISABLED", {"trusted_devices_revoked": revoked})
     db.commit()
 
 
@@ -223,3 +234,114 @@ def regenerate_backup_codes(
     _audit(db, user, "MFA_BACKUP_CODES_REGENERATED")
     db.commit()
     return MfaBackupCodesResponse(backup_codes=codes)
+
+
+@router.get("/devices", response_model=List[TrustedDeviceRead])
+def list_trusted_devices(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Browsers currently allowed to skip the second factor.
+
+    The list is the point of the feature as much as the convenience is: an
+    entry nobody recognises is the signal that something is wrong, and there is
+    nowhere else that would show it.
+    """
+    return [TrustedDeviceRead.model_validate(d) for d in device_crud.list_devices(db, user.id)]
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_trusted_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Revoking takes effect on the next login, not when the cookie expires.
+
+    No password is asked for here on purpose: removing trust only ever makes
+    the account harder to reach, and putting friction in front of the safe
+    direction is how people end up not doing it.
+    """
+    if not device_crud.revoke(db, user.id, device_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+    _audit(db, user, "MFA_DEVICE_REVOKED", {"device_id": device_id})
+    db.commit()
+
+
+@router.delete("/devices", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_all_trusted_devices(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """The "I have lost a laptop" button."""
+    revoked = device_crud.revoke_all(db, user.id)
+    _audit(db, user, "MFA_ALL_DEVICES_REVOKED", {"count": revoked})
+    db.commit()
+
+
+@router.post("/step-up", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")
+def step_up(
+    request: Request,
+    response: Response,
+    payload: MfaStepUpRequest,
+    access_token: Optional[str] = Cookie(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Re-check a factor so an irreversible action can go ahead.
+
+    Accepts a TOTP code, a backup code, or the account password. The password is
+    allowed because this same prompt has to work for users who have no second
+    factor — the alternative is a separate flow for them, which means the
+    frontend has to know which case it is in before it can ask anything.
+
+    The grant is bound to the current access token, so it authorises this
+    session and no other, and it lasts minutes rather than for the session.
+    """
+    verified = False
+
+    method = crud.get_totp_method(db, user.id, confirmed=True)
+    if method:
+        try:
+            verified = crud.verify_totp(db, method, payload.code)
+        except MfaEncryptionKeyError:
+            verified = False
+    if not verified:
+        verified = crud.consume_backup_code(db, user, payload.code)
+    if not verified:
+        verified = verify_password(payload.code, user.hashed_password)
+
+    if not verified:
+        _audit(db, user, "STEP_UP_FAILED")
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="That code or password is not valid.",
+        )
+
+    jti = None
+    if access_token:
+        try:
+            jti = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM]).get("jti")
+        except JWTError:
+            jti = None
+    if not jti:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate the current session.",
+        )
+
+    token, _expires = create_step_up_token(uid=user.id, access_jti=jti)
+    response.set_cookie(
+        key=step_up_dep.COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite=COOKIE_SAMESITE,
+        max_age=STEP_UP_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=COOKIE_DOMAIN,
+    )
+    _audit(db, user, "STEP_UP_GRANTED")
+    db.commit()
