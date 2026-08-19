@@ -220,10 +220,13 @@ def reset_user_mfa(
 ):
     """Clear a user's second factor after they lose their device.
 
-    Removes the authenticator, the backup codes and every trusted browser: a
-    trust record surviving the factor it stood in for would let the old device
-    keep working, which is the opposite of what someone reporting a lost phone
-    is asking for.
+    Removes the authenticator and every trusted browser: a trust record
+    surviving the factor it stood in for would let the old device keep working,
+    which is the opposite of what someone reporting a lost phone is asking for.
+
+    Since the lab chose administrator-verified reset over printed recovery
+    codes, this endpoint and scripts/reset_mfa.py are now the only ways back
+    into an enrolled account.
 
     The caller re-authenticates first (see require_step_up). This is the one
     routine action that lowers another account's protection, so a session left

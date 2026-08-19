@@ -87,30 +87,3 @@ class UserMfaMethod(Base):
             postgresql_where=text("is_primary"),
         ),
     )
-
-
-class UserMfaBackupCode(Base):
-    """Single-use recovery codes, stored only as Argon2 hashes.
-
-    Whether these ship at all is still an open question (TODO.md M16) — in
-    practice they tend to end up on a note beside the monitor, which cancels
-    out the second factor. The table is here so that decision is not blocked on
-    a migration.
-    """
-
-    __tablename__ = "user_mfa_backup_codes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    code_hash = Column(String, nullable=False)
-    # Set on redemption rather than deleting the row, so a support question
-    # about which codes were spent can still be answered.
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    user = relationship(
-        "User",
-        backref=backref("mfa_backup_codes", cascade="all, delete-orphan", passive_deletes=True),
-    )

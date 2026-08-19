@@ -8,16 +8,15 @@ exactly the same check and must not drift apart.
 
 import secrets
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import pyotp
 from sqlalchemy.orm import Session
 
 from app.core.mfa_crypto import decrypt_secret, encrypt_secret
-from app.core.security import get_password_hash, verify_password
 from app.models.system_setting import SystemSetting
 from app.models.user import User
-from app.models.user_mfa import UserMfaBackupCode, UserMfaMethod
+from app.models.user_mfa import UserMfaMethod
 
 TOTP_ISSUER = "Pathology LIS"
 
@@ -25,11 +24,6 @@ TOTP_ISSUER = "Pathology LIS"
 # as it rolls over and modest clock drift on the phone, without widening the
 # guessable window much: three codes are live at a time out of a million.
 TOTP_VALID_WINDOW = 1
-
-BACKUP_CODE_COUNT = 10
-# Two groups of four from an unambiguous alphabet — no O/0, I/1, or similar —
-# because these get read off paper and typed under time pressure.
-_BACKUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def _now() -> datetime:
@@ -145,96 +139,25 @@ def start_totp_enrolment(db: Session, user: User) -> Tuple[UserMfaMethod, str, s
     return method, uri, secret
 
 
-def confirm_totp_enrolment(db: Session, user: User, code: str) -> Optional[List[str]]:
-    """Verify the first code and switch the factor on.
-
-    Returns freshly generated backup codes, or None when the code is wrong.
-    """
+def confirm_totp_enrolment(db: Session, user: User, code: str) -> bool:
+    """Verify the first code and switch the factor on."""
     method = get_totp_method(db, user.id, confirmed=False)
     if not method:
-        return None
+        return False
     if not verify_totp(db, method, code):
-        return None
+        return False
 
     method.confirmed_at = _now()
     method.is_primary = True
     user.mfa_enabled = True
     db.add_all([method, user])
-
-    return regenerate_backup_codes(db, user)
+    return True
 
 
 def disable_mfa(db: Session, user: User) -> None:
-    """Remove every factor and backup code from the account."""
+    """Remove every factor from the account."""
     db.query(UserMfaMethod).filter(UserMfaMethod.user_id == user.id).delete(
-        synchronize_session=False
-    )
-    db.query(UserMfaBackupCode).filter(UserMfaBackupCode.user_id == user.id).delete(
         synchronize_session=False
     )
     user.mfa_enabled = False
     db.add(user)
-
-
-# ---------------------------------------------------------------------------
-# Backup codes
-# ---------------------------------------------------------------------------
-
-def _new_backup_code() -> str:
-    body = "".join(secrets.choice(_BACKUP_ALPHABET) for _ in range(8))
-    return f"{body[:4]}-{body[4:]}"
-
-
-def regenerate_backup_codes(db: Session, user: User) -> List[str]:
-    """Replace all codes and return the plaintext, which is never stored.
-
-    Hashed with the same Argon2 context as passwords: a backup code is a
-    password substitute and a leaked table should not hand over working ones.
-    """
-    db.query(UserMfaBackupCode).filter(UserMfaBackupCode.user_id == user.id).delete(
-        synchronize_session=False
-    )
-    codes = [_new_backup_code() for _ in range(BACKUP_CODE_COUNT)]
-    db.add_all(
-        UserMfaBackupCode(user_id=user.id, code_hash=get_password_hash(code))
-        for code in codes
-    )
-    return codes
-
-
-def count_unused_backup_codes(db: Session, user_id: int) -> int:
-    return (
-        db.query(UserMfaBackupCode)
-        .filter(
-            UserMfaBackupCode.user_id == user_id,
-            UserMfaBackupCode.used_at.is_(None),
-        )
-        .count()
-    )
-
-
-def consume_backup_code(db: Session, user: User, code: str) -> bool:
-    """Spend a backup code. Each works exactly once.
-
-    Every unused code has to be checked, since only the hashes are stored. That
-    is BACKUP_CODE_COUNT Argon2 verifications in the worst case, which is the
-    price of not keeping them in a reversible form.
-    """
-    candidate = (code or "").strip().upper()
-    if not candidate:
-        return False
-
-    rows = (
-        db.query(UserMfaBackupCode)
-        .filter(
-            UserMfaBackupCode.user_id == user.id,
-            UserMfaBackupCode.used_at.is_(None),
-        )
-        .all()
-    )
-    for row in rows:
-        if verify_password(candidate, row.code_hash):
-            row.used_at = _now()
-            db.add(row)
-            return True
-    return False

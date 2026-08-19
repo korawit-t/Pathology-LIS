@@ -1,5 +1,9 @@
 """Recovering an account whose second factor is gone.
 
+Since the lab chose administrator-verified reset over printed recovery codes,
+these two routes are now the *only* way back into an enrolled account. That
+makes them load-bearing rather than a convenience.
+
 Two routes, deliberately. The API covers the ordinary case — someone reports a
 lost phone and an administrator clears it. The console script covers the case
 the API cannot: the last administrator loses theirs, and nobody can sign in to
@@ -17,7 +21,7 @@ from app.core.mfa_crypto import ENV_VAR, decrypt_secret
 from app.crud import user_mfa as mfa_crud
 from app.models.audit_log import AuditLog
 from app.models.system_setting import SystemSetting
-from app.models.user_mfa import UserMfaBackupCode, UserMfaMethod
+from app.models.user_mfa import UserMfaMethod
 from app.models.user_trusted_device import UserTrustedDevice
 from scripts.reset_mfa import reset as console_reset
 
@@ -39,14 +43,13 @@ def mfa_on(db):
 
 
 def _enrol(client, db, user, pwd, remember=False):
-    """Put a confirmed factor on an account and return its backup codes."""
+    """Put a confirmed factor on an account; return its TOTP secret."""
     client.post("/auth/login", data={"username": user.username, "password": pwd})
     client.post("/auth/mfa/setup", json={"password": pwd})
     db.rollback()
     secret = decrypt_secret(mfa_crud.get_totp_method(db, user.id).secret_enc)
     confirmed = client.post("/auth/mfa/confirm", json={"code": pyotp.TOTP(secret).now()})
     assert confirmed.status_code == 200, confirmed.text
-    codes = confirmed.json()["backup_codes"]
 
     if remember:
         client.post("/auth/logout")
@@ -56,9 +59,22 @@ def _enrol(client, db, user, pwd, remember=False):
         ).json()["mfa_token"]
         assert client.post(
             "/auth/login/mfa",
-            json={"mfa_token": token, "code": codes[0], "remember_device": True},
+            json={
+                "mfa_token": token,
+                "code": pyotp.TOTP(secret).at(int(time.time()) + 30),
+                "remember_device": True,
+            },
         ).status_code == 200
-    return secret, codes
+
+    # Clear the replay guard: verify_totp only accepts a step later than the
+    # last one used, within one either side of now, so enrolling and signing in
+    # consume the steps a later step-up would need inside the same 30 seconds.
+    db.rollback()
+    method = mfa_crud.get_totp_method(db, user.id, confirmed=True)
+    method.last_used_step = None
+    db.add(method)
+    db.commit()
+    return secret
 
 
 class TestAdminReset:
@@ -80,9 +96,7 @@ class TestAdminReset:
         refreshed = db.query(type(victim)).filter_by(id=victim.id).one()
         assert refreshed.mfa_enabled is False
         assert db.query(UserMfaMethod).filter(UserMfaMethod.user_id == victim.id).count() == 0
-        assert db.query(UserMfaBackupCode).filter(
-            UserMfaBackupCode.user_id == victim.id
-        ).count() == 0
+
 
     def test_reset_also_revokes_trusted_devices(
         self, client, db, admin_user, pathologist_user, mfa_on
@@ -176,7 +190,7 @@ class TestAdminReset:
         client.cookies.clear()
 
         admin, admin_pwd = admin_user
-        secret, _codes = _enrol(client, db, admin, admin_pwd)
+        secret = _enrol(client, db, admin, admin_pwd)
 
         assert client.post(f"/users/{victim.id}/mfa/reset").status_code == 403
 
@@ -199,7 +213,6 @@ class TestConsoleScript:
         refreshed = db.query(type(user)).filter_by(id=user.id).one()
         assert refreshed.mfa_enabled is False
         assert db.query(UserMfaMethod).filter(UserMfaMethod.user_id == user.id).count() == 0
-        assert db.query(UserMfaBackupCode).filter(UserMfaBackupCode.user_id == user.id).count() == 0
         assert db.query(UserTrustedDevice).filter(
             UserTrustedDevice.user_id == user.id,
             UserTrustedDevice.revoked_at.is_(None),

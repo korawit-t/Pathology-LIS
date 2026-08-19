@@ -36,7 +36,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from app.models.audit_log import AuditLog  # noqa: E402
 from app.models.user import User  # noqa: E402
-from app.models.user_mfa import UserMfaBackupCode, UserMfaMethod  # noqa: E402
+from app.models.user_mfa import UserMfaMethod  # noqa: E402
 from app.models.user_trusted_device import UserTrustedDevice  # noqa: E402
 
 
@@ -53,18 +53,10 @@ def _list_enrolled(db) -> int:
         print("No accounts currently have a second factor enrolled.")
         return 0
 
-    print(f"{'username':24} {'roles':34} factors  backup  devices")
-    print("-" * 82)
+    print(f"{'username':24} {'roles':34} factors  devices")
+    print("-" * 74)
     for user in rows:
         factors = db.query(UserMfaMethod).filter(UserMfaMethod.user_id == user.id).count()
-        codes = (
-            db.query(UserMfaBackupCode)
-            .filter(
-                UserMfaBackupCode.user_id == user.id,
-                UserMfaBackupCode.used_at.is_(None),
-            )
-            .count()
-        )
         devices = (
             db.query(UserTrustedDevice)
             .filter(
@@ -74,7 +66,7 @@ def _list_enrolled(db) -> int:
             .count()
         )
         roles = ",".join(user.roles or [])[:32]
-        print(f"{user.username:24} {roles:34} {factors:^7}  {codes:^6}  {devices:^7}")
+        print(f"{user.username:24} {roles:34} {factors:^7}  {devices:^7}")
     return len(rows)
 
 
@@ -85,7 +77,6 @@ def reset(db, username: str, assume_yes: bool) -> int:
         return 1
 
     factors = db.query(UserMfaMethod).filter(UserMfaMethod.user_id == user.id).count()
-    codes = db.query(UserMfaBackupCode).filter(UserMfaBackupCode.user_id == user.id).count()
     devices = (
         db.query(UserTrustedDevice)
         .filter(
@@ -95,14 +86,13 @@ def reset(db, username: str, assume_yes: bool) -> int:
         .count()
     )
 
-    if not (user.mfa_enabled or factors or codes or devices):
+    if not (user.mfa_enabled or factors or devices):
         print(f"{username} has no second factor enrolled — nothing to do.")
         return 0
 
     print(f"About to reset multi-factor authentication for: {username}")
     print(f"  roles                  : {','.join(user.roles or []) or '(none)'}")
     print(f"  authenticator factors  : {factors}")
-    print(f"  backup codes           : {codes}")
     print(f"  trusted devices        : {devices}")
     print()
     print("After this the account signs in with its password alone until the user")
@@ -114,9 +104,6 @@ def reset(db, username: str, assume_yes: bool) -> int:
             return 1
 
     db.query(UserMfaMethod).filter(UserMfaMethod.user_id == user.id).delete(
-        synchronize_session=False
-    )
-    db.query(UserMfaBackupCode).filter(UserMfaBackupCode.user_id == user.id).delete(
         synchronize_session=False
     )
     db.query(UserTrustedDevice).filter(
@@ -139,7 +126,6 @@ def reset(db, username: str, assume_yes: bool) -> int:
             new_values={
                 "target_username": user.username,
                 "factors_removed": factors,
-                "backup_codes_removed": codes,
                 "trusted_devices_revoked": devices,
                 "run_by_os_user": os.getenv("USER") or os.getenv("USERNAME"),
             },
