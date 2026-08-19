@@ -10,7 +10,12 @@ import app.crud.user as user_crud
 # ✅ Import RoleChecker และ get_current_user เข้ามา
 from app.dependencies.auth import get_current_user, check_password_status
 from app.models.user import User
-from app.core.roles import CAN_MANAGE_USERS
+from app.core.roles import CAN_MANAGE_USERS, CAN_RESET_USER_MFA
+from app.dependencies.step_up import require_step_up
+from app.crud import user_trusted_device as device_crud
+from app.crud import user_mfa as mfa_crud
+from app.models.audit_log import AuditLog
+from app.context import current_ip
 from app.core.security import verify_password
 from app.routers.auth import limiter
 
@@ -204,3 +209,49 @@ def update_my_preferences(
     db.commit()
     db.refresh(current_user)
     return {"status": "success", "preferences": current_user.preferences}
+
+
+@router.post("/{user_id}/mfa/reset", status_code=status.HTTP_204_NO_CONTENT)
+def reset_user_mfa(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(CAN_RESET_USER_MFA),
+    _step_up: User = Depends(require_step_up),
+):
+    """Clear a user's second factor after they lose their device.
+
+    Removes the authenticator, the backup codes and every trusted browser: a
+    trust record surviving the factor it stood in for would let the old device
+    keep working, which is the opposite of what someone reporting a lost phone
+    is asking for.
+
+    The caller re-authenticates first (see require_step_up). This is the one
+    routine action that lowers another account's protection, so a session left
+    open on a ward machine should not be enough to perform it.
+
+    Deliberately does NOT set a new factor or notify anyone — the user is left
+    unenrolled and enrols again themselves. Whether they should have been
+    believed is a question for the identity check that happens before this call,
+    not one the API can answer.
+    """
+    target = get_user(db, user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    had_factor = bool(target.mfa_enabled)
+    mfa_crud.disable_mfa(db, target)
+    devices_revoked = device_crud.revoke_all(db, target.id)
+
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="MFA_RESET_BY_ADMIN",
+        resource_type="User",
+        resource_id=target.id,
+        new_values={
+            "target_username": target.username,
+            "had_factor": had_factor,
+            "trusted_devices_revoked": devices_revoked,
+        },
+        ip_address=current_ip.get(),
+    ))
+    db.commit()

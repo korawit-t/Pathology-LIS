@@ -50,6 +50,12 @@ CAN_MANAGE_SETTINGS = RoleChecker(["admin", "lab_manager", "pathologist", "senio
 
 CAN_MANAGE_USERS = RoleChecker(["admin", "lab_manager"])
 
+# 1b. Clearing someone else's second factor, for the lost-phone case. Kept as
+# its own gate rather than folded into CAN_MANAGE_USERS: this is the one
+# routine action that lowers another account's protection, so who holds it
+# should be a decision someone made on purpose.
+CAN_RESET_USER_MFA = RoleChecker(["admin", "lab_manager"])
+
 # 2. การตั้งค่าระบบหลัก (Branding, Logo, Global Config)
 CAN_MANAGE_SYSTEM_SETTINGS = RoleChecker(["admin"])
 
