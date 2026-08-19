@@ -96,6 +96,13 @@ class SystemSettingBase(BaseModel):
 
 
 class SystemSettingUpdate(SystemSettingBase):
+    # --- Multi-Factor Authentication (write path; authenticated only) ---
+    mfa_enabled: Optional[bool] = None
+    mfa_required_roles: Optional[List[str]] = None
+    mfa_grace_period_days: Optional[int] = None
+    mfa_allowed_methods: Optional[List[str]] = None
+    mfa_trusted_device_days: Optional[int] = None
+
     # ให้ทุกอย่างเป็น Optional เพื่อการทำ PATCH update ที่สมบูรณ์
     lab_name_th: Optional[str] = None
     lab_name_en: Optional[str] = None
@@ -149,3 +156,20 @@ class SystemSettingResponse(SystemSettingBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SystemSettingAdminResponse(SystemSettingResponse):
+    """Everything the settings screen needs, for authenticated callers only.
+
+    Kept separate from SystemSettingResponse because that shape is also what
+    /system-settings/public returns, and that endpoint needs no login at all.
+    Which roles are exempt from MFA, and how long a device stays trusted, are
+    useful to somebody probing the login page and useless to the login page
+    itself.
+    """
+
+    mfa_enabled: Optional[bool] = None
+    mfa_required_roles: Optional[List[str]] = None
+    mfa_grace_period_days: Optional[int] = None
+    mfa_allowed_methods: Optional[List[str]] = None
+    mfa_trusted_device_days: Optional[int] = None
