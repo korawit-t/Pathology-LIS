@@ -44,12 +44,12 @@ def enrolled(client, db, admin_user, mfa_on):
     db.rollback()
     method = mfa_crud.get_totp_method(db, user.id)
     secret = decrypt_secret(method.secret_enc)
-    r = client.post("/auth/mfa/confirm", json={"code": pyotp.TOTP(secret).now()})
-    assert r.status_code == 200, r.text
-    codes = r.json()["backup_codes"]
+    assert client.post(
+        "/auth/mfa/confirm", json={"code": pyotp.TOTP(secret).now()}
+    ).status_code == 200
     client.post("/auth/logout")
     client.cookies.clear()
-    return user, pwd, secret, codes
+    return user, pwd, secret
 
 
 def _login(client, user, pwd):
@@ -64,7 +64,7 @@ def _fresh_code(secret):
 
 class TestFirstStep:
     def test_login_returns_a_challenge_instead_of_a_session(self, client, enrolled):
-        user, pwd, _secret, _codes = enrolled
+        user, pwd, _secret = enrolled
         r = _login(client, user, pwd)
 
         assert r.status_code == 200
@@ -73,14 +73,14 @@ class TestFirstStep:
         assert body["mfa_token"]
 
     def test_no_cookies_are_set_by_the_first_step(self, client, enrolled):
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
         _login(client, user, pwd)
         assert client.cookies.get("access_token") in (None, "")
         assert client.cookies.get("refresh_token") in (None, "")
 
     def test_the_first_step_reveals_nothing_about_the_account(self, client, enrolled):
         """A correct password alone must not disclose identity, roles or sites."""
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
         body = _login(client, user, pwd).json()
 
         assert "user" not in body
@@ -89,14 +89,14 @@ class TestFirstStep:
         assert user.full_name not in raw
 
     def test_a_wrong_password_still_looks_the_same_as_before(self, client, enrolled):
-        user, _pwd, _s, _c = enrolled
+        user, _pwd, _s = enrolled
         r = client.post("/auth/login", data={"username": user.username, "password": "nope"})
         assert r.status_code == 401
 
     def test_the_challenge_cannot_authenticate_anything(self, client, enrolled):
         """type="mfa_challenge" is rejected by get_current_user, which accepts
         access tokens only — so a captured challenge opens no doors."""
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
 
         r = client.get("/surgical-cases/", cookies={"access_token": token})
@@ -107,7 +107,7 @@ class TestFirstStep:
 
 class TestSecondStep:
     def test_a_valid_code_completes_the_login(self, client, enrolled):
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
 
         r = client.post("/auth/login/mfa", json={"mfa_token": token, "code": _fresh_code(secret)})
@@ -118,14 +118,14 @@ class TestSecondStep:
         assert client.cookies.get("access_token")
 
     def test_the_session_works_afterwards(self, client, enrolled):
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
         client.post("/auth/login/mfa", json={"mfa_token": token, "code": _fresh_code(secret)})
 
         assert client.get("/surgical-cases/").status_code == 200
 
     def test_a_wrong_code_is_refused(self, client, enrolled):
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
 
         r = client.post("/auth/login/mfa", json={"mfa_token": token, "code": "000000"})
@@ -134,7 +134,7 @@ class TestSecondStep:
 
     def test_a_challenge_can_only_be_spent_once(self, client, enrolled):
         """Otherwise a captured challenge is retryable for its whole lifetime."""
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
         assert client.post(
             "/auth/login/mfa", json={"mfa_token": token, "code": _fresh_code(secret)}
@@ -145,7 +145,7 @@ class TestSecondStep:
         assert r.status_code == 401
 
     def test_a_forged_challenge_is_refused(self, client, enrolled):
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         _login(client, user, pwd)
 
         r = client.post(
@@ -164,7 +164,7 @@ class TestSecondStep:
         assert r.status_code == 401
 
     def test_a_totp_code_cannot_be_replayed(self, client, enrolled):
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         code = _fresh_code(secret)
 
         token = _login(client, user, pwd).json()["mfa_token"]
@@ -178,31 +178,11 @@ class TestSecondStep:
         assert r.status_code == 401
 
 
-class TestBackupCodeAtLogin:
-    def test_a_backup_code_completes_the_login(self, client, enrolled):
-        user, pwd, _s, codes = enrolled
-        token = _login(client, user, pwd).json()["mfa_token"]
-
-        r = client.post("/auth/login/mfa", json={"mfa_token": token, "code": codes[0]})
-        assert r.status_code == 200, r.text
-        assert r.json()["used_backup_code"] is True
-
-    def test_a_backup_code_works_only_once(self, client, enrolled):
-        user, pwd, _s, codes = enrolled
-        token = _login(client, user, pwd).json()["mfa_token"]
-        client.post("/auth/login/mfa", json={"mfa_token": token, "code": codes[0]})
-
-        client.cookies.clear()
-        token2 = _login(client, user, pwd).json()["mfa_token"]
-        r = client.post("/auth/login/mfa", json={"mfa_token": token2, "code": codes[0]})
-        assert r.status_code == 401
-
-
 class TestFailuresFeedTheBackoff:
     def test_repeated_wrong_codes_raise_the_failure_counter(self, client, db, enrolled):
         """Second-step failures must not be a free, unthrottled way to grind at
         a six-digit code."""
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
 
         for _ in range(auth_router.FREE_LOGIN_ATTEMPTS + 1):
             token = _login(client, user, pwd).json()["mfa_token"]
@@ -214,7 +194,7 @@ class TestFailuresFeedTheBackoff:
         assert refreshed.locked_until is not None
 
     def test_a_successful_second_step_clears_the_counter(self, client, db, enrolled):
-        user, pwd, secret, _c = enrolled
+        user, pwd, secret = enrolled
         token = _login(client, user, pwd).json()["mfa_token"]
         client.post("/auth/login/mfa", json={"mfa_token": token, "code": "000000"})
 
@@ -234,7 +214,7 @@ class TestSwitchedOff:
     def test_login_is_unchanged_when_the_master_switch_is_off(self, client, db, enrolled):
         """The point of the switch: turning it off lets everyone straight back
         in without having to unenrol anybody."""
-        user, pwd, _s, _c = enrolled
+        user, pwd, _s = enrolled
         settings = db.query(SystemSetting).first()
         settings.mfa_enabled = False
         db.commit()

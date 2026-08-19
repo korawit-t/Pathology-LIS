@@ -45,30 +45,40 @@ def enrolled_admin(client, db, admin_user, mfa_on):
     client.post("/auth/mfa/setup", json={"password": pwd})
     db.rollback()
     secret = decrypt_secret(mfa_crud.get_totp_method(db, user.id).secret_enc)
-    confirmed = client.post("/auth/mfa/confirm", json={"code": pyotp.TOTP(secret).now()})
-    assert confirmed.status_code == 200
-    codes = confirmed.json()["backup_codes"]
+    assert client.post(
+        "/auth/mfa/confirm", json={"code": pyotp.TOTP(secret).now()}
+    ).status_code == 200
     client.post("/auth/logout")
     client.cookies.clear()
 
-    # Sign in with a backup code rather than a TOTP code on purpose. Confirming
-    # enrolment already burned the current time step, and verify_totp only
-    # accepts a step strictly later than the last one used, within a window of
-    # one either side — so a TOTP login here would leave no step available for
-    # the step-up that follows within the same 30 seconds.
     token = client.post(
         "/auth/login", data={"username": user.username, "password": pwd}
     ).json()["mfa_token"]
     r = client.post(
         "/auth/login/mfa",
-        json={"mfa_token": token, "code": codes[0], "remember_device": True},
+        json={"mfa_token": token, "code": _code(secret), "remember_device": True},
     )
     assert r.status_code == 200, r.text
+
+    # Clear the replay guard so the step-up in each test has a usable code.
+    # verify_totp only accepts a step strictly later than the last one used,
+    # within one either side of now, so logging in consumes the only step a
+    # step-up could otherwise use in the same 30 seconds. Real users just read
+    # the next code off the app; a test cannot wait for the clock.
+    _clear_totp_replay_guard(db, user.id)
     return user, pwd, secret
 
 
 def _code(secret, skew=30):
     return pyotp.TOTP(secret).at(int(time.time()) + skew)
+
+
+def _clear_totp_replay_guard(db, user_id):
+    db.rollback()
+    method = mfa_crud.get_totp_method(db, user_id, confirmed=True)
+    method.last_used_step = None
+    db.add(method)
+    db.commit()
 
 
 class TestGuardBites:
@@ -87,8 +97,9 @@ class TestGuardBites:
         assert r.status_code == 200
 
     def test_the_password_also_works_as_a_step_up(self, client, enrolled_admin):
-        """The same prompt has to serve users who have no second factor, so it
-        accepts the password too rather than needing a separate flow."""
+        """The same prompt has to serve users who have no second factor, and it
+        is now the only answer available to someone whose phone is broken until
+        an administrator resets them."""
         _user, pwd, _secret = enrolled_admin
 
         assert client.post("/auth/mfa/step-up", json={"code": pwd}).status_code == 204

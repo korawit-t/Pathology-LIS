@@ -34,14 +34,7 @@ class MfaConfirmRequest(BaseModel):
 
 
 class MfaConfirmResponse(BaseModel):
-    """Backup codes are shown here and never again — only their hashes are kept."""
-
     enabled: bool
-    backup_codes: List[str]
-
-
-class MfaBackupCodesResponse(BaseModel):
-    backup_codes: List[str]
 
 
 class MfaMethodRead(BaseModel):
@@ -62,7 +55,6 @@ class MfaStatusResponse(BaseModel):
     # A started-but-unconfirmed enrolment, so the UI can offer to resume it.
     pending_setup: bool
     methods: List[MfaMethodRead]
-    backup_codes_remaining: int
     # Whether this user's roles put them in mfa_required_roles: drives whether
     # the UI offers a "turn off" button at all.
     required_for_this_user: bool
@@ -73,13 +65,13 @@ class MfaStatusResponse(BaseModel):
 class MfaLoginRequest(BaseModel):
     """Second step of a two-step login.
 
-    `code` takes either a TOTP code or a backup code. Users do not reliably
-    tell them apart, and making the client choose mostly generates support
-    calls; the server tries the authenticator first and falls back.
+    The code comes from the authenticator app. There is no self-service
+    recovery code: the lab chose administrator-verified reset instead, on the
+    grounds that printed codes end up somewhere unsafe.
     """
 
     mfa_token: str = Field(min_length=1)
-    code: str = Field(min_length=6, max_length=20)
+    code: str = Field(min_length=6, max_length=10)
     # Opt-in, and only ever offered on the second step: trusting a browser is
     # a choice the user makes after proving they hold the factor, not a default
     # applied on their behalf.
@@ -98,7 +90,7 @@ class TrustedDeviceRead(BaseModel):
 
 
 class MfaStepUpRequest(BaseModel):
-    """One field, three acceptable answers: TOTP code, backup code, or password.
+    """One field, two acceptable answers: a TOTP code or the account password.
 
     Making the client decide which it is only moves the guesswork somewhere it
     has less information.

@@ -34,7 +34,6 @@ from app.dependencies.auth import get_current_active_user
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.schemas.user_mfa import (
-    MfaBackupCodesResponse,
     MfaConfirmRequest,
     MfaConfirmResponse,
     MfaMethodRead,
@@ -98,7 +97,6 @@ def get_mfa_status(
         enabled=bool(user.mfa_enabled),
         pending_setup=crud.get_totp_method(db, user.id, confirmed=False) is not None,
         methods=[MfaMethodRead.model_validate(m) for m in methods],
-        backup_codes_remaining=crud.count_unused_backup_codes(db, user.id),
         required_for_this_user=crud.is_mfa_required_for(user, settings),
         system_enabled=bool(settings.mfa_enabled) if settings else False,
     )
@@ -168,11 +166,11 @@ def confirm_mfa_setup(
         )
 
     try:
-        codes = crud.confirm_totp_enrolment(db, user, payload.code)
+        confirmed = crud.confirm_totp_enrolment(db, user, payload.code)
     except MfaEncryptionKeyError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-    if codes is None:
+    if not confirmed:
         _audit(db, user, "MFA_CONFIRM_FAILED")
         db.commit()
         raise HTTPException(
@@ -182,7 +180,7 @@ def confirm_mfa_setup(
 
     _audit(db, user, "MFA_ENABLED", {"method": "totp"})
     db.commit()
-    return MfaConfirmResponse(enabled=True, backup_codes=codes)
+    return MfaConfirmResponse(enabled=True)
 
 
 @router.post("/disable", status_code=status.HTTP_204_NO_CONTENT)
@@ -211,29 +209,6 @@ def disable_mfa(
     revoked = device_crud.revoke_all(db, user.id)
     _audit(db, user, "MFA_DISABLED", {"trusted_devices_revoked": revoked})
     db.commit()
-
-
-@router.post("/backup-codes/regenerate", response_model=MfaBackupCodesResponse)
-@limiter.limit("10/minute")
-def regenerate_backup_codes(
-    request: Request,
-    payload: MfaPasswordConfirm,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_active_user),
-):
-    """Issue a fresh set, invalidating every previous code."""
-    _require_password(user, payload.password)
-
-    if not crud.get_totp_method(db, user.id, confirmed=True):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Set up an authenticator app before generating backup codes.",
-        )
-
-    codes = crud.regenerate_backup_codes(db, user)
-    _audit(db, user, "MFA_BACKUP_CODES_REGENERATED")
-    db.commit()
-    return MfaBackupCodesResponse(backup_codes=codes)
 
 
 @router.get("/devices", response_model=List[TrustedDeviceRead])
@@ -291,10 +266,10 @@ def step_up(
 ):
     """Re-check a factor so an irreversible action can go ahead.
 
-    Accepts a TOTP code, a backup code, or the account password. The password is
-    allowed because this same prompt has to work for users who have no second
-    factor — the alternative is a separate flow for them, which means the
-    frontend has to know which case it is in before it can ask anything.
+    Accepts a TOTP code or the account password. The password is allowed because
+    this same prompt has to work for users who have no second factor — the
+    alternative is a separate flow for them, which means the frontend has to
+    know which case it is in before it can ask anything.
 
     The grant is bound to the current access token, so it authorises this
     session and no other, and it lasts minutes rather than for the session.
@@ -307,8 +282,6 @@ def step_up(
             verified = crud.verify_totp(db, method, payload.code)
         except MfaEncryptionKeyError:
             verified = False
-    if not verified:
-        verified = crud.consume_backup_code(db, user, payload.code)
     if not verified:
         verified = verify_password(payload.code, user.hashed_password)
 

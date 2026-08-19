@@ -1,4 +1,4 @@
-"""Schema-level tests for the MFA factor and backup-code tables.
+"""Schema-level tests for the MFA factor table.
 
 Nothing reads these tables yet — enrolment and verification come later. What is
 worth locking down now is the shape, because the guarantees here are enforced
@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.models.user import User
-from app.models.user_mfa import UserMfaBackupCode, UserMfaMethod
+from app.models.user_mfa import UserMfaMethod
 
 
 def _totp(user_id, **overrides):
@@ -119,34 +119,3 @@ class TestUserMfaMethod:
         db.commit()
 
         assert db.query(UserMfaMethod).filter(UserMfaMethod.user_id == doomed.id).count() == 0
-
-
-class TestUserMfaBackupCode:
-    def test_a_code_round_trips_and_starts_unused(self, db, admin_user):
-        user, _ = admin_user
-        db.add(UserMfaBackupCode(user_id=user.id, code_hash="$argon2id$not-a-real-hash"))
-        db.commit()
-
-        stored = db.query(UserMfaBackupCode).filter(
-            UserMfaBackupCode.user_id == user.id
-        ).one()
-        assert stored.used_at is None
-        assert stored.created_at is not None
-
-    def test_codes_are_deleted_with_their_user(self, db):
-        doomed = User(
-            username=f"mfa_codes_{uuid.uuid4().hex[:12]}",
-            hashed_password="x",
-            roles=["register"],
-        )
-        db.add(doomed)
-        db.commit()
-        db.add(UserMfaBackupCode(user_id=doomed.id, code_hash="h"))
-        db.commit()
-
-        db.delete(doomed)
-        db.commit()
-
-        assert db.query(UserMfaBackupCode).filter(
-            UserMfaBackupCode.user_id == doomed.id
-        ).count() == 0

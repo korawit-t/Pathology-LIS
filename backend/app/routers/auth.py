@@ -365,9 +365,11 @@ def complete_mfa_login(
 ):
     """Exchange a challenge token plus a second factor for a session.
 
-    Accepts either a TOTP code or a backup code in the same field: users do not
-    reliably distinguish them, and treating them as separate inputs mostly
-    produces support calls.
+    There is no self-service recovery code here: a lost authenticator is
+    resolved by an administrator who has verified who is asking (see
+    POST /users/{id}/mfa/reset). Printed recovery codes were considered and
+    rejected on the grounds that they end up stored somewhere that defeats the
+    point of having a second factor at all.
     """
     ip = request.client.host if request.client else None
     now = datetime.now(timezone.utc)
@@ -413,11 +415,7 @@ def complete_mfa_login(
         )
 
     method = mfa_crud.get_totp_method(db, user.id, confirmed=True)
-    used_backup_code = False
     verified = bool(method and mfa_crud.verify_totp(db, method, payload.code))
-    if not verified:
-        verified = mfa_crud.consume_backup_code(db, user, payload.code)
-        used_backup_code = verified
 
     if not verified:
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
@@ -443,19 +441,7 @@ def complete_mfa_login(
         except IntegrityError:
             db.rollback()
 
-    if used_backup_code:
-        db.add(AuditLog(
-            user_id=user.id,
-            action="MFA_BACKUP_CODE_USED",
-            resource_type="User",
-            resource_id=user.id,
-            new_values={"remaining": mfa_crud.count_unused_backup_codes(db, user.id)},
-            ip_address=ip,
-        ))
-
     body = _complete_login(db, response, user, ip, action="MFA_SUCCESS")
-    body["used_backup_code"] = used_backup_code
-
     body["device_remembered"] = False
     if payload.remember_device:
         settings = db.query(SystemSetting).first()
