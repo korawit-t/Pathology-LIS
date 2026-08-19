@@ -22,6 +22,7 @@ import {
   MoonOutlined,
   UserOutlined,
   KeyOutlined,
+  SafetyCertificateOutlined,
   DownOutlined,
 } from "@ant-design/icons";
 
@@ -39,6 +40,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import logger from "../../utils/logger";
 import SystemSettingService from "../../services/systemSettingService";
 import ChangePasswordModal from "../../components/auth/ChangePasswordModal";
+import MfaSettingsModal from "../../components/auth/MfaSettingsModal";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -59,6 +61,7 @@ const Dashboard: React.FC = () => {
   );
   const [enabledFlags, setEnabledFlags] = useState<Record<string, boolean>>({});
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [mfaSettingsOpen, setMfaSettingsOpen] = useState(false);
 
   const navigate = useNavigate();
   // ดึงข้อมูล User เมื่อ Component mount
@@ -285,6 +288,12 @@ const Dashboard: React.FC = () => {
                     label: "Change Password",
                     onClick: () => setChangePasswordOpen(true),
                   },
+                  {
+                    key: "mfa-settings",
+                    icon: <SafetyCertificateOutlined />,
+                    label: "Two-Factor Authentication",
+                    onClick: () => setMfaSettingsOpen(true),
+                  },
                   { type: "divider" },
                   {
                     key: "logout",
@@ -394,6 +403,11 @@ const Dashboard: React.FC = () => {
           })}
         </Content>
       </Layout>
+
+      <MfaSettingsModal
+        open={mfaSettingsOpen}
+        onClose={() => setMfaSettingsOpen(false)}
+      />
 
       <ChangePasswordModal
         open={changePasswordOpen}
