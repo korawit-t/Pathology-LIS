@@ -68,3 +68,15 @@ class MfaStatusResponse(BaseModel):
     required_for_this_user: bool
     # Whether the installation has MFA switched on at all.
     system_enabled: bool
+
+
+class MfaLoginRequest(BaseModel):
+    """Second step of a two-step login.
+
+    `code` takes either a TOTP code or a backup code. Users do not reliably
+    tell them apart, and making the client choose mostly generates support
+    calls; the server tries the authenticator first and falls back.
+    """
+
+    mfa_token: str = Field(min_length=1)
+    code: str = Field(min_length=6, max_length=20)
