@@ -12,7 +12,7 @@ precisely what MFA exists to survive: without that check, whoever took one
 could enrol their own authenticator and lock the real owner out.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
@@ -23,6 +23,7 @@ from app.context import current_ip
 from app.core.mfa_crypto import MfaEncryptionKeyError, is_configured
 from app.core.security import verify_password
 from app.crud import user_mfa as crud
+from app.crud import user_trusted_device as device_crud
 from app.db.database import get_db
 from app.dependencies.auth import get_current_active_user
 from app.models.audit_log import AuditLog
@@ -35,6 +36,7 @@ from app.schemas.user_mfa import (
     MfaPasswordConfirm,
     MfaSetupResponse,
     MfaStatusResponse,
+    TrustedDeviceRead,
 )
 
 limiter = Limiter(key_func=get_remote_address)
@@ -198,7 +200,10 @@ def disable_mfa(
         )
 
     crud.disable_mfa(db, user)
-    _audit(db, user, "MFA_DISABLED")
+    # A trust record that outlives the factor it was standing in for is a
+    # bypass nobody is watching any more.
+    revoked = device_crud.revoke_all(db, user.id)
+    _audit(db, user, "MFA_DISABLED", {"trusted_devices_revoked": revoked})
     db.commit()
 
 
@@ -223,3 +228,46 @@ def regenerate_backup_codes(
     _audit(db, user, "MFA_BACKUP_CODES_REGENERATED")
     db.commit()
     return MfaBackupCodesResponse(backup_codes=codes)
+
+
+@router.get("/devices", response_model=List[TrustedDeviceRead])
+def list_trusted_devices(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Browsers currently allowed to skip the second factor.
+
+    The list is the point of the feature as much as the convenience is: an
+    entry nobody recognises is the signal that something is wrong, and there is
+    nowhere else that would show it.
+    """
+    return [TrustedDeviceRead.model_validate(d) for d in device_crud.list_devices(db, user.id)]
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_trusted_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Revoking takes effect on the next login, not when the cookie expires.
+
+    No password is asked for here on purpose: removing trust only ever makes
+    the account harder to reach, and putting friction in front of the safe
+    direction is how people end up not doing it.
+    """
+    if not device_crud.revoke(db, user.id, device_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+    _audit(db, user, "MFA_DEVICE_REVOKED", {"device_id": device_id})
+    db.commit()
+
+
+@router.delete("/devices", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_all_trusted_devices(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """The "I have lost a laptop" button."""
+    revoked = device_crud.revoke_all(db, user.id)
+    _audit(db, user, "MFA_ALL_DEVICES_REVOKED", {"count": revoked})
+    db.commit()

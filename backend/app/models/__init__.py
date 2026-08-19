@@ -5,6 +5,7 @@
 # การทำเช่นนี้เป็นการบังคับให้ Python โหลดไฟล์และคลาสเหล่านี้
 from .user import User
 from .user_mfa import UserMfaMethod, UserMfaBackupCode
+from .user_trusted_device import UserTrustedDevice
 from .patient import Patient
 from .surgical_specimen import SurgicalSpecimen
 from .gross_image import GrossImage
@@ -170,6 +171,7 @@ __all__ = [
     "RevokedToken",
     "UserMfaMethod",
     "UserMfaBackupCode",
+    "UserTrustedDevice",
     "CytoWorkloadLog",
     "CriticalNotificationLog",
     "LegacySurgicalReport",

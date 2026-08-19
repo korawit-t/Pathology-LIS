@@ -80,3 +80,18 @@ class MfaLoginRequest(BaseModel):
 
     mfa_token: str = Field(min_length=1)
     code: str = Field(min_length=6, max_length=20)
+    # Opt-in, and only ever offered on the second step: trusting a browser is
+    # a choice the user makes after proving they hold the factor, not a default
+    # applied on their behalf.
+    remember_device: bool = False
+
+
+class TrustedDeviceRead(BaseModel):
+    id: int
+    label: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+    expires_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
