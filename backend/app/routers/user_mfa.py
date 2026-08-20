@@ -12,6 +12,7 @@ precisely what MFA exists to survive: without that check, whoever took one
 could enrol their own authenticator and lock the real owner out.
 """
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
@@ -84,6 +85,28 @@ def _require_key_configured() -> None:
                 "MFA_ENCRYPTION_KEY is not set. Ask an administrator to set it."
             ),
         )
+
+
+@router.get("/server-time")
+def get_server_time():
+    """The server's clock, so a client can check it against its own.
+
+    TOTP is a function of the current time and nothing else. If this server
+    drifts more than about thirty seconds from real time, every code every user
+    submits is rejected — all at once, with no error that points at the cause.
+    The failure reads as "the codes are wrong", which sends people to look at
+    the authenticator app rather than at the clock.
+
+    Deliberately unauthenticated and deliberately barren: it returns the current
+    time and the size of the window, which any client already knows, and nothing
+    about the installation. Enrolment compares it against the browser clock and
+    warns before someone commits to a factor that will not work.
+    """
+    return {
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "totp_period_seconds": 30,
+        "totp_valid_window_steps": crud.TOTP_VALID_WINDOW,
+    }
 
 
 @router.get("/status", response_model=MfaStatusResponse)

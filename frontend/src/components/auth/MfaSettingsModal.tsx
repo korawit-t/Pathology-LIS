@@ -130,7 +130,7 @@ const MfaSettingsModal: React.FC<Props> = ({ open, onClose }) => {
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
-              message="Not in use on this system yet"
+              title="Not in use on this system yet"
               description={
                 "You can set up an authenticator now, but you will not be asked " +
                 "for a code until an administrator turns the feature on."

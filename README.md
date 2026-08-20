@@ -96,7 +96,7 @@ cp frontend/.env.example frontend/.env
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string (use service name `db` inside Docker) |
 | `SECRET_KEY` | Random secret — generate with `openssl rand -hex 32` |
-| `MFA_ENCRYPTION_KEY` | Encrypts stored TOTP secrets. Only needed once MFA is enabled; the backend boots without it. **Must not be the same value as `SECRET_KEY`** - a signing key and an encryption key should be separate, and tying TOTP secrets to `SECRET_KEY` would make it impossible to rotate without locking out every enrolled user. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Accepts a comma-separated list to rotate: new key first, old key kept until nothing needs it. |
+| `MFA_ENCRYPTION_KEY` | Encrypts stored TOTP secrets. See **[docs/mfa-setup.md](./docs/mfa-setup.md)**. Only needed once MFA is enabled; the backend boots without it. **Must not be the same value as `SECRET_KEY`** - a signing key and an encryption key should be separate, and tying TOTP secrets to `SECRET_KEY` would make it impossible to rotate without locking out every enrolled user. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Accepts a comma-separated list to rotate: new key first, old key kept until nothing needs it. |
 | `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins (scheme + host + port). In `production` **all must be `https://`**; in `development` `http://` is allowed. |
 | `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
@@ -316,6 +316,24 @@ schema, you can instead adopt the baseline directly:
 ```bash
 alembic stamp b7e4a1c05f38
 ```
+
+---
+
+## Two-Factor Authentication
+
+Optional and off by default. See **[docs/mfa-setup.md](./docs/mfa-setup.md)** for
+enabling it, enrolling, and recovering an account whose device was lost.
+
+> ⚠️ **Check the server clock before enabling it.** TOTP codes are calculated
+> from the current time, so a server drifting more than ~30 seconds rejects
+> every code from every user at once — and the failure looks like "the codes are
+> wrong" rather than anything to do with the clock. `w32tm /query /status` on
+> Windows, `timedatectl status` on Linux.
+
+There are no printed recovery codes: a lost device is cleared by an
+administrator who has verified who is asking, and `backend/scripts/reset_mfa.py`
+covers the case where nobody can sign in at all. Make sure your written
+procedure names who is contactable out of hours.
 
 ---
 

@@ -78,7 +78,7 @@ const StepUpModal: React.FC<Props> = ({ open, action, onCancel, onVerified }) =>
       destroyOnHidden
     >
       {action && (
-        <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={`You are about to ${action}.`} />
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={`You are about to ${action}.`} />
       )}
       <Paragraph type="secondary">
         Enter the code from your authenticator app, or your password.
