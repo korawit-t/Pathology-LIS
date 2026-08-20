@@ -178,7 +178,7 @@ class TestDisable:
         db.rollback()
         settings = db.query(SystemSetting).first()
         if not settings:
-            settings = SystemSetting(hospital_slug=f"mfa-{user.id}")
+            settings = SystemSetting(hospital_slug="master")
             db.add(settings)
         settings.mfa_enabled = True
         settings.mfa_required_roles = ["admin"]
@@ -198,7 +198,7 @@ class TestDisable:
         db.rollback()
         settings = db.query(SystemSetting).first()
         if not settings:
-            settings = SystemSetting(hospital_slug=f"mfa-off-{user.id}")
+            settings = SystemSetting(hospital_slug="master")
             db.add(settings)
         settings.mfa_enabled = False
         settings.mfa_required_roles = ["admin"]

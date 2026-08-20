@@ -35,7 +35,12 @@ def mfa_key(monkeypatch):
 def mfa_on(db):
     row = db.query(SystemSetting).first()
     if not row:
-        row = SystemSetting(hospital_slug="admin-reset-test")
+    # Slug "master" on purpose. The MFA code reads settings with
+    # db.query(SystemSetting).first(), while /system-settings/update looks the
+    # row up by slug and creates a "master" row when it finds none — so a
+    # fixture row under any other slug leaves two rows behind and .first()
+    # starts returning whichever one it likes.
+        row = SystemSetting(hospital_slug="master")
         db.add(row)
     row.mfa_enabled = True
     db.commit()

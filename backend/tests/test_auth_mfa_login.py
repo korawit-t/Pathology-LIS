@@ -28,7 +28,12 @@ def mfa_on(db):
     """Switch MFA on installation-wide."""
     settings = db.query(SystemSetting).first()
     if not settings:
-        settings = SystemSetting(hospital_slug="mfa-login-test")
+    # Slug "master" on purpose. The MFA code reads settings with
+    # db.query(SystemSetting).first(), while /system-settings/update looks the
+    # row up by slug and creates a "master" row when it finds none — so a
+    # fixture row under any other slug leaves two rows behind and .first()
+    # starts returning whichever one it likes.
+        settings = SystemSetting(hospital_slug="master")
         db.add(settings)
     settings.mfa_enabled = True
     db.commit()
