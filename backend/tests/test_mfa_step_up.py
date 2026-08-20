@@ -30,7 +30,12 @@ def mfa_key(monkeypatch):
 def mfa_on(db):
     row = db.query(SystemSetting).first()
     if not row:
-        row = SystemSetting(hospital_slug="step-up-test")
+    # Slug "master" on purpose. The MFA code reads settings with
+    # db.query(SystemSetting).first(), while /system-settings/update looks the
+    # row up by slug and creates a "master" row when it finds none — so a
+    # fixture row under any other slug leaves two rows behind and .first()
+    # starts returning whichever one it likes.
+        row = SystemSetting(hospital_slug="master")
         db.add(row)
     row.mfa_enabled = True
     db.commit()
@@ -187,3 +192,86 @@ class TestInvisibleWithoutMfa:
         db.commit()
 
         assert client.patch(SETTINGS_URL, json={"lab_name_en": "X"}).status_code == 200
+
+
+class TestEveryGuardedEndpoint:
+    """The guard is applied to four endpoints. Testing one proves one.
+
+    Report sign-out is the reason step-up exists at all — settings was the
+    additional case, not the motivating one. Dropping the dependency from a
+    publish route would be a silent removal of the protection that makes
+    trusted devices defensible, and nothing else would notice.
+
+    These call with an id that does not exist on purpose: FastAPI resolves
+    dependencies before the handler runs, so a 403 here proves the guard is
+    wired without needing a whole case fixture. A route with the guard removed
+    would return 404 instead, which is exactly the signal wanted.
+    """
+
+    GUARDED = [
+        ("post", "/surgical-reports/999999/finalize-snapshot"),
+        ("post", "/gyne-cyto-reports/999999/publish"),
+        ("post", "/nongyne-cyto-reports/999999/publish"),
+        ("patch", SETTINGS_URL),
+    ]
+
+    @pytest.mark.parametrize("method,url", GUARDED)
+    def test_it_refuses_without_a_step_up(self, client, enrolled_admin, method, url):
+        r = getattr(client, method)(url, json={})
+        assert r.status_code == 403, f"{url} is not behind the step-up guard"
+        assert r.json()["detail"] == STEP_UP_REQUIRED_DETAIL
+
+    @pytest.mark.parametrize("method,url", GUARDED)
+    def test_it_gets_past_the_guard_after_a_step_up(self, client, enrolled_admin, method, url):
+        """Past the guard, not necessarily to a 200 — a nonexistent case is
+        still a 404. What matters is that it is no longer the step-up refusal."""
+        _user, pwd, _secret = enrolled_admin
+        assert client.post("/auth/mfa/step-up", json={"code": pwd}).status_code == 204
+
+        r = getattr(client, method)(url, json={})
+        assert r.json().get("detail") != STEP_UP_REQUIRED_DETAIL
+
+    @pytest.mark.parametrize("method,url", GUARDED)
+    def test_it_is_untouched_for_a_user_without_mfa(self, client, db, admin_user, method, url):
+        """Installations that never switched MFA on must sign out reports
+        exactly as they did before."""
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+
+        r = getattr(client, method)(url, json={})
+        assert r.status_code != 403 or r.json().get("detail") != STEP_UP_REQUIRED_DETAIL
+
+
+class TestChallengeExpiry:
+    def test_an_expired_challenge_is_refused(self, client, db, admin_user, mfa_on, monkeypatch):
+        """Five minutes is long enough to fetch a phone; one left open on a
+        screen overnight should be worth nothing."""
+        import time as _time
+
+        import pyotp as _pyotp
+        from app.core import security
+
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+        client.post("/auth/mfa/setup", json={"password": pwd})
+        db.rollback()
+        secret = decrypt_secret(mfa_crud.get_totp_method(db, user.id).secret_enc)
+        assert client.post(
+            "/auth/mfa/confirm", json={"code": _pyotp.TOTP(secret).now()}
+        ).status_code == 200
+        client.post("/auth/logout")
+        client.cookies.clear()
+
+        # Issue a challenge that was already stale when it was minted.
+        monkeypatch.setattr(security, "MFA_CHALLENGE_EXPIRE_MINUTES", -1)
+        token = client.post(
+            "/auth/login", data={"username": user.username, "password": pwd}
+        ).json()["mfa_token"]
+        monkeypatch.undo()
+
+        r = client.post(
+            "/auth/login/mfa",
+            json={"mfa_token": token, "code": _pyotp.TOTP(secret).at(int(_time.time()) + 30)},
+        )
+        assert r.status_code == 401
+        assert client.cookies.get("access_token") in (None, "")
