@@ -32,6 +32,8 @@ export interface User extends BaseEntity {
   is_temporary_password: boolean;
   is_password_expired?: boolean;
   status: boolean;
+  /** True once the user has a confirmed second factor. */
+  mfa_enabled?: boolean;
 
   // Foreign Keys (ID)
   hospital_ids: number[];

@@ -22,9 +22,11 @@ import {
   DeleteOutlined,
   TeamOutlined,
   SearchOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { ROLE_OPTIONS } from "../constants/roles.constants";
 import UserService from "../services/userService";
+import StepUpModal, { isStepUpRequired } from "./auth/StepUpModal";
 import PositionService from "../services/positionService";
 import HospitalService from "../services/hospitalService";
 import { User } from "../types/user";
@@ -41,6 +43,12 @@ interface Position {
 }
 
 const UserManager: React.FC = () => {
+  // Held so the action can be retried after a step-up. Resetting somebody's
+  // factor is refused with 403 step_up_required when the caller has MFA of
+  // their own, and losing the target across that round trip would mean asking
+  // the administrator to find the row again.
+  const [pendingMfaReset, setPendingMfaReset] = useState<User | null>(null);
+  const [stepUpOpen, setStepUpOpen] = useState(false);
   const { user: currentUser } = useAuth();
   const isCurrentUserAdmin = hasRole(currentUser, "admin");
 
@@ -164,6 +172,28 @@ const UserManager: React.FC = () => {
   };
 
   // --- 6. Typed Columns ---
+  const resetMfa = async (target: User) => {
+    try {
+      await UserService.resetMfa(target.id);
+      message.success(
+        `Two-factor authentication cleared for ${target.username}. ` +
+        "Ask them to set it up again.",
+      );
+      setPendingMfaReset(null);
+      setStepUpOpen(false);
+      fetchData();
+    } catch (err: any) {
+      if (isStepUpRequired(err)) {
+        setPendingMfaReset(target);
+        setStepUpOpen(true);
+        return;
+      }
+      message.error(
+        err?.response?.data?.detail || "Could not reset two-factor authentication.",
+      );
+    }
+  };
+
   const columns: ColumnsType<User> = [
     {
       title: "ID",
@@ -234,9 +264,21 @@ const UserManager: React.FC = () => {
       render: (id: number) => positions.find((p) => p.id === id)?.name || "-",
     },
     {
+      title: "2FA",
+      key: "mfa",
+      width: 90,
+      align: "center",
+      render: (_, record) =>
+        record.mfa_enabled ? (
+          <Tag color="green">On</Tag>
+        ) : (
+          <Tag color="default">Off</Tag>
+        ),
+    },
+    {
       title: "Action",
       key: "action",
-      width: 100,
+      width: 140,
       align: "center",
       render: (_, record) => {
         const isTargetAdmin = record.roles?.includes("admin");
@@ -261,6 +303,27 @@ const UserManager: React.FC = () => {
                 <Button icon={<DeleteOutlined />} danger size="small" disabled={!canManageTarget} />
               </Tooltip>
             </Popconfirm>
+            {record.mfa_enabled && (
+              <Popconfirm
+                title="Reset two-factor authentication?"
+                description={
+                  `${record.username} will sign in with a password alone until they ` +
+                  "enrol again. Only do this once you have verified who asked."
+                }
+                okText="Reset"
+                onConfirm={() => resetMfa(record)}
+                disabled={!canManageTarget}
+              >
+                <Tooltip title={canManageTarget ? "Reset 2FA (lost device)" : ""}>
+                  <Button
+                    icon={<SafetyCertificateOutlined />}
+                    size="small"
+                    disabled={!canManageTarget}
+                    aria-label={`Reset two-factor authentication for ${record.username}`}
+                  />
+                </Tooltip>
+              </Popconfirm>
+            )}
           </Space>
         );
       },
@@ -422,6 +485,22 @@ const UserManager: React.FC = () => {
           </Button>
         </Form>
       </Modal>
+
+      <StepUpModal
+        open={stepUpOpen}
+        action={
+          pendingMfaReset
+            ? `reset two-factor authentication for ${pendingMfaReset.username}`
+            : undefined
+        }
+        onCancel={() => {
+          setStepUpOpen(false);
+          setPendingMfaReset(null);
+        }}
+        onVerified={() => {
+          if (pendingMfaReset) resetMfa(pendingMfaReset);
+        }}
+      />
     </PageContainer>
   );
 };
