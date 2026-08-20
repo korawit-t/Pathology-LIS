@@ -123,3 +123,40 @@ class TestUpdating:
 
         db.rollback()
         assert db.query(SystemSetting).first().mfa_trusted_device_days == 0
+
+
+class TestServerTime:
+    """TOTP is a function of the clock and nothing else.
+
+    If the server drifts past the validation window every code from every user
+    is rejected at once, and the failure reads as "the codes are wrong" — which
+    sends people to the authenticator app rather than to the clock. This
+    endpoint exists so a client can notice before anyone commits to a factor.
+    """
+
+    def test_it_reports_the_time_without_a_session(self, client):
+        # Unauthenticated on purpose: the enrolment page needs it, and the
+        # current time is not a secret.
+        r = client.get("/auth/mfa/server-time")
+        assert r.status_code == 200
+        assert "server_time" in r.json()
+
+    def test_the_time_it_reports_is_actually_now(self, client):
+        from datetime import datetime, timezone
+
+        body = client.get("/auth/mfa/server-time").json()
+        reported = datetime.fromisoformat(body["server_time"])
+        drift = abs((datetime.now(timezone.utc) - reported).total_seconds())
+        assert drift < 5
+
+    def test_it_says_how_wide_the_window_is(self, client):
+        """So the client can size its warning off the server's real tolerance
+        rather than a number hardcoded on the other side."""
+        body = client.get("/auth/mfa/server-time").json()
+        assert body["totp_period_seconds"] == 30
+        assert body["totp_valid_window_steps"] >= 1
+
+    def test_it_discloses_nothing_about_the_installation(self, client):
+        raw = client.get("/auth/mfa/server-time").text
+        for leak in ("lab_name", "mfa_enabled", "required_roles", "username"):
+            assert leak not in raw

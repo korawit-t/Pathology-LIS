@@ -32,6 +32,14 @@ const AuthService = {
 
   getMfaStatus: () => api.get<MfaStatus>("/auth/mfa/status"),
 
+  /** Server clock, for spotting drift before someone enrols. */
+  getServerTime: () =>
+    api.get<{
+      server_time: string;
+      totp_period_seconds: number;
+      totp_valid_window_steps: number;
+    }>("/auth/mfa/server-time"),
+
   /** Starts enrolment. Nothing is enabled until confirmMfaSetup succeeds. */
   startMfaSetup: (password: string) =>
     api.post<MfaSetupResponse>("/auth/mfa/setup", { password }),

@@ -160,7 +160,7 @@ const SecurityTab: React.FC = () => {
               type="info"
               showIcon
               style={{ marginBottom: 12 }}
-              message="Users enrol themselves at /mfa-setup"
+              title="Users enrol themselves at /mfa-setup"
               description={
                 "Turning this on does not enrol anybody. People who have not set up " +
                 "an authenticator keep signing in with a password alone until they do. " +

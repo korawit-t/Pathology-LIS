@@ -11,6 +11,15 @@ vi.mock("../../hooks/useAuth", () => ({
 }));
 
 const mockedStart = AuthService.startMfaSetup as unknown as ReturnType<typeof vi.fn>;
+const mockedServerTime = AuthService.getServerTime as unknown as ReturnType<typeof vi.fn>;
+
+const serverTime = (offsetSeconds = 0) => ({
+  data: {
+    server_time: new Date(Date.now() - offsetSeconds * 1000).toISOString(),
+    totp_period_seconds: 30,
+    totp_valid_window_steps: 1,
+  },
+});
 const mockedConfirm = AuthService.confirmMfaSetup as unknown as ReturnType<typeof vi.fn>;
 
 const SETUP = {
@@ -43,7 +52,10 @@ const startSetup = async (password = "s3cret") => {
 };
 
 describe("MfaSetup", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedServerTime.mockResolvedValue(serverTime(0));
+  });
 
   it("asks for the password before revealing anything", () => {
     renderSetup();
@@ -153,5 +165,48 @@ describe("MfaSetup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
 
     expect(await screen.findByText("Dashboard Home")).toBeInTheDocument();
+  });
+
+  describe("clock drift", () => {
+    it("warns when this device and the server disagree about the time", async () => {
+      // TOTP is a function of the clock alone. Without this the failure reads
+      // as "the app is giving me wrong codes", which sends people to look at
+      // the authenticator instead of the server.
+      mockedServerTime.mockResolvedValue(serverTime(120));
+      renderSetup();
+
+      expect(
+        await screen.findByText(/disagree about the time/),
+      ).toBeInTheDocument();
+      // The number matters: "about 120 seconds apart" is what an administrator
+      // needs to hear to know where to look.
+      expect(screen.getByText(/120 seconds apart/)).toBeInTheDocument();
+    });
+
+    it("says nothing when the clocks agree", async () => {
+      renderSetup();
+      await screen.findByPlaceholderText("Your password");
+
+      expect(screen.queryByText(/disagree about the time/)).not.toBeInTheDocument();
+    });
+
+    it("tolerates drift inside the validation window", async () => {
+      // One step either side is accepted by the server, so warning at 20
+      // seconds would be crying wolf.
+      mockedServerTime.mockResolvedValue(serverTime(20));
+      renderSetup();
+      await screen.findByPlaceholderText("Your password");
+
+      expect(screen.queryByText(/disagree about the time/)).not.toBeInTheDocument();
+    });
+
+    it("still lets the user enrol if the clock check itself fails", async () => {
+      // It is a diagnostic, not a gate.
+      mockedServerTime.mockRejectedValue(new Error("offline"));
+      mockedStart.mockResolvedValue(SETUP);
+      await startSetup();
+
+      expect(await screen.findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    });
   });
 });

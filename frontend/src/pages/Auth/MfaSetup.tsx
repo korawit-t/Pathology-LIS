@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Button, Card, Form, Input, Result, Steps, Typography, message } from "antd";
+import React, { useEffect, useState } from "react";
+import { Alert, Button, Card, Form, Input, Result, Steps, Typography, message } from "antd";
 import {
   LockOutlined,
   SafetyCertificateOutlined,
@@ -47,10 +47,36 @@ const MfaSetup: React.FC = () => {
   const [step, setStep] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [setupData, setSetupData] = useState<MfaSetupResponse | null>(null);
+  // Seconds between this browser's clock and the server's. TOTP is a function
+  // of time alone, so a large gap means every code will be rejected — and the
+  // failure looks like "the app is giving me wrong codes", which sends people
+  // to the wrong place entirely.
+  const [clockSkew, setClockSkew] = useState<number | null>(null);
+  const [skewTolerance, setSkewTolerance] = useState<number>(30);
   const [passwordForm] = Form.useForm();
   const [codeForm] = Form.useForm();
 
   const qrSvg = setupData ? renderQr(setupData.provisioning_uri) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    AuthService.getServerTime()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const skew = (Date.now() - new Date(data.server_time).getTime()) / 1000;
+        setClockSkew(skew);
+        setSkewTolerance(data.totp_period_seconds * data.totp_valid_window_steps);
+      })
+      .catch((err) => {
+        // Not fatal: this is a diagnostic, and enrolment still works without it.
+        logger.error("Could not read the server clock:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const clockIsOff = clockSkew !== null && Math.abs(clockSkew) > skewTolerance;
 
   const onStart = async ({ password }: { password: string }) => {
     setLoading(true);
@@ -141,6 +167,21 @@ const MfaSetup: React.FC = () => {
           style={{ margin: "20px 0 28px" }}
           items={[{ title: "Confirm" }, { title: "Scan" }, { title: "Done" }]}
         />
+
+        {clockIsOff && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            title="This device and the server disagree about the time"
+            description={
+              `They are about ${Math.round(Math.abs(clockSkew ?? 0))} seconds apart. ` +
+              "Codes are calculated from the clock, so they will be rejected until " +
+              "this is fixed. Tell an administrator before setting this up — the " +
+              "server's clock may need synchronising."
+            }
+          />
+        )}
 
         {step === 0 && (
           <>
