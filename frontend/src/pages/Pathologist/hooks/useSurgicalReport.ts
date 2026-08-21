@@ -14,6 +14,7 @@ import { User } from "../../../types/user";
 import { SystemSetting } from "../../../types/system";
 import dayjs from "dayjs";
 import logger from "../../../utils/logger";
+import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
 
 export const useSurgicalReport = (
   caseId: string | undefined,
@@ -421,7 +422,13 @@ export const useSurgicalReport = (
       // กรณี Form validate ไม่ผ่าน (ลืมกรอกช่องแดง)
       if (error.errorFields) {
         message.error("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน");
-      } else {
+      } else if (isStepUpRefusal(error)) {
+        // The prompt was put up and closed (see StepUpGate) — the detail here
+        // is the server's marker, not something to show a pathologist.
+        message.info("ยกเลิกการปิดเคส — ยังไม่ได้ยืนยันตัวตน");
+      } else if (!error.__stepUpHandled) {
+        // Anything the interceptor has not already explained. Guarded because
+        // the auth markers arrive in `detail` and must not be echoed as text.
         message.error(
           error.response?.data?.detail || "เกิดข้อผิดพลาดในการปิดเคส",
         );

@@ -85,6 +85,8 @@ const SurgicalReportService = {
     const response = await api.post<SurgicalReport>(
       `/surgical-reports/${caseId}/finalize-snapshot`,
       data, // ส่ง Payload ทั้งก้อน (Gross, Diagnosis, etc.) ไปให้ Backend บันทึกก่อนทำ Snapshot
+      // Guarded by require_step_up on the backend; names the action in the prompt.
+      { stepUpAction: "sign out this report" },
     );
     return response.data;
   },
@@ -178,6 +180,7 @@ const SurgicalReportService = {
     const response = await api.post(
       `/surgical-reports/${caseId}/finalize-snapshot`,
       payload,
+      { stepUpAction: "sign out this report" },
     );
     return response.data;
   },

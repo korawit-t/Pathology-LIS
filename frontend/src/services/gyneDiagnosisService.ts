@@ -126,12 +126,17 @@ const GyneDiagnosisService = {
     isOutLabConsult?: boolean,
     consultReason?: string,
   ): Promise<GyneCytologyCase> => {
-    const res = await api.post(`/gyne-cyto-reports/${caseId}/publish`, {
-      signers,
-      is_abnormal: isAbnormal ?? false,
-      is_out_lab_consult: isOutLabConsult,
-      consult_reason: consultReason,
-    });
+    const res = await api.post(
+      `/gyne-cyto-reports/${caseId}/publish`,
+      {
+        signers,
+        is_abnormal: isAbnormal ?? false,
+        is_out_lab_consult: isOutLabConsult,
+        consult_reason: consultReason,
+      },
+      // Guarded by require_step_up on the backend; names the action in the prompt.
+      { stepUpAction: "publish this report" },
+    );
     return res.data;
   },
 

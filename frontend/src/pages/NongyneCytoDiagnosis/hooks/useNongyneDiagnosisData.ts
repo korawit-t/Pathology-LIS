@@ -15,6 +15,7 @@ import type {
   NongyneDiagnosisUpdate,
 } from "../../../types/nongyneDiagnosis";
 import logger from "../../../utils/logger";
+import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
 
 /**
  * Form values for the page's single antd <Form>: the case-level fields
@@ -317,8 +318,13 @@ export function useNongyneDiagnosisData(
         await fetchDiagnosis();
         return true;
       } catch (err) {
-        logger.error(err);
-        message.error("Failed to finalize report.");
+        if (isStepUpRefusal(err)) {
+          // The prompt was put up and closed (see StepUpGate).
+          message.info("Sign-off cancelled — identity was not confirmed.");
+        } else {
+          logger.error(err);
+          message.error("Failed to finalize report.");
+        }
         return false;
       } finally {
         setSubmitting(false);

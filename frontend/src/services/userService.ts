@@ -66,7 +66,9 @@ const UserService = {
    * the lost device stops working too.
    */
   resetMfa: async (id: number): Promise<void> => {
-    await api.post(`/users/${id}/mfa/reset`);
+    await api.post(`/users/${id}/mfa/reset`, undefined, {
+      stepUpAction: "reset two-factor authentication for this user",
+    });
   },
 };
 

@@ -30,7 +30,7 @@ const SystemSettingService = {
     const res = await api.patch<SystemSetting>(
       "/system-settings/update",
       payload,
-      { params: { slug } }
+      { params: { slug }, stepUpAction: "change security settings" }
     );
     return res.data;
   },

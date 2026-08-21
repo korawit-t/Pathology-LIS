@@ -13,8 +13,15 @@ const { Paragraph } = Typography;
  */
 export const STEP_UP_REQUIRED = "step_up_required";
 
-export const isStepUpRequired = (err: any): boolean =>
+/** The server asked for a factor — whether or not it has already been asked for. */
+export const isStepUpRefusal = (err: any): boolean =>
   err?.response?.status === 403 && err?.response?.data?.detail === STEP_UP_REQUIRED;
+
+export const isStepUpRequired = (err: any): boolean =>
+  isStepUpRefusal(err) &&
+  // Already offered app-wide and dismissed (see StepUpGate) — putting a second
+  // prompt up on top of the one the user just closed only loops them.
+  !err?.__stepUpHandled;
 
 interface Props {
   open: boolean;
