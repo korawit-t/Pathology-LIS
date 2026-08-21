@@ -137,6 +137,31 @@ pathologist whose phone breaks at 2am cannot sign a frozen section until
 somebody answers. `admin` and `lab_manager` can both perform a reset, which
 helps, but only if one of them picks up.
 
+### If you are the only administrator
+
+Common in a small lab, where one pathologist is also the administrator. **The
+section above does not apply to you**, and it is worth being blunt about why:
+
+- Nobody else can clear your factor, because nobody else holds the role.
+- You cannot clear it yourself, because the button is behind a login you can no
+  longer complete.
+
+**The console script below is your only way back in.** That makes two things
+non-optional rather than advisable:
+
+1. **Run it successfully at least once before you turn MFA on.** Enrol, then
+   immediately reset yourself from the console and enrol again. Discovering
+   that the script does not run — wrong directory, missing `.env`, no database
+   access — at the moment you are locked out is the situation to avoid.
+2. **Make sure you can reach the server console without the LIS.** Remote
+   Desktop, physical access, whatever it is. If getting to the server itself
+   depends on being logged into something that depends on MFA, there is no way
+   back at all.
+
+A second administrator account is the other answer, and a reasonable one once
+there is a second person to hold it. One account shared between two people is
+not — the audit log then cannot say who did anything.
+
 ### When nobody can sign in at all
 
 If the last remaining administrator loses their phone, nothing above works:
