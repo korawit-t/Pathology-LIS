@@ -3,8 +3,10 @@ import SecurityTab from "./SecurityTab";
 import SystemSettingService from "../../../services/systemSettingService";
 import { SystemSetting } from "../../../types/system";
 import { ThemeProvider } from "../../../contexts/ThemeContext";
+import AuthService from "../../../services/authService";
 
 vi.mock("../../../services/systemSettingService");
+vi.mock("../../../services/authService");
 
 const mockedGet = SystemSettingService.getSettings as unknown as ReturnType<typeof vi.fn>;
 const mockedUpdate = SystemSettingService.updateSettings as unknown as ReturnType<typeof vi.fn>;
@@ -115,5 +117,57 @@ describe("SecurityTab — multi-factor authentication", () => {
     renderTab();
 
     expect(await screen.findByText(/not yet enforced/)).toBeInTheDocument();
+  });
+});
+
+describe("SecurityTab — saving behind the step-up guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGet.mockResolvedValue(makeSetting({ mfa_enabled: true }));
+  });
+
+  it("prompts to confirm identity instead of reporting a failure", async () => {
+    // Settings is one of the guarded actions. Without this the save just fails,
+    // and since this screen owns the master switch, turning MFA on would make
+    // turning it off again impossible from the UI.
+    mockedUpdate.mockRejectedValue({
+      response: { status: 403, data: { detail: "step_up_required" } },
+    });
+    renderTab();
+    await screen.findByText("Require a second factor");
+
+    fireEvent.click(screen.getByRole("button", { name: /Save Settings/ }));
+
+    expect(await screen.findByPlaceholderText("Code or password")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to save security settings")).not.toBeInTheDocument();
+  });
+
+  it("retries the save once identity is confirmed", async () => {
+    mockedUpdate
+      .mockRejectedValueOnce({ response: { status: 403, data: { detail: "step_up_required" } } })
+      .mockResolvedValueOnce(makeSetting());
+    (AuthService.stepUp as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    renderTab();
+    await screen.findByText("Require a second factor");
+    fireEvent.click(screen.getByRole("button", { name: /Save Settings/ }));
+
+    fireEvent.change(await screen.findByPlaceholderText("Code or password"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledTimes(2));
+  });
+
+  it("still reports an ordinary failure as a failure", async () => {
+    mockedUpdate.mockRejectedValue({ response: { status: 500 } });
+    renderTab();
+    await screen.findByText("Require a second factor");
+
+    fireEvent.click(screen.getByRole("button", { name: /Save Settings/ }));
+
+    expect(await screen.findByText("Failed to save security settings")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Code or password")).not.toBeInTheDocument();
   });
 });
