@@ -104,7 +104,11 @@ const PathologistGyneDiagnosisPage: React.FC<
     finalize,
     completeReview,
     toggleOutLabConsult,
-  } = useGyneDiagnosisData(caseId, form);
+    // "primary", not the roles-array guess: this page IS the pathologist
+    // read-out workflow, and an account holding both roles (see `sad` in
+    // production) would otherwise be stamped "cytotechnologist" here and have
+    // its own read-outs routed into the NILM QC pool.
+  } = useGyneDiagnosisData(caseId, form, "primary");
 
   const [isPatientInfoExpanded, setIsPatientInfoExpanded] = useState(false);
   const [isRevision, setIsRevision] = useState(false);

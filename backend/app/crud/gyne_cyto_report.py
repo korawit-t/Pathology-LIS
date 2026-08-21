@@ -271,6 +271,28 @@ def prepare_gyne_report_data(db: Session, case_id: int):
     }
 
 
+# Signer roles that mean "screened this case", as opposed to reading it out.
+# Mirrors the union in frontend/src/pages/GyneCytoDiagnosis/GyneDiagnosisEntryPage.tsx.
+CYTOTECH_SIGNER_ROLES = ("cytotechnologist", "co-sign cytotechnologist")
+
+
+def _clear_prior_review(db_case) -> None:
+    """Wipe the previous QC round's verdict off a case being re-flagged for review.
+
+    `complete_gyne_review` stamps the verdict on the *case* (not per-report), so a
+    case sent back to the cytotech on a Disagree still carries review_result=
+    "disagree" when it is published again. The QC Review page's Pending filter is
+    `is_reviewed=false` → `review_result IS NULL`, so without this the re-submitted
+    case never reappears there — it sits under Reviewed showing the stale verdict,
+    reviewer and date while its status reads Pending Review.
+    """
+    db_case.review_result = None
+    db_case.review_note = None
+    db_case.reviewed_by_id = None
+    db_case.reviewed_at = None
+    db_case.discrepancy_level = None
+
+
 def publish_gyne_report(
     db: Session,
     case_id: int,
@@ -360,6 +382,7 @@ def publish_gyne_report(
 
         if is_abnormal:
             # Abnormal always requires pathologist review regardless of toggle
+            _clear_prior_review(db_case)
             db_case.needs_review = True
             db_case.review_reason = "abnormal"
             db_case.status = "pending_review"
@@ -370,12 +393,22 @@ def publish_gyne_report(
             # exists to catch missed abnormalities in a cytotechnologist's
             # unsupervised NILM call, so it doesn't apply when a pathologist
             # is the one publishing.
+            #
+            # Which hat, though? Small labs routinely give one account both
+            # "pathologist" and "cytotechnologist", and that account screens
+            # some cases and reads out others. The roles array alone can't tell
+            # the two apart, so it would exempt every case they ever screen and
+            # the NILM pool would come up empty at any sampling rate. The signer
+            # row for this publish carries the hat they actually wore (the
+            # frontend stamps "cytotechnologist" whenever the signer holds that
+            # role), so a publisher who signed as the cytotech was screening,
+            # not reviewing — their NILM calls stay in the pool.
             publisher = (
                 db.query(User).filter(User.id == current_user_id).first()
                 if current_user_id
                 else None
             )
-            publisher_is_pathologist = bool(
+            publisher_has_pathologist_role = bool(
                 publisher
                 and publisher.roles
                 and any(
@@ -383,24 +416,48 @@ def publish_gyne_report(
                     for r in publisher.roles
                 )
             )
+            publisher_signed_as_cytotech = bool(
+                current_user_id
+                and signers
+                and any(
+                    s.get("user_id") == current_user_id
+                    and s.get("role") in CYTOTECH_SIGNER_ROLES
+                    for s in signers
+                )
+            )
+            publisher_is_pathologist = (
+                publisher_has_pathologist_role and not publisher_signed_as_cytotech
+            )
 
             if qc_enabled and not publisher_is_pathologist:
                 review_every_n = settings.nilm_review_every_n if settings else 10
                 ct_user_id = db_case.cytotechnologist_id
                 if not ct_user_id and signers:
                     for s in signers:
-                        if s.get("role") == "cytotechnologist":
+                        if s.get("role") in CYTOTECH_SIGNER_ROLES:
                             ct_user_id = s["user_id"]
                             break
 
-                if ct_user_id and review_every_n and review_every_n > 0:
+                # ct_user_id deliberately does NOT gate the sampling. It only
+                # names the screener in the notification, and it is routinely
+                # absent: registration lets the registrar skip the "Screened by"
+                # field, and a screener whose account lacks the cytotechnologist
+                # role gets stamped "primary" in the signers array. Gating on it
+                # made those cases skip QC silently — a fail-open on the one
+                # control that catches a missed abnormality.
+                if review_every_n and review_every_n > 0:
                     if random.random() < (review_every_n / 100.0):
+                        _clear_prior_review(db_case)
                         db_case.needs_review = True
                         db_case.review_reason = "random_10pct"
                         db_case.status = "pending_review"
                         flagged_for_review = True
 
-                        cytotech = db.query(User).filter(User.id == ct_user_id).first()
+                        cytotech = (
+                            db.query(User).filter(User.id == ct_user_id).first()
+                            if ct_user_id
+                            else None
+                        )
                         notify_event(db, "gyne_qc_random_review", {
                             "hn": db_report.patient_hn or "-",
                             "name": db_report.patient_name or "-",

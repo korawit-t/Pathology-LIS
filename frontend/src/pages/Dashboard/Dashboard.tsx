@@ -387,7 +387,15 @@ const Dashboard: React.FC = () => {
                 setCurrentView(previousView === "gyne-qc-review" ? "gyne-qc-review" : "gyne-cyto-work-list");
                 setPreviousView(null);
               } else if (currentView === "pathologist-gyne-diagnosis") {
-                setCurrentView("pathologist-page");
+                // A pathologist opening a case from QC Review lands here, not in
+                // gyne-cyto-diagnosis-entry — so Back has to honour previousView
+                // too, or it drops them on the Pathologist page instead.
+                setCurrentView(
+                  previousView === "gyne-qc-review"
+                    ? "gyne-qc-review"
+                    : "pathologist-page",
+                );
+                setPreviousView(null);
               } else if (currentView === "pathologist-nongyne-diagnosis") {
                 setCurrentView("pathologist-page");
               } else if (currentView === "nongyne-cyto-diagnosis-entry") {

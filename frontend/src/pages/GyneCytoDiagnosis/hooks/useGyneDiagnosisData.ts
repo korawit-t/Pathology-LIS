@@ -29,6 +29,14 @@ type GyneSigner = {
 export function useGyneDiagnosisData(
   caseId: string | number | undefined,
   form: FormInstance,
+  // Which hat the current user is wearing on THIS page. An account can hold
+  // both roles (a pathologist who also screens), and the roles array alone
+  // can't say which workflow they're in right now — but the page can, because
+  // the dashboard already routed them here by role. The backend reads this
+  // signer role to decide whether the sign-out counts as the QC review, so a
+  // wrong value here either exempts a screening or drags a pathologist's own
+  // readouts into the QC pool. "auto" keeps the legacy roles-array guess.
+  signerRole: "primary" | "cytotechnologist" | "auto" = "auto",
 ) {
   const { message, notification } = App.useApp();
 
@@ -197,8 +205,12 @@ export function useGyneDiagnosisData(
   const defaultSigners = useMemo(() => {
     if (!currentUser) return [];
 
-    const isCyto = currentUser.roles?.some((r) => r === "cytotechnologist");
-    const currentUserRole = isCyto ? "cytotechnologist" : "primary";
+    const currentUserRole =
+      signerRole !== "auto"
+        ? signerRole
+        : currentUser.roles?.some((r) => r === "cytotechnologist")
+          ? "cytotechnologist"
+          : "primary";
 
     const signers: { user_id: number; role: string; signed_at: null }[] = [
       { user_id: currentUser.id, role: currentUserRole, signed_at: null },
@@ -220,7 +232,7 @@ export function useGyneDiagnosisData(
     }
 
     return signers;
-  }, [caseData, currentUser]);
+  }, [caseData, currentUser, signerRole]);
 
   // Shared by saveDraft/persistDraftForPreview: normalizes each signer's
   // signed_at to null (rather than undefined) before it's sent to the API.
