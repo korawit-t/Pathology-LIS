@@ -87,6 +87,65 @@ to a couple of administrators first is the sensible order.
 
 ---
 
+## Check it works before you rely on it
+
+Run this once on a test or development installation, in order. Each step
+verifies something a later step assumes, so a failure part-way tells you where
+to look.
+
+**1. The second step actually appears.** Sign out, sign in with your password.
+You should get a six-digit code prompt. *Do not tick "Remember this device" yet.*
+
+**2. A wrong code is refused.** Enter `000000`. You should stay on the code
+step with an error, and not be signed in.
+
+**3. A code cannot be reused.** Sign out, sign in, and enter the code you just
+used successfully. It should be refused — codes are single-use within their
+thirty-second window. Wait for the next one.
+
+**4. An irreversible action asks again.** While signed in, change something in
+System Settings and save. You should be asked to confirm your identity *again*,
+even though you only just signed in. This is the check that protects report
+sign-out; if it does not appear, stop and investigate before enabling MFA for
+anyone else.
+
+**5. A trusted device skips the code.** Sign out, sign in, tick "Remember this
+device". Sign out and back in — no code this time.
+
+**6. …but step 4 still asks.** Repeat step 4 on that trusted browser. It must
+still ask. This pair is the whole basis of the design: the code is skipped for
+convenience at login, and never for the actions that cannot be undone.
+
+**7. Removing a device takes effect.** Account menu → Two-Factor Authentication
+→ remove the device → sign out and in. The code prompt should return.
+
+**8. Recovery works.** Covered under *Losing a device* below. If you are the
+only administrator, this is the step that matters most — see *If you are the
+only administrator*.
+
+## Getting back in when something goes wrong
+
+Two levers, and it is worth knowing both before you need either.
+
+**Clear one user's factor** — they sign in with a password alone afterwards:
+
+```bash
+python scripts/reset_mfa.py <username>
+```
+
+**Turn the requirement off for everybody**, without unenrolling anyone. Useful
+when the problem is not one account — a clock issue, say — and you want the lab
+working again while you investigate:
+
+```sql
+UPDATE system_settings SET mfa_enabled = false;
+```
+
+Everyone signs in with a password alone from the next attempt. Enrolments are
+untouched, so setting it back to `true` restores exactly where you were. The
+same switch is in Admin → System Settings → Security, but the SQL is there for
+when nobody can reach that screen.
+
 ## Enrolling (for users)
 
 **Account menu → Two-Factor Authentication → Set up.**
@@ -150,9 +209,10 @@ section above does not apply to you**, and it is worth being blunt about why:
 non-optional rather than advisable:
 
 1. **Run it successfully at least once before you turn MFA on.** Enrol, then
-   immediately reset yourself from the console and enrol again. Discovering
-   that the script does not run — wrong directory, missing `.env`, no database
-   access — at the moment you are locked out is the situation to avoid.
+   immediately reset yourself from the console and enrol again — step 8 of
+   *Check it works before you rely on it*. Discovering that the script does not
+   run — wrong directory, missing `.env`, no database access — at the moment you
+   are locked out is the situation to avoid.
 2. **Make sure you can reach the server console without the LIS.** Remote
    Desktop, physical access, whatever it is. If getting to the server itself
    depends on being logged into something that depends on MFA, there is no way
