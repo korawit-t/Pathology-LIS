@@ -43,6 +43,10 @@ def mfa_on(db):
         row = SystemSetting(hospital_slug="master")
         db.add(row)
     row.mfa_enabled = True
+    # The step-up guard is off by default (mfa_step_up_minutes = 0, see
+    # app/dependencies/step_up.py). These tests are about what happens when a
+    # site has asked for it, so switch it on here.
+    row.mfa_step_up_minutes = 5
     db.commit()
     return row
 

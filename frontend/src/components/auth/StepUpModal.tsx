@@ -13,8 +13,26 @@ const { Paragraph } = Typography;
  */
 export const STEP_UP_REQUIRED = "step_up_required";
 
-export const isStepUpRequired = (err: any): boolean =>
+/** The server asked for a factor — whether or not it has already been asked for. */
+export const isStepUpRefusal = (err: any): boolean =>
   err?.response?.status === 403 && err?.response?.data?.detail === STEP_UP_REQUIRED;
+
+/**
+ * Above every full-screen overlay in the app.
+ *
+ * The sign-off screens (FinalizeReportPage, GyneSignOffPage,
+ * NongyneSignOffPage) are opaque `position: fixed` panels at z-index 1050, and
+ * page-level modals sit at 1200-3000. antd's default 1000 puts this prompt
+ * *behind* all of them: the pathologist sees the Sign Off button spin forever
+ * on a prompt they cannot see or reach. Keep this above the highest overlay.
+ */
+export const STEP_UP_Z_INDEX = 4000;
+
+export const isStepUpRequired = (err: any): boolean =>
+  isStepUpRefusal(err) &&
+  // Already offered app-wide and dismissed (see StepUpGate) — putting a second
+  // prompt up on top of the one the user just closed only loops them.
+  !err?.__stepUpHandled;
 
 interface Props {
   open: boolean;
@@ -69,6 +87,7 @@ const StepUpModal: React.FC<Props> = ({ open, action, onCancel, onVerified }) =>
       onOk={() => form.submit()}
       okText="Confirm"
       confirmLoading={loading}
+      zIndex={STEP_UP_Z_INDEX}
       title={
         <span>
           <SafetyCertificateOutlined style={{ marginRight: 8, color: "#4a7cf6" }} />

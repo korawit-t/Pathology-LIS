@@ -90,13 +90,18 @@ const NongyneReportService = {
     is_out_lab_consult?: boolean,
     consult_reason?: string,
   ): Promise<unknown> => {
-    const res = await api.post(`/nongyne-cyto-reports/${caseId}/publish`, {
-      signers,
-      is_pending: is_pending ?? false,
-      pending_reason: pending_reason ?? null,
-      is_out_lab_consult,
-      consult_reason,
-    });
+    const res = await api.post(
+      `/nongyne-cyto-reports/${caseId}/publish`,
+      {
+        signers,
+        is_pending: is_pending ?? false,
+        pending_reason: pending_reason ?? null,
+        is_out_lab_consult,
+        consult_reason,
+      },
+      // Guarded by require_step_up on the backend; names the action in the prompt.
+      { stepUpAction: "publish this report" },
+    );
     return res.data;
   },
 

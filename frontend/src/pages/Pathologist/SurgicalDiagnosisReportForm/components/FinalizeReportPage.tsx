@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import {
   Modal,
@@ -104,19 +104,30 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
   const [outLabOpen, setOutLabOpen] = useState(false);
   const [outLabReason, setOutLabReason] = useState("");
 
-  // Load initial data
+  // Seed the form when the panel opens — and only then.
+  //
+  // `initialData` is built inline by the caller, so it is a new object on every
+  // parent render. Keying this effect on it re-seeded mid-session: the moment
+  // anything re-rendered the parent — `loading` flipping when Confirm & Sign
+  // Off is pressed — the quality picks were wiped back to the case's stored
+  // (usually empty) values, and `qualityComplete` went false, leaving the
+  // button disabled with no way back except re-picking all three. The sibling
+  // sign-off pages (GyneSignOffPage, NongyneSignOffPage) key on `open` alone.
+  const initialDataRef = useRef(initialData);
+  initialDataRef.current = initialData;
+
   useEffect(() => {
-    if (open && initialData) {
-      setData({
-        stain_quality: initialData.stain_quality,
-        tissue_quality: initialData.tissue_quality,
-        slide_quality: initialData.slide_quality,
-        quality_comment: initialData.quality_comment || "",
-        is_pending: initialData.is_pending ?? false,
-        pending_reason: initialData.pending_reason || "",
-      });
-    }
-  }, [open, initialData]);
+    const seed = initialDataRef.current;
+    if (!open || !seed) return;
+    setData({
+      stain_quality: seed.stain_quality,
+      tissue_quality: seed.tissue_quality,
+      slide_quality: seed.slide_quality,
+      quality_comment: seed.quality_comment || "",
+      is_pending: seed.is_pending ?? false,
+      pending_reason: seed.pending_reason || "",
+    });
+  }, [open]);
 
   // Lock body scroll
   useEffect(() => {

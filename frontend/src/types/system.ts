@@ -39,6 +39,8 @@ export interface SystemSetting {
   mfa_grace_period_days?: number;
   mfa_allowed_methods?: string[] | null;
   mfa_trusted_device_days?: number;
+  /** How long a step-up lasts. 0 (the default) means never ask. */
+  mfa_step_up_minutes?: number;
   idle_warning_minutes?: number;
 
   // --- Workflow & Report Settings ---

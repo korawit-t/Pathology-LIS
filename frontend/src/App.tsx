@@ -17,6 +17,7 @@ import HospitalResultPage from "./pages/Result/HospitalResultPage";
 import ForceChangePassword from "./pages/Auth/ForceChangePassword";
 import MfaSetup from "./pages/Auth/MfaSetup";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import StepUpGate from "./components/auth/StepUpGate";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const IdleWarningBanner: React.FC = () => {
@@ -57,6 +58,9 @@ const MainApp: React.FC = () => {
       >
         <AuthProvider>
           <IdleWarningBanner />
+          {/* Answers any request the server refuses with step_up_required,
+              wherever it was fired from, and lets it be retried. */}
+          <StepUpGate />
           <Layout style={{ minHeight: "100vh", ...backgroundStyle }}>
             <Routes>
               {/* 🔓 หน้าที่ใครก็เข้าได้ */}

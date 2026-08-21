@@ -1,7 +1,7 @@
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Union, Any
+from typing import Union, Any, Optional
 from jose import jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -85,12 +85,16 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 3))
 MFA_CHALLENGE_EXPIRE_MINUTES = int(os.getenv("MFA_CHALLENGE_EXPIRE_MINUTES", 5))
 
 
-# How long a step-up lasts. Short by design: it is meant to cover the action the
-# user just asked for, not to open a window they forget is open.
+# Fallback for how long a step-up lasts, used only when SystemSetting carries no
+# value. The real control is SystemSetting.mfa_step_up_minutes, which an admin
+# can change from Security settings without restarting the service — this env
+# var predates it and stays as the floor for anything reading it directly.
 STEP_UP_EXPIRE_MINUTES = int(os.getenv("STEP_UP_EXPIRE_MINUTES", 5))
 
 
-def create_step_up_token(uid: int, access_jti: str) -> tuple[str, datetime]:
+def create_step_up_token(
+    uid: int, access_jti: str, minutes: Optional[int] = None
+) -> tuple[str, datetime]:
     """Prove a factor was re-checked just now, for one session only.
 
     Bound to the jti of the access token that requested it. Without that
@@ -98,7 +102,8 @@ def create_step_up_token(uid: int, access_jti: str) -> tuple[str, datetime]:
     action taken from another — which is exactly the situation a stolen session
     creates, and exactly what this is meant to catch.
     """
-    expire = datetime.now(timezone.utc) + timedelta(minutes=STEP_UP_EXPIRE_MINUTES)
+    window = STEP_UP_EXPIRE_MINUTES if minutes is None else minutes
+    expire = datetime.now(timezone.utc) + timedelta(minutes=window)
     to_encode = {
         "uid": uid,
         "exp": expire,

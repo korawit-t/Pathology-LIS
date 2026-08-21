@@ -15,6 +15,7 @@ import {
 import {
   ClockCircleOutlined,
   ControlOutlined,
+  LockOutlined,
   SaveOutlined,
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
@@ -67,6 +68,7 @@ const SecurityTab: React.FC = () => {
   const warningMinutes = Form.useWatch("idle_warning_minutes", form) ?? 1;
   const mfaEnabled = Form.useWatch("mfa_enabled", form) ?? false;
   const trustedDays = Form.useWatch("mfa_trusted_device_days", form) ?? 14;
+  const stepUpMinutes = Form.useWatch("mfa_step_up_minutes", form) ?? 0;
 
   const load = async () => {
     try {
@@ -223,7 +225,7 @@ const SecurityTab: React.FC = () => {
               description={
                 trustedDays === 0
                   ? "Set to 0 \u2014 a code is required at every login, on every browser."
-                  : "How long a browser may skip the code after the user ticks Remember this device. Signing out a report always asks again."
+                  : "How long a browser may skip the code after the user ticks Remember this device."
               }
               icon={<ClockCircleOutlined style={{ color: "#faad14" }} />}
             >
@@ -232,6 +234,28 @@ const SecurityTab: React.FC = () => {
                   <InputNumber min={0} max={90} disabled={!mfaEnabled} style={{ width: 100 }} />
                 </Form.Item>
                 <Text type="secondary">days</Text>
+              </Space>
+            </SettingRow>
+
+            <SettingRow
+              title="Ask again before signing out a report"
+              description={
+                stepUpMinutes === 0
+                  ? "Never asks \u2014 the default. Signing out a report, amending an approved result and changing these settings all go straight through."
+                  : "Asks for a code or password before signing out a report, amending an approved " +
+                    `result, or changing these settings, then stays quiet for ${stepUpMinutes} minutes. ` +
+                    "Counted per session, not per case." +
+                    (stepUpMinutes < 15
+                      ? " At this setting a pathologist is interrupted every case or two while signing out \u2014 30 asks about once per sitting."
+                      : "")
+              }
+              icon={<LockOutlined style={{ color: "#faad14" }} />}
+            >
+              <Space>
+                <Form.Item name="mfa_step_up_minutes" noStyle>
+                  <InputNumber min={0} max={480} disabled={!mfaEnabled} style={{ width: 100 }} />
+                </Form.Item>
+                <Text type="secondary">minutes</Text>
               </Space>
             </SettingRow>
 

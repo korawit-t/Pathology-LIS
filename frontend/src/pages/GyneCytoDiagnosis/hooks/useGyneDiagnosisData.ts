@@ -19,6 +19,7 @@ import type {
   GyneSpecimenAdequacy,
 } from "../../../types/gyne-diagnosis";
 import logger from "../../../utils/logger";
+import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
 
 type GyneSigner = {
   user_id: number;
@@ -402,8 +403,13 @@ export function useGyneDiagnosisData(
 
         fetchDiagnosis();
       } catch (err) {
-        logger.error(err);
-        message.error("Failed to finalize report.");
+        if (isStepUpRefusal(err)) {
+          // The prompt was put up and closed (see StepUpGate).
+          message.info("Sign-off cancelled — identity was not confirmed.");
+        } else {
+          logger.error(err);
+          message.error("Failed to finalize report.");
+        }
       } finally {
         setFinalizing(false);
       }
