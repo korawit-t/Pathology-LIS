@@ -335,8 +335,14 @@ def _complete_login(db: Session, response: Response, user: User, ip, action: str
     if expiry_days > 0 and user.last_update_password:
         is_password_expired = (local_now() - user.last_update_password).days >= expiry_days
 
+    enrolment = mfa_crud.enrolment_status(db, user)
+
     return {
         "token_type": "bearer",
+        # Drives the enrolment gate in the frontend, the same way
+        # is_temporary_password drives the forced password change.
+        "mfa_setup_required": enrolment.overdue,
+        "mfa_setup_due_in_days": enrolment.days_left if enrolment.required else None,
         "roles": user.roles,
         "user": {
             "id": user.id,

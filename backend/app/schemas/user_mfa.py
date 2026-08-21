@@ -60,6 +60,10 @@ class MfaStatusResponse(BaseModel):
     required_for_this_user: bool
     # Whether the installation has MFA switched on at all.
     system_enabled: bool
+    # Days left to enrol, for users a policy compels. None when it does not
+    # apply. Shown so the deadline does not arrive without notice.
+    setup_due_in_days: Optional[int] = None
+    setup_overdue: bool = False
 
 
 class MfaLoginRequest(BaseModel):

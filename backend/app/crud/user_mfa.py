@@ -6,9 +6,10 @@ here is `verify_totp`, because confirming an enrolment and signing in later use
 exactly the same check and must not drift apart.
 """
 
+import math
 import secrets
-from datetime import datetime, timezone
-from typing import Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import NamedTuple, Optional, Tuple
 
 import pyotp
 from sqlalchemy.orm import Session
@@ -36,6 +37,58 @@ def _now() -> datetime:
 
 def get_mfa_settings(db: Session) -> SystemSetting | None:
     return db.query(SystemSetting).first()
+
+
+class EnrolmentStatus(NamedTuple):
+    """Where a user stands against the enrolment policy.
+
+    `overdue` is the only field that gates anything. `days_left` exists so the
+    user can be warned before it does — a deadline that arrives without notice
+    reads as a fault rather than a policy.
+    """
+
+    required: bool
+    enrolled: bool
+    deadline: Optional[datetime]
+    days_left: Optional[int]
+    overdue: bool
+
+
+def enrolment_status(
+    db: Session, user: User, settings: SystemSetting | None = None
+) -> EnrolmentStatus:
+    """Whether this user still owes an enrolment, and how long they have.
+
+    The grace period counts from `mfa_required_since`, the moment a policy first
+    named any role. Counting from anything else — the user's creation, the first
+    login after the switch — either punishes people who were already here or
+    gives a fresh deadline to anyone who stays away long enough.
+    """
+    if settings is None:
+        settings = get_mfa_settings(db)
+
+    required = is_mfa_required_for(user, settings)
+    enrolled = bool(user.mfa_enabled)
+    if not required or enrolled:
+        return EnrolmentStatus(required, enrolled, None, None, False)
+
+    since = settings.mfa_required_since if settings else None
+    if since is None:
+        # Policy names a role but nothing recorded when. Warn, never block:
+        # locking people out on the strength of a missing timestamp would be
+        # the worst possible reading of an ambiguous state.
+        return EnrolmentStatus(required, enrolled, None, None, False)
+
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+    grace_days = (settings.mfa_grace_period_days or 0) if settings else 0
+    deadline = since + timedelta(days=grace_days)
+    remaining = deadline - _now()
+    # Round up from seconds, not from timedelta.days — that attribute truncates,
+    # so a deadline seven days out would be reported as six and everybody would
+    # be told they had a day less than they do.
+    days_left = max(0, math.ceil(remaining.total_seconds() / 86400))
+    return EnrolmentStatus(required, enrolled, deadline, days_left, remaining.total_seconds() <= 0)
 
 
 def is_mfa_required_for(user: User, settings: SystemSetting | None) -> bool:

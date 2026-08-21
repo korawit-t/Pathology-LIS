@@ -34,6 +34,10 @@ export interface User extends BaseEntity {
   status: boolean;
   /** True once the user has a confirmed second factor. */
   mfa_enabled?: boolean;
+  /** Enrolment is overdue — the app should send them to /mfa-setup. */
+  mfa_setup_required?: boolean;
+  /** Days left to enrol; null when the policy does not apply. */
+  mfa_setup_due_in_days?: number | null;
 
   // Foreign Keys (ID)
   hospital_ids: number[];

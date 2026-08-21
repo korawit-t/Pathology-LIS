@@ -1,5 +1,5 @@
 # app/models/system_setting.py
-from sqlalchemy import Column, Float, Integer, String, Text, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -88,6 +88,11 @@ class SystemSetting(Base):
     # device". 0 disables trusted devices entirely, so a site that wants a code
     # on every single login can have one.
     mfa_trusted_device_days = Column(Integer, default=14, nullable=False, server_default="14")
+    # When mfa_required_roles was first set to something non-empty. The grace
+    # period counts from here — without an anchor, "N days" has no answer at
+    # all. Set automatically on that transition rather than by hand, so it
+    # cannot be quietly moved forward to buy another week.
+    mfa_required_since = Column(DateTime(timezone=True), nullable=True)
 
     # --- Workflow Control ---
     enable_approve_system = Column(Boolean, default=False) # Surgical (Legacy name)

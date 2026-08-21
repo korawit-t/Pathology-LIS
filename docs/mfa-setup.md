@@ -146,6 +146,51 @@ untouched, so setting it back to `true` restores exactly where you were. The
 same switch is in Admin → System Settings → Security, but the SQL is there for
 when nobody can reach that screen.
 
+## Requiring it, rather than inviting it
+
+The master switch on its own **compels nobody**. Anyone who has not set up an
+authenticator keeps signing in with a password alone. That is deliberate — it is
+what lets you turn MFA on and let people enrol at their own pace — but it means
+an installation can sit for months looking protected while most accounts are not.
+
+To make it compulsory, name the roles in **Admin → System Settings → Security →
+Roles that must enrol**.
+
+### How the deadline is counted
+
+Saving a non-empty list stamps `mfa_required_since` on the settings row. The
+deadline is that moment plus **Grace period**. Two consequences worth knowing:
+
+- **Editing the list later does not restart the clock.** Adding a second role
+  next week does not buy everybody another week. If it did, every routine
+  settings save would quietly extend the deadline.
+- **Clearing the list clears the anchor.** Switching the requirement back on
+  later starts a fresh grace period rather than declaring everyone instantly
+  overdue.
+
+Set the grace period to `0` to make it immediate.
+
+### What a compelled user experiences
+
+**Inside the grace period** — nothing changes. They sign in normally. The
+Two-Factor panel in their account menu shows how many days are left.
+
+**Once the deadline passes** — they can still sign in, and are sent to the setup
+page. Signing out a report or changing settings is refused by the server until
+they enrol, with `mfa_setup_required` rather than the ordinary
+`step_up_required`, so the app knows to offer enrolment rather than a code
+prompt.
+
+They are **not** locked out of the application. Somebody locked out entirely
+could not reach the page they are being told to use.
+
+### If the anchor is missing
+
+A settings row that names roles but has no `mfa_required_since` — most likely a
+policy written directly into the database — warns but never blocks. Locking
+people out on the strength of a timestamp that was never recorded is the worst
+available reading of an ambiguous state.
+
 ## Enrolling (for users)
 
 **Account menu → Two-Factor Authentication → Set up.**

@@ -54,6 +54,7 @@ const renderQr = (uri: string): string | null => {
 const MfaSetup: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const overdue = Boolean(user?.mfa_setup_required);
   const { isDarkMode, backgroundStyle } = useTheme();
 
   const [step, setStep] = useState<number>(0);
@@ -195,6 +196,21 @@ const MfaSetup: React.FC = () => {
           />
         )}
 
+        {step === 0 && overdue && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            title="Setting this up is now required for your role"
+            description={
+              "Your organisation requires a second factor for accounts like " +
+              "yours, and the grace period has passed. You can still sign in, " +
+              "but signing out reports and changing settings stay unavailable " +
+              "until you finish."
+            }
+          />
+        )}
+
         {step === 0 && (
           <>
             <Paragraph type="secondary">
@@ -216,9 +232,11 @@ const MfaSetup: React.FC = () => {
               <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45 }}>
                 Continue
               </Button>
-              <Button type="link" block onClick={goHome} style={{ marginTop: 8 }}>
-                Not now
-              </Button>
+              {!overdue && (
+                <Button type="link" block onClick={goHome} style={{ marginTop: 8 }}>
+                  Not now
+                </Button>
+              )}
             </Form>
           </>
         )}

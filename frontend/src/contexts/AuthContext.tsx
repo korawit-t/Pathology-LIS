@@ -82,6 +82,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const userWithRoles: User = {
         ...data.user,
         roles: data.roles as UserRole[],
+        // Kept on the user so ProtectedRoute can gate on it the same way it
+        // already gates a forced password change.
+        mfa_setup_required: data.mfa_setup_required,
+        mfa_setup_due_in_days: data.mfa_setup_due_in_days,
       };
       localStorage.setItem("user", JSON.stringify(userWithRoles));
 
