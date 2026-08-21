@@ -34,6 +34,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, pageKey }) =>
     return <Navigate to={getHomeRoute(user.roles, user.position_name)} replace />;
   }
 
+  // Enrolment is overdue. Same shape as the forced password change above: the
+  // user can still sign in, because somebody locked out entirely could not
+  // reach the page they are being sent to in order to comply.
+  if (user.mfa_setup_required && location.pathname !== "/mfa-setup") {
+    return <Navigate to="/mfa-setup" replace />;
+  }
+
   const allowedRoles = pageKey ? PAGE_PERMISSIONS[pageKey] : undefined;
 
   if (allowedRoles && !hasAnyRole(user, allowedRoles)) {

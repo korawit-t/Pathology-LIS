@@ -1,4 +1,5 @@
 # app/crud/system_setting.py
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session, joinedload
 from app.models.system_setting import SystemSetting
 from app.schemas.system_setting import SystemSettingUpdate
@@ -55,6 +56,20 @@ def update_settings(db: Session, obj_in: SystemSettingUpdate, hospital_slug: str
     # 🚩 ดึงข้อมูลเฉพาะที่มีการส่งค่ามาจริงๆ จาก Schema
     # ฟิลด์ใหม่ๆ (surgical_express_tat_days, etc.) จะถูก update โดยอัตโนมัติถ้ามีใน Schema
     update_data = obj_in.model_dump(exclude_unset=True)
+
+    # Stamp when a policy first names a role, so the grace period has something
+    # to count from. Set here rather than left to the caller: an anchor that can
+    # be supplied by hand can also be pushed forward to buy another week, which
+    # would make the deadline meaningless.
+    if "mfa_required_roles" in update_data:
+        now_required = bool(update_data.get("mfa_required_roles"))
+        was_required = bool(db_obj.mfa_required_roles)
+        if now_required and not was_required:
+            db_obj.mfa_required_since = datetime.now(timezone.utc)
+        elif not now_required:
+            # No roles compelled any more; the clock should not keep running for
+            # whenever somebody switches it back on.
+            db_obj.mfa_required_since = None
 
     for field, value in update_data.items():
         if field == "hospital_slug":

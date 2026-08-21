@@ -7,6 +7,10 @@ export interface LoginResponse {
   last_password_update?: string | null;
   /** Present only on the second step, when the browser was trusted. */
   device_remembered?: boolean;
+  /** Policy requires a factor and the grace period has run out. */
+  mfa_setup_required?: boolean;
+  /** Days left to enrol; null when the policy does not apply to this user. */
+  mfa_setup_due_in_days?: number | null;
 }
 
 export interface LoginPayload {
@@ -47,6 +51,8 @@ export interface MfaStatus {
   methods: MfaMethod[];
   required_for_this_user: boolean;
   system_enabled: boolean;
+  setup_due_in_days?: number | null;
+  setup_overdue?: boolean;
 }
 
 export interface TrustedDevice {

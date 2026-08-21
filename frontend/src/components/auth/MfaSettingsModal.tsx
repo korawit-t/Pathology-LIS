@@ -138,6 +138,24 @@ const MfaSettingsModal: React.FC<Props> = ({ open, onClose }) => {
             />
           )}
 
+          {!status?.enabled && status?.required_for_this_user && (
+            <Alert
+              type={status.setup_overdue ? "error" : "warning"}
+              showIcon
+              style={{ marginBottom: 16 }}
+              title={
+                status.setup_overdue
+                  ? "Setting this up is now required"
+                  : `Required for your role — ${status.setup_due_in_days} day(s) left`
+              }
+              description={
+                status.setup_overdue
+                  ? "Signing out reports and changing settings stay unavailable until you finish."
+                  : "After that, signing out reports will need a second factor."
+              }
+            />
+          )}
+
           {!status?.enabled && (
             <>
               <Paragraph type="secondary">

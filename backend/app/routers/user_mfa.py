@@ -115,13 +115,16 @@ def get_mfa_status(
     user: User = Depends(get_current_active_user),
 ):
     settings = crud.get_mfa_settings(db)
+    enrolment = crud.enrolment_status(db, user, settings)
     methods = [m for m in user.mfa_methods if m.confirmed_at is not None]
     return MfaStatusResponse(
         enabled=bool(user.mfa_enabled),
         pending_setup=crud.get_totp_method(db, user.id, confirmed=False) is not None,
         methods=[MfaMethodRead.model_validate(m) for m in methods],
-        required_for_this_user=crud.is_mfa_required_for(user, settings),
+        required_for_this_user=enrolment.required,
         system_enabled=bool(settings.mfa_enabled) if settings else False,
+        setup_due_in_days=enrolment.days_left if enrolment.required else None,
+        setup_overdue=enrolment.overdue,
     )
 
 

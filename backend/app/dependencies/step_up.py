@@ -30,6 +30,11 @@ COOKIE_NAME = "step_up"
 # "confirm it is you" and put up the code prompt rather than an error.
 STEP_UP_REQUIRED_DETAIL = "step_up_required"
 
+# Distinct from the above on purpose: "confirm it is you" and "you have not set
+# up a second factor yet" need different things from the user, and a single code
+# would send the frontend to the wrong prompt.
+MFA_SETUP_REQUIRED_DETAIL = "mfa_setup_required"
+
 
 def _access_jti(access_token: Optional[str], authorization: Optional[str]) -> Optional[str]:
     token = access_token
@@ -54,7 +59,21 @@ def require_step_up(
     """Allow the request only if a factor was re-checked in the last few minutes."""
     settings = db.query(SystemSetting).first()
     mfa_on = bool(settings and settings.mfa_enabled)
-    if not mfa_on or not user.mfa_enabled:
+    if not mfa_on:
+        return user
+
+    if not user.mfa_enabled:
+        # Someone whose grace period has run out still has no factor to check,
+        # so there is nothing to step up with. Refusing here is what stops the
+        # enrolment deadline from being purely a frontend redirect: the actions
+        # that cannot be undone are closed server-side until they enrol.
+        from app.crud import user_mfa as mfa_crud
+
+        if mfa_crud.enrolment_status(db, user, settings).overdue:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=MFA_SETUP_REQUIRED_DETAIL,
+            )
         return user
 
     if not step_up:
