@@ -13,9 +13,18 @@ import pyotp
 import pytest
 from cryptography.fernet import Fernet
 
+from datetime import datetime, timezone
+
+from jose import jwt
+
 from app.core.mfa_crypto import ENV_VAR, decrypt_secret
+from app.core.security import ALGORITHM, SECRET_KEY
 from app.crud import user_mfa as mfa_crud
-from app.dependencies.step_up import COOKIE_NAME, STEP_UP_REQUIRED_DETAIL
+from app.dependencies.step_up import (
+    COOKIE_NAME,
+    MFA_SETUP_REQUIRED_DETAIL,
+    STEP_UP_REQUIRED_DETAIL,
+)
 from app.models.system_setting import SystemSetting
 
 SETTINGS_URL = "/system-settings/update"
@@ -38,6 +47,10 @@ def mfa_on(db):
         row = SystemSetting(hospital_slug="master")
         db.add(row)
     row.mfa_enabled = True
+    # The step-up guard is off by default (mfa_step_up_minutes = 0, see
+    # app/dependencies/step_up.py). These tests are about what happens when a
+    # site has asked for it, so switch it on here.
+    row.mfa_step_up_minutes = 5
     db.commit()
     return row
 
@@ -192,6 +205,109 @@ class TestInvisibleWithoutMfa:
         db.commit()
 
         assert client.patch(SETTINGS_URL, json={"lab_name_en": "X"}).status_code == 200
+
+
+class TestTheSiteDecidesWhetherToAsk:
+    """mfa_step_up_minutes is the switch, and 0 — the default — means never ask.
+
+    Sign-out is a batch activity: a prompt every few cases costs a pathologist
+    more than the window it closes, and idle_timeout_minutes already ends an
+    unattended session. A site that wants the re-check sets minutes here
+    instead of editing code.
+    """
+
+    def test_the_shipped_default_is_not_to_ask(self):
+        """An install that has never touched this setting signs out reports
+        exactly as it did before step-up existed.
+
+        Asserted against the column definition rather than a live row: every
+        other test here commits a value into the one shared system_settings
+        row, so what is in the database says nothing about what ships.
+        """
+        col = SystemSetting.__table__.c.mfa_step_up_minutes
+        assert col.default.arg == 0
+        assert col.server_default.arg == "0", "existing DBs must upgrade to 'never ask'"
+
+    def test_zero_releases_the_guard_for_an_enrolled_user(
+        self, client, db, enrolled_admin
+    ):
+        """The case the setting exists for: MFA on, factor enrolled, and the
+        site has still decided it does not want to be asked mid-sign-out."""
+        assert client.patch(SETTINGS_URL, json={"lab_name_en": "X"}).status_code == 403
+
+        db.rollback()
+        row = db.query(SystemSetting).first()
+        row.mfa_step_up_minutes = 0
+        db.commit()
+
+        assert client.patch(SETTINGS_URL, json={"lab_name_en": "X"}).status_code == 200
+
+    @pytest.fixture
+    def restore_enrolment_policy(self, db):
+        """Put the enrolment policy back after a test that has to set one.
+
+        Everything here writes to the single shared system_settings row, and
+        those writes are real commits that outlive the test. mfa_enabled and
+        mfa_step_up_minutes are harmless because every MFA fixture re-sets them,
+        but nothing re-sets mfa_required_roles — leaving "admin" in it makes
+        /auth/mfa/disable start refusing in a later file
+        (test_mfa_trusted_devices.py), as a 403 with no visible connection to
+        the test that caused it.
+        """
+        yield
+        db.rollback()
+        row = db.query(SystemSetting).first()
+        if row:
+            row.mfa_required_roles = []
+            row.mfa_grace_period_days = 7
+            row.mfa_required_since = None
+            db.commit()
+
+    def test_zero_also_releases_a_user_who_never_enrolled(
+        self, client, db, admin_user, restore_enrolment_policy
+    ):
+        """Switching the re-check off must not leave overdue users locked out of
+        sign-out instead — that deadline is enforced at login, not here."""
+        db.rollback()
+        row = db.query(SystemSetting).first() or SystemSetting(hospital_slug="master")
+        db.add(row)
+        row.mfa_enabled = True
+        row.mfa_step_up_minutes = 0
+        row.mfa_required_roles = ["admin"]
+        row.mfa_grace_period_days = 0
+        db.commit()
+
+        user, pwd = admin_user
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+
+        r = client.post("/surgical-reports/999999/finalize-snapshot", json={})
+        assert r.json().get("detail") not in (
+            STEP_UP_REQUIRED_DETAIL,
+            MFA_SETUP_REQUIRED_DETAIL,
+        )
+
+    def test_the_grant_lasts_as_long_as_the_setting_says(self, client, db, enrolled_admin):
+        """The cookie's lifetime comes from the setting, not the env default —
+        otherwise raising the window in Security settings changes how often the
+        prompt appears but not how long an answer counts for."""
+        _user, pwd, _secret = enrolled_admin
+        db.rollback()
+        row = db.query(SystemSetting).first()
+        row.mfa_step_up_minutes = 45
+        db.commit()
+
+        r = client.post("/auth/mfa/step-up", json={"code": pwd})
+        assert r.status_code == 204
+
+        cookie = next(
+            c for c in r.headers.get_list("set-cookie") if c.startswith(f"{COOKIE_NAME}=")
+        )
+        assert "Max-Age=2700" in cookie
+
+        token = client.cookies.get(COOKIE_NAME)
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        lifetime = payload["exp"] - datetime.now(timezone.utc).timestamp()
+        assert 40 * 60 < lifetime <= 45 * 60
 
 
 class TestEveryGuardedEndpoint:

@@ -88,6 +88,14 @@ class SystemSetting(Base):
     # device". 0 disables trusted devices entirely, so a site that wants a code
     # on every single login can have one.
     mfa_trusted_device_days = Column(Integer, default=14, nullable=False, server_default="14")
+    # How long a re-check of the second factor keeps authorising irreversible
+    # actions — signing out a report, amending an approved result, changing
+    # these settings. 0 turns the re-check off entirely, which is the default:
+    # sign-out is a batch activity, and a prompt every few cases costs a
+    # pathologist more than the narrow window it closes (idle_timeout_minutes
+    # already ends an unattended session). A site that wants the protection
+    # sets minutes here rather than editing code.
+    mfa_step_up_minutes = Column(Integer, default=0, nullable=False, server_default="0")
     # When mfa_required_roles was first set to something non-empty. The grace
     # period counts from here — without an anchor, "N days" has no answer at
     # all. Set automatically on that transition rather than by hand, so it

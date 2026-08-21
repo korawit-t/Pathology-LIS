@@ -33,6 +33,7 @@ from app.crud import user_trusted_device as device_crud
 from app.db.database import get_db
 from app.dependencies.auth import get_current_active_user
 from app.models.audit_log import AuditLog
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.user_mfa import (
     MfaConfirmRequest,
@@ -331,14 +332,21 @@ def step_up(
             detail="Could not validate the current session.",
         )
 
-    token, _expires = create_step_up_token(uid=user.id, access_jti=jti)
+    # The site's configured window, so a grant lasts exactly as long as Security
+    # settings says. Falls back to the env default when the setting is 0 — the
+    # guard is off in that case, and a grant nobody checks may as well be short.
+    settings = db.query(SystemSetting).first()
+    minutes = step_up_dep.step_up_minutes(settings) or STEP_UP_EXPIRE_MINUTES
+    token, _expires = create_step_up_token(
+        uid=user.id, access_jti=jti, minutes=minutes
+    )
     response.set_cookie(
         key=step_up_dep.COOKIE_NAME,
         value=token,
         httponly=True,
         secure=IS_PRODUCTION,
         samesite=COOKIE_SAMESITE,
-        max_age=STEP_UP_EXPIRE_MINUTES * 60,
+        max_age=minutes * 60,
         path="/",
         domain=COOKIE_DOMAIN,
     )

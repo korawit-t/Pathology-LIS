@@ -10,6 +10,12 @@ Deliberately a no-op for users without MFA. This has to be able to ship to
 installations that have never switched MFA on without changing how their staff
 sign out reports; the check only bites where there is a second factor to check
 against.
+
+Also a no-op unless a site asks for it: SystemSetting.mfa_step_up_minutes is 0
+by default, meaning never re-ask. Sign-out is a batch activity — a prompt every
+few cases costs a pathologist more than the window it closes, and an unattended
+session is already ended by idle_timeout_minutes. Sites that want the
+protection set a number of minutes in Security settings.
 """
 
 from typing import Optional
@@ -36,6 +42,13 @@ STEP_UP_REQUIRED_DETAIL = "step_up_required"
 MFA_SETUP_REQUIRED_DETAIL = "mfa_setup_required"
 
 
+def step_up_minutes(settings: Optional[SystemSetting]) -> int:
+    """How long a re-check lasts, in minutes. 0 (the default) means never ask."""
+    if settings is None or settings.mfa_step_up_minutes is None:
+        return 0
+    return int(settings.mfa_step_up_minutes)
+
+
 def _access_jti(access_token: Optional[str], authorization: Optional[str]) -> Optional[str]:
     token = access_token
     if not token and authorization and authorization.startswith("Bearer "):
@@ -60,6 +73,14 @@ def require_step_up(
     settings = db.query(SystemSetting).first()
     mfa_on = bool(settings and settings.mfa_enabled)
     if not mfa_on:
+        return user
+
+    # 0 means never re-ask. Checked before the enrolment branch below on
+    # purpose: a site that has switched the re-check off should not have
+    # sign-out closed on its overdue users either — that deadline is enforced
+    # at login, and this guard is not the place to make it bite harder than
+    # the site asked for.
+    if step_up_minutes(settings) <= 0:
         return user
 
     if not user.mfa_enabled:

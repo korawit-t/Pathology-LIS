@@ -102,6 +102,7 @@ class SystemSettingUpdate(SystemSettingBase):
     mfa_grace_period_days: Optional[int] = None
     mfa_allowed_methods: Optional[List[str]] = None
     mfa_trusted_device_days: Optional[int] = None
+    mfa_step_up_minutes: Optional[int] = None
 
     # ให้ทุกอย่างเป็น Optional เพื่อการทำ PATCH update ที่สมบูรณ์
     lab_name_th: Optional[str] = None
@@ -173,3 +174,4 @@ class SystemSettingAdminResponse(SystemSettingResponse):
     mfa_grace_period_days: Optional[int] = None
     mfa_allowed_methods: Optional[List[str]] = None
     mfa_trusted_device_days: Optional[int] = None
+    mfa_step_up_minutes: Optional[int] = None

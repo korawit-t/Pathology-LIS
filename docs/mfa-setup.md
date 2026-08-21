@@ -79,11 +79,78 @@ the variable rather than a stack trace.
 - **Remember a device for** — how long a browser may skip the code after the
   user ticks *Remember this device*. Set to `0` to require a code at every
   login.
+- **Ask again before signing out a report** — `0` by default, meaning never.
+  See *Asking again before irreversible actions* below.
 - **Grace period** — recorded, but **not yet enforced**.
 
 **Turning the switch on enrols nobody.** People who have not set up an
 authenticator keep signing in with a password alone until they do. Rolling out
 to a couple of administrators first is the sensible order.
+
+---
+
+## Asking again before irreversible actions
+
+**Admin → System Settings → Security → Ask again before signing out a report.**
+
+Some actions cannot be taken back: signing out a report, amending a result that
+was already approved, and changing these settings. This setting decides whether
+the server asks the person to prove who they are once more — a code, or their
+account password — immediately before letting one through.
+
+**It ships set to `0`, which means never ask.** Nothing about sign-out changes
+on an installation that leaves it alone.
+
+### When to raise it above zero
+
+The case it exists for is a trusted browser left signed in. *Remember this
+device* means no code at login, so on a ward machine a session somebody walked
+away from is enough to publish a diagnosis under their name. This setting is
+what separates the two: the login was made convenient, the signature was not.
+
+Weigh that against the cost. Sign-out is batch work — a pathologist may release
+thirty cases in one sitting — and the window is per session, not per case, so
+the number you pick is roughly how often they get interrupted:
+
+| Setting | What it feels like |
+| --- | --- |
+| `0` | Never asked. The default. |
+| `5` | Asked every case or two during a sign-out session. Rarely worth it. |
+| `30`–`60` | Asked once when they sit down, then quiet for the rest of the sitting. |
+| `480` | Effectively once a shift. |
+
+One more thing to weigh: **Idle timeout** at the top of the same page (10
+minutes by default) already ends a session nobody is using. The gap this
+setting closes is narrower than it first looks — somebody reaching the machine
+*within* that idle window, on a browser that is already trusted. Real, but
+narrow. `30` is a sensible starting point for a site that wants it; `5` mostly
+buys irritation.
+
+### What the person sees
+
+A dialog asking for the code from their authenticator app **or their account
+password**, whichever is quicker for them. It appears over whatever screen they
+were on, the action goes through the moment they confirm, and they are not
+asked again until the window runs out.
+
+The grant is tied to that one browser session, so confirming on one machine
+does not authorise an action taken from another.
+
+### Turning it off again
+
+Set it back to `0`. It applies from the next request — no restart, no
+migration, and nobody's enrolment changes.
+
+The same switch in SQL, for when the settings screen itself is what you are
+locked out of:
+
+```sql
+UPDATE system_settings SET mfa_step_up_minutes = 0;
+```
+
+> There is also a `STEP_UP_EXPIRE_MINUTES` environment variable. It predates
+> this setting and is now only a fallback for when the setting carries no
+> value; the number in Security settings is the one that decides.
 
 ---
 
@@ -103,18 +170,22 @@ step with an error, and not be signed in.
 used successfully. It should be refused — codes are single-use within their
 thirty-second window. Wait for the next one.
 
-**4. An irreversible action asks again.** While signed in, change something in
-System Settings and save. You should be asked to confirm your identity *again*,
-even though you only just signed in. This is the check that protects report
-sign-out; if it does not appear, stop and investigate before enabling MFA for
+**4. An irreversible action asks again.** *Skip this step if you have left
+**Ask again before signing out a report** at `0` — nothing will ask, by design.*
+Otherwise: while signed in, change something in System Settings and save. You
+should be asked to confirm your identity *again*, even though you only just
+signed in. This is the check that protects report sign-out; if it does not
+appear with a non-zero setting, stop and investigate before enabling MFA for
 anyone else.
 
 **5. A trusted device skips the code.** Sign out, sign in, tick "Remember this
 device". Sign out and back in — no code this time.
 
 **6. …but step 4 still asks.** Repeat step 4 on that trusted browser. It must
-still ask. This pair is the whole basis of the design: the code is skipped for
-convenience at login, and never for the actions that cannot be undone.
+still ask. This pair is the whole basis of asking again at all: the code is
+skipped for convenience at login, and not for the actions that cannot be undone.
+With the setting at `0` there is nothing to check here — which is also the
+honest reading of what `0` costs you.
 
 **7. Removing a device takes effect.** Account menu → Two-Factor Authentication
 → remove the device → sign out and in. The code prompt should return.
@@ -176,10 +247,12 @@ Set the grace period to `0` to make it immediate.
 Two-Factor panel in their account menu shows how many days are left.
 
 **Once the deadline passes** — they can still sign in, and are sent to the setup
-page. Signing out a report or changing settings is refused by the server until
-they enrol, with `mfa_setup_required` rather than the ordinary
-`step_up_required`, so the app knows to offer enrolment rather than a code
-prompt.
+page. If **Ask again before signing out a report** is above `0`, signing out a
+report or changing settings is also refused by the server until they enrol, with
+`mfa_setup_required` rather than the ordinary `step_up_required`, so the app
+knows to offer enrolment rather than a code prompt. At `0` the server does not
+block those actions — a site that has switched the re-check off has said it does
+not want sign-out gated on this, and the deadline is still enforced at login.
 
 They are **not** locked out of the application. Somebody locked out entirely
 could not reach the page they are being told to use.
@@ -211,7 +284,9 @@ place a trusted browser is ever visible, so it is worth glancing at: **an entry
 you do not recognise means somebody else's browser can skip your second
 factor.** Remove it and tell an administrator.
 
-Signing out a report always asks for a code, trusted device or not.
+Whether signing out a report asks for a code — trusted device or not — depends
+on **Ask again before signing out a report** in Security settings. It is `0`,
+meaning it does not ask, unless an administrator has set a number of minutes.
 
 ---
 
@@ -227,8 +302,9 @@ Recovery is an administrator who has verified who is asking.
 
 **Admin → User Management → the user's row → the shield button.**
 
-You will be asked to confirm your own identity first if you have MFA yourself.
-The user then signs in with a password alone until they enrol again.
+You will be asked to confirm your own identity first if you have MFA yourself
+*and* **Ask again before signing out a report** is set above `0`. The user then
+signs in with a password alone until they enrol again.
 
 > **Verify who is asking before you click.** With recovery codes gone, that
 > check is the whole recovery model — the software cannot perform it and you
@@ -321,6 +397,7 @@ switch, and anyone the role policy was compelling is released as well.
 | A stored secret could not be decrypted | A key was rotated out too early. Add it back as a trailing entry |
 | Code accepted at login but refused immediately after | Expected. A code cannot be reused within its own 30-second step — wait for the next one |
 | Administrator gets a 403 on reset | They have MFA themselves and need to confirm their identity; the prompt appears automatically |
+| Users are asked to confirm their identity more often than expected | **Ask again before signing out a report** is set low. The window is per session, not per case — raise it, or set `0` to stop asking |
 
 ---
 

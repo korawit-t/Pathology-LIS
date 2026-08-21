@@ -23,6 +23,7 @@ const makeSetting = (overrides: Partial<SystemSetting> = {}): SystemSetting =>
     mfa_required_roles: [],
     mfa_grace_period_days: 7,
     mfa_trusted_device_days: 14,
+    mfa_step_up_minutes: 0,
     ...overrides,
   } as unknown as SystemSetting);
 
@@ -109,6 +110,42 @@ describe("SecurityTab — multi-factor authentication", () => {
     renderTab();
 
     expect(await screen.findByText(/a code is required at every login/)).toBeInTheDocument();
+  });
+
+  it("says plainly when nothing will be asked before sign-out", async () => {
+    // The default. An administrator reading this row has to be able to tell
+    // that report sign-out goes straight through — the previous wording
+    // promised the opposite on every install.
+    mockedGet.mockResolvedValue(
+      makeSetting({ mfa_enabled: true, mfa_step_up_minutes: 0 }),
+    );
+    renderTab();
+
+    expect(await screen.findByText(/Never asks/)).toBeInTheDocument();
+  });
+
+  it("names the window once the re-check is switched on", async () => {
+    mockedGet.mockResolvedValue(
+      makeSetting({ mfa_enabled: true, mfa_step_up_minutes: 30 }),
+    );
+    renderTab();
+
+    expect(
+      await screen.findByText(/stays quiet for 30 minutes/),
+    ).toBeInTheDocument();
+  });
+
+  it("warns when the window is set low enough to interrupt a sign-out session", async () => {
+    // The one misconfiguration worth catching in the UI: administrators read
+    // the number as "per case" and pick something small.
+    mockedGet.mockResolvedValue(
+      makeSetting({ mfa_enabled: true, mfa_step_up_minutes: 5 }),
+    );
+    renderTab();
+
+    expect(
+      await screen.findByText(/interrupted every case or two/),
+    ).toBeInTheDocument();
   });
 
   it("says the grace period is not enforced yet", async () => {
