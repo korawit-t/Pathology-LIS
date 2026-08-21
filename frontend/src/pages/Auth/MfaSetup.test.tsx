@@ -76,22 +76,32 @@ describe("MfaSetup", () => {
     expect(mockedStart).toHaveBeenCalledWith("s3cret");
   });
 
-  it("renders a QR image from the provisioning URI", async () => {
+  it("renders a QR code that is actually visible", async () => {
+    // The previous version of this test queried for any svg in the container,
+    // which antd's Steps and icons satisfy on their own — so it passed while
+    // the QR was collapsed to nothing. Scope to the QR's own wrapper and check
+    // it has a real size: bwip-js emits a viewBox and no width/height, and an
+    // SVG with no intrinsic size renders as zero pixels.
     mockedStart.mockResolvedValue(SETUP);
-    const { container } = render(
-      <ThemeProvider>
-        <MemoryRouter>
-          <MfaSetup />
-        </MemoryRouter>
-      </ThemeProvider>,
-    );
-    fireEvent.change(screen.getByPlaceholderText("Your password"), {
-      target: { value: "s3cret" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await startSetup();
 
     await screen.findByText("JBSWY3DPEHPK3PXP");
-    await waitFor(() => expect(container.querySelector("svg")).toBeTruthy());
+    const svg = (await screen.findByTestId("mfa-qr")).querySelector("svg");
+
+    expect(svg).toBeTruthy();
+    expect(svg?.getAttribute("width")).toBeTruthy();
+    expect(svg?.getAttribute("height")).toBeTruthy();
+    expect(Number(svg?.getAttribute("width"))).toBeGreaterThan(0);
+  });
+
+  it("encodes the provisioning URI rather than something else", async () => {
+    // A QR that scans into the wrong thing is worse than none: the user gets a
+    // working-looking authenticator entry that never produces a valid code.
+    mockedStart.mockResolvedValue(SETUP);
+    await startSetup();
+
+    const svg = (await screen.findByTestId("mfa-qr")).querySelector("svg");
+    expect(svg?.innerHTML.length).toBeGreaterThan(100);
   });
 
   it("stays on the password step when the password is wrong", async () => {

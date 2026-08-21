@@ -25,14 +25,26 @@ const { Title, Text, Paragraph } = Typography;
  * encode fails — the typed-in secret below is a complete fallback, and a broken
  * image should not take the page down with it.
  */
+const QR_SIZE_PX = 220;
+
 const renderQr = (uri: string): string | null => {
   try {
-    return (bwipjs as any).toSVG({
+    const svg: string = (bwipjs as any).toSVG({
       bcid: "qrcode",
       text: uri,
       scale: 4,
       includetext: false,
     });
+    if (!svg || !svg.includes("<svg")) return null;
+
+    // bwip-js emits a viewBox and no width/height. That is fine for pdfmake,
+    // which is where the rest of this codebase sends these and which sizes them
+    // itself — but an SVG with no intrinsic size collapses to nothing when it
+    // is dropped straight into the DOM, so the code renders and is invisible.
+    return svg.replace(
+      "<svg ",
+      `<svg width="${QR_SIZE_PX}" height="${QR_SIZE_PX}" `,
+    );
   } catch (err) {
     logger.error("Failed to render MFA QR code:", err);
     return null;
@@ -221,11 +233,13 @@ const MfaSetup: React.FC = () => {
             <div style={{ textAlign: "center", margin: "8px 0 20px" }}>
               {qrSvg ? (
                 <div
+                  data-testid="mfa-qr"
                   style={{
                     display: "inline-block",
                     padding: 12,
                     background: "#fff",
                     borderRadius: 12,
+                    lineHeight: 0,
                   }}
                   // bwip-js generates this SVG from the provisioning URI itself;
                   // nothing user-supplied reaches it.
