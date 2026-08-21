@@ -42,6 +42,18 @@ describe("isStepUpRequired", () => {
 describe("StepUpModal", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("sits above the full-screen sign-off overlays", async () => {
+    // The three sign-off screens are opaque fixed panels at z-index 1050. At
+    // antd's default 1000 this prompt renders underneath one of them, and the
+    // Sign Off button spins forever on a dialog the user cannot see or reach.
+    const SIGN_OFF_OVERLAY_Z_INDEX = 1050;
+    renderModal();
+
+    const title = await screen.findByText("Confirm it is you");
+    const wrap = title.closest(".ant-modal-wrap") as HTMLElement;
+    expect(Number(wrap.style.zIndex)).toBeGreaterThan(SIGN_OFF_OVERLAY_Z_INDEX);
+  });
+
   it("says what the user is about to do", async () => {
     // Re-authenticating without being told what for is how people confirm
     // things they did not mean to.
