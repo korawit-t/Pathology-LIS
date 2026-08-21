@@ -22,11 +22,12 @@ import GyneCytologyCaseService from "../../services/gyneCytoCaseService";
 import SystemSettingService from "../../services/systemSettingService";
 import { GyneCytologyCase } from "../../types/gyne-cytology";
 import AccessionTag from "../../components/AccessionTag";
-import { useNavigate } from "react-router-dom";
 
 const { Text } = Typography;
 
 type ReviewFilter = "pending" | "reviewed" | "any" | "random_10pct" | "abnormal";
+
+const PAGE_SIZE = 100;
 
 const REVIEW_REASON_CONFIG: Record<string, { color: string; label: string }> = {
   random_10pct: { color: "blue", label: "NILM 10%" },
@@ -47,7 +48,10 @@ const RESULT_CONFIG: Record<
 };
 
 interface GyneQCReviewTableProps {
-  onSelectCase?: (id: number) => void;
+  // Required: the dashboard view resolver always supplies this. There is no
+  // route for the diagnosis entry page to fall back to — every view lives
+  // behind /dashboard as view state — so a fallback would land on /login.
+  onSelectCase: (id: number) => void;
   standAlone?: boolean;
 }
 
@@ -55,15 +59,25 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
   onSelectCase,
   standAlone = true,
 }) => {
-  const navigate = useNavigate();
   const [cases, setCases] = useState<GyneCytologyCase[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<ReviewFilter>("pending");
+  const [page, setPage] = useState(1);
+  // searchInput is what the box shows (updated on every keystroke, so a
+  // re-render can't wipe it); searchText is the debounced value we query with.
+  const [searchInput, setSearchInput] = useState("");
   const [searchText, setSearchText] = useState("");
   const [nilmN, setNilmN] = useState<number>(10);
   const [infoOpen, setInfoOpen] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     SystemSettingService.getSettings()
@@ -82,20 +96,13 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
     [nilmN],
   );
 
-  const handleSelectCase = (id: number) => {
-    if (onSelectCase) {
-      onSelectCase(id);
-    } else {
-      navigate(`/gyne-cyto-diagnosis-entry?id=${id}`);
-    }
-  };
-
   const loadCases = async () => {
     try {
       setLoading(true);
       const params: Parameters<typeof GyneCytologyCaseService.getAll>[0] = {
         search: searchText.trim() || undefined,
-        limit: 100,
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
       };
       if (filter === "pending") {
         params.review_reason = "any";
@@ -119,7 +126,7 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
   useEffect(() => {
     loadCases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, searchText]);
+  }, [filter, searchText, page]);
 
   const columns = [
     {
@@ -330,8 +337,11 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
           options={filterOptions}
           value={filter}
           onChange={(v) => {
+            if (searchTimer.current) clearTimeout(searchTimer.current);
             setFilter(v as ReviewFilter);
+            setSearchInput("");
             setSearchText("");
+            setPage(1);
           }}
         />
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
@@ -340,15 +350,21 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
             style={{ width: 260 }}
             allowClear
             enterButton
-            value={searchText}
+            value={searchInput}
             onChange={(e) => {
               const val = e.target.value;
+              setSearchInput(val);
               if (searchTimer.current) clearTimeout(searchTimer.current);
-              searchTimer.current = setTimeout(() => setSearchText(val), 400);
+              searchTimer.current = setTimeout(() => {
+                setSearchText(val);
+                setPage(1);
+              }, 400);
             }}
             onSearch={(val) => {
               if (searchTimer.current) clearTimeout(searchTimer.current);
+              setSearchInput(val);
               setSearchText(val);
+              setPage(1);
             }}
           />
         </div>
@@ -360,15 +376,17 @@ const GyneQCReviewTable: React.FC<GyneQCReviewTableProps> = ({
         rowKey="id"
         loading={loading}
         onRow={(record) => ({
-          onClick: () => handleSelectCase(record.id),
+          onClick: () => onSelectCase(record.id),
           style: { cursor: "pointer" },
         })}
         pagination={{
+          current: page,
           total,
-          pageSize: 100,
+          pageSize: PAGE_SIZE,
           showSizeChanger: false,
           hideOnSinglePage: true,
           showTotal: (t) => `${t} case${t !== 1 ? "s" : ""}`,
+          onChange: setPage,
         }}
         size="middle"
         bordered
