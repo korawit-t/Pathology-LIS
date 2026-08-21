@@ -69,4 +69,4 @@ uvicorn==0.51.0
 weasyprint==69.0
 webencodings==0.5.1
 zopfli==0.4.0
-slowapi>=0.1.9
+slowapi>=0.1.10
