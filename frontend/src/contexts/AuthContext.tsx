@@ -15,6 +15,7 @@ import { clearLocalSession } from "../services/authSession";
 import axios from "axios";
 import { getHomeRoute } from "../utils/hasRole";
 import SystemSettingService from "../services/systemSettingService";
+import AuthService from "../services/authService";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_WARN_DURATION_MS = 1 * 60 * 1000;
@@ -65,7 +66,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const parsedUser = JSON.parse(savedUser);
           const parsedRoles = savedRoles ? JSON.parse(savedRoles) : [];
-          setUser({ ...parsedUser, roles: parsedRoles as UserRole[] });
+
+          // Re-read enrolment status rather than trusting anything stored
+          // locally. If it cannot be fetched the gate simply does not engage —
+          // the frontend redirect is a nudge, and the server refuses the
+          // actions that matter regardless.
+          let mfaSetupRequired: boolean | undefined;
+          let mfaSetupDueInDays: number | null | undefined;
+          try {
+            const { data: status } = await AuthService.getMfaStatus();
+            mfaSetupRequired = status.setup_overdue;
+            mfaSetupDueInDays = status.setup_due_in_days;
+          } catch {
+            // Not fatal — see above.
+          }
+
+          setUser({
+            ...parsedUser,
+            roles: parsedRoles as UserRole[],
+            mfa_setup_required: mfaSetupRequired,
+            mfa_setup_due_in_days: mfaSetupDueInDays,
+          });
         } catch {
           clearLocalSession();
         }
@@ -82,14 +103,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const userWithRoles: User = {
         ...data.user,
         roles: data.roles as UserRole[],
-        // Kept on the user so ProtectedRoute can gate on it the same way it
-        // already gates a forced password change.
-        mfa_setup_required: data.mfa_setup_required,
-        mfa_setup_due_in_days: data.mfa_setup_due_in_days,
       };
+
+      // Enrolment status is deliberately NOT persisted. It is policy state the
+      // server owns: cached in localStorage it goes stale the moment an
+      // administrator changes the policy, and a value the gate reads from
+      // there is one the user can edit. Held in memory and re-read from the
+      // server on reload instead.
       localStorage.setItem("user", JSON.stringify(userWithRoles));
 
-      setUser(userWithRoles);
+      setUser({
+        ...userWithRoles,
+        mfa_setup_required: data.mfa_setup_required,
+        mfa_setup_due_in_days: data.mfa_setup_due_in_days,
+      });
 
       const loginStatus: "force_change" | "success" = data.user
         ?.is_temporary_password
