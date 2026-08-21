@@ -19,6 +19,7 @@ import {
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import SystemSettingService from "../../../services/systemSettingService";
+import StepUpModal, { isStepUpRequired } from "../../../components/auth/StepUpModal";
 
 const { Text, Title } = Typography;
 
@@ -55,6 +56,11 @@ const SettingRow = ({ title, description, children, icon }: { title: string; des
 );
 
 const SecurityTab: React.FC = () => {
+  // Saving settings is one of the actions behind the step-up guard, and this
+  // screen owns the master MFA switch. Without a prompt here, turning MFA on
+  // would make turning it off again impossible from the UI — a kill switch
+  // that cannot be reached is not a kill switch.
+  const [stepUpOpen, setStepUpOpen] = useState(false);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -78,8 +84,13 @@ const SecurityTab: React.FC = () => {
     try {
       await SystemSettingService.updateSettings(form.getFieldsValue());
       message.success("Security settings saved");
+      setStepUpOpen(false);
       load();
-    } catch {
+    } catch (err) {
+      if (isStepUpRequired(err)) {
+        setStepUpOpen(true);
+        return;
+      }
       message.error("Failed to save security settings");
     } finally {
       setLoading(false);
@@ -250,6 +261,13 @@ const SecurityTab: React.FC = () => {
           Save Settings
         </Button>
       </div>
+
+      <StepUpModal
+        open={stepUpOpen}
+        action="change security settings"
+        onCancel={() => setStepUpOpen(false)}
+        onVerified={handleSave}
+      />
     </Form>
   );
 };
