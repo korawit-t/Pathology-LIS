@@ -18,10 +18,21 @@ export const CASE_STATUS = {
   PENDING_IHC: "pending immuno",
   PENDING_REVIEW: "pending peer review",
   SIGNED_OUT: "signed out",
+  // สองค่านี้ไม่มีทางเข้าจริง — ไม่มีโค้ดหลังบ้านเขียน และ client ก็ไม่ส่งมา
+  // (เทียบกับ SURGICAL_ALL ใน backend/app/enums/case_states.py) แต่ยังมีที่เรียกใช้
+  // อยู่: usePathologistStats ถาม worklist ด้วย PENDING_ADDENDUM และ useMyTatStatus
+  // นับ ADDENDUM_SIGNED เป็นสถานะจบ — ทั้งสองที่จึงได้ผลลัพธ์ 0 เสมอ
+  // เก็บไว้เพราะยังถูก import อยู่ แต่จงใจไม่ใส่ใน STATUS_OPTIONS
   PENDING_ADDENDUM: "pending addendum",
   ADDENDUM_SIGNED: "addendum signed",
   CANCELLED: "cancelled",
 } as const;
+
+/** ค่าใน CASE_STATUS ที่จงใจไม่มีใน STATUS_OPTIONS เพราะไม่มีเคสไหนไปถึงได้จริง */
+export const STATUS_WITHOUT_OPTION: readonly string[] = [
+  CASE_STATUS.PENDING_ADDENDUM,
+  CASE_STATUS.ADDENDUM_SIGNED,
+];
 
 export const REPORT_STATUS = {
   DRAFT: "draft",
@@ -42,6 +53,8 @@ export const STATUS_OPTIONS = [
   { value: CASE_STATUS.GROSS_IN_PROGRESS, label: "Grossing", color: "purple" },
   { value: CASE_STATUS.PROCESSED, label: "Processed", color: "blue" },
   { value: CASE_STATUS.EMBEDDED, label: "Embedded", color: "gold" },
+  // สีส้มตาม STATUS_COLOR ใน theme.ts และคู่มือหัวข้อ 5.7
+  { value: CASE_STATUS.SECTIONED, label: "Sectioned", color: "orange" },
   { value: CASE_STATUS.STAINED, label: "Stained", color: "purple" },
   {
     value: CASE_STATUS.SLIDE_SENT,
