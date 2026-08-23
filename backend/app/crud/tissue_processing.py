@@ -4,6 +4,7 @@ from app.schemas.tissue_processing import TissueProcessingRunCreate, ProcessorMa
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.utils.time import local_now
+from app.utils.block_workflow import statuses_from
 from fastapi import HTTPException
 
 # --- Machine CRUD ---
@@ -399,9 +400,7 @@ def complete_processing_run(
                 .join(SurgicalSpecimen)
                 .filter(
                     SurgicalSpecimen.case_id == specimen.case_id,
-                    SurgicalBlock.status.in_(
-                        ["processed", "embedded", "sectioned", "stained"]
-                    ),
+                    SurgicalBlock.status.in_(statuses_from("processed")),
                 )
                 .count()
             )

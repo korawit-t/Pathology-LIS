@@ -19,7 +19,16 @@ Guard: ห้ามมีสถานะใหม่โผล่ในโค้�
 import re
 from pathlib import Path
 
-from app.enums.case_states import CATALOGUE
+import pytest
+
+from app.enums.case_states import (
+    CATALOGUE,
+    NONGYNE_SPINE,
+    SURGICAL_PIPELINE,
+    SURGICAL_TERMINAL,
+    is_terminal,
+    surgical_past,
+)
 from app.enums.case_status import CaseStatus
 
 CRUD_DIR = Path(__file__).resolve().parents[1] / "app" / "crud"
@@ -85,3 +94,45 @@ def test_catalogue_has_no_phantom_values():
             f"{case_type}: มีสถานะใน catalogue ที่ไม่มีโค้ดไหนเขียน {sorted(phantom)} "
             "— ลบทิ้ง หรือถ้าตั้งใจเผื่อไว้ ให้ใส่คอมเมนต์กำกับ"
         )
+
+
+class TestDerivedSetContracts:
+    """สัญญาของเซ็ตที่คำนวณออกมา — แต่ละข้อคือบั๊กที่เคยเกิดจริงจากการไล่รายชื่อด้วยมือ"""
+
+    def test_sectioned_counts_as_past_grossing(self):
+        # POST_GROSS_STATUSES เดิมตกค่านี้ไป
+        assert surgical_past("sectioned", "grossed") is True
+
+    def test_a_stage_is_not_past_itself(self):
+        # เคสที่อยู่ที่ "grossed" ต้องยังถอยกลับเป็น "in progress" ได้
+        assert surgical_past("grossed", "grossed") is False
+
+    def test_cancelled_is_past_every_pipeline_stage(self):
+        assert surgical_past("cancelled", "grossed") is True
+
+    def test_unknown_status_is_never_past_anything(self):
+        assert surgical_past("ค่าที่ไม่มีจริง", "grossed") is False
+        assert surgical_past(None, "grossed") is False
+
+    def test_unknown_stage_is_rejected_loudly(self):
+        with pytest.raises(ValueError):
+            surgical_past("grossed", "ขั้นที่ไม่มีจริง")
+
+    def test_dashboard_pipeline_includes_sectioned(self):
+        # PIPELINE เดิมตก "sectioned" → เคสที่ค้างขั้นตัดสไลด์ไม่ถูกนับในแดชบอร์ด
+        assert "sectioned" in SURGICAL_PIPELINE
+
+    def test_dashboard_pipeline_excludes_closed_cases(self):
+        assert SURGICAL_PIPELINE.isdisjoint(SURGICAL_TERMINAL)
+
+    def test_nongyne_draft_states_cover_the_whole_pre_report_spine(self):
+        # เดิมเขียนคาไว้แค่ (registered, screening, screened) → เคสที่ "stained"
+        # หรือ "slide sent" ไปโผล่เป็น FINAL REPORT ทั้งที่ยังไม่มีใครออกผล
+        assert "stained" in NONGYNE_SPINE
+        assert "slide sent" in NONGYNE_SPINE
+
+    def test_terminal_vocabulary_differs_between_case_types(self):
+        # เหตุผลที่ query ข้ามชนิดเคสด้วย status == "published" เฉย ๆ ถึงพัง
+        assert is_terminal("published", "gyne") is True
+        assert is_terminal("published", "surgical") is False
+        assert is_terminal("signed out", "surgical") is True

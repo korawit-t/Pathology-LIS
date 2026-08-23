@@ -56,6 +56,18 @@ def _statuses_before(stage: str) -> list[str]:
     return list(STAGE_ORDER[: STAGE_ORDER.index(stage)])
 
 
+def statuses_from(stage: str) -> list[str]:
+    """สถานะที่ถือว่า "ถึง `stage` แล้วหรือเลยไปแล้ว".
+
+    ใช้แทนการไล่พิมพ์รายชื่อขั้นตอนคาไว้ใน query — เพิ่มขั้นใหม่ใน
+    ``STAGE_ORDER`` แล้วทุกที่ที่เรียกฟังก์ชันนี้อัปเดตตามเอง
+
+    สถานะนอก ``STAGE_ORDER`` (เช่น ``"consult"``) ไม่ถูกนับ ตรงกับที่อธิบายไว้
+    ข้างบนว่ามันไม่ใช่ขั้นใน pipeline
+    """
+    return list(STAGE_ORDER[STAGE_ORDER.index(stage) :])
+
+
 def stage_filter(db: Session, step: str):
     """Filter criterion keeping only blocks that already cleared `step`'s
     prerequisite stage. Always-true when the stepped workflow is disabled."""
