@@ -51,9 +51,12 @@ def update_specimen_gross(
 
             is_all_filled = all(is_complete(s.gross_description) for s in all_specs)
 
-            # Statuses that come after grossed — never downgrade past these
+            # Statuses that come after grossed — never downgrade past these.
+            # NB: "sectioned" (written by crud.sectioning) is deliberately listed
+            # even though it has no CaseStatus member; this set is the runtime
+            # vocabulary, which is wider than the enum.
             POST_GROSS_STATUSES = {
-                "processed", "embedded", "stained", "slide sent",
+                "processed", "embedded", "sectioned", "stained", "slide sent",
                 "pending diagnosis", "pending special stains", "pending immuno",
                 "pending peer review", "signed out", "pending addendum", "addendum signed",
             }
