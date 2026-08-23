@@ -23,6 +23,10 @@ from typing import Final, Iterable
 # ลำดับหลัก — เดินหน้าอย่างเดียว ใช้ตัดสินว่า "เลยขั้นไหนไปแล้ว"
 SURGICAL_SPINE: Final[tuple[str, ...]] = (
     "registered",          # models/surgical_case.py:50 (column default)
+    # ไม่มีโค้ดหลังบ้านเขียนค่านี้ — หน้าบ้านส่งมาเองตอนลงทะเบียนเมื่อติ๊ก
+    # "Extended Fixation" (SurgicalCaseFormModal/index.tsx) ผ่าน
+    # SurgicalCaseCreate.status ซึ่งเป็น Optional[str] ที่ client กำหนดได้
+    "formalin_fixing",     # client-supplied at registration
     "in progress",         # crud/surgical_specimen.py:72
     "grossed",             # crud/surgical_specimen.py:68
     "processed",           # crud/tissue_processing.py:418

@@ -85,9 +85,21 @@ def test_no_unregistered_status_literal():
     )
 
 
+# สถานะที่ไม่ได้มาจาก crud — เข้าระบบทางอื่น จึงสแกนไม่เจอ
+#
+# การสแกนเฉพาะ crud/ เคยทำให้สรุปผิดว่า "formalin_fixing" เป็นค่าตายที่ไม่มีใคร
+# เขียน ทั้งที่จริงหน้าบ้านส่งมาเองตอนลงทะเบียน สถานะเข้าคอลัมน์นี้ได้ 3 ทาง
+# ไม่ใช่ทางเดียว — เขียนใน crud, ค่า default ของคอลัมน์ และ client ส่งมาผ่าน
+# schema ที่รับ Optional[str]
+_NOT_WRITTEN_BY_CRUD = {
+    "registered",       # models/surgical_case.py:50 — Column(default=...)
+    "formalin_fixing",  # client ส่งมาตอนสร้างเคส เมื่อติ๊ก Extended Fixation
+}
+
+
 def test_catalogue_has_no_phantom_values():
-    """ทุกค่าใน CATALOGUE ต้องมีโค้ดเขียนจริง"""
-    written = set(_scan()) | {"registered"}   # registered มาจาก Column(default=...)
+    """ทุกค่าใน CATALOGUE ต้องมีทางเข้าจริง ไม่ใช่ค่าที่ประกาศไว้เฉย ๆ"""
+    written = set(_scan()) | _NOT_WRITTEN_BY_CRUD
     for case_type, statuses in CATALOGUE.items():
         phantom = statuses - written
         assert not phantom, (
