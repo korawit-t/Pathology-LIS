@@ -14,11 +14,13 @@ from app.crud.surgical_specimen import (
 from app.schemas.surgical_specimen import SurgicalSpecimenUpdate, SurgicalSpecimenCreate
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.tissue_processing import TissueProcessingItem
+from app.crud.sectioning import create_sectioning_run_batch
+from app.schemas.sectioning import SectioningRunCreateBatch, SectioningDetailCreate
 
 import pytest
 from fastapi import HTTPException
 
-from tests.factories import make_signable_case
+from tests.factories import make_signable_case, make_block
 
 
 class TestUpdateSpecimenGross:
@@ -68,6 +70,55 @@ class TestUpdateSpecimenGross:
         db.refresh(case)
         assert case.status == "stained"  # not reset back to "grossed"
         assert case.is_grossed is True  # flag itself still gets set
+
+    def test_sectioned_case_not_overwritten_when_complete(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "sectioned"
+        db.commit()
+
+        update_specimen_gross(db, specimen.id, SurgicalSpecimenUpdate(gross_description="<p>Text</p>"), registrar.id)
+
+        db.refresh(case)
+        assert case.status == "sectioned"  # not reset back to "grossed"
+        assert case.is_grossed is True  # flag itself still gets set
+
+    def test_sectioned_case_not_downgraded_when_incomplete(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "sectioned"
+        db.commit()
+
+        update_specimen_gross(db, specimen.id, SurgicalSpecimenUpdate(gross_description=""), registrar.id)
+
+        db.refresh(case)
+        assert case.status == "sectioned"  # not reverted to "in progress"
+
+    def test_status_from_a_real_sectioning_run_survives_a_gross_edit(self, db, admin_user):
+        """Regression: "sectioned" is written by crud.sectioning but is absent from
+        the CaseStatus enum POST_GROSS_STATUSES was derived from, so re-saving a
+        gross description on a case that had already been cut sent it back to
+        "grossed". Drives the status through the real sectioning path rather than
+        setting it by hand, so the two modules stay in sync."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id, status="embedded")
+        create_sectioning_run_batch(
+            db,
+            SectioningRunCreateBatch(
+                user_id=registrar.id, microtome_id="MT-1",
+                items=[SectioningDetailCreate(block_id=block.id)],
+            ),
+        )
+        db.refresh(case)
+        assert case.status == "sectioned"  # precondition, set by crud.sectioning
+
+        update_specimen_gross(
+            db, specimen.id, SurgicalSpecimenUpdate(gross_description="<p>Edited after cutting</p>"), registrar.id
+        )
+
+        db.refresh(case)
+        assert case.status == "sectioned"
 
     def test_gross_at_not_overwritten_once_set(self, db, admin_user):
         registrar, _ = admin_user
