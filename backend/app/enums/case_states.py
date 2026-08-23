@@ -113,6 +113,10 @@ SURGICAL_TERMINAL: Final = frozenset(SURGICAL_CLOSED)
 GYNE_TERMINAL: Final = frozenset(GYNE_CLOSED) - {"revised"}   # revised ยังแก้ต่อได้
 NONGYNE_TERMINAL: Final = frozenset(NONGYNE_CLOSED)
 
+# "เซ็นออกแล้ว" — แคบกว่า SURGICAL_TERMINAL ตรงที่ไม่นับเคสที่ยกเลิก
+# ใช้กับ worklist ที่ต้องการซ่อนเฉพาะเคสที่ออกผลแล้ว แต่ยังอยากเห็นเคสที่ถูกยกเลิก
+SURGICAL_SIGNED: Final = frozenset({"signed out"})
+
 SURGICAL_ACTIVE: Final = SURGICAL_ALL - SURGICAL_TERMINAL
 GYNE_ACTIVE: Final = GYNE_ALL - GYNE_TERMINAL
 NONGYNE_ACTIVE: Final = NONGYNE_ALL - NONGYNE_TERMINAL
@@ -169,6 +173,20 @@ def surgical_at_or_past(status: str | None, stage: str) -> bool:
     if stage not in _SURGICAL_RANK:
         raise ValueError(f"ไม่รู้จักขั้นตอน {stage!r} — ต้องอยู่ใน SURGICAL_SPINE")
     return _SURGICAL_RANK.get(status or "", -1) >= _SURGICAL_RANK[stage]
+
+
+def surgical_past(status: str | None, stage: str) -> bool:
+    """
+    True ถ้า ``status`` **เลย** ``stage`` ไปแล้ว — ไม่นับตัว ``stage`` เอง
+
+    ต่างจาก :func:`surgical_at_or_past` ตรงที่ยังยอมให้ถอยภายในขั้นเดิมได้
+    การ์ดตอนแก้ gross description ต้องใช้ตัวนี้: เคสที่อยู่ที่ ``grossed``
+    ยังถอยกลับเป็น ``in progress`` ได้ถ้าลบคำบรรยายออก แต่เคสที่เลยขั้นนั้น
+    ไปแล้วต้องไม่ถูกแตะ
+    """
+    if stage not in _SURGICAL_RANK:
+        raise ValueError(f"ไม่รู้จักขั้นตอน {stage!r} — ต้องอยู่ใน SURGICAL_SPINE")
+    return _SURGICAL_RANK.get(status or "", -1) > _SURGICAL_RANK[stage]
 
 
 def is_terminal(status: str | None, case_type: str) -> bool:

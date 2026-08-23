@@ -17,17 +17,16 @@ from app.models.surgical_block_stain import (
     SurgicalOutlabRunDetail,
 )
 from app.utils.block_workflow import stage_filter
+from app.enums.case_states import SURGICAL_TERMINAL
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
-
-_TERMINAL_STATUSES = {"signed out", "cancelled", "addendum signed"}
 
 
 def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
     """Re-derive case status from remaining pending non-HE block stains."""
     case = db.get(SurgicalCase, case_id)
-    if not case or case.status in _TERMINAL_STATUSES:
+    if not case or case.status in SURGICAL_TERMINAL:
         return
 
     rows = (
@@ -77,7 +76,7 @@ def create_stain(db: Session, obj_in: StainCreate, registrar_id: int | None = No
                 specimen = db.get(SurgicalSpecimen, block.specimen_id)
                 if specimen:
                     case = db.get(SurgicalCase, specimen.case_id)
-                    if case and case.status not in _TERMINAL_STATUSES:
+                    if case and case.status not in SURGICAL_TERMINAL:
                         if ap_test.category == "IHC":
                             case.status = "pending immuno"
                         elif ap_test.category == "Histochem" and case.status != "pending immuno":

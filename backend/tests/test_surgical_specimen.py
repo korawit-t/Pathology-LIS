@@ -95,10 +95,9 @@ class TestUpdateSpecimenGross:
         assert case.status == "sectioned"  # not reverted to "in progress"
 
     def test_status_from_a_real_sectioning_run_survives_a_gross_edit(self, db, admin_user):
-        """Regression: "sectioned" is written by crud.sectioning but is absent from
-        the CaseStatus enum POST_GROSS_STATUSES was derived from, so re-saving a
-        gross description on a case that had already been cut sent it back to
-        "grossed". Drives the status through the real sectioning path rather than
+        """Regression: "sectioned" is written by crud.sectioning, and the guard that
+        stops a gross edit from overwriting it used to be a hand-listed set that had
+        left it out. Drives the status through the real sectioning path rather than
         setting it by hand, so the two modules stay in sync."""
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
@@ -119,6 +118,34 @@ class TestUpdateSpecimenGross:
 
         db.refresh(case)
         assert case.status == "sectioned"
+
+    def test_cancelled_case_not_resurrected_by_gross_edit(self, db, admin_user):
+        """A cancelled case must stay cancelled — editing gross text used to push it
+        back into the active pipeline as "grossed". The point fix that added
+        "sectioned" to the old set deliberately left this open; deriving the set
+        from the pipeline closes it."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "cancelled"
+        db.commit()
+
+        update_specimen_gross(db, specimen.id, SurgicalSpecimenUpdate(gross_description="<p>Text</p>"), registrar.id)
+
+        db.refresh(case)
+        assert case.status == "cancelled"
+
+    def test_gross_status_still_moves_within_the_gross_step(self, db, admin_user):
+        """The guard must not over-reach: a case sitting at "grossed" still has to
+        fall back to "in progress" when its description is cleared."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "grossed"
+        db.commit()
+
+        update_specimen_gross(db, specimen.id, SurgicalSpecimenUpdate(gross_description=""), registrar.id)
+
+        db.refresh(case)
+        assert case.status == "in progress"
 
     def test_gross_at_not_overwritten_once_set(self, db, admin_user):
         registrar, _ = admin_user

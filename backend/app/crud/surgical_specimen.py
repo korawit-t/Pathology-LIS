@@ -4,6 +4,7 @@ from app.utils.time import local_now
 from fastapi import HTTPException
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.schemas.surgical_specimen import SurgicalSpecimenUpdate, SurgicalSpecimenCreate
+from app.enums.case_states import surgical_past
 
 
 def get_specimen(db: Session, specimen_id: int):
@@ -51,16 +52,11 @@ def update_specimen_gross(
 
             is_all_filled = all(is_complete(s.gross_description) for s in all_specs)
 
-            # Statuses that come after grossed — never downgrade past these.
-            # NB: "sectioned" (written by crud.sectioning) is deliberately listed
-            # even though it has no CaseStatus member; this set is the runtime
-            # vocabulary, which is wider than the enum.
-            POST_GROSS_STATUSES = {
-                "processed", "embedded", "sectioned", "stained", "slide sent",
-                "pending diagnosis", "pending special stains", "pending immuno",
-                "pending peer review", "signed out", "pending addendum", "addendum signed",
-            }
-            already_past_gross = (parent_case.status or "") in POST_GROSS_STATUSES
+            # เคยไล่รายชื่อสถานะไว้ตรงนี้ด้วยมือ แล้วลืม "sectioned" — เคสที่ตัดสไลด์
+            # ไปแล้วจึงถูกดึงสถานะกลับได้ ตอนนี้คำนวณจาก SURGICAL_SPINE ที่เดียว
+            # (แทนที่ point fix ใน 2437abe ที่เติม "sectioned" เข้าเซ็ตตรง ๆ — วิธีนี้
+            # ปิด "cancelled" ที่ commit นั้นระบุว่าเว้นไว้ให้ด้วยในตัว)
+            already_past_gross = surgical_past(parent_case.status, "grossed")
 
             if is_all_filled:
                 parent_case.is_grossed = True

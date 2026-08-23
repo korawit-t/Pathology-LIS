@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.crud.organization import resolve_lab_header
 from app.schemas.report_approval import ReportApproveRequest
+from app.enums.case_states import NONGYNE_SPINE
 from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
 from typing import List
@@ -461,7 +462,10 @@ def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
     # Badge flags: DRAFT → PENDING APPROVAL → FINAL REPORT
     # is_draft: case not yet signed off
     # is_pending: only from value explicitly stored by pathologist at sign-off (default False = FINAL)
-    data["is_draft"] = actual_case_status in ("registered", "screening", "screened")
+    # เดิมเขียนคาไว้เป็น ("registered", "screening", "screened") ซึ่งตก "stained"
+    # กับ "slide sent" ไป เคสที่ยังอยู่สองขั้นนั้นจึงไม่ถูกนับเป็น draft และไปโผล่
+    # เป็น FINAL REPORT ทั้งที่ยังไม่มีใครออกผล ("screening" ไม่มีโค้ดไหนเขียนเลย)
+    data["is_draft"] = actual_case_status in NONGYNE_SPINE
     if data["is_draft"]:
         data["is_pending"] = False
     else:

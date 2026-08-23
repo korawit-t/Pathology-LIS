@@ -15,6 +15,12 @@ from app.models.patient import Patient
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import SurgicalReport, ReportSigner
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
+from app.enums.case_states import (
+    SURGICAL_ALL,
+    SURGICAL_PIPELINE,
+    SURGICAL_SIGNED,
+    SURGICAL_TERMINAL,
+)
 
 
 def _get_next_accession_no(db: Session) -> str:
@@ -123,9 +129,7 @@ def get_cases(
         query = query.filter(SurgicalCase.is_express == is_express)
 
     if exclude_signed:
-        query = query.filter(
-            ~SurgicalCase.status.in_(["signed out", "addendum signed"])
-        )
+        query = query.filter(~SurgicalCase.status.in_(sorted(SURGICAL_SIGNED)))
 
     # 2. Status filter — when is_pending=True, OR with the is_pending flag
     status_conds = []
@@ -470,7 +474,10 @@ def search_public_cases_with_latest_report(
     return {"items": items, "total": total, "page": page, "size": size}
 
 
-_IN_PROGRESS_STATUSES = {"registered", "grossed", "processed", "reported", "cancelled"}
+# Whitelist ของ ?status= สำหรับฝั่ง "ยังไม่ published" — เดิมไล่รายชื่อไว้ 5 ค่า
+# และตกไป 9 ค่า (embedded / sectioned / stained / slide sent / pending*) ผลคือ
+# กรองด้วยสถานะพวกนั้นแล้วฝั่ง live ถูกข้ามทั้งก้อน เหลือแต่ผลที่ published แล้ว
+_IN_PROGRESS_STATUSES = SURGICAL_ALL
 
 
 def list_hospital_cases(
@@ -888,13 +895,10 @@ def get_dashboard_summary(db: Session) -> dict:
     tat_days = int((setting.surgical_tat_days or 10) if setting else 10)
     express_tat_days = int((setting.surgical_express_tat_days or 3) if setting else 3)
 
-    TERMINAL = ["signed out", "cancelled", "addendum signed"]
-    PIPELINE = [
-        "registered", "formalin_fixing", "in progress", "grossed",
-        "processed", "embedded", "stained", "slide sent",
-        "pending diagnosis", "pending special stains", "pending immuno",
-        "pending peer review",
-    ]
+    # เดิมไล่รายชื่อไว้ตรงนี้ และ PIPELINE ตก "sectioned" ไป — เคสที่ค้างอยู่ที่
+    # ขั้นตัดสไลด์จึงไม่ถูกนับในแดชบอร์ดเลย
+    TERMINAL = sorted(SURGICAL_TERMINAL)
+    PIPELINE = sorted(SURGICAL_PIPELINE)
 
     # 1. Pipeline counts per status (single GROUP BY query)
     rows = (
