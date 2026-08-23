@@ -4,7 +4,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.roles import CAN_ACCESS_PATIENT, CAN_WRITE_REPORT, CAN_READ_REPORT
+from app.core.roles import (
+    CAN_ACCESS_PATIENT,
+    CAN_READ_REPORT,
+    CAN_UPLOAD_OUTLAB_RESULT,
+    CAN_WRITE_REPORT,
+)
 from app.db.database import get_db
 from app.dependencies.auth import check_password_status, get_current_user
 from app.models.user import User
@@ -109,13 +114,42 @@ def cancel_molecular_case(
 
 # --- Out-lab PDF ---
 
-@router.post("/{case_id}/outlab-pdf", dependencies=[Depends(CAN_WRITE_REPORT)])
+
+def _guard_finalized(db: Session, case_id: int, user: User) -> None:
+    """Refuse to change the attachment on a case that is already signed out.
+
+    save_outlab_pdf deletes the previous file from disk before writing the new
+    one, so replacing it on a reported case destroys the result that was signed
+    out, with nothing to recover from. Anyone may attach the PDF while the case
+    is open; once it has been finalized or cancelled, only the roles that could
+    have signed it out may touch it — they are the ones who can answer for the
+    change, and a lab that receives a corrected report still has a way to put
+    it on file.
+    """
+    case = molecular_crud.get_molecular_case(db, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Molecular case not found")
+    if case.get("status") != "reported" and not case.get("is_cancelled"):
+        return
+    if not set(CAN_WRITE_REPORT.allowed_roles).intersection(user.roles or []):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This case has already been signed out. A pathologist has to "
+                "change the out-lab result PDF now."
+            ),
+        )
+
+
+@router.post("/{case_id}/outlab-pdf", dependencies=[Depends(CAN_UPLOAD_OUTLAB_RESULT)])
 def upload_outlab_pdf(
     case_id: int,
     file: UploadFile = File(...),
     received_at: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    _guard_finalized(db, case_id, current_user)
     case = molecular_crud.save_outlab_pdf(db, case_id, file, received_at)
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")
@@ -135,8 +169,17 @@ def download_outlab_pdf(case_id: int, db: Session = Depends(get_db)):
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
-@router.delete("/{case_id}/outlab-pdf", response_model=MolecularCaseResponse, dependencies=[Depends(CAN_WRITE_REPORT)])
-def delete_outlab_pdf(case_id: int, db: Session = Depends(get_db)):
+@router.delete(
+    "/{case_id}/outlab-pdf",
+    response_model=MolecularCaseResponse,
+    dependencies=[Depends(CAN_UPLOAD_OUTLAB_RESULT)],
+)
+def delete_outlab_pdf(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _guard_finalized(db, case_id, current_user)
     case = molecular_crud.clear_outlab_pdf(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")

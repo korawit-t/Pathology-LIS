@@ -17,6 +17,11 @@ export interface ConsultPdfPanelProps {
   onDelete: (caseId: number) => Promise<unknown>;
   onGetBlob: (caseId: number) => Promise<Blob>;
   onRefresh: () => void;
+  /** Show the PDF but offer no way to change it — for a case whose result this
+   * viewer may no longer alter (e.g. one already signed out). The server
+   * refuses those writes anyway; this is so the buttons are not there to
+   * press. */
+  readOnly?: boolean;
   /** Override copy for non-"subspecialty consult" reuse (e.g. out-lab Molecular results). */
   panelTitle?: string;
   emptyStateMessage?: string;
@@ -41,6 +46,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
   onDelete,
   onGetBlob,
   onRefresh,
+  readOnly = false,
   panelTitle = "Out-Lab Consult PDF",
   emptyStateMessage = "This case has been sent for external consultation. Please upload the consult report PDF once received.",
   receivedStateMessage = "Consult report PDF received.",
@@ -149,56 +155,60 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
             message={emptyStateMessage}
             style={{ marginBottom: 16 }}
           />
-          <div>
-            <Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
-              Report Received Date / Time:
-            </Text>
-            <DatePicker
-              showTime={{ format: "HH:mm" }}
-              format="DD/MM/YYYY HH:mm"
-              value={receivedAt}
-              onChange={(d) => d && setReceivedAt(d)}
-              style={{ width: "100%", marginBottom: 12 }}
-            />
-          </div>
-          <Upload.Dragger
-            accept="application/pdf"
-            maxCount={1}
-            showUploadList={!!sourcePdfFile}
-            fileList={sourcePdfFile ? [{ uid: "1", name: sourcePdfFile.name, status: "done" } as UploadFile] : []}
-            beforeUpload={(file) => {
-              if (file.size > 10 * 1024 * 1024) {
-                message.error("File must be under 10 MB");
-                return Upload.LIST_IGNORE;
-              }
-              setSourcePdfFile(file);
-              return false;
-            }}
-            onRemove={() => { setSourcePdfFile(null); setUploadFile(null); }}
-            style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
-          >
-            <p className="ant-upload-drag-icon">
-              <InboxOutlined style={{ color: "#722ed1" }} />
-            </p>
-            <p className="ant-upload-text" style={{ color: "#722ed1" }}>
-              Click or drag PDF to upload
-            </p>
-            <p className="ant-upload-hint" style={{ fontSize: 11 }}>
-              Max 10 MB · PDF only
-            </p>
-          </Upload.Dragger>
-          <PdfPageSelector file={sourcePdfFile} onReady={setUploadFile} />
-          {uploadFile && (
-            <Button
-              type="primary"
-              icon={<UploadOutlined />}
-              onClick={handleUpload}
-              loading={uploading}
-              style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
-              block
+          {!readOnly && (
+            <>
+            <div>
+              <Text style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8c8c8c" }}>
+                Report Received Date / Time:
+              </Text>
+              <DatePicker
+                showTime={{ format: "HH:mm" }}
+                format="DD/MM/YYYY HH:mm"
+                value={receivedAt}
+                onChange={(d) => d && setReceivedAt(d)}
+                style={{ width: "100%", marginBottom: 12 }}
+              />
+            </div>
+            <Upload.Dragger
+              accept="application/pdf"
+              maxCount={1}
+              showUploadList={!!sourcePdfFile}
+              fileList={sourcePdfFile ? [{ uid: "1", name: sourcePdfFile.name, status: "done" } as UploadFile] : []}
+              beforeUpload={(file) => {
+                if (file.size > 10 * 1024 * 1024) {
+                  message.error("File must be under 10 MB");
+                  return Upload.LIST_IGNORE;
+                }
+                setSourcePdfFile(file);
+                return false;
+              }}
+              onRemove={() => { setSourcePdfFile(null); setUploadFile(null); }}
+              style={{ borderColor: "#d3adf7", background: "#f9f0ff" }}
             >
-              Upload Report PDF
-            </Button>
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined style={{ color: "#722ed1" }} />
+              </p>
+              <p className="ant-upload-text" style={{ color: "#722ed1" }}>
+                Click or drag PDF to upload
+              </p>
+              <p className="ant-upload-hint" style={{ fontSize: 11 }}>
+                Max 10 MB · PDF only
+              </p>
+            </Upload.Dragger>
+            <PdfPageSelector file={sourcePdfFile} onReady={setUploadFile} />
+            {uploadFile && (
+              <Button
+                type="primary"
+                icon={<UploadOutlined />}
+                onClick={handleUpload}
+                loading={uploading}
+                style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginTop: 12 }}
+                block
+              >
+                Upload Report PDF
+              </Button>
+            )}
+            </>
           )}
         </>
       ) : (
@@ -239,9 +249,11 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
               <Text type="secondary">Preview unavailable</Text>
             )}
           </div>
-          <Button danger icon={<DeleteOutlined />} onClick={handleDelete} loading={deleting} block>
-            Delete PDF
-          </Button>
+          {!readOnly && (
+            <Button danger icon={<DeleteOutlined />} onClick={handleDelete} loading={deleting} block>
+              Delete PDF
+            </Button>
+          )}
         </>
       )}
     </StyledCard>

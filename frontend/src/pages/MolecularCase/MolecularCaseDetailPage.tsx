@@ -8,9 +8,16 @@ import ReportPreviewModal from "../../components/ReportPreviewModal";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
 import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 import UserService from "../../services/userService";
+import { useAuth } from "../../hooks/useAuth";
 import type { User } from "../../types/user";
 
 const { Text } = Typography;
+
+/** Mirrors CAN_WRITE_REPORT (backend app/core/roles.py) — the roles that may
+ * finalize a Molecular case, and so the only ones still allowed to change its
+ * out-lab PDF once it has been signed out. Attaching the PDF beforehand is open
+ * to the whole lab (CAN_UPLOAD_OUTLAB_RESULT). */
+const CAN_CHANGE_A_SIGNED_OUT_RESULT = ["admin", "pathologist", "senior_pathologist"];
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "gold",
@@ -38,6 +45,7 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
   const [resultPdfUrl, setResultPdfUrl] = useState<string | null>(null);
   const [resultPdfModalOpen, setResultPdfModalOpen] = useState(false);
   const [loadingResultPdf, setLoadingResultPdf] = useState(false);
+  const { user } = useAuth();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -193,6 +201,13 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
             onDelete={(id) => MolecularCaseService.deleteOutlabPdf(id)}
             onGetBlob={(id) => MolecularCaseService.getOutlabPdfBlob(id)}
             onRefresh={load}
+            // Anyone in the lab may put the external result on file, but once
+            // the case is signed out only the roles that could have signed it
+            // may replace it — the server refuses the rest, so do not offer it.
+            readOnly={
+              isLocked &&
+              !(user?.roles ?? []).some((r) => CAN_CHANGE_A_SIGNED_OUT_RESULT.includes(r))
+            }
             panelTitle="Out-Lab Molecular Report PDF"
             emptyStateMessage="This test was sent to an external lab. Please upload the result PDF once received."
             receivedStateMessage="Molecular result PDF received."
