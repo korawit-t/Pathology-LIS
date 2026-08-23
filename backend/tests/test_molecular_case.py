@@ -1,5 +1,7 @@
 import re
+import uuid
 
+from tests.conftest import _login, _make_user
 from tests.factories import (
     make_signable_case,
     make_block,
@@ -561,3 +563,117 @@ class TestMolecularCaseResultPdf:
     def test_result_pdf_404s_for_nonexistent_case(self, pathologist_client):
         resp = pathologist_client.get("/molecular-cases/999999999/result-pdf")
         assert resp.status_code == 404
+
+
+_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF"
+
+
+def _outlab_case(db, pathologist_client, admin_user):
+    case, _ = _order_molecular_test(db, pathologist_client, admin_user, is_external=True)
+    return pathologist_client.get(
+        "/molecular-cases", params={"parent_case_id": case.id}
+    ).json()[0]
+
+
+def _upload(client, case_id):
+    return client.post(
+        f"/molecular-cases/{case_id}/outlab-pdf",
+        files={"file": ("result.pdf", _PDF, "application/pdf")},
+    )
+
+
+class TestMolecularOutlabPdfPermissions:
+    """Putting the external lab's PDF on file is not the same act as signing the
+    case out.
+
+    Both used to sit behind CAN_WRITE_REPORT, so the desk that opens the
+    envelope — register, grossing, cytotech, lab manager — was shown an upload
+    button by MolecularCaseDetailPage and got a 403 from it every time. The
+    upload gate is now its own thing; finalize is untouched.
+
+    Note on the client fixtures: every role client wraps the same TestClient, so
+    a second actor is played by logging in again on that one object rather than
+    by asking for another fixture.
+    """
+
+    def test_a_role_that_cannot_finalize_may_still_attach_the_pdf(
+        self, db, client, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        registrar, pwd = _make_user(
+            db, f"reg_{uuid.uuid4().hex[:12]}", "RegPass1!", ["register"]
+        )
+        _login(client, registrar.username, pwd)
+
+        r = _upload(client, mcase["id"])
+        assert r.status_code == 200, r.text
+        assert r.json()["outlab_pdf_path"]
+
+    def test_but_that_role_still_cannot_finalize(
+        self, db, client, pathologist_client, admin_user
+    ):
+        """The whole point of splitting the gate — attaching must not become a
+        back door to signing out."""
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        registrar, pwd = _make_user(
+            db, f"reg_{uuid.uuid4().hex[:12]}", "RegPass1!", ["register"]
+        )
+        _login(client, registrar.username, pwd)
+        assert _upload(client, mcase["id"]).status_code == 200
+
+        r = client.post(f"/molecular-cases/{mcase['id']}/finalize", json={})
+        assert r.status_code == 403
+
+    def test_the_referring_side_may_not_attach_anything(
+        self, db, client, pathologist_client, admin_user
+    ):
+        """"clinician" and "hospital" are accounts for whoever sent the case in.
+        They can read a result; altering what the case holds is not theirs."""
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        clinician, pwd = _make_user(
+            db, f"clin_{uuid.uuid4().hex[:12]}", "ClinPass1!", ["clinician"]
+        )
+        _login(client, clinician.username, pwd)
+
+        assert _upload(client, mcase["id"]).status_code == 403
+
+    def test_a_signed_out_case_is_not_overwritten_by_the_desk(
+        self, db, client, pathologist_client, admin_user
+    ):
+        """save_outlab_pdf removes the old file from disk before writing the new
+        one, so this would destroy the signed-out result with nothing to
+        recover from."""
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+        assert (
+            pathologist_client.post(
+                f"/molecular-cases/{mcase['id']}/finalize", json={}
+            ).status_code
+            == 200
+        )
+
+        registrar, pwd = _make_user(
+            db, f"reg_{uuid.uuid4().hex[:12]}", "RegPass1!", ["register"]
+        )
+        _login(client, registrar.username, pwd)
+
+        r = _upload(client, mcase["id"])
+        assert r.status_code == 403
+        assert "already been signed out" in r.json()["detail"]
+        assert client.delete(f"/molecular-cases/{mcase['id']}/outlab-pdf").status_code == 403
+
+    def test_a_pathologist_may_still_replace_it_after_sign_out(
+        self, db, pathologist_client, admin_user
+    ):
+        """A corrected report from the external lab still has to have somewhere
+        to go — and the person who signed the case out can answer for it."""
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+        assert (
+            pathologist_client.post(
+                f"/molecular-cases/{mcase['id']}/finalize", json={}
+            ).status_code
+            == 200
+        )
+
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200

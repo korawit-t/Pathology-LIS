@@ -40,6 +40,32 @@ describe("ConsultPdfPanel", () => {
     expect(screen.queryByText("Delete PDF")).not.toBeInTheDocument();
   });
 
+  it("offers no way to attach a PDF when read-only", async () => {
+    // A case that is already signed out, seen by somebody who could not have
+    // signed it out. The server refuses the write either way; the button just
+    // should not be there to press.
+    renderPanel({ ...baseProps, isOutLabConsult: true, consultPdfPath: null, readOnly: true });
+
+    expect(screen.getByText(/sent for external consultation/)).toBeInTheDocument();
+    expect(screen.queryByText("Click or drag PDF to upload")).not.toBeInTheDocument();
+    expect(screen.queryByText("Report Received Date / Time:")).not.toBeInTheDocument();
+  });
+
+  it("still shows the PDF when read-only, without the delete button", async () => {
+    const onGetBlob = vi.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+    renderPanel({
+      ...baseProps,
+      onGetBlob,
+      isOutLabConsult: true,
+      consultPdfPath: "/uploads/x.pdf",
+      readOnly: true,
+    });
+
+    await waitFor(() => expect(onGetBlob).toHaveBeenCalled());
+    expect(screen.getByTitle("Consult PDF Preview")).toBeInTheDocument();
+    expect(screen.queryByText("Delete PDF")).not.toBeInTheDocument();
+  });
+
   it("shows the inline preview and delete button when a PDF is already uploaded", async () => {
     const onGetBlob = vi.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
     renderPanel({

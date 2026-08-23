@@ -27,6 +27,16 @@ CAN_ACCESS_GROSSING_ASSIST = RoleChecker(["admin", "lab_manager", "gross", "path
 CAN_WRITE_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist"])
 CAN_READ_REPORT = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist", "register", "hospital", "clinician"])
 
+# Attaching the PDF an external lab sent back is clerical work — whoever opens
+# the envelope does it. Kept separate from CAN_WRITE_REPORT because that gate
+# also governs finalizing, and putting a result on file is not the same act as
+# signing it out. Everyone in the lab, but nobody outside it: "hospital" and
+# "clinician" are accounts for the referring side, which has no business
+# altering what a case holds.
+CAN_UPLOAD_OUTLAB_RESULT = RoleChecker(
+    ["admin", "lab_manager", "register", "gross", "cytotechnologist", "pathologist", "senior_pathologist"]
+)
+
 CAN_APPROVE = RoleChecker(["senior_pathologist", "admin"])
 
 # --- สิทธิ์สำหรับ Gyne Cytology ---
