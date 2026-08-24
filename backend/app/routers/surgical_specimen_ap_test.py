@@ -11,12 +11,12 @@ from app.crud.surgical_specimen_ap_test_service import (
     get_specimen_tests,
     delete_specimen_test
 )
-from app.dependencies.auth import get_current_user
+from app.core.roles import CAN_ACCESS_SURGICAL_SPECIMEN
 
 router = APIRouter(
     prefix="/specimen-ap-tests",
     tags=["Specimen AP Tests"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(CAN_ACCESS_SURGICAL_SPECIMEN)],
 )
 
 

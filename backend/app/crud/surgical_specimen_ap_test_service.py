@@ -4,8 +4,7 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.schemas.surgical_specimen_ap_test import SpecimenAPTestCreate
-
-_TERMINAL_STATUSES = {"published", "cancelled", "completed"}
+from app.enums.case_states import SURGICAL_TERMINAL
 
 
 def create_specimen_test(db: Session, data: SpecimenAPTestCreate):
@@ -21,7 +20,7 @@ def create_specimen_test(db: Session, data: SpecimenAPTestCreate):
     specimen = db.get(SurgicalSpecimen, data.surgical_specimen_id)
     if ap_test and specimen:
         case = db.get(SurgicalCase, specimen.case_id)
-        if case and case.status not in _TERMINAL_STATUSES:
+        if case and case.status not in SURGICAL_TERMINAL:
             if ap_test.category == "IHC":
                 case.status = "pending immuno"
             elif ap_test.category == "Histochem":
@@ -54,7 +53,7 @@ def delete_specimen_test(db: Session, item_id: int):
     specimen = db.get(SurgicalSpecimen, specimen_id)
     if specimen:
         case = db.get(SurgicalCase, specimen.case_id)
-        if case and case.status not in _TERMINAL_STATUSES:
+        if case and case.status not in SURGICAL_TERMINAL:
             # Re-check all remaining AP tests across all specimens in the case
             remaining = (
                 db.query(AnatomicalPathologyTest.category)

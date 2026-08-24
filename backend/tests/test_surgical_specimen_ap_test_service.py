@@ -3,8 +3,12 @@ test onto a specimen auto-promotes the case to "pending immuno"/"pending
 special stains" depending on category, and removing one recalculates the
 case status from whatever AP tests remain across the whole case (falling
 back to "pending diagnosis" once none are IHC/Histochem) — never touching a
-case that's already in a terminal status (published/cancelled/completed)."""
+case that's already in a terminal status (SURGICAL_TERMINAL, i.e. "signed
+out"/"cancelled")."""
 
+import pytest
+
+from app.enums.case_states import SURGICAL_TERMINAL
 from app.crud.surgical_specimen_ap_test_service import (
     create_specimen_test,
     get_specimen_tests,
@@ -48,17 +52,25 @@ class TestCreateSpecimenTest:
         db.refresh(case)
         assert case.status == original_status
 
-    def test_terminal_status_case_not_overwritten(self, db, admin_user):
+    @pytest.mark.parametrize("terminal_status", sorted(SURGICAL_TERMINAL))
+    def test_terminal_status_case_not_overwritten(self, db, admin_user, terminal_status):
+        """A closed case must not be dragged back into the worklist.
+
+        Regression: the guard used to be a hand-written set carrying the
+        cytology/run vocabulary ({"published", "cancelled", "completed"}), so
+        "signed out" — the only surgical sign-out status — fell straight
+        through it and a reported case flipped back to "pending immuno".
+        """
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.status = "published"
+        case.status = terminal_status
         db.commit()
         ihc_test = make_anatomical_pathology_test(db, category="IHC", name="p53")
 
         create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
 
         db.refresh(case)
-        assert case.status == "published"
+        assert case.status == terminal_status
 
 
 class TestGetSpecimenTests:
@@ -103,18 +115,19 @@ class TestDeleteSpecimenTest:
         db.refresh(case)
         assert case.status == "pending special stains"
 
-    def test_terminal_status_case_not_recalculated(self, db, admin_user):
+    @pytest.mark.parametrize("terminal_status", sorted(SURGICAL_TERMINAL))
+    def test_terminal_status_case_not_recalculated(self, db, admin_user, terminal_status):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         ihc_test = make_anatomical_pathology_test(db, category="IHC", name="Bcl2")
         item = create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
-        case.status = "cancelled"
+        case.status = terminal_status
         db.commit()
 
         delete_specimen_test(db, item.id)
 
         db.refresh(case)
-        assert case.status == "cancelled"
+        assert case.status == terminal_status
 
     def test_deletes_the_row(self, db, admin_user):
         registrar, _ = admin_user
