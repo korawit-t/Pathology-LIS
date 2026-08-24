@@ -41,6 +41,7 @@ class SystemSettingBase(BaseModel):
     surgical_accession_prefix: str = "S"
     gyne_accession_prefix: str = "C"
     nongyne_accession_prefix: str = "N"
+    molecular_accession_prefix: str = "M"
 
     # SLA Routine
     surgical_tat_days: Optional[int] = None
@@ -152,6 +153,16 @@ class SystemSettingUpdate(SystemSettingBase):
     sticker_qr_offset_x_cm: Optional[float] = None
     sticker_qr_offset_y_cm: Optional[float] = None
 
+    # --- Barcode Label Format ---
+    # Declared here rather than on SystemSettingBase because that shape is what
+    # /system-settings/public returns to unauthenticated callers, and the codes
+    # a site's HIS matches on are useless to a login screen.
+    barcode_opd_prefix: Optional[str] = None
+    barcode_ipd_prefix: Optional[str] = None
+    barcode_surgical_type_code: Optional[str] = None
+    barcode_gyne_type_code: Optional[str] = None
+    barcode_nongyne_type_code: Optional[str] = None
+
 
 class SystemSettingResponse(SystemSettingBase):
     id: int
@@ -175,3 +186,11 @@ class SystemSettingAdminResponse(SystemSettingResponse):
     mfa_allowed_methods: Optional[List[str]] = None
     mfa_trusted_device_days: Optional[int] = None
     mfa_step_up_minutes: Optional[int] = None
+
+    # Read back by the Barcode Label Format settings screen. Without these the
+    # form reloads empty after every save.
+    barcode_opd_prefix: Optional[str] = None
+    barcode_ipd_prefix: Optional[str] = None
+    barcode_surgical_type_code: Optional[str] = None
+    barcode_gyne_type_code: Optional[str] = None
+    barcode_nongyne_type_code: Optional[str] = None

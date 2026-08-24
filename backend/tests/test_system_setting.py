@@ -128,6 +128,144 @@ class TestUpdateSettingsRouter:
         assert r.json()["enable_tissue_processing_workflow"] is False
 
 
+class TestAccessionPrefixSettings:
+    """molecular_accession_prefix was the fourth accession prefix on the model
+    but the only one missing from the schema, so — exactly like the barcode
+    codes — it could never be changed from "M" through the settings screen."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_ambient_settings(self, db):
+        """These tests commit to the singleton settings row, and the db fixture
+        only rolls back uncommitted work. Test files that read the ambient row
+        without creating their own (test_molecular_case, test_report_barcode_size,
+        test_nongyne_barcode_vn_an) assert on the hardcoded fallbacks, so the row
+        is cleared afterwards rather than left holding this file's values."""
+        yield
+        clear_system_settings(db)
+
+    def test_update_persists_every_accession_prefix(self, db):
+        make_system_setting(db, hospital_slug="master")
+
+        updated = update_settings(
+            db,
+            SystemSettingUpdate(
+                surgical_accession_prefix="SP",
+                gyne_accession_prefix="GC",
+                nongyne_accession_prefix="NG",
+                molecular_accession_prefix="MOL",
+            ),
+            hospital_slug="master",
+        )
+
+        assert updated.surgical_accession_prefix == "SP"
+        assert updated.gyne_accession_prefix == "GC"
+        assert updated.nongyne_accession_prefix == "NG"
+        assert updated.molecular_accession_prefix == "MOL"
+
+    def test_admin_patch_then_get_returns_molecular_prefix(self, admin_client, db):
+        clear_system_settings(db)
+
+        r = admin_client.patch(
+            "/system-settings/update", json={"molecular_accession_prefix": "MX"}
+        )
+        assert r.status_code == 200
+        assert r.json()["molecular_accession_prefix"] == "MX"
+
+        # The Report settings tab reloads through this endpoint after saving.
+        reloaded = admin_client.get("/system-settings/1")
+        assert reloaded.status_code == 200
+        assert reloaded.json()["molecular_accession_prefix"] == "MX"
+
+    def test_configured_prefix_reaches_a_generated_accession_no(self, db):
+        """The point of the setting: the next molecular case must actually be
+        numbered with the configured letter, not the hardcoded "M"."""
+        from app.crud.molecular_case import _get_next_molecular_accession_no
+
+        clear_system_settings(db)
+        make_system_setting(db, hospital_slug="master")
+        update_settings(
+            db, SystemSettingUpdate(molecular_accession_prefix="ZQ"), hospital_slug="master"
+        )
+
+        assert _get_next_molecular_accession_no(db).startswith("ZQ")
+
+
+class TestBarcodeSettingsRoundTrip:
+    """The barcode codes are what the HIS matches a scanned report against, so
+    they have to survive the save. They were missing from both the update and
+    the admin read schema, which meant the settings form accepted them, dropped
+    them silently, and came back empty on the next load — while every report
+    and label kept printing the hardcoded defaults."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_ambient_settings(self, db):
+        """These tests commit to the singleton settings row, and the db fixture
+        only rolls back uncommitted work. Test files that read the ambient row
+        without creating their own (test_molecular_case, test_report_barcode_size,
+        test_nongyne_barcode_vn_an) assert on the hardcoded fallbacks, so the row
+        is cleared afterwards rather than left holding this file's values."""
+        yield
+        clear_system_settings(db)
+
+    def test_update_persists_barcode_fields(self, db):
+        make_system_setting(db, hospital_slug="master")
+
+        updated = update_settings(
+            db,
+            SystemSettingUpdate(
+                barcode_opd_prefix="5",
+                barcode_ipd_prefix="6",
+                barcode_surgical_type_code="21",
+                barcode_gyne_type_code="22",
+                barcode_nongyne_type_code="23",
+            ),
+            hospital_slug="master",
+        )
+
+        assert updated.barcode_opd_prefix == "5"
+        assert updated.barcode_ipd_prefix == "6"
+        assert updated.barcode_surgical_type_code == "21"
+        assert updated.barcode_gyne_type_code == "22"
+        assert updated.barcode_nongyne_type_code == "23"
+
+    def test_admin_patch_then_get_returns_saved_codes(self, admin_client, db):
+        clear_system_settings(db)
+
+        r = admin_client.patch(
+            "/system-settings/update",
+            json={
+                "barcode_opd_prefix": "7",
+                "barcode_ipd_prefix": "8",
+                "barcode_surgical_type_code": "31",
+                "barcode_gyne_type_code": "32",
+                "barcode_nongyne_type_code": "33",
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["barcode_surgical_type_code"] == "31"
+
+        # The settings form reloads through this endpoint after saving.
+        reloaded = admin_client.get("/system-settings/1")
+        assert reloaded.status_code == 200
+        body = reloaded.json()
+        assert body["barcode_opd_prefix"] == "7"
+        assert body["barcode_ipd_prefix"] == "8"
+        assert body["barcode_surgical_type_code"] == "31"
+        assert body["barcode_gyne_type_code"] == "32"
+        assert body["barcode_nongyne_type_code"] == "33"
+
+    def test_public_endpoint_does_not_expose_barcode_codes(self, client, db):
+        """Same reasoning as the MFA fields: an unauthenticated login screen has
+        no use for the codes a site's HIS integration keys on."""
+        clear_system_settings(db)
+        make_system_setting(db, hospital_slug="master")
+
+        r = client.get("/system-settings/public")
+
+        assert r.status_code == 200
+        assert "barcode_opd_prefix" not in r.json()
+
+
 class TestUploadLogoRouter:
     def _valid_png_bytes(self) -> bytes:
         from PIL import Image
