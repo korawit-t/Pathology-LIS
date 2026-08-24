@@ -4,6 +4,7 @@ from app.schemas.tissue_processing import TissueProcessingRunCreate, ProcessorMa
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.utils.time import local_now
+from app.enums.case_states import SURGICAL_TERMINAL
 from app.utils.block_workflow import statuses_from
 from fastapi import HTTPException
 
@@ -409,8 +410,12 @@ def complete_processing_run(
             if total_blocks > 0 and total_blocks == done_blocks:
                 from app.models.surgical_case import SurgicalCase  # import มาถ้ายังไม่มี
 
+                # อย่าแตะเคสที่ปิดไปแล้ว — บล็อกที่ recut/เพิ่มเข้ามาหลัง sign out
+                # ทำให้เงื่อนไข "ครบทุกบล็อก" เป็นจริงอีกรอบ แล้วดันเคสที่ออกผล
+                # ไปแล้วถอยกลับมาเป็น "processed"
                 db.query(SurgicalCase).filter(
-                    SurgicalCase.id == specimen.case_id
+                    SurgicalCase.id == specimen.case_id,
+                    SurgicalCase.status.notin_(sorted(SURGICAL_TERMINAL)),
                 ).update(
                     {
                         "is_processed": True,

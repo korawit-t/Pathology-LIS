@@ -5,6 +5,7 @@ from app.models.embedding import EmbeddingRun, EmbeddingDetail
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
+from app.enums.case_states import SURGICAL_TERMINAL
 from app.utils.block_workflow import assert_blocks_ready
 
 
@@ -106,7 +107,9 @@ def add_multiple_blocks_to_embedding(db: Session, run_id: int, block_ids: list[i
         )
         if not_embedded_count == 0:
             case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
-            if case:
+            # เคสที่ปิดแล้วต้องไม่ถูกดันถอยกลับ — บล็อกที่ฝังหลัง sign out
+            # ทำให้ not_embedded_count กลับเป็น 0 ได้อีกรอบ
+            if case and case.status not in SURGICAL_TERMINAL:
                 case.status = "embedded"
 
     db.commit()

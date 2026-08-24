@@ -8,6 +8,7 @@ from app.models.system_setting import SystemSetting
 logger = logging.getLogger(__name__)
 from app.models.nongyne_cyto_stain import NongyneStainRun, NongyneStainRunDetail
 from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.enums.case_states import NONGYNE_CLOSED
 from fastapi import HTTPException
 
 
@@ -139,9 +140,13 @@ def create_stain_run(
             .all()
         )
         for (cid,) in stained_case_ids:
-            db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == cid).update(
-                {"status": "stained"}, synchronize_session=False
-            )
+            # เคสที่ออกผลไปแล้วต้องไม่ถูกดันกลับเป็น "stained" — โครงเดียวกับ
+            # gyne_cyto_stain.py (non-gyne ไม่มีสถานะ "revised" จึงเท่ากับ
+            # NONGYNE_TERMINAL อยู่แล้ว แต่ใช้ชื่อ CLOSED ให้อ่านคู่กันได้)
+            db.query(NongyneCytologyCase).filter(
+                NongyneCytologyCase.id == cid,
+                NongyneCytologyCase.status.notin_(sorted(NONGYNE_CLOSED)),
+            ).update({"status": "stained"}, synchronize_session=False)
 
         db.commit()
         db.refresh(db_run)
