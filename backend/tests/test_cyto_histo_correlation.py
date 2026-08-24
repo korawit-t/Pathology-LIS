@@ -14,12 +14,14 @@ from app.crud.cyto_histo_correlation import (
     get_correlation_summary,
     get_correlation_group_cases,
     get_hsil_discordant_correlations,
+    get_surgical_context,
 )
 from app.schemas.cyto_histo_correlation import CorrelationCreate, CorrelationUpdate
 from app.models.gyne_diagnosis import GyneDiagnosisCategory, GyneDiagnosis
+from app.models.nongyne_diagnosis import NongyneDiagnosis
 from app.models.nongyne_cyto_histo_correlation import NongyneCytoHistoCorrelation
 
-from tests.factories import make_bare_gyne_case
+from tests.factories import make_bare_gyne_case, make_bare_nongyne_case, make_patient
 
 
 def _get_or_create_category(db, code: str, text: str = None) -> GyneDiagnosisCategory:
@@ -149,3 +151,84 @@ class TestGetCorrelationSummary:
 
         no_match = get_hsil_discordant_correlations(db, result="minor_discrepancy")
         assert not any(r["gyne_case_id"] == case.id for r in no_match)
+
+
+class TestGetSurgicalContext:
+    """get_surgical_context() feeds CytoHistoCorrelationCard on the surgical
+    diagnosis page. Regression coverage for a bug where the gyne branch built
+    `cytology_diagnosis` from `hasattr(diag, 'category_1_text')` — an
+    attribute that never exists on GyneDiagnosis (only the category_1_obj/
+    category_2_obj relationships do) — so it silently always fell back to
+    `interpretation` instead of the Bethesda category_1/category_2 code+text
+    that patients.py's gyne-cyto-history endpoint shows for the same case."""
+
+    def test_gyne_case_uses_category_code_and_text(self, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        case = make_bare_gyne_case(db, registrar_id=registrar.id, patient=patient)
+        case.status = "pending diagnosis"
+        cat1 = _get_or_create_category(db, "200", "Epithelial Cell Abnormality")
+        cat2 = _get_or_create_category(db, "310", "HSIL")
+        diag = GyneDiagnosis(
+            case_id=case.id, category_1_id=cat1.id, category_2_id=cat2.id,
+            interpretation="free text that should NOT be used when categories are set",
+            is_current=True,
+        )
+        db.add(diag)
+        db.commit()
+
+        items = get_surgical_context(db, patient.id, surgical_accession_no="S26-CTX-0001")
+        item = next(i for i in items if i["nongyne_case"]["id"] == case.id)
+        assert item["case_type"] == "gyne"
+        assert item["cytology_diagnosis"] == "200 — Epithelial Cell Abnormality / 310 — HSIL"
+
+    def test_gyne_case_falls_back_to_interpretation_without_categories(self, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        case = make_bare_gyne_case(db, registrar_id=registrar.id, patient=patient)
+        case.status = "pending diagnosis"
+        diag = GyneDiagnosis(case_id=case.id, interpretation="NILM, no categories coded", is_current=True)
+        db.add(diag)
+        db.commit()
+
+        items = get_surgical_context(db, patient.id, surgical_accession_no="S26-CTX-0002")
+        item = next(i for i in items if i["nongyne_case"]["id"] == case.id)
+        assert item["cytology_diagnosis"] == "NILM, no categories coded"
+
+    def test_gyne_case_with_no_diagnosis_yields_none(self, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        case = make_bare_gyne_case(db, registrar_id=registrar.id, patient=patient)
+        case.status = "pending diagnosis"
+        db.commit()
+
+        items = get_surgical_context(db, patient.id, surgical_accession_no="S26-CTX-0003")
+        item = next(i for i in items if i["nongyne_case"]["id"] == case.id)
+        assert item["cytology_diagnosis"] is None
+
+    def test_nongyne_case_uses_diagnosis_free_text(self, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        case = make_bare_nongyne_case(db, registrar_id=registrar.id, patient=patient)
+        case.status = "pending diagnosis"
+        diag = NongyneDiagnosis(case_id=case.id, diagnosis="Benign, no malignant cells seen", is_current=True)
+        db.add(diag)
+        db.commit()
+
+        items = get_surgical_context(db, patient.id, surgical_accession_no="S26-CTX-0004")
+        item = next(i for i in items if i["nongyne_case"]["id"] == case.id)
+        assert item["case_type"] == "nongyne"
+        assert item["cytology_diagnosis"] == "Benign, no malignant cells seen"
+
+    def test_excludes_registered_and_cancelled_cases(self, db, admin_user):
+        registrar, _ = admin_user
+        patient = make_patient(db)
+        registered_case = make_bare_gyne_case(db, registrar_id=registrar.id, patient=patient)  # default status
+        cancelled_case = make_bare_nongyne_case(db, registrar_id=registrar.id, patient=patient)
+        cancelled_case.status = "cancelled"
+        db.commit()
+
+        items = get_surgical_context(db, patient.id, surgical_accession_no="S26-CTX-0005")
+        ids = [i["nongyne_case"]["id"] for i in items]
+        assert registered_case.id not in ids
+        assert cancelled_case.id not in ids

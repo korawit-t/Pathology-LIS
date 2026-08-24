@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 from app.models.nongyne_cyto_histo_correlation import NongyneCytoHistoCorrelation
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -123,6 +123,7 @@ def get_surgical_context(db: Session, patient_id: int, surgical_accession_no: st
     )
     g_ids = [c.id for c in g_cases]
     g_diags = {d.case_id: d for d in db.query(GyneDiagnosis)
+        .options(selectinload(GyneDiagnosis.category_1_obj), selectinload(GyneDiagnosis.category_2_obj))
         .filter(GyneDiagnosis.case_id.in_(g_ids), GyneDiagnosis.is_current.is_(True)).all()} if g_ids else {}
 
     if not ng_ids and not g_ids:
@@ -162,13 +163,13 @@ def get_surgical_context(db: Session, patient_id: int, surgical_accession_no: st
     for case in g_cases:
         diag = g_diags.get(case.id)
         corr = g_corr_map.get(case.id)
-        # gyne diagnosis: use interpretation or category text as the snapshot text
+        # gyne diagnosis: use Bethesda category_1/category_2 code+text as the snapshot text
         dx_text = None
         if diag:
-            parts = [p for p in [diag.category_1_text if hasattr(diag, 'category_1_text') else None,
-                                  diag.category_2_text if hasattr(diag, 'category_2_text') else None,
-                                  diag.interpretation if hasattr(diag, 'interpretation') else None] if p]
-            dx_text = " / ".join(parts) if parts else None
+            cat1 = diag.category_1_obj
+            cat2 = diag.category_2_obj
+            parts = [f"{c.code} — {c.text}" for c in (cat1, cat2) if c]
+            dx_text = " / ".join(parts) if parts else diag.interpretation
         result.append({
             "case_type": "gyne",
             "nongyne_case": {
