@@ -73,6 +73,7 @@ export interface SystemSetting {
   surgical_accession_prefix?: string;
   gyne_accession_prefix?: string;
   nongyne_accession_prefix?: string;
+  molecular_accession_prefix?: string;
 
   // 🚩 Default Test Selection (ID)
   default_gyne_test_id?: number | null;
@@ -92,6 +93,19 @@ export interface SystemSetting {
   sticker_font_hospital?: number;
   sticker_font_date?: number;
   sticker_margin_top_cm?: number;
+  sticker_qr_scale?: number;
+  sticker_qr_offset_x_cm?: number;
+  sticker_qr_offset_y_cm?: number;
+
+  // --- Barcode Label Format ---
+  // aa = visit-type prefix, bb = case-type code; the report/label barcode is
+  // `{aa}{bb}{VN or AN}`. Present only on the authenticated read, like the MFA
+  // fields above — the public branding endpoint omits them.
+  barcode_opd_prefix?: string;
+  barcode_ipd_prefix?: string;
+  barcode_surgical_type_code?: string;
+  barcode_gyne_type_code?: string;
+  barcode_nongyne_type_code?: string;
 
   // --- Report Template Selection ---
   surgical_report_template?: string | null;

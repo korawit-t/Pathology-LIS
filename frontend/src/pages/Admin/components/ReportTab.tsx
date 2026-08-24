@@ -54,19 +54,24 @@ const ReportTab = () => {
           Letter prefix per case type. Resets every year automatically. e.g. <code>S26-00001</code>
         </Text>
         <Row gutter={16}>
-          <Col span={8}>
+          <Col xs={12} md={6}>
             <Form.Item name="surgical_accession_prefix" label="Surgical">
               <Input placeholder="S" maxLength={5} style={{ width: 100 }} />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={12} md={6}>
             <Form.Item name="gyne_accession_prefix" label="Gyne Cytology">
               <Input placeholder="C" maxLength={5} style={{ width: 100 }} />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={12} md={6}>
             <Form.Item name="nongyne_accession_prefix" label="Non-Gyne Cytology">
               <Input placeholder="N" maxLength={5} style={{ width: 100 }} />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={6}>
+            <Form.Item name="molecular_accession_prefix" label="Molecular">
+              <Input placeholder="M" maxLength={5} style={{ width: 100 }} />
             </Form.Item>
           </Col>
         </Row>
