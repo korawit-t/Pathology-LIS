@@ -55,6 +55,7 @@ from .block_storage import BlockStorageRun, BlockStorageDetail
 from .slide_storage import SlideStorageRun, SlideStorageDetail
 from .outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
 from .slide_block_release import SlideBlockRelease
+from .specimen_disposal_batch import SpecimenDisposalBatch, SpecimenDisposalBatchItem
 from .surgical_block_event import SurgicalBlockEvent
 from .audit_log import AuditLog
 from .cyto_approval_log import CytoReportAuditLog
@@ -156,6 +157,8 @@ __all__ = [
     "OutlabConsultRun",
     "OutlabConsultRunDetail",
     "SlideBlockRelease",
+    "SpecimenDisposalBatch",
+    "SpecimenDisposalBatchItem",
     "SurgicalBlockEvent",
     "AuditLog",
     "CytoReportAuditLog",

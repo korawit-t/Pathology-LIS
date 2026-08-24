@@ -270,13 +270,16 @@ const SurgicalCaseService = {
   },
 
   // 15. ดึงรายชื่อเคสที่ระบุที่เก็บชิ้นเนื้อไปแล้ว
+  //     excludeInOpenBatch ซ่อนเคสที่ค้างอยู่ในใบตรวจสอบการทำลายที่ยังไม่ปิด
+  //     กันไม่ให้เคสเดียวถูกใส่ลงสองใบพร้อมกัน
   getStoredCases: async (
     skip: number = 0,
     limit: number = 50,
-    search?: string
+    search?: string,
+    excludeInOpenBatch: boolean = false
   ): Promise<{ items: SurgicalCase[]; total: number }> => {
     const res = await api.get("/surgical-cases/stored/specimens", {
-      params: { skip, limit, search },
+      params: { skip, limit, search, exclude_in_open_batch: excludeInOpenBatch },
     });
     return res.data;
   },
@@ -286,14 +289,6 @@ const SurgicalCaseService = {
     const res = await api.post("/surgical-cases/storage/bulk-update", {
       case_ids: caseIds,
       container_number: containerNumber,
-    });
-    return res.data;
-  },
-
-  // 17. ลบชิ้นเนื้อออกจากที่เก็บ (Dispose)
-  bulkDisposeSpecimens: async (caseIds: number[]): Promise<SurgicalCase[]> => {
-    const res = await api.post("/surgical-cases/storage/bulk-dispose", {
-      case_ids: caseIds,
     });
     return res.data;
   },

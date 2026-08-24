@@ -71,6 +71,7 @@ NON_CASE_STATUSES = {
     "responded", "closed",                                # internal consult
     "dead_letter",                                        # his export outbox
     "reported",                                           # molecular case (คนละโดเมน)
+    "PRINTED", "DISPOSED", "CANCELLED",                   # ใบตรวจสอบการทำลายชิ้นเนื้อ
 }
 
 ALL_KNOWN = set().union(*CATALOGUE.values()) | NON_CASE_STATUSES

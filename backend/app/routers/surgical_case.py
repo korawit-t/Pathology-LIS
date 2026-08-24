@@ -36,13 +36,12 @@ from app.schemas.surgical_case import (
     SurgicalCasePaginationResponse,
     CaseCancelRequest,
     SpecimenStorageBulkUpdate,
-    SpecimenDisposeBulkUpdate,
     CostSummaryResponse,
     HospitalBillingResponse,
     OutLabConsultRequest,
     OutLabConsultStateResponse,
 )
-from app.core.roles import CAN_REQUEST_CONSULT
+from app.core.roles import CAN_MANAGE_SPECIMEN_STORAGE, CAN_REQUEST_CONSULT
 from app.crud import surgical_case as crud_case
 from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 
@@ -556,7 +555,7 @@ def update_case(
 @router.get("/unstored/specimens", response_model=List[SurgicalCaseResponse])
 def get_unstored_specimens(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_MANAGE_SPECIMEN_STORAGE),
 ):
     """
     Get all surgical cases where specimen_storage_status is null
@@ -568,13 +567,23 @@ def get_stored_specimens(
     skip: int = 0,
     limit: int = 50,
     search: str = None,
+    exclude_in_open_batch: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_MANAGE_SPECIMEN_STORAGE),
 ):
     """
     Get paginated surgical cases where specimen_storage_status is NOT null
+
+    exclude_in_open_batch ซ่อนเคสที่ค้างอยู่ในใบตรวจสอบการทำลายที่ยังไม่ปิด
+    เพื่อไม่ให้เคสเดียวถูกใส่ลงสองใบพร้อมกัน
     """
-    return crud_case.get_stored_cases(db=db, skip=skip, limit=limit, search=search)
+    return crud_case.get_stored_cases(
+        db=db,
+        skip=skip,
+        limit=limit,
+        search=search,
+        exclude_in_open_batch=exclude_in_open_batch,
+    )
 
 @router.get("/disposed/specimens", response_model=SurgicalCasePaginationResponse)
 def get_disposed_specimens(
@@ -582,7 +591,7 @@ def get_disposed_specimens(
     limit: int = 50,
     search: str = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_MANAGE_SPECIMEN_STORAGE),
 ):
     """
     Get paginated surgical cases where discard_status is True
@@ -593,32 +602,22 @@ def get_disposed_specimens(
 def bulk_update_storage(
     storage_data: SpecimenStorageBulkUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_MANAGE_SPECIMEN_STORAGE),
 ):
     """
     Bulk update specimen storage status and container number for multiple cases
     """
     return crud_case.bulk_update_storage_status(
-        db=db, 
-        case_ids=storage_data.case_ids, 
+        db=db,
+        case_ids=storage_data.case_ids,
         container_number=storage_data.container_number,
         user_id=current_user.id
     )
 
-@router.post("/storage/bulk-dispose", response_model=List[SurgicalCaseResponse])
-def bulk_dispose_storage_endpoint(
-    dispose_data: SpecimenDisposeBulkUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Bulk update specimen storage status to Discarded for multiple cases
-    """
-    return crud_case.bulk_dispose_storage(
-        db=db, 
-        case_ids=dispose_data.case_ids,
-        user_id=current_user.id
-    )
+# การทำลายชิ้นเนื้อไม่มี endpoint แบบกดทิ้งทันทีอีกต่อไป — ต้องผ่านใบตรวจสอบ
+# (POST /specimen-disposal-batches แล้วจึง /confirm) เพื่อให้มีผู้ทิ้ง ผู้ตรวจสอบ
+# และผู้อนุมัติลงนามบนกระดาษก่อนเสมอ
+
 
 # --- ฟังก์ชันสำหรับลบจริง (Hard Delete) เฉพาะสถานะ registered ---
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
