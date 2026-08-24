@@ -8,6 +8,7 @@ from app.models.system_setting import SystemSetting
 logger = logging.getLogger(__name__)
 from app.models.gyne_cyto_stain import GyneStainRun, GyneStainRunDetail
 from app.models.gyne_cyto_case import GyneCytologyCase
+from app.enums.case_states import GYNE_CLOSED
 from fastapi import HTTPException
 
 
@@ -139,9 +140,14 @@ def create_stain_run(
             .all()
         )
         for (cid,) in stained_case_ids:
-            db.query(GyneCytologyCase).filter(GyneCytologyCase.id == cid).update(
-                {"status": "stained"}, synchronize_session=False
-            )
+            # GYNE_CLOSED ไม่ใช่ GYNE_TERMINAL — ตรงนี้ต้องนับ "revised" ด้วย
+            # เคสที่แก้ผลแล้วยังแก้ diagnosis ต่อได้ก็จริง แต่ผลออกไปแล้ว
+            # ถ้าปล่อยให้ถอยกลับเป็น "stained" มันจะโผล่ใน slide dispatch
+            # manual select ใหม่ทั้งที่ออกผลไปแล้ว
+            db.query(GyneCytologyCase).filter(
+                GyneCytologyCase.id == cid,
+                GyneCytologyCase.status.notin_(sorted(GYNE_CLOSED)),
+            ).update({"status": "stained"}, synchronize_session=False)
 
         db.commit()
         db.refresh(db_run)
