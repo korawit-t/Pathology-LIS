@@ -12,6 +12,11 @@
 ไฟล์นี้ไม่แตะค่าที่เก็บใน DB — เป็นการรวมศูนย์ "การอ่าน" เท่านั้น
 การ normalize ค่าจริง (เช่นทำให้ surgical กับ cytology ใช้คำเดียวกัน)
 เป็นงานคนละก้อนที่ต้องมี migration
+
+คอมเมนต์กำกับแต่ละค่าอ้าง ``module.function`` **ไม่ใช่เลขบรรทัด** — ของเดิม
+เขียนเป็น ``file:line`` แล้วเน่าทุกครั้งที่มี commit แตะไฟล์ปลายทาง
+(ครั้งล่าสุดผิดไป 14 จาก 26 จุด) ชื่อฟังก์ชันไม่เลื่อนตามการแก้โค้ด และมี
+``test_status_comment_targets_exist`` คอยกันไม่ให้ชื่อที่อ้างหายไปเงียบ ๆ
 """
 
 from typing import Final, Iterable
@@ -22,36 +27,40 @@ from typing import Final, Iterable
 
 # ลำดับหลัก — เดินหน้าอย่างเดียว ใช้ตัดสินว่า "เลยขั้นไหนไปแล้ว"
 SURGICAL_SPINE: Final[tuple[str, ...]] = (
-    "registered",          # models/surgical_case.py:50 (column default)
+    "registered",          # models/surgical_case.py — Column(default=...)
     # ไม่มีโค้ดหลังบ้านเขียนค่านี้ — หน้าบ้านส่งมาเองตอนลงทะเบียนเมื่อติ๊ก
     # "Extended Fixation" (SurgicalCaseFormModal/index.tsx) ผ่าน
     # SurgicalCaseCreate.status ซึ่งเป็น Optional[str] ที่ client กำหนดได้
     "formalin_fixing",     # client-supplied at registration
-    "in progress",         # crud/surgical_specimen.py:72
-    "grossed",             # crud/surgical_specimen.py:68
-    "processed",           # crud/tissue_processing.py:418
-    "embedded",            # crud/embedding.py:110
-    "sectioned",           # crud/sectioning.py:39
-    "stained",             # crud/surgical_block_stain.py:60
-    "slide sent",          # crud/slide_dispatch.py:140
-    "pending diagnosis",   # crud/surgical_block_stain.py:60
+    "in progress",         # surgical_specimen.update_specimen_gross
+    "grossed",             # surgical_specimen.update_specimen_gross
+    "processed",           # tissue_processing.complete_processing_run
+    "embedded",            # embedding.add_multiple_blocks_to_embedding
+    "sectioned",           # sectioning._promote_cases_if_fully_sectioned
+    "stained",             # surgical_block_stain._update_case_status_from_block_stains
+    "slide sent",          # slide_dispatch.create_bulk_slide_dispatch
+    "pending diagnosis",   # surgical_block_stain._update_case_status_from_block_stains
 )
 
 # รอผลย้อมเพิ่ม — แตกออกจากช่วงวินิจฉัยแล้ววนกลับ ไม่ใช่ขั้นในลำดับหลัก
 SURGICAL_STAIN_HOLDS: Final[tuple[str, ...]] = (
-    "pending special stains",   # crud/surgical_block_stain.py:48
-    "pending immuno",           # crud/surgical_block_stain.py:46
+    # เขียนได้ 2 ทาง: สั่งย้อมที่ระดับบล็อก และสั่ง AP test ที่ระดับ specimen
+    "pending special stains",   # surgical_block_stain.{_update_case_status_from_block_stains,create_stain}
+                                # surgical_specimen_ap_test_service.create_specimen_test
+                                # surgical_specimen_ap_test_service.delete_specimen_test
+    "pending immuno",           # ทางเดียวกับข้างบน
 )
 
 # รออนุมัติ — มีเฉพาะเมื่อ system_settings.enable_approve_system เปิด
 SURGICAL_REVIEW: Final[tuple[str, ...]] = (
-    "pending peer review",      # crud/surgical_report.py:452
+    "pending peer review",      # surgical_report.finalize_and_snapshot_orchestrator
 )
 
 # ปิดเคสแล้ว ไม่มีทางกลับ
 SURGICAL_CLOSED: Final[tuple[str, ...]] = (
-    "signed out",               # crud/surgical_report.py:455, crud/report_crud.py:70
-    "cancelled",                # crud/surgical_case.py:290
+    "signed out",               # surgical_report.finalize_and_snapshot_orchestrator
+                                # report_crud.process_report_approval
+    "cancelled",                # surgical_case.cancel_surgical_case
 )
 
 
@@ -61,18 +70,20 @@ SURGICAL_CLOSED: Final[tuple[str, ...]] = (
 
 GYNE_SPINE: Final[tuple[str, ...]] = (
     "registered",          # column default
-    "stained",             # crud/gyne_cyto_stain.py:143
-    "screened",            # crud/gyne_cyto_report.py:523, crud/gyne_report_crud.py:92
+    "stained",             # gyne_cyto_stain.create_stain_run
+    "screened",            # gyne_cyto_report.complete_gyne_review
+                           # gyne_report_crud.process_gyne_report_approval
 )
 
 GYNE_REVIEW: Final[tuple[str, ...]] = (
-    "pending_review",      # crud/gyne_cyto_report.py:388 (abnormal), :453 (สุ่ม NILM)
+    "pending_review",      # gyne_cyto_report.publish_gyne_report — ทั้ง abnormal และสุ่ม NILM
 )
 
 GYNE_CLOSED: Final[tuple[str, ...]] = (
-    "published",           # crud/gyne_cyto_report.py:471, :545
-    "revised",             # crud/gyne_diagnosis.py:104 — แก้ผลที่ออกไปแล้ว
-    "cancelled",           # crud/gyne_cyto_case.py:511
+    "published",           # gyne_cyto_report.{publish_gyne_report,complete_gyne_review}
+                           # gyne_report_crud.process_gyne_report_approval
+    "revised",             # gyne_diagnosis.revise_diagnosis — แก้ผลที่ออกไปแล้ว
+    "cancelled",           # gyne_cyto_case.cancel_gyne_case
 )
 
 
@@ -82,18 +93,18 @@ GYNE_CLOSED: Final[tuple[str, ...]] = (
 
 NONGYNE_SPINE: Final[tuple[str, ...]] = (
     "registered",          # column default
-    "stained",             # crud/nongyne_cyto_stain.py:143
-    "slide sent",          # crud/slide_dispatch.py:147
-    "screened",            # crud/nongyne_cyto_report.py:625
+    "stained",             # nongyne_cyto_stain.create_stain_run
+    "slide sent",          # slide_dispatch.create_bulk_slide_dispatch
+    "screened",            # nongyne_cyto_report.process_nongyne_report_approval
 )
 
 NONGYNE_REVIEW: Final[tuple[str, ...]] = (
-    "pending_approval",    # crud/nongyne_cyto_report.py:349
+    "pending_approval",    # nongyne_cyto_report.publish_nongyne_report
 )
 
 NONGYNE_CLOSED: Final[tuple[str, ...]] = (
-    "published",           # crud/nongyne_cyto_report.py:349, :616
-    "cancelled",           # crud/nongyne_cyto_case.py:355
+    "published",           # nongyne_cyto_report.{publish_nongyne_report,process_nongyne_report_approval}
+    "cancelled",           # nongyne_cyto_case.cancel_nongyne_case
 )
 
 

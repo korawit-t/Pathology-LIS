@@ -108,6 +108,56 @@ def test_catalogue_has_no_phantom_values():
         )
 
 
+# ── คอมเมนต์กำกับต้องชี้ไปยังฟังก์ชันที่มีจริง ──────────────────────
+#
+# เดิมคอมเมนต์ในไฟล์นี้เขียนเป็น ``file:line`` ซึ่งเน่าทุกครั้งที่มี commit
+# แตะไฟล์ปลายทาง — ครั้งล่าสุดผิดไป 14 จาก 26 จุด และไม่มีอะไรจับได้เลย
+# ตอนนี้เปลี่ยนไปอ้าง ``module.function`` แล้วให้เทสต์นี้กันไม่ให้ชื่อที่อ้าง
+# ถูกลบ/เปลี่ยนชื่อโดยไม่แก้คอมเมนต์ตาม
+
+_COMMENT_REF = re.compile(
+    r'#\s*(?:[a-z_]+\.)?'                     # อาจมี prefix crud. นำหน้า
+    r'([a-z_][a-z0-9_]*)\.'                    # module
+    r'(?:\{([a-z0-9_,]+)\}|([a-z_][a-z0-9_]*))'  # func หรือ {a,b}
+)
+
+_STATES_SRC = (Path(__file__).resolve().parents[1] / "app" / "enums" / "case_states.py")
+
+
+def _comment_targets() -> set[tuple[str, str]]:
+    out: set[tuple[str, str]] = set()
+    for line in _STATES_SRC.read_text(encoding="utf-8").splitlines():
+        if "#" not in line:
+            continue
+        for module, braced, single in _COMMENT_REF.findall(line):
+            funcs = braced.split(",") if braced else [single]
+            for fn in funcs:
+                if fn:
+                    out.add((module, fn))
+    return out
+
+
+def test_status_comment_targets_exist():
+    """ทุก module.function ที่คอมเมนต์อ้าง ต้องมีอยู่จริงใน crud/"""
+    targets = _comment_targets()
+    assert targets, "ไม่เจอคอมเมนต์รูปแบบ module.function เลย — regex พังหรือคอมเมนต์ถูกเขียนใหม่?"
+
+    missing = []
+    for module, func in sorted(targets):
+        path = CRUD_DIR / f"{module}.py"
+        if not path.exists():
+            missing.append(f"{module}.py (ไม่มีไฟล์) ← {func}")
+            continue
+        src = path.read_text(encoding="utf-8")
+        if not re.search(rf'^\s*def {re.escape(func)}\(', src, re.M):
+            missing.append(f"{module}.{func}")
+
+    assert not missing, (
+        "คอมเมนต์ใน case_states.py อ้างฟังก์ชันที่ไม่มีอยู่จริง "
+        "— แก้คอมเมนต์ให้ตรงกับชื่อใหม่:\n  " + "\n  ".join(missing)
+    )
+
+
 class TestDerivedSetContracts:
     """สัญญาของเซ็ตที่คำนวณออกมา — แต่ละข้อคือบั๊กที่เคยเกิดจริงจากการไล่รายชื่อด้วยมือ"""
 
