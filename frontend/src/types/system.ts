@@ -57,6 +57,9 @@ export interface SystemSetting {
   gyne_report_footer?: string;
   nongyne_report_footer?: string;
 
+  // เลขคุมเอกสารตามระบบคุณภาพ พิมพ์มุมล่างซ้ายของใบตรวจสอบการทำลายชิ้นเนื้อ
+  specimen_disposal_doc_no?: string;
+
   // เปิด/ปิด ระบบการ Approve ผลโดยพยาธิแพทย์
   enable_approve_system: boolean;
   enable_gyne_qc_system: boolean;

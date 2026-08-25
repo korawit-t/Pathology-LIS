@@ -78,3 +78,59 @@ describe("ReportTab accession prefixes", () => {
     );
   });
 });
+
+
+describe("ReportTab controlled document no.", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedUpdate.mockResolvedValue(makeSetting());
+  });
+
+  it("loads the configured disposal-checklist document no.", async () => {
+    mockedGet.mockResolvedValue(
+      makeSetting({ specimen_disposal_doc_no: "FM-PAT-025 แก้ไขครั้งที่ 01" }),
+    );
+    renderTab();
+
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/FM-PAT-025/) as HTMLInputElement).value,
+      ).toBe("FM-PAT-025 แก้ไขครั้งที่ 01"),
+    );
+  });
+
+  it("saves an edited document no.", async () => {
+    mockedGet.mockResolvedValue(makeSetting());
+    renderTab();
+
+    const input = await screen.findByPlaceholderText(/FM-PAT-025/);
+    fireEvent.change(input, { target: { value: "FM-PAT-099 Rev.02" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save Settings/i }));
+
+    await waitFor(() =>
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ specimen_disposal_doc_no: "FM-PAT-099 Rev.02" }),
+      ),
+    );
+  });
+
+  /** เว้นว่างต้องส่งค่าว่างไปจริง ไม่ใช่หายไปจาก payload
+   *  ไม่งั้นลบเลขเอกสารที่ตั้งไว้แล้วไม่ได้ */
+  it("can clear a document no. that was already set", async () => {
+    mockedGet.mockResolvedValue(
+      makeSetting({ specimen_disposal_doc_no: "FM-PAT-025 แก้ไขครั้งที่ 01" }),
+    );
+    renderTab();
+
+    const input = await screen.findByPlaceholderText(/FM-PAT-025/);
+    await waitFor(() => expect((input as HTMLInputElement).value).not.toBe(""));
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save Settings/i }));
+
+    await waitFor(() =>
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ specimen_disposal_doc_no: "" }),
+      ),
+    );
+  });
+});

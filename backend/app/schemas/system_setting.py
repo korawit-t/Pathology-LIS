@@ -21,6 +21,9 @@ class SystemSettingBase(BaseModel):
     gyne_report_footer: Optional[str] = None
     nongyne_report_footer: Optional[str] = None
 
+    # --- Controlled-document numbers ---
+    specimen_disposal_doc_no: Optional[str] = None
+
     # --- Session / Security ---
     idle_timeout_minutes: Optional[int] = 10
     idle_warning_minutes: Optional[int] = 1
@@ -111,6 +114,7 @@ class SystemSettingUpdate(SystemSettingBase):
     lab_short_name_en: Optional[str] = None  # 🚩
     is_cumulative_report: Optional[bool] = None
     show_specimen_name: Optional[bool] = None
+    specimen_disposal_doc_no: Optional[str] = None
     require_all_pathologists_sign: Optional[bool] = None
     require_all_gyne_sign: Optional[bool] = None
     require_all_non_gyne_sign: Optional[bool] = None

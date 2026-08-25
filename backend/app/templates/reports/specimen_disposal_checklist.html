@@ -18,7 +18,9 @@
         size: A4;
         margin: 15mm 14mm 18mm 14mm;
         @bottom-left {
-          content: "{{ batch_no }} · Pathology LIS";
+          /* เลขคุมเอกสารตามระบบคุณภาพ ตามด้วยเลขที่ใบ เพื่อให้หน้าที่หลุดจากชุด
+             ยังรู้ว่ามาจากใบไหน */
+          content: "{% if doc_no %}{{ doc_no }} · {% endif %}{{ batch_no }}";
           font-family: "Sarabun", sans-serif;
           font-size: 8pt;
           color: #666;

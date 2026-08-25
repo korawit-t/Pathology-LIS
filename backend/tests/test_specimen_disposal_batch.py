@@ -429,6 +429,49 @@ class TestChecklistPdf:
         assert r.content[:4] == b"%PDF"
 
 
+class TestControlledDocumentNo:
+    """เลขคุมเอกสารมาจาก system setting ไม่ใช่ค่าตายในเทมเพลต"""
+
+    def test_doc_no_flows_from_system_setting_to_the_sheet(self, db, admin_user, signers):
+        from app.crud.specimen_disposal_batch import (
+            build_disposal_checklist_data,
+            create_batch,
+        )
+        from tests.factories import make_system_setting
+
+        make_system_setting(db, specimen_disposal_doc_no="FM-PAT-025 แก้ไขครั้งที่ 01")
+
+        registrar, _ = admin_user
+        disposer, verifier, approver = signers
+        batch = create_batch(
+            db,
+            case_ids=[_stored_case(db, registrar.id).id],
+            disposer_id=disposer.id,
+            verifier_id=verifier.id,
+            approver_id=approver.id,
+            retention_days=None,
+            printed_by_id=registrar.id,
+        )
+
+        data = build_disposal_checklist_data(db, batch.id)
+        assert data["doc_no"] == "FM-PAT-025 แก้ไขครั้งที่ 01"
+
+    def test_sheet_prints_without_a_doc_no_configured(self, db, admin_client, admin_user, signers):
+        from tests.factories import make_system_setting
+
+        make_system_setting(db)  # ไม่ตั้งเลขเอกสาร
+
+        registrar, _ = admin_user
+        batch = admin_client.post(
+            "/specimen-disposal-batches",
+            json=_payload([_stored_case(db, registrar.id)], signers),
+        ).json()
+
+        r = admin_client.get(f"/specimen-disposal-batches/{batch['id']}/checklist-pdf")
+        assert r.status_code == 200
+        assert r.content[:4] == b"%PDF"
+
+
 class TestPatientNameOnTheSheet:
     def test_uses_title_plus_first_name_plus_last_name(self, db, admin_client, admin_user, signers):
         """ชื่อบนใบต้องตรงกับสติกเกอร์บนกล่อง — ชื่อต้นอย่างเดียวเทียบไม่ได้"""
