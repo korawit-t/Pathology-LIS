@@ -14,9 +14,14 @@ vi.mock("../../services/userService", () => ({
 }));
 
 const users = [
-  { id: 1, username: "somchai", full_name: "สมชาย ใจดี", status: true },
-  { id: 2, username: "somying", full_name: "สมหญิง รักงาน", status: true },
-  { id: 3, username: "prasert", full_name: "ประเสริฐ วงศ์ดี", status: true },
+  { id: 1, username: "somchai", full_name: "สมชาย ใจดี", status: true, roles: ["gross"] },
+  { id: 2, username: "somying", full_name: "สมหญิง รักงาน", status: true, roles: ["histo"] },
+  { id: 3, username: "prasert", full_name: "ประเสริฐ วงศ์ดี", status: true, roles: ["lab_manager"] },
+  // บัญชีฝั่งผู้ส่งตรวจ ไม่ควรโผล่ในช่องลงนาม
+  { id: 4, username: "drsuda", full_name: "พญ.สุดา คนไข้ส่ง", status: true, roles: ["clinician"] },
+  { id: 5, username: "rphosp", full_name: "งานเวชระเบียน รพ.ข", status: true, roles: ["hospital"] },
+  { id: 6, username: "mixed", full_name: "ปนัดดา สองบทบาท", status: true, roles: ["gross", "clinician"] },
+  { id: 7, username: "resigned", full_name: "อดีตเจ้าหน้าที่", status: false, roles: ["gross"] },
 ];
 
 const cases = [
@@ -155,5 +160,53 @@ describe("CreateDisposalBatchModal", () => {
     expect(await screen.findByText("กรุณาเลือกผู้ตรวจสอบ")).toBeInTheDocument();
     expect(await screen.findByText("กรุณาเลือกผู้อนุมัติ")).toBeInTheDocument();
     expect(SpecimenDisposalService.create).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("CreateDisposalBatchModal signer eligibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (UserService.getUsers as ReturnType<typeof vi.fn>).mockResolvedValue(users);
+  });
+
+  const openDisposerOptions = async () => {
+    const select = document.getElementById("disposer_id")?.closest(".ant-select");
+    fireEvent.mouseDown(select?.querySelector(".ant-select-content") as Element);
+    return await waitFor(() => {
+      const el = document
+        .getElementById("disposer_id_list")
+        ?.closest(".ant-select-dropdown");
+      if (!el) throw new Error("dropdown not open");
+      return el as HTMLElement;
+    });
+  };
+
+  it("leaves clinician and hospital accounts out of the signer list", async () => {
+    renderModal();
+    await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
+    const dropdown = await openDisposerOptions();
+
+    expect(within(dropdown).queryByTitle(/พญ.สุดา/)).toBeNull();
+    expect(within(dropdown).queryByTitle(/งานเวชระเบียน/)).toBeNull();
+  });
+
+  it("also excludes an account that holds an external role alongside a lab role", async () => {
+    renderModal();
+    await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
+    const dropdown = await openDisposerOptions();
+
+    expect(within(dropdown).queryByTitle(/ปนัดดา/)).toBeNull();
+  });
+
+  it("keeps lab staff, and still drops deactivated accounts", async () => {
+    renderModal();
+    await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
+    const dropdown = await openDisposerOptions();
+
+    expect(within(dropdown).getByTitle("สมชาย ใจดี (somchai)")).toBeInTheDocument();
+    expect(within(dropdown).getByTitle("สมหญิง รักงาน (somying)")).toBeInTheDocument();
+    expect(within(dropdown).getByTitle("ประเสริฐ วงศ์ดี (prasert)")).toBeInTheDocument();
+    expect(within(dropdown).queryByTitle(/อดีตเจ้าหน้าที่/)).toBeNull();
   });
 });

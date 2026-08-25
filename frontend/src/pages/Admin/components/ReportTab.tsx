@@ -109,7 +109,7 @@ const ReportTab = () => {
           <Col span={16}>
             <Form.Item
               name="specimen_disposal_doc_no"
-              label="ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ (Specimen Disposal Checklist)"
+              label="ใบตรวจสอบและทำลายชิ้นเนื้อ (Specimen Disposal Checklist)"
             >
               <Input placeholder="e.g. FM-PAT-025 แก้ไขครั้งที่ 01" />
             </Form.Item>

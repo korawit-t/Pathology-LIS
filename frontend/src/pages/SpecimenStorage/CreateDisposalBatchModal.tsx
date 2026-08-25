@@ -18,6 +18,7 @@ import type { SurgicalCase } from "../../types/surgical";
 import type { User } from "../../types/user";
 import type { DisposalBatch } from "../../types/specimenDisposal";
 import { formatPatientName } from "../../utils/patientName";
+import { isExternalRole } from "../../constants/roles.constants";
 import logger from "../../utils/logger";
 
 const { Text } = Typography;
@@ -54,7 +55,13 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
     setLoadingUsers(true);
     UserService.getUsers()
       .then((data) => {
-        if (!cancelled) setUsers(data.filter((u) => u.status !== false));
+        // ตัดบัญชีฝั่งผู้ส่งตรวจออก — clinician/hospital ไม่ได้อยู่ในแลป
+        // จึงลงนามเป็นผู้ทิ้ง/ผู้ตรวจสอบ/ผู้อนุมัติไม่ได้ (backend ปฏิเสธซ้ำอีกชั้น)
+        if (!cancelled) {
+          setUsers(
+            data.filter((u) => u.status !== false && !isExternalRole(u.roles)),
+          );
+        }
       })
       .catch((err) => {
         logger.error(err);
