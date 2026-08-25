@@ -47,10 +47,33 @@ vi.mock("./components/NongyneIHCResultPanel", () => ({ default: trivialMock("moc
 vi.mock("./components/NongyneCytologyImageCaptureModal", () => ({ default: trivialMock("mock-image-capture") }));
 vi.mock("../../components/SecureImage", () => ({ default: trivialMock("mock-secure-image") }));
 vi.mock("../../components/CytoCorrelationManager", () => ({ default: trivialMock("mock-cyto-correlation") }));
-vi.mock("../../components/Editors/SimpleTiptapEditor", () => ({ default: trivialMock("mock-tiptap-editor") }));
 vi.mock("../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem", () => ({ default: trivialMock("mock-diagnostic-template") }));
 vi.mock("../Gross/components/GrossTemplateSystem", () => ({ default: trivialMock("mock-gross-template") }));
-vi.mock("./components/NongyneSignOffPage", () => ({ default: trivialMock("mock-sign-off") }));
+// Unlike the other stubs, this one honours `open` — the sign-off flow's
+// whole point is *when* this page appears (only after the draft saved).
+vi.mock("./components/NongyneSignOffPage", () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="mock-sign-off" /> : null,
+}));
+// A controlled stand-in for the tiptap editor so tests can assert what the
+// form actually hands to saveDraft (the real editor needs a DOM range API).
+vi.mock("../../components/Editors/SimpleTiptapEditor", () => ({
+  default: ({
+    value,
+    onChange,
+    placeholder,
+  }: {
+    value?: string;
+    onChange?: (v: string) => void;
+    placeholder?: string;
+  }) => (
+    <textarea
+      aria-label={placeholder}
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  ),
+}));
 
 const mockUseNongyneDiagnosisData = vi.fn();
 vi.mock("./hooks/useNongyneDiagnosisData", () => ({
@@ -169,6 +192,94 @@ describe("PathologistNongyneDiagnosisPage", () => {
     await waitFor(() => expect(NongyneReportService.getReportPdf).toHaveBeenCalledWith(901));
     const iframe = await screen.findByTitle("Report PDF");
     expect(iframe).toHaveAttribute("src", "blob:mock-report-pdf");
+  });
+
+  describe("Sign-off", () => {
+    // The hook owns the form fill in real use; it's mocked here, so seed the
+    // required fields (specimen_type, diagnosis) the same way it would.
+    const renderWithFilledForm = (hookReturn: ReturnType<typeof makeHookReturn>) => {
+      mockUseNongyneDiagnosisData.mockImplementation(
+        (_caseId: unknown, form: { setFieldsValue: (v: unknown) => void }) => {
+          React.useEffect(() => {
+            form.setFieldsValue({
+              specimen_type: "Fluid",
+              diagnosis: "Adenocarcinoma",
+            });
+          }, [form]);
+          return hookReturn;
+        },
+      );
+      return renderPage();
+    };
+
+    const withDiagnosis = (overrides: Record<string, unknown> = {}) =>
+      makeHookReturn({
+        diagnosis: { id: 55, diagnosis: "Previously saved" },
+        ...overrides,
+      });
+
+    it("saves the draft before opening the sign-off page", async () => {
+      const saveDraft = vi.fn().mockResolvedValue({ isCreate: false });
+      const fetchDiagnosis = vi.fn().mockResolvedValue(undefined);
+      renderWithFilledForm(withDiagnosis({ saveDraft, fetchDiagnosis }));
+
+      expect(screen.queryByTestId("mock-sign-off")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Sign-off/i }));
+
+      await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
+      expect(saveDraft.mock.calls[0][0]).toMatchObject({
+        specimen_type: "Fluid",
+        diagnosis: "Adenocarcinoma",
+      });
+      expect(fetchDiagnosis).toHaveBeenCalledWith(false);
+      expect(await screen.findByTestId("mock-sign-off")).toBeInTheDocument();
+    });
+
+    it("picks up edits made since the last manual Save Draft", async () => {
+      const saveDraft = vi.fn().mockResolvedValue({ isCreate: false });
+      renderWithFilledForm(withDiagnosis({ saveDraft }));
+
+      fireEvent.change(screen.getByLabelText("Enter diagnosis..."), {
+        target: { value: "Suspicious for malignancy" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Sign-off/i }));
+
+      await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
+      expect(saveDraft.mock.calls[0][0]).toMatchObject({
+        diagnosis: "Suspicious for malignancy",
+      });
+    });
+
+    it("keeps the sign-off page closed when the draft save fails", async () => {
+      const saveDraft = vi.fn().mockRejectedValue(new Error("network down"));
+      renderWithFilledForm(withDiagnosis({ saveDraft }));
+
+      fireEvent.click(screen.getByRole("button", { name: /Sign-off/i }));
+
+      await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId("mock-sign-off")).not.toBeInTheDocument();
+    });
+
+    it("blocks sign-off (and the save) when a required field is empty", async () => {
+      const saveDraft = vi.fn().mockResolvedValue({ isCreate: false });
+      // specimen_type filled, diagnosis left empty — the diagnosis Form.Item
+      // is noStyle, so the toast is the only feedback the user gets.
+      mockUseNongyneDiagnosisData.mockImplementation(
+        (_caseId: unknown, form: { setFieldsValue: (v: unknown) => void }) => {
+          React.useEffect(() => {
+            form.setFieldsValue({ specimen_type: "Fluid" });
+          }, [form]);
+          return withDiagnosis({ saveDraft });
+        },
+      );
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /Sign-off/i }));
+
+      expect(await screen.findByText("Diagnosis is required.")).toBeInTheDocument();
+      expect(saveDraft).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("mock-sign-off")).not.toBeInTheDocument();
+    });
   });
 
   it("revokes the previous preview PDF when Preview PDF is clicked twice without closing the modal", async () => {

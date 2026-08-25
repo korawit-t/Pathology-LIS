@@ -300,7 +300,45 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
     fetchDiagnosis();
   };
 
-  const handleFinalizeClick = () => {
+  // Sign-off saves the draft first, so the signed report always reflects
+  // what's on screen — the pathologist no longer has to remember to press
+  // Save Draft before Sign-off. Mirrors Surgical's handleOpenFinalizeModal,
+  // which already awaits its save before opening the finalize page.
+  // validateFields (not getFieldsValue) so this goes through the exact same
+  // required-field gate as the Save Draft button's form.submit().
+  const handleFinalizeClick = async () => {
+    let values: NongyneOnFinishValues;
+    try {
+      values = await form.validateFields();
+    } catch (errInfo) {
+      // The diagnosis Form.Item is noStyle, so it renders no inline error of
+      // its own — surface the rule's message and scroll to the offending
+      // field, or a blocked click just looks like a dead button.
+      const { errorFields } = (errInfo ?? {}) as {
+        errorFields?: { name: (string | number)[]; errors: string[] }[];
+      };
+      const firstError = errorFields?.[0];
+      if (firstError) form.scrollToField(firstError.name);
+      message.error(
+        firstError?.errors?.[0] ??
+          "Please complete the required fields before signing off.",
+      );
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const { isCreate } = await saveDraft(values, { isAddendumMode, prevDiagnosis });
+      // Awaited (unlike onFinish's fire-and-forget) so `diagnosis` is in
+      // state before the sign-off page opens — finalize() bails out without
+      // it, which would silently no-op a freshly created addendum.
+      await fetchDiagnosis(isCreate);
+    } catch (err) {
+      logger.error(err);
+      message.error("Failed to save the draft — sign-off cancelled.");
+      return;
+    } finally {
+      setSubmitting(false);
+    }
     setSlideQualityModalOpen(true);
   };
 
