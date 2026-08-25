@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
   Table,
   Tag,
@@ -40,9 +40,10 @@ import InternalHosxpKeyTab from "./components/InternalHosxpKeyTab";
 import {
   CAT_COLOR,
   catLabel,
-  isKeyableStain,
   isRelevantStain,
+  isRoutineHETest,
   isSpecialStainCategory,
+  isSpecialStainOrder,
 } from "./stainFilters";
 
 const { Text, Title } = Typography;
@@ -213,7 +214,7 @@ const BlockTable = ({ block, onDelete, onAddStain, onPrintStickers }) => {
             size="small"
             icon={<PrinterOutlined />}
             onClick={() => onPrintStickers(block)}
-            disabled={!(block.stains?.length > 0)}
+            disabled={internalStains.length === 0}
           >
             Print Stickers
           </Button>
@@ -250,13 +251,31 @@ const BlockTable = ({ block, onDelete, onAddStain, onPrintStickers }) => {
 };
 
 // ── Main component ─────────────────────────────────────────────────────────────
+const PAGE_SIZE = 20;
+const EMPTY_BUCKETS = { all: 0, pending: 0, completed: 0, recut: 0 };
+
 const StainManagement = ({ onNavigate }) => {
-  const [blocks, setBlocks] = useState([]);
+  // One page of *cases* (server-paginated), not a slab of blocks — see
+  // SurgicalBlockService.getInternalStainCases.
+  const [cases, setCases] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [bucketCounts, setBucketCounts] = useState(EMPTY_BUCKETS);
+  const [slideTotals, setSlideTotals] = useState({ pending: 0, stained: 0 });
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+
   const [masterTests, setMasterTests] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [filterTab, setFilterTab] = useState("all");
   const [mainTab, setMainTab] = useState("orders");
+
+  // The HosXP Key tab bills every in-house stain, not just this page's, so it
+  // has its own (unpaginated) fetch — deferred until the tab is opened, with
+  // the badge served by a dedicated count endpoint.
+  const [hosxpBlocks, setHosxpBlocks] = useState([]);
+  const [hosxpLoading, setHosxpLoading] = useState(false);
+  const [hosxpLoaded, setHosxpLoaded] = useState(false);
+  const [unkeyedCount, setUnkeyedCount] = useState(0);
 
   const [currentView, setCurrentView] = useState("list");
   const [detailAccNo, setDetailAccNo] = useState(null);
@@ -266,18 +285,55 @@ const StainManagement = ({ onNavigate }) => {
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [addForm] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchCases = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await SurgicalBlockService.getBlocks({ limit: 200 });
-      const data = res.items || (Array.isArray(res) ? res : []);
-      setBlocks(data);
+      const res = await SurgicalBlockService.getInternalStainCases({
+        search: searchText || undefined,
+        bucket: filterTab,
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      setCases(res.items || []);
+      setTotal(res.total || 0);
+      setBucketCounts(res.bucket_counts || EMPTY_BUCKETS);
+      setSlideTotals(res.slide_totals || { pending: 0, stained: 0 });
     } catch {
       message.error("Failed to load block data");
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchText, filterTab, page]);
+
+  useEffect(() => {
+    const t = setTimeout(fetchCases, searchText ? 400 : 0);
+    return () => clearTimeout(t);
+  }, [fetchCases, searchText]);
+
+  const fetchUnkeyedCount = useCallback(async () => {
+    try {
+      setUnkeyedCount(await SurgicalBlockStainService.getInternalUnkeyedCount());
+    } catch {
+      /* the badge is decoration — a failure here shouldn't break the page */
+    }
+  }, []);
+
+  const fetchHosxpBlocks = useCallback(async () => {
+    setHosxpLoading(true);
+    try {
+      const res = await SurgicalBlockService.getBlocks({ has_internal_stain: true });
+      setHosxpBlocks(res.items || (Array.isArray(res) ? res : []));
+      setHosxpLoaded(true);
+    } catch {
+      message.error("Failed to load block data");
+    } finally {
+      setHosxpLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mainTab === "hosxp" && !hosxpLoaded) fetchHosxpBlocks();
+  }, [mainTab, hosxpLoaded, fetchHosxpBlocks]);
 
   const fetchMasterTests = async () => {
     try {
@@ -289,81 +345,63 @@ const StainManagement = ({ onNavigate }) => {
   };
 
   useEffect(() => {
-    fetchData();
     fetchMasterTests();
-  }, []);
+    fetchUnkeyedCount();
+  }, [fetchUnkeyedCount]);
 
-  // Group blocks by accession_no (search-filtered)
-  const grouped = useMemo(() => {
-    const filtered = blocks.filter((b) => {
-      if (!searchText) return true;
-      const q = searchText.toLowerCase();
-      return (
-        (b.accession_no || "").toLowerCase().includes(q) ||
-        (b.specimen_label || "").toLowerCase().includes(q)
-      );
-    });
-    return filtered.reduce((acc, block) => {
-      const key = block.accession_no || "Unknown";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(block);
-      return acc;
-    }, {});
-  }, [blocks, searchText]);
+  // Ordering a stain or deleting a slide changes both the worklist and the
+  // billing queue.
+  const refreshAfterWrite = () => {
+    fetchCases();
+    fetchUnkeyedCount();
+    if (hosxpLoaded) fetchHosxpBlocks();
+  };
 
-  // Build flat case rows for the table
+  // Per-case display aggregates. Derived from the very blocks on screen rather
+  // than sent down as numbers, so the tags can never disagree with the slide
+  // table underneath them; the server only decides *which* cases are on the
+  // page (and the segmented/header totals, which span every match).
   const caseRows = useMemo(() => {
-    return Object.entries(grouped).map(([accNo, caseBlocks]) => {
-      const allStains = caseBlocks.flatMap((b) =>
-        (b.stains || []).filter(isRelevantStain),
-      );
-      const pending = allStains.filter((s) => s.status === "pending").length;
-      const ihcCount = allStains.filter(
-        (s) => s.test?.category === "IHC",
-      ).length;
-      const ssCount = allStains.filter((s) =>
-        isSpecialStainCategory(s.test?.category),
-      ).length;
-      const recutCount = allStains.filter((s) => s.is_recut).length;
+    return cases
+      .map((c) => {
+        const caseBlocks = (c.blocks || []).filter((b) =>
+          (b.stains || []).some(isRelevantStain),
+        );
+        const allStains = caseBlocks.flatMap((b) =>
+          (b.stains || []).filter(isRelevantStain),
+        );
+        const pending = allStains.filter((s) => s.status === "pending").length;
+        const recutCount = allStains.filter((s) => s.is_recut).length;
+        // Counted off isSpecialStainOrder rather than the category alone: the
+        // recut master test is itself categorised "Histochem", so a plain
+        // category check would report the same slide under both tags.
+        const ssCount = allStains.filter(isSpecialStainOrder).length;
 
-      // Which stains are actually on this case — the category counts alone
-      // never said *what* was ordered, and they silently dropped anything
-      // outside IHC/SS (ISH, Molecular, recuts).
-      const nameCounts = new Map();
-      for (const s of allStains) {
-        const name = s.is_recut ? "Recut" : s.test?.name || "Unknown";
-        nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-      }
-      const stainSummary = [...nameCounts.entries()].map(([name, count]) => ({
-        name,
-        count,
-      }));
+        // Which stains are actually on this case — the category counts alone
+        // never said *what* was ordered.
+        const nameCounts = new Map();
+        for (const s of allStains) {
+          const name = s.is_recut ? "Recut" : s.test?.name || "Unknown";
+          nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+        }
+        const stainSummary = [...nameCounts.entries()].map(([name, count]) => ({
+          name,
+          count,
+        }));
 
-      return {
-        accNo,
-        caseBlocks,
-        blockCount: caseBlocks.length,
-        slideCount: allStains.length,
-        pending,
-        ihcCount,
-        ssCount,
-        recutCount,
-        stainSummary,
-      };
-    });
-  }, [grouped]);
-
-  // Per-tab counts
-  const pendingRows = caseRows.filter((r) => r.pending > 0);
-  const completedRows = caseRows.filter((r) => r.pending === 0);
-  const recutRows = caseRows.filter((r) => r.recutCount > 0);
-
-  const filteredRows = useMemo(() => {
-    if (filterTab === "pending") return pendingRows;
-    if (filterTab === "completed") return completedRows;
-    if (filterTab === "recut") return recutRows;
-    return caseRows;
-  }, [caseRows, filterTab]);
+        return {
+          accNo: c.accession_no,
+          caseBlocks,
+          blockCount: caseBlocks.length,
+          slideCount: allStains.length,
+          pending,
+          ssCount,
+          recutCount,
+          stainSummary,
+        };
+      })
+      .filter((row) => row.slideCount > 0);
+  }, [cases]);
 
   // The case currently open in the detail modal
   const detailCase = useMemo(
@@ -371,42 +409,26 @@ const StainManagement = ({ onNavigate }) => {
     [caseRows, detailAccNo],
   );
 
-  // Summary
-  const totalPending = blocks.reduce(
-    (sum, b) =>
-      sum +
-      (b.stains || []).filter(
-        (s) => isRelevantStain(s) && s.status === "pending",
-      ).length,
-    0,
-  );
-  const totalStained = blocks.reduce(
-    (sum, b) =>
-      sum +
-      (b.stains || []).filter(
-        (s) => isRelevantStain(s) && s.status === "stained",
-      ).length,
-    0,
-  );
+  // Derived rather than stored: a case that no longer qualifies (its last
+  // special stain was just deleted) drops out of the refetched page, and the
+  // view falls back to the list instead of stranding the user on a blank one.
+  // `loading` keeps the detail view up while a refetch is in flight.
+  const showDetail = currentView === "detail" && (!!detailCase || loading);
 
-  // Badge on the HosXP tab. Derived from the fetched blocks (server truth), so
-  // it reconciles on refresh rather than tracking the tab's optimistic toggles;
-  // the tab's own All/Pending/Keyed buttons are the live counts.
-  const unkeyedCount = blocks.reduce(
-    (sum, b) =>
-      sum + (b.stains || []).filter((s) => isKeyableStain(s) && !s.is_hosxp_keyed).length,
-    0,
+  // The only thing this page orders is an in-house special stain. IHC used to
+  // be offered here too, but it is ordered from the pathologist's block grid
+  // (BlockGridView/StainManagementPage) and tracked under External Lab — added
+  // from here it would vanish from the list the moment it was saved.
+  const specialStainOptions = useMemo(
+    () =>
+      masterTests.filter(
+        (t) =>
+          !t.is_external &&
+          isSpecialStainCategory(t.category) &&
+          !isRoutineHETest(t),
+      ),
+    [masterTests],
   );
-
-  const getFilteredStainNames = (uiSelectedType) => {
-    if (uiSelectedType === "Special stain")
-      return masterTests.filter(
-        (t) => isSpecialStainCategory(t.category) && !t.name.includes("H&E"),
-      );
-    if (uiSelectedType === "IHC")
-      return masterTests.filter((t) => t.category === "IHC");
-    return [];
-  };
 
   const handleOpenAddStain = (block) => {
     setSelectedBlock(block);
@@ -416,7 +438,6 @@ const StainManagement = ({ onNavigate }) => {
         : 1;
     addForm.setFieldsValue({
       block_id: block.id,
-      stain_type: "Special stain",
       test_id: undefined,
       slide_no: nextSlideNo,
     });
@@ -428,7 +449,7 @@ const StainManagement = ({ onNavigate }) => {
       await SurgicalBlockStainService.createStain(values);
       message.success("Stain order added successfully");
       setIsAddModalOpen(false);
-      fetchData();
+      refreshAfterWrite();
     } catch {
       message.error("Failed to add stain order");
     }
@@ -460,10 +481,20 @@ const StainManagement = ({ onNavigate }) => {
     try {
       await SurgicalBlockStainService.deleteStain(stainId);
       message.success("Slide deleted");
-      fetchData();
+      refreshAfterWrite();
     } catch {
       message.error("Failed to delete slide");
     }
+  };
+
+  const handleSearch = (value) => {
+    setSearchText(value);
+    setPage(1);
+  };
+
+  const handleBucketChange = (value) => {
+    setFilterTab(value);
+    setPage(1);
   };
 
   const handleBack = () => {
@@ -477,7 +508,7 @@ const StainManagement = ({ onNavigate }) => {
   };
 
   const pageTitle = (() => {
-    if (currentView === "detail") return (
+    if (showDetail) return (
       <Title level={3} style={{ margin: 0 }}>
         <ExperimentOutlined style={{ marginRight: 12, color: "#595959" }} />
         {detailAccNo}
@@ -491,17 +522,17 @@ const StainManagement = ({ onNavigate }) => {
     );
   })();
 
-  const pageExtra = currentView === "list" ? (
+  const pageExtra = !showDetail ? (
     <Space>
       <Input
         placeholder="Search accession / block..."
         prefix={<SearchOutlined style={{ color: "#8c8c8c" }} />}
         value={searchText}
-        onChange={(e) => setSearchText(e.target.value)}
+        onChange={(e) => handleSearch(e.target.value)}
         allowClear
         style={{ width: 240 }}
       />
-      <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
+      <Button icon={<ReloadOutlined />} onClick={refreshAfterWrite} loading={loading}>
         Refresh
       </Button>
       <Button
@@ -583,11 +614,6 @@ const StainManagement = ({ onNavigate }) => {
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Space size={4}>
-              {record.ihcCount > 0 && (
-                <Tag color="purple" style={{ margin: 0, fontSize: 12 }}>
-                  IHC: {record.ihcCount}
-                </Tag>
-              )}
               {record.ssCount > 0 && (
                 <Tag color="cyan" style={{ margin: 0, fontSize: 12 }}>
                   SS: {record.ssCount}
@@ -644,22 +670,22 @@ const StainManagement = ({ onNavigate }) => {
       withCard
       title={pageTitle}
       extra={pageExtra}
-      onBack={currentView !== "list" ? handleBack : undefined}
+      onBack={showDetail ? handleBack : undefined}
       subTitle={
-        currentView === "list" ? (
+        !showDetail ? (
           <Space size={16} style={{ marginTop: 2 }}>
             <Tag color="blue" style={{ fontWeight: 500 }}>Internal</Tag>
             <Space size={4}>
               <ClockCircleOutlined style={{ color: "#faad14" }} />
-              <Text type="secondary">Pending: <strong>{totalPending}</strong></Text>
+              <Text type="secondary">Pending: <strong>{slideTotals.pending}</strong></Text>
             </Space>
             <Space size={4}>
               <CheckCircleOutlined style={{ color: "#52c41a" }} />
-              <Text type="secondary">Stained: <strong>{totalStained}</strong></Text>
+              <Text type="secondary">Stained: <strong>{slideTotals.stained}</strong></Text>
             </Space>
             <Space size={4}>
               <FolderOutlined style={{ color: "#1890ff" }} />
-              <Text type="secondary">Cases: <strong>{caseRows.length}</strong></Text>
+              <Text type="secondary">Cases: <strong>{total}</strong></Text>
             </Space>
           </Space>
         ) : (
@@ -674,7 +700,7 @@ const StainManagement = ({ onNavigate }) => {
       }
     >
       {/* ── List view ── */}
-      {currentView === "list" && (
+      {!showDetail && (
         <Tabs
           activeKey={mainTab}
           onChange={setMainTab}
@@ -691,25 +717,31 @@ const StainManagement = ({ onNavigate }) => {
                   <div style={{ marginBottom: 16 }}>
                     <Segmented
                       value={filterTab}
-                      onChange={setFilterTab}
+                      onChange={handleBucketChange}
                       options={[
-                        { label: `All (${caseRows.length})`, value: "all" },
-                        { label: `Has Pending (${pendingRows.length})`, value: "pending" },
-                        { label: `Completed (${completedRows.length})`, value: "completed" },
-                        { label: `Recut (${recutRows.length})`, value: "recut" },
+                        { label: `All (${bucketCounts.all})`, value: "all" },
+                        { label: `Has Pending (${bucketCounts.pending})`, value: "pending" },
+                        { label: `Completed (${bucketCounts.completed})`, value: "completed" },
+                        { label: `Recut (${bucketCounts.recut})`, value: "recut" },
                       ]}
                     />
                   </div>
-                  {filteredRows.length === 0 ? (
+                  {caseRows.length === 0 && !loading ? (
                     <Empty description="No cases found" />
                   ) : (
                     <Table
-                      dataSource={filteredRows}
+                      dataSource={caseRows}
                       columns={caseColumns}
                       rowKey="accNo"
                       size="middle"
                       loading={loading}
-                      pagination={{ pageSize: 20, showSizeChanger: false }}
+                      pagination={{
+                        current: page,
+                        pageSize: PAGE_SIZE,
+                        total,
+                        showSizeChanger: false,
+                        onChange: setPage,
+                      }}
                       onRow={(record) => ({
                         onClick: () => handleOpenCase(record.accNo),
                         style: { cursor: "pointer" },
@@ -733,9 +765,12 @@ const StainManagement = ({ onNavigate }) => {
               ),
               children: (
                 <InternalHosxpKeyTab
-                  blocks={blocks}
-                  loading={loading}
-                  onRefresh={fetchData}
+                  blocks={hosxpBlocks}
+                  loading={hosxpLoading}
+                  onRefresh={() => {
+                    fetchHosxpBlocks();
+                    fetchUnkeyedCount();
+                  }}
                 />
               ),
             },
@@ -744,7 +779,7 @@ const StainManagement = ({ onNavigate }) => {
       )}
 
       {/* ── Detail view ── */}
-      {currentView === "detail" && detailCase && (
+      {showDetail && detailCase && (
         <div>
           {[...(detailCase.caseBlocks ?? [])]
             .sort((a, b) =>
@@ -790,59 +825,32 @@ const StainManagement = ({ onNavigate }) => {
           </Form.Item>
 
           <Form.Item
-            name="stain_type"
-            label="Stain Type"
-            rules={[{ required: true }]}
+            name="test_id"
+            label="Special Stain (Master Data)"
+            rules={[{ required: true, message: "Please select a test" }]}
           >
             <Select
-              onChange={(val) => {
-                const filtered = getFilteredStainNames(val);
-                addForm.setFieldValue("test_id", filtered[0]?.id);
-              }}
-              options={[
-                { value: "Special stain", label: "Special Stain" },
-                { value: "IHC", label: "IHC" },
-              ]}
-            />
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.stain_type !== curr.stain_type}
-          >
-            {({ getFieldValue }) => {
-              const options = getFilteredStainNames(
-                getFieldValue("stain_type"),
-              );
-              return (
-                <Form.Item
-                  name="test_id"
-                  label="Test (Master Data)"
-                  rules={[{ required: true, message: "Please select a test" }]}
+              showSearch
+              optionFilterProp="label"
+              placeholder="Select test..."
+              notFoundContent="No special stains in master data"
+              options={specialStainOptions.map((test) => ({
+                label: test.name,
+                value: test.id,
+                price: test.price_tier_1,
+              }))}
+              optionRender={(opt) => (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
                 >
-                  <Select
-                    showSearch
-                    placeholder="Select test..."
-                    options={options.map((test) => ({
-                      label: test.name,
-                      value: test.id,
-                      price: test.price_tier_1,
-                    }))}
-                    optionRender={(opt) => (
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <span>{opt.label}</span>
-                        <Tag color="cyan">{opt.data.price}.-</Tag>
-                      </div>
-                    )}
-                  />
-                </Form.Item>
-              );
-            }}
+                  <span>{opt.label}</span>
+                  <Tag color="cyan">{opt.data.price}.-</Tag>
+                </div>
+              )}
+            />
           </Form.Item>
 
           <Form.Item name="slide_no" label="Slide No.">

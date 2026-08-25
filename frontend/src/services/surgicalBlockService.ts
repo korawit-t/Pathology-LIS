@@ -12,6 +12,34 @@ interface GetBlocksParams {
   decal_history?: boolean;
   fix_history?: boolean;
   has_pending_outlab?: boolean;
+  /** Blocks carrying at least one in-house (non-external, non-routine-H&E)
+   * stain. Like has_pending_outlab, the backend returns every match rather
+   * than a page of them. */
+  has_internal_stain?: boolean;
+}
+
+export type InternalStainBucket = "all" | "pending" | "completed" | "recut";
+
+export interface InternalStainCasesParams {
+  /** Matched against accession number and specimen label. */
+  search?: string;
+  bucket?: InternalStainBucket;
+  skip?: number;
+  limit?: number;
+}
+
+export interface InternalStainCase {
+  accession_no: string;
+  blocks: SurgicalBlock[];
+}
+
+export interface InternalStainCasePage {
+  items: InternalStainCase[];
+  total: number;
+  /** Across every matching case, not just this page — they label the
+   * segmented filter and must not change as you page. */
+  bucket_counts: Record<InternalStainBucket, number>;
+  slide_totals: { pending: number; stained: number };
 }
 
 const SurgicalBlockService = {
@@ -29,6 +57,18 @@ const SurgicalBlockService = {
     const res = await api.get("/surgical-blocks", {
       params: finalParams,
     });
+    return res.data;
+  },
+
+  /**
+   * One page of the Internal Stain Orders worklist. Paginated by *case*, not
+   * by block: the page groups blocks under their accession number, so a
+   * block-level page would cut a case in half.
+   */
+  getInternalStainCases: async (
+    params: InternalStainCasesParams = {},
+  ): Promise<InternalStainCasePage> => {
+    const res = await api.get("/surgical-blocks/internal-stain-cases", { params });
     return res.data;
   },
 

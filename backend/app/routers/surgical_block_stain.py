@@ -54,6 +54,14 @@ def get_recut_count(db: Session = Depends(get_db)):
     return {"count": db.query(SurgicalBlockStain).filter(SurgicalBlockStain.is_recut == True, SurgicalBlockStain.status == "pending").count()}
 
 
+@router.get("/internal-unkeyed-count")
+def get_internal_unkeyed_count(db: Session = Depends(get_db)):
+    """Badge on the Internal Stain page's HosXP Key tab. Its own endpoint so
+    the badge doesn't force the tab's full worklist to be fetched on a page
+    load that only ever shows the paginated Stain Orders tab."""
+    return {"count": crud.count_unkeyed_internal_stains(db)}
+
+
 @router.get("", response_model=List[StainShortResponse])
 def read_stains(skip: int = 0, limit: int = 100, status: str = None, is_external: bool = None, category: str = None, db: Session = Depends(get_db)):
     return crud.get_stains(db, skip=skip, limit=limit, status=status, is_external=is_external, category=category)

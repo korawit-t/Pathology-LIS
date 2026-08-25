@@ -183,3 +183,60 @@ class TestPendingOutlabByHn:
 
 def test_requires_authentication(client):
     assert client.get("/surgical-block-stains").status_code == 401
+
+
+class TestInternalUnkeyedCount:
+    """Badge on the Internal Stain page's HosXP Key tab. Its own endpoint so a
+    page load that only shows the paginated Stain Orders tab doesn't have to
+    pull the whole billing worklist."""
+
+    def _count(self, client):
+        r = client.get("/surgical-block-stains/internal-unkeyed-count")
+        assert r.status_code == 200
+        return r.json()["count"]
+
+    def test_counts_only_in_house_unkeyed_non_he_stains(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        before = self._count(pathologist_client)
+
+        special = make_anatomical_pathology_test(
+            db, category="Histochem", name=f"PAS {uuid.uuid4().hex[:8]}", is_external=False
+        )
+        outsourced = make_anatomical_pathology_test(
+            db, category="IHC", name=f"CK7 {uuid.uuid4().hex[:8]}", is_external=True
+        )
+        he = make_anatomical_pathology_test(
+            db, category="Histochem", name="H&E", system_code="HE_ROUTINE", is_external=False
+        )
+        recut_test = make_anatomical_pathology_test(
+            db, category="Histochem", name="Recut", system_code="HE_RECUT", is_external=False
+        )
+
+        _, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = _make_block(db, specimen.id)
+        make_block_stain(db, block_id=block.id, test_id=special.id, slide_no=2)
+        # None of these are billable in-house work.
+        make_block_stain(db, block_id=block.id, test_id=outsourced.id, slide_no=3)
+        make_block_stain(db, block_id=block.id, test_id=he.id, slide_no=4)
+        make_block_stain(db, block_id=block.id, test_id=recut_test.id, slide_no=5, is_recut=True)
+
+        assert self._count(pathologist_client) == before + 1
+
+    def test_a_keyed_stain_drops_out_of_the_count(self, db, pathologist_client, admin_user):
+        registrar, _ = admin_user
+        special = make_anatomical_pathology_test(
+            db, category="Special Stain", name=f"GMS {uuid.uuid4().hex[:8]}", is_external=False
+        )
+        _, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = _make_block(db, specimen.id)
+        stain = make_block_stain(db, block_id=block.id, test_id=special.id, slide_no=2)
+        before = self._count(pathologist_client)
+
+        pathologist_client.patch(
+            f"/surgical-block-stains/{stain.id}/hosxp-key", json={"keyed": True}
+        )
+
+        assert self._count(pathologist_client) == before - 1
+
+    def test_clinician_cannot_read_the_count(self, clinician_client):
+        assert clinician_client.get("/surgical-block-stains/internal-unkeyed-count").status_code == 403

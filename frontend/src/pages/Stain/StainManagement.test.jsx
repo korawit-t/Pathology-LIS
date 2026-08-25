@@ -7,10 +7,16 @@ import AnatomicalPathologyTestService from "../../services/anatomicalTestService
 import { executePrint } from "./PrintStickerHE/utils/generateHEStickers";
 
 vi.mock("../../services/surgicalBlockService", () => ({
-  default: { getBlocks: vi.fn() },
+  default: { getBlocks: vi.fn(), getInternalStainCases: vi.fn() },
 }));
 vi.mock("../../services/surgicalBlockStainService", () => ({
-  default: { createStain: vi.fn(), deleteStain: vi.fn(), printHEStickerQuick: vi.fn() },
+  default: {
+    createStain: vi.fn(),
+    deleteStain: vi.fn(),
+    printHEStickerQuick: vi.fn(),
+    getInternalUnkeyedCount: vi.fn(),
+    toggleStainHosxpKeyed: vi.fn(),
+  },
 }));
 vi.mock("../../services/anatomicalTestService", () => ({
   default: { getAllTests: vi.fn() },
@@ -28,7 +34,7 @@ const stain = (overrides = {}) => ({
   is_printed: false,
   updated_at: null,
   stained_by: null,
-  test: { name: "CK7", category: "IHC", is_external: false },
+  test: { name: "PAS", category: "Histochem", is_external: false },
   ...overrides,
 });
 
@@ -44,91 +50,210 @@ const block = (overrides = {}) => ({
 
 const noMasterTests = () => AnatomicalPathologyTestService.getAllTests.mockResolvedValue({ data: [] });
 
+/** The page is paginated by *case* on the server, so the fixtures describe one
+ * page of the /surgical-blocks/internal-stain-cases response. Blocks are
+ * grouped by accession the way the endpoint groups them. */
+const casePage = (blocks, extra = {}) => {
+  const byAccession = new Map();
+  for (const b of blocks) {
+    const key = b.accession_no || "Unknown";
+    if (!byAccession.has(key)) byAccession.set(key, []);
+    byAccession.get(key).push(b);
+  }
+  const items = [...byAccession.entries()].map(([accession_no, blocksInCase]) => ({
+    accession_no,
+    blocks: blocksInCase,
+  }));
+  return {
+    items,
+    total: items.length,
+    bucket_counts: { all: items.length, pending: 0, completed: 0, recut: 0 },
+    slide_totals: { pending: 0, stained: 0 },
+    ...extra,
+  };
+};
+
 beforeEach(() => {
-  vi.clearAllMocks();
+  // resetAllMocks, not clearAllMocks: a leftover mockResolvedValueOnce
+  // survives a clear and gets consumed by the next test's fetch.
+  vi.resetAllMocks();
+  SurgicalBlockStainService.getInternalUnkeyedCount.mockResolvedValue(0);
+  SurgicalBlockService.getBlocks.mockResolvedValue({ items: [], total: 0 });
 });
 
 describe("StainManagement — case grouping and filtering", () => {
   it("groups multiple blocks under the same accession into one case row with aggregated counts", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
-        block({ id: 1, block_no: 1, stains: [stain({ id: 1, status: "pending", test: { name: "CK7", category: "IHC", is_external: false } })] }),
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
+        block({ id: 1, block_no: 1, stains: [stain({ id: 1, status: "pending", test: { name: "AFB", category: "Histochem", is_external: false } })] }),
         block({ id: 2, block_no: 2, stains: [stain({ id: 2, status: "stained", test: { name: "PAS", category: "Histochem", is_external: false } })] }),
-      ],
-      total: 2,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
     await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
     const row = screen.getByText("S26-00001").closest("tr");
     expect(within(row).getAllByText("2")).toHaveLength(2); // blockCount and slideCount tags
-    expect(within(row).getByText("IHC: 1")).toBeInTheDocument();
-    expect(within(row).getByText("SS: 1")).toBeInTheDocument();
+    expect(within(row).getByText("SS: 2")).toBeInTheDocument();
   });
 
-  it("excludes H&E and external stains from every count via isRelevantStain, but always includes recuts", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+  it("asks the server for one page of cases rather than a slab of blocks", async () => {
+    // The page used to fetch { limit: 200 } blocks and group them here, which
+    // capped the list at ~3 pages and hid every older case. Blocks can't be
+    // paginated directly — a block-level page would cut a case in half.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([]));
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    await waitFor(() => expect(SurgicalBlockService.getInternalStainCases).toHaveBeenCalled());
+    expect(SurgicalBlockService.getInternalStainCases.mock.calls[0][0]).toEqual({
+      search: undefined,
+      bucket: "all",
+      skip: 0,
+      limit: 20,
+    });
+    expect(SurgicalBlockService.getBlocks).not.toHaveBeenCalled();
+  });
+
+  it("asks the server for the next page when the pager moves", async () => {
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(
+      casePage([block()], { total: 45, bucket_counts: { all: 45, pending: 0, completed: 0, recut: 0 } }),
+    );
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+    await screen.findByText("S26-00001");
+
+    fireEvent.click(await screen.findByTitle("2"));
+
+    await waitFor(() =>
+      expect(SurgicalBlockService.getInternalStainCases).toHaveBeenLastCalledWith(
+        expect.objectContaining({ skip: 20, limit: 20 }),
+      ),
+    );
+  });
+
+  it("labels the segmented filter and the header from the server totals, not this page", async () => {
+    // 45 cases across 3 pages: counting the 20 rows in hand would understate
+    // every label the moment pagination kicked in.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(
+      casePage([block()], {
+        total: 45,
+        bucket_counts: { all: 45, pending: 12, completed: 33, recut: 4 },
+        slide_totals: { pending: 17, stained: 61 },
+      }),
+    );
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    expect(await screen.findByText("All (45)")).toBeInTheDocument();
+    expect(screen.getByText("Has Pending (12)")).toBeInTheDocument();
+    expect(screen.getByText("Completed (33)")).toBeInTheDocument();
+    expect(screen.getByText("Recut (4)")).toBeInTheDocument();
+    expect(screen.getByText("17")).toBeInTheDocument(); // Pending slides
+    expect(screen.getByText("61")).toBeInTheDocument(); // Stained slides
+    expect(screen.getByText("45")).toBeInTheDocument(); // Cases
+  });
+
+  it("keeps only special stains and recuts — H&E, external and non-special categories are all out", async () => {
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [
             stain({ id: 1, test: { name: "H&E", category: "Histochem", is_external: false } }),
             stain({ id: 2, test: { name: "Some Test", category: "IHC", is_external: true } }),
-            stain({ id: 3, is_recut: true, test: { name: "H&E", category: "Histochem", is_external: false } }),
+            stain({ id: 3, test: { name: "In-house CK7", category: "IHC", is_external: false } }),
+            stain({ id: 4, test: { name: "EBER", category: "ISH", is_external: false } }),
+            stain({ id: 5, is_recut: true, test: { name: "Recut", category: "Histochem", system_code: "HE_RECUT", is_external: false } }),
           ],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
     await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
     const row = screen.getByText("S26-00001").closest("tr");
-    // slideCount column: only the recut counts as relevant (1), not the H&E or external one
+    // slideCount column: only the recut counts as relevant (1)
     expect(within(row).getAllByText("1")).not.toHaveLength(0);
-    expect(within(row).queryByText("2")).not.toBeInTheDocument();
+    expect(within(row).getByText("Recut: 1")).toBeInTheDocument();
+    expect(within(row).queryByText(/^SS:/)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/CK7|EBER|H&E/)).not.toBeInTheDocument();
   });
 
-  it("filters the case list by accession number or specimen label (case-insensitive)", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ accession_no: "S26-00001" }), block({ id: 2, accession_no: "S26-99999" })],
-      total: 2,
-    });
+  it("recognises the routine H&E by system_code even when the master test has been renamed", async () => {
+    // A hospital is free to rename the H&E master test from Admin → master
+    // data; matching on the name alone would then list it as an order.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
+        block({ accession_no: "S26-HE-ONLY", stains: [stain({ id: 1, test: { name: "ย้อมพื้นฐาน", category: "Histochem", system_code: "HE_ROUTINE", is_external: false } })] }),
+        block({ id: 2, accession_no: "S26-REAL-SS", stains: [stain({ id: 2, test: { name: "GMS", category: "Histochem", is_external: false } })] }),
+      ]));
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByText("S26-REAL-SS")).toBeInTheDocument());
+    expect(screen.queryByText("S26-HE-ONLY")).not.toBeInTheDocument();
+  });
+
+  it("drops a case whose only order is an in-house IHC — the fetch is wider than this tab", async () => {
+    // has_internal_stain also feeds the HosXP Key tab, which bills in-house
+    // IHC, so such a block comes back from the server and must be dropped
+    // here rather than showing an empty case row.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ accession_no: "S26-IHC-ONLY", stains: [stain({ test: { name: "CK7", category: "IHC", is_external: false } })] })]));
+    noMasterTests();
+    render(<ThemeProvider><StainManagement /></ThemeProvider>);
+
+    expect(await screen.findByText("No cases found")).toBeInTheDocument();
+    expect(screen.queryByText("S26-IHC-ONLY")).not.toBeInTheDocument();
+  });
+
+  it("sends the search to the server and restarts at page one", async () => {
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(
+      casePage([block({ accession_no: "S26-00001" }), block({ id: 2, accession_no: "S26-99999" })]),
+    );
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText("Search accession / block..."), { target: { value: "00001" } });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(
+      casePage([block({ accession_no: "S26-00001" })]),
+    );
+    fireEvent.change(screen.getByPlaceholderText("Search accession / block..."), {
+      target: { value: "00001" },
+    });
 
-    expect(screen.queryByText("S26-99999")).not.toBeInTheDocument();
-    expect(screen.getByText("S26-00001")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(SurgicalBlockService.getInternalStainCases).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "00001", skip: 0 }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText("S26-99999")).not.toBeInTheDocument());
   });
 
-  it("switches between All / Has Pending / Completed / Recut tabs", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
-        block({ accession_no: "S26-PENDING", stains: [stain({ id: 1, status: "pending" })] }),
-        block({ id: 2, accession_no: "S26-DONE", stains: [stain({ id: 2, status: "stained" })] }),
-        block({ id: 3, accession_no: "S26-RECUT", stains: [stain({ id: 3, is_recut: true, status: "pending" })] }),
-      ],
-      total: 3,
-    });
+  it("sends the segmented filter to the server as a bucket, back at page one", async () => {
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(
+      casePage([block({ accession_no: "S26-PENDING", stains: [stain({ status: "pending" })] })], {
+        total: 45,
+        bucket_counts: { all: 45, pending: 1, completed: 44, recut: 2 },
+      }),
+    );
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await waitFor(() => expect(screen.getByText("S26-PENDING")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText(/Completed/));
-    expect(screen.getByText("S26-DONE")).toBeInTheDocument();
-    expect(screen.queryByText("S26-PENDING")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByTitle("2"));
+    await waitFor(() =>
+      expect(SurgicalBlockService.getInternalStainCases).toHaveBeenLastCalledWith(
+        expect.objectContaining({ skip: 20 }),
+      ),
+    );
 
     fireEvent.click(screen.getByText(/^Recut/));
-    expect(screen.getByText("S26-RECUT")).toBeInTheDocument();
-    expect(screen.queryByText("S26-DONE")).not.toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(SurgicalBlockService.getInternalStainCases).toHaveBeenLastCalledWith(
+        expect.objectContaining({ bucket: "recut", skip: 0 }),
+      ),
+    );
   });
 
   it("shows an empty state when no cases match the current filter", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [], total: 0 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
@@ -146,7 +271,7 @@ describe("StainManagement — detail view", () => {
   };
 
   it("opens the detail view for a case and returns to the list via the back button", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block()], total: 1 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     noMasterTests();
     const { container } = render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await openDetail();
@@ -157,10 +282,7 @@ describe("StainManagement — detail view", () => {
   });
 
   it("shows a red Recut tag regardless of the stain's own test category", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ stains: [stain({ is_recut: true, test: { name: "H&E", category: "Histochem", is_external: false } })] })],
-      total: 1,
-    });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ stains: [stain({ is_recut: true, test: { name: "H&E", category: "Histochem", is_external: false } })] })]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await openDetail();
@@ -170,8 +292,7 @@ describe("StainManagement — detail view", () => {
   });
 
   it("shows the stained date and operator only once a slide is actually stained", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [
             stain({ id: 1, slide_no: 1, status: "pending" }),
@@ -184,9 +305,7 @@ describe("StainManagement — detail view", () => {
             }),
           ],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await openDetail();
@@ -196,17 +315,14 @@ describe("StainManagement — detail view", () => {
   });
 
   it("only shows the delete action for pending slides", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [
             stain({ id: 1, slide_no: 1, status: "pending" }),
             stain({ id: 2, slide_no: 2, status: "stained" }),
           ],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     const { container } = render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await openDetail();
@@ -215,7 +331,7 @@ describe("StainManagement — detail view", () => {
   });
 
   it("deletes a pending slide after confirming", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block()], total: 1 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     SurgicalBlockStainService.deleteStain.mockResolvedValue({});
     noMasterTests();
     const { container } = render(<ThemeProvider><StainManagement /></ThemeProvider>);
@@ -228,36 +344,33 @@ describe("StainManagement — detail view", () => {
     await waitFor(() => expect(SurgicalBlockStainService.deleteStain).toHaveBeenCalledWith(1));
   });
 
-  it("BUG-ish: Print Stickers stays enabled for a block whose only stain is filtered out (H&E), then warns and prints nothing when clicked", async () => {
-    // Print Stickers' disabled check is `!(block.stains?.length > 0)` — raw
-    // stain count — while the click handler filters through
-    // isRelevantStain first and warns if that filtered list is empty. A
-    // fresh block with only its automatic H&E stain (1 raw, 0 relevant,
-    // the common state right after grossing) has the button enabled but
-    // produces a no-op + warning when clicked.
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ stains: [stain({ test: { name: "H&E", category: "Histochem", is_external: false } })] })],
-      total: 1,
-    });
+  it("disables Print Stickers when the block has nothing this page would print", async () => {
+    // Used to key off the raw stain count while the click handler filtered
+    // through isRelevantStain first, so a block carrying only its automatic
+    // H&E had the button enabled and printed nothing.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
+        block({
+          stains: [
+            stain({ id: 1, test: { name: "H&E", category: "Histochem", system_code: "HE_ROUTINE", is_external: false } }),
+            stain({ id: 2, test: { name: "PAS", category: "Histochem", is_external: false } }),
+          ],
+        }),
+        block({ id: 2, block_no: 2, stains: [stain({ id: 3, test: { name: "H&E", category: "Histochem", system_code: "HE_ROUTINE", is_external: false } })] }),
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
-    // Not using the shared openDetail() helper: this block's only stain is
-    // H&E, so isRelevantStain filters it out and BlockTable never renders
-    // the "Slide" column header at all — it shows "No stains ordered yet"
-    // instead, which is exactly the state this test needs.
-    fireEvent.click(await screen.findByText("S26-00001"));
-    await screen.findByText("No stains ordered yet");
+    await openDetail();
 
-    const printButton = screen.getByRole("button", { name: /Print Stickers/i });
-    expect(printButton).toBeEnabled();
-    fireEvent.click(printButton);
-
-    expect(await screen.findByText("No stains to print")).toBeInTheDocument();
+    // Only the block with the PAS is rendered — the H&E-only block has
+    // nothing to show, print or process here.
+    expect(screen.getByText("A1")).toBeInTheDocument();
+    expect(screen.queryByText("A2")).not.toBeInTheDocument();
+    expect(screen.queryByText("No stains ordered yet")).not.toBeInTheDocument();
     expect(SurgicalBlockStainService.printHEStickerQuick).not.toHaveBeenCalled();
   });
 
   it("prints stickers for a block's relevant stains", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block({ stains: [stain({ id: 9 })] })], total: 1 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ stains: [stain({ id: 9 })] })]));
     SurgicalBlockStainService.printHEStickerQuick.mockResolvedValue(new Blob());
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
@@ -281,10 +394,7 @@ describe("StainManagement — Add Stain modal", () => {
   };
 
   it("pre-fills the next slide number as one past the highest existing slide", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ stains: [stain({ id: 1, slide_no: 3 }), stain({ id: 2, slide_no: 5 })] })],
-      total: 1,
-    });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ stains: [stain({ id: 1, slide_no: 3 }), stain({ id: 2, slide_no: 5 })] })]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     await openDetail();
@@ -294,23 +404,18 @@ describe("StainManagement — Add Stain modal", () => {
     expect(await screen.findByLabelText("Slide No.")).toHaveValue("6");
   });
 
-  it("defaults the next slide number to 1 for a block with no stains yet", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block({ stains: [] })], total: 1 });
-    noMasterTests();
-    render(<ThemeProvider><StainManagement /></ThemeProvider>);
-    await openDetail();
-
-    fireEvent.click(screen.getByRole("button", { name: /Add Stain/i }));
-
-    expect(await screen.findByLabelText("Slide No.")).toHaveValue("1");
-  });
-
-  it("filters the test dropdown by stain type and auto-selects the first matching test", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block()], total: 1 });
+  it("offers only in-house special stains — no IHC, no outsourced test, no routine H&E", async () => {
+    // The Stain Type select used to offer IHC here as well; an IHC ordered
+    // from this page disappeared from the list the moment it was saved,
+    // because IHC is tracked under External Lab and ordered from the
+    // pathologist's block grid.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     AnatomicalPathologyTestService.getAllTests.mockResolvedValue({
       data: [
         { id: 10, name: "CK7", category: "IHC", price_tier_1: 500 },
         { id: 11, name: "PAS", category: "Histochem", price_tier_1: 200 },
+        { id: 12, name: "H&E", category: "Histochem", system_code: "HE_ROUTINE", price_tier_1: 0 },
+        { id: 13, name: "Outsourced PAS", category: "Histochem", is_external: true, price_tier_1: 200 },
       ],
     });
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
@@ -318,32 +423,20 @@ describe("StainManagement — Add Stain modal", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add Stain/i }));
     await screen.findByLabelText("Slide No.");
 
-    // Exactly two <Select>s exist here (Stain Type, then Test) — the list
-    // view's own Select (pagination size-changer) isn't mounted while
-    // we're in the detail view, so DOM order is unambiguous.
-    const selects = () => document.querySelectorAll(".ant-select");
+    fireEvent.mouseDown(screen.getByText("Select test..."));
 
-    // default stain_type is "Special stain" -> Histochem tests only
-    fireEvent.mouseDown(selects()[1]);
     expect(await screen.findByTitle("PAS")).toBeInTheDocument();
     expect(screen.queryByTitle("CK7")).not.toBeInTheDocument();
-
-    fireEvent.mouseDown(selects()[0]);
-    fireEvent.click(await screen.findByTitle("IHC"));
-
-    // CK7 is now auto-selected as the default test_id for IHC, so its title
-    // appears both as the Select's current-value display *and* as the
-    // matching dropdown option — scope to the dropdown to disambiguate.
-    fireEvent.mouseDown(selects()[1]);
-    const dropdown = await waitFor(() => document.querySelector(".ant-select-dropdown:not(.ant-select-dropdown-hidden)"));
-    expect(within(dropdown).getByTitle("CK7")).toBeInTheDocument();
-    expect(within(dropdown).queryByTitle("PAS")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("H&E")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Outsourced PAS")).not.toBeInTheDocument();
   });
 
   it("submits a new stain order and refetches on success", async () => {
-    SurgicalBlockService.getBlocks
-      .mockResolvedValueOnce({ items: [block({ stains: [] })], total: 1 })
-      .mockResolvedValueOnce({ items: [block({ stains: [stain()] })], total: 1 });
+    SurgicalBlockService.getInternalStainCases
+      .mockResolvedValueOnce(casePage([block({ stains: [stain({ id: 1, slide_no: 1 })] })]))
+      .mockResolvedValueOnce(
+        casePage([block({ stains: [stain({ id: 1 }), stain({ id: 2, slide_no: 2 })] })]),
+      );
     AnatomicalPathologyTestService.getAllTests.mockResolvedValue({
       data: [{ id: 11, name: "PAS", category: "Histochem", price_tier_1: 200 }],
     });
@@ -359,14 +452,14 @@ describe("StainManagement — Add Stain modal", () => {
 
     await waitFor(() =>
       expect(SurgicalBlockStainService.createStain).toHaveBeenCalledWith(
-        expect.objectContaining({ block_id: 1, stain_type: "Special stain", test_id: 11, slide_no: 1 }),
+        expect.objectContaining({ block_id: 1, test_id: 11, slide_no: 2 }),
       ),
     );
     expect(await screen.findByText("Stain order added successfully")).toBeInTheDocument();
   });
 
   it("shows an error message when adding a stain fails", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block({ stains: [] })], total: 1 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     AnatomicalPathologyTestService.getAllTests.mockResolvedValue({
       data: [{ id: 11, name: "PAS", category: "Histochem", price_tier_1: 200 }],
     });
@@ -386,10 +479,7 @@ describe("StainManagement — Add Stain modal", () => {
 
 describe("StainManagement — Process in Staining Run", () => {
   it("stores pending stain ids and navigates to the staining run when processing from the detail view", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ stains: [stain({ id: 42, status: "pending" })] })],
-      total: 1,
-    });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ stains: [stain({ id: 42, status: "pending" })] })]));
     noMasterTests();
     const onNavigate = vi.fn();
     render(<ThemeProvider><StainManagement onNavigate={onNavigate} /></ThemeProvider>);
@@ -404,10 +494,7 @@ describe("StainManagement — Process in Staining Run", () => {
   });
 
   it("does not show the Process in Staining Run button when nothing is pending", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [block({ stains: [stain({ status: "stained" })] })],
-      total: 1,
-    });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block({ stains: [stain({ status: "stained" })] })]));
     noMasterTests();
     render(<ThemeProvider><StainManagement onNavigate={vi.fn()} /></ThemeProvider>);
     fireEvent.click(await screen.findByText("S26-00001"));
@@ -423,17 +510,14 @@ describe("StainManagement — Process in Staining Run", () => {
 // no SS count, and not offerable in the Add Stain dropdown.
 describe("StainManagement — 'Special Stain' category parity with 'Histochem'", () => {
   it("counts a 'Special Stain' test toward SS in the case breakdown", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [
             stain({ id: 1, test: { name: "PAS", category: "Special Stain", is_external: false } }),
             stain({ id: 2, test: { name: "AFB", category: "Histochem", is_external: false } }),
           ],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
@@ -444,12 +528,9 @@ describe("StainManagement — 'Special Stain' category parity with 'Histochem'",
   });
 
   it("tags a 'Special Stain' slide as SS in the per-block table", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({ stains: [stain({ test: { name: "PAS", category: "Special Stain", is_external: false } })] }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
     fireEvent.click(await screen.findByText("S26-00001"));
@@ -460,7 +541,7 @@ describe("StainManagement — 'Special Stain' category parity with 'Histochem'",
   });
 
   it("offers 'Special Stain' tests in the Add Stain dropdown", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({ items: [block()], total: 1 });
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     AnatomicalPathologyTestService.getAllTests.mockResolvedValue({
       data: [
         { id: 10, name: "CK7", category: "IHC", price_tier_1: 500 },
@@ -473,8 +554,7 @@ describe("StainManagement — 'Special Stain' category parity with 'Histochem'",
     fireEvent.click(screen.getByRole("button", { name: /Add Stain/i }));
     await screen.findByLabelText("Slide No.");
 
-    // default stain_type is "Special stain" — the "Special Stain" test must be offered
-    fireEvent.mouseDown(document.querySelectorAll(".ant-select")[1]);
+    fireEvent.mouseDown(screen.getByText("Select test..."));
     expect(await screen.findByTitle("Masson Trichrome")).toBeInTheDocument();
     expect(screen.queryByTitle("CK7")).not.toBeInTheDocument();
   });
@@ -482,35 +562,29 @@ describe("StainManagement — 'Special Stain' category parity with 'Histochem'",
 
 describe("StainManagement — stain names in the breakdown", () => {
   it("lists which stains are on the case, collapsing duplicates", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [
-            stain({ id: 1, test: { name: "CK7", category: "IHC", is_external: false } }),
-            stain({ id: 2, test: { name: "CK7", category: "IHC", is_external: false } }),
+            stain({ id: 1, test: { name: "AFB", category: "Histochem", is_external: false } }),
+            stain({ id: 2, test: { name: "AFB", category: "Histochem", is_external: false } }),
             stain({ id: 3, test: { name: "PAS", category: "Special Stain", is_external: false } }),
           ],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
     await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
     const row = screen.getByText("S26-00001").closest("tr");
-    expect(within(row).getByText("CK7 ×2, PAS")).toBeInTheDocument();
+    expect(within(row).getByText("AFB ×2, PAS")).toBeInTheDocument();
   });
 
   it("labels recut slides as Recut rather than the underlying test name", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([
         block({
           stains: [stain({ id: 1, is_recut: true, test: { name: "H&E", category: "Histochem", is_external: false } })],
         }),
-      ],
-      total: 1,
-    });
+      ]));
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
@@ -522,7 +596,11 @@ describe("StainManagement — stain names in the breakdown", () => {
 });
 
 describe("StainManagement — HosXP Key tab", () => {
-  it("exposes a HosXP Key tab alongside the stain orders list", async () => {
+  it("defers the HosXP Key tab's own fetch until the tab is opened", async () => {
+    // That tab bills every in-house stain, not just this page's, so it has no
+    // case pagination to hide behind — keep its full worklist off the initial
+    // page load.
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
     SurgicalBlockService.getBlocks.mockResolvedValue({
       items: [
         block({
@@ -537,33 +615,28 @@ describe("StainManagement — HosXP Key tab", () => {
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
-    // Stain Orders is the default tab
+    // Stain Orders is the default tab, and it doesn't need those blocks.
     await waitFor(() => expect(screen.getByText("S26-00001")).toBeInTheDocument());
+    expect(SurgicalBlockService.getBlocks).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("tab", { name: /HosXP Key/i }));
 
+    await waitFor(() =>
+      expect(SurgicalBlockService.getBlocks).toHaveBeenCalledWith({ has_internal_stain: true }),
+    );
     // both stains are keyable; only the unkeyed one counts toward Pending
     expect(await screen.findByText("Pending (1)")).toBeInTheDocument();
     expect(screen.getByText("Keyed (1)")).toBeInTheDocument();
   });
 
-  it("badges the HosXP tab with the number of stains still to key", async () => {
-    SurgicalBlockService.getBlocks.mockResolvedValue({
-      items: [
-        block({
-          stains: [
-            stain({ id: 1, is_hosxp_keyed: false, test: { name: "AFB", category: "Histochem", is_external: false } }),
-            // recuts are not billable, so they must not inflate the badge
-            stain({ id: 2, is_recut: true, is_hosxp_keyed: false, test: { name: "H&E", category: "Histochem", is_external: false } }),
-          ],
-        }),
-      ],
-      total: 1,
-    });
+  it("badges the HosXP tab from the count endpoint rather than the tab's own data", async () => {
+    SurgicalBlockService.getInternalStainCases.mockResolvedValue(casePage([block()]));
+    SurgicalBlockStainService.getInternalUnkeyedCount.mockResolvedValue(7);
     noMasterTests();
     render(<ThemeProvider><StainManagement /></ThemeProvider>);
 
     const tab = await screen.findByRole("tab", { name: /HosXP Key/i });
-    expect(within(tab).getByText("1")).toBeInTheDocument();
+    await waitFor(() => expect(within(tab).getByText("7")).toBeInTheDocument());
+    expect(SurgicalBlockService.getBlocks).not.toHaveBeenCalled();
   });
 });

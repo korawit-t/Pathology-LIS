@@ -89,8 +89,8 @@ def make_block(db, specimen_id: int, block_no: int = 1, status: str = "grossed")
     return block
 
 
-def make_block_stain(db, block_id: int, test_id: int = None, slide_no: int = 1, status: str = "pending") -> SurgicalBlockStain:
-    stain = SurgicalBlockStain(block_id=block_id, test_id=test_id, slide_no=slide_no, status=status)
+def make_block_stain(db, block_id: int, test_id: int = None, slide_no: int = 1, status: str = "pending", is_recut: bool = False) -> SurgicalBlockStain:
+    stain = SurgicalBlockStain(block_id=block_id, test_id=test_id, slide_no=slide_no, status=status, is_recut=is_recut)
     db.add(stain)
     db.commit()
     db.refresh(stain)
