@@ -49,7 +49,7 @@
       }
       @page {
         size: A4;
-        margin: 0.8cm 1cm 1.5cm 1cm;
+        margin: 0.8cm 1cm 2cm 1cm;
 
         /* Margin boxes are not inside <body> and do not inherit its
            font-family; without this they fall back to a host system font,
@@ -57,8 +57,8 @@
            in a face that may not carry the glyphs well. */
         font-family: "Sarabun", sans-serif;
 
-        /* .footer-barcode (bottom: -1.2cm, its own height + label) sits centred
-           in this 1.5cm band at exactly the height of these two boxes, so they
+        /* .footer-barcode (bottom: -1.7cm, its own height + label) sits low
+           in this 2cm band at exactly the height of these two boxes, so they
            can only be separated from it horizontally. Roughly 55mm is free on
            each side of the barcode.
 
@@ -87,7 +87,13 @@
 
       .footer-barcode {
         position: fixed;
-        bottom: -1.2cm; /* place it inside the bottom margin zone */
+        /* Paired with the @page bottom margin: this box is ~15.7mm tall
+           (12mm barcode + HN label), so in the old 1.5cm band its top edge
+           poked 3.2mm into the content area and the bars clipped the last
+           text line. -1.7cm in a 2cm band leaves the barcode at the same
+           absolute position on paper and moves the content up instead, so
+           the two values only ever change together. */
+        bottom: -1.7cm;
         left: 0;
         right: 0;
         text-align: center;

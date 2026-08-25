@@ -16,6 +16,8 @@ footer barcode is checked: the block was copied from surgical into the two
 cyto templates, so the bug can be reintroduced in any of them independently.
 """
 
+import re
+
 import fitz
 import pytest
 
@@ -26,7 +28,7 @@ from app.services.barcode_service import (
     _REPORT_MODULE_HEIGHT_MM,
     _MODULE_WIDTH_MM,
 )
-from app.services.pdf_service import generate_pdf_blob
+from app.services.pdf_service import env, generate_pdf_blob, _resolve_template
 from tests.pdf_probe import PT2MM, footer_barcode_bars as _footer_bars
 VALUE = "208690807084156"  # real 15-char OPD value: prefix 2 + type 08 + 12-digit VN
 
@@ -36,6 +38,25 @@ TEMPLATES = [
     ("reports/gyne_cyto_report_template.html", "C26-00123"),
     ("reports/nongyne_cyto_report_template.html", "N26-00456"),
 ]
+
+
+_PAGE_MARGIN_RE = re.compile(r"@page\s*\{.*?\bmargin:\s*([^;]+);", re.S)
+_LENGTH_RE = re.compile(r"^([\d.]+)(cm|mm|in|px)$")
+_TO_MM = {"cm": 10.0, "mm": 1.0, "in": 25.4, "px": 25.4 / 96}
+
+
+def _page_margin_bottom_mm(template: str) -> float:
+    """The @page bottom margin of the template that will actually be rendered.
+
+    Read out of the template source (through the same local/ override the
+    renderer resolves) rather than hardcoded, so the assertion follows the
+    margin instead of duplicating a number that then drifts away from it.
+    """
+    source = env.loader.get_source(env, _resolve_template(template))[0]
+    parts = _PAGE_MARGIN_RE.search(source).group(1).split()
+    # CSS shorthand: 3 or 4 values put bottom third, 1 or 2 put it first.
+    value, unit = _LENGTH_RE.match(parts[2] if len(parts) >= 3 else parts[0]).groups()
+    return float(value) * _TO_MM[unit]
 
 
 def _render_report(
@@ -99,6 +120,25 @@ class TestRenderedSize:
         page = _render_report(template, accession_no)[0]
         narrow_mm = min(r.width for r in _footer_bars(page)) * PT2MM
         assert narrow_mm >= 0.35 - 0.01
+
+    def test_barcode_stays_out_of_the_content_area(self, template, accession_no):
+        """The bars must sit wholly inside the bottom margin band.
+
+        They did not: the block is ~15.7mm tall (12mm barcode plus the HN
+        caption) but sat at bottom:-1.2cm inside a 1.5cm band, so its top edge
+        rose 3.2mm past the content area's bottom edge and the bars printed
+        across the report's last line. The offset and the @page bottom margin
+        are a matched pair; this fails if either one moves without the other.
+        """
+        page = _render_report(template, accession_no)[0]
+        bars_top_mm = min(r.y0 for r in _footer_bars(page)) * PT2MM
+        content_bottom_mm = page.rect.height * PT2MM - _page_margin_bottom_mm(template)
+
+        assert bars_top_mm >= content_bottom_mm, (
+            f"barcode reaches {content_bottom_mm - bars_top_mm:.2f}mm above the "
+            f"content area's bottom edge ({content_bottom_mm:.1f}mm) and will "
+            f"print over the last line of the report"
+        )
 
     def test_barcode_does_not_overlap_the_footer_text(self, template, accession_no):
         page = _render_report(template, accession_no)[0]
