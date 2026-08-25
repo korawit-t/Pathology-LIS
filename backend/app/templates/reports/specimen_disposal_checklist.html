@@ -2,7 +2,7 @@
 <html lang="th">
   <head>
     <meta charset="UTF-8" />
-    <title>ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ</title>
+    <title>ใบตรวจสอบและทำลายชิ้นเนื้อ</title>
     <style>
       @font-face {
         font-family: "Sarabun";
@@ -170,7 +170,7 @@
       {% if lab_address %}
       <div class="lab-address">{{ lab_address | safe }}</div>
       {% endif %}
-      <div class="form-title">ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ</div>
+      <div class="form-title">ใบตรวจสอบและทำลายชิ้นเนื้อ</div>
       <div class="form-title-en">Specimen Disposal Checklist &amp; Authorization</div>
     </div>
 
@@ -201,12 +201,13 @@
         <tr>
           <th style="width: 22px">✓</th>
           <th style="width: 26px">ที่</th>
-          <th style="width: 80px">Accession No.</th>
-          <th style="width: 62px">HN</th>
+          <th style="width: 78px">Accession No.</th>
+          <th style="width: 58px">HN</th>
           <th>ชื่อ-สกุลผู้ป่วย</th>
-          <th style="width: 62px">วันรายงาน</th>
-          <th style="width: 38px">อายุ<br />(วัน)</th>
-          <th style="width: 78px">หมายเหตุ</th>
+          <th style="width: 58px">วันที่จัดเก็บ</th>
+          <th style="width: 58px">วันรายงาน</th>
+          <th style="width: 34px">อายุ<br />(วัน)</th>
+          <th style="width: 66px">หมายเหตุ</th>
         </tr>
       </thead>
       <tbody>
@@ -217,6 +218,7 @@
           <td class="c">{{ row.accession_no }}</td>
           <td class="c">{{ row.hn }}</td>
           <td>{{ row.patient_name }}</td>
+          <td class="c">{{ row.storage_date }}</td>
           <td class="c">{{ row.report_date }}</td>
           <td class="c">{{ row.age_days }}</td>
           <td></td>

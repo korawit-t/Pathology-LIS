@@ -209,11 +209,13 @@ def build_disposal_checklist_data(db: Session, batch_id: int) -> dict:
         if not case:
             continue
         report_at = case.report_at
+        storage_at = case.specimen_storage_at
         groups.setdefault(item.container_snapshot or "-", []).append(
             {
                 "accession_no": case.accession_no or "-",
                 "hn": case.hn or "-",
                 "patient_name": _full_patient_name(case.patient),
+                "storage_date": storage_at.strftime("%d/%m/%Y") if storage_at else "-",
                 "report_date": report_at.strftime("%d/%m/%Y") if report_at else "-",
                 "age_days": (today - report_at.date()).days if report_at else "-",
             }

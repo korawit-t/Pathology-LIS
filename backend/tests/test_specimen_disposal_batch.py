@@ -490,6 +490,36 @@ class TestChecklistPdf:
         # report_at ตั้งเป็นวันนี้ อายุจึงเป็น 0 วัน ไม่ใช่ "-"
         assert data["groups"][0]["rows"][0]["age_days"] == 0
 
+        # วันที่จัดเก็บพิมพ์ต่อจากชื่อผู้ป่วย ให้เทียบกับสติกเกอร์บนกล่องได้
+        today_str = local_now().strftime("%d/%m/%Y")
+        assert data["groups"][0]["rows"][0]["storage_date"] == today_str
+
+    def test_row_shows_a_dash_when_the_storage_date_is_missing(
+        self, db, admin_user, signers
+    ):
+        from app.crud.specimen_disposal_batch import (
+            build_disposal_checklist_data,
+            create_batch,
+        )
+
+        registrar, _ = admin_user
+        disposer, verifier, approver = signers
+        case = _stored_case(db, registrar.id)
+        case.specimen_storage_at = None
+        db.commit()
+
+        batch = create_batch(
+            db,
+            case_ids=[case.id],
+            disposer_id=disposer.id,
+            verifier_id=verifier.id,
+            approver_id=approver.id,
+            retention_days=None,
+            printed_by_id=registrar.id,
+        )
+        data = build_disposal_checklist_data(db, batch.id)
+        assert data["groups"][0]["rows"][0]["storage_date"] == "-"
+
     def test_pdf_survives_a_case_with_no_report_date(self, db, admin_client, admin_user, signers):
         registrar, _ = admin_user
         case = _stored_case(db, registrar.id)
