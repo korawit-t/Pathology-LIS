@@ -58,6 +58,12 @@ class SystemSetting(Base):
     gyne_report_template = Column(String, nullable=True)
     nongyne_report_template = Column(String, nullable=True)
 
+    # --- Controlled-document numbers ---
+    # เลขคุมเอกสารตามระบบคุณภาพของแลป (เช่น "FM-PAT-025 แก้ไขครั้งที่ 01")
+    # พิมพ์ที่มุมล่างซ้ายของใบตรวจสอบการทำลายชิ้นเนื้อ เก็บเป็น free text
+    # เพราะแต่ละที่วางรูปแบบเลข/ครั้งที่แก้ไข/วันบังคับใช้ไม่เหมือนกัน
+    specimen_disposal_doc_no = Column(String, nullable=True)
+
     # --- Report Color Scheme ---
     report_primary_color = Column(String, nullable=True)  # hex e.g. "#0056b3"
 

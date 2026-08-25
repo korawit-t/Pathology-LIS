@@ -188,6 +188,7 @@ def build_disposal_checklist_data(db: Session, batch_id: int) -> dict:
     settings = db.query(SystemSetting).first()
     lab_name_th = settings.lab_name_th if settings else "ห้องปฏิบัติการพยาธิวิทยา"
     lab_address = (settings.lab_address if settings else "") or ""
+    doc_no = (settings.specimen_disposal_doc_no if settings else "") or ""
 
     today = local_now().date()
     groups: dict[str, list[dict]] = {}
@@ -215,6 +216,7 @@ def build_disposal_checklist_data(db: Session, batch_id: int) -> dict:
     return {
         "lab_name_th": lab_name_th,
         "lab_address": lab_address,
+        "doc_no": doc_no,
         "batch_no": batch.batch_no,
         "retention_days": batch.retention_days,
         "printed_on": batch.printed_at.strftime("%d/%m/%Y %H:%M") if batch.printed_at else "",

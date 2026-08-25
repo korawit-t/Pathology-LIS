@@ -98,6 +98,24 @@ const ReportTab = () => {
           </Col>
         </Row>
         <Divider />
+        <Text strong>Controlled Document No.</Text>
+        <Text type="secondary" style={{ display: "block", marginBottom: 16, marginTop: 4 }}>
+          Printed in the bottom-left corner of the form, on every page. Free text — enter
+          it exactly as your quality system words it, e.g.{" "}
+          <code>FM-PAT-025 แก้ไขครั้งที่ 01 วันที่บังคับใช้ 01/01/2569</code>. Leave blank
+          to print no number.
+        </Text>
+        <Row gutter={16}>
+          <Col span={16}>
+            <Form.Item
+              name="specimen_disposal_doc_no"
+              label="ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ (Specimen Disposal Checklist)"
+            >
+              <Input placeholder="e.g. FM-PAT-025 แก้ไขครั้งที่ 01" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Divider />
         <Form.Item
           name="is_cumulative_report"
           label="Cumulative Report"
