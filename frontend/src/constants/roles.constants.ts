@@ -17,6 +17,14 @@ export const ROLES = {
 
 export type UserRole = keyof typeof ROLES;
 
+/** บัญชีฝั่งผู้ส่งตรวจ — แพทย์ผู้ส่งตรวจและบัญชีของโรงพยาบาลคู่สัญญา
+ *  ไม่ใช่เจ้าหน้าที่ในห้องปฏิบัติการ ตรงกับ EXTERNAL_ROLES ใน
+ *  backend/app/dependencies/auth.py — แก้ที่เดียวไม่พอ ต้องแก้ให้ตรงกันทั้งสองฝั่ง */
+export const EXTERNAL_ROLES: readonly UserRole[] = ["clinician", "hospital"];
+
+export const isExternalRole = (roles?: string[] | null): boolean =>
+  (roles ?? []).some((r) => (EXTERNAL_ROLES as readonly string[]).includes(r));
+
 export const ROLE_OPTIONS = Object.entries(ROLES).map(([value, meta]) => ({
   value: value as UserRole,
   label: meta.label,

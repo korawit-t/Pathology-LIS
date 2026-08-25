@@ -202,6 +202,81 @@ class TestCreateBatch:
         assert r.status_code == 400
         assert "ผู้ตรวจสอบ" in r.json()["detail"]
 
+    @pytest.mark.parametrize("external_role", ["clinician", "hospital"])
+    def test_rejects_a_signer_from_outside_the_lab(
+        self, db, admin_client, admin_user, signers, external_role
+    ):
+        """clinician/hospital เป็นบัญชีผู้ส่งตรวจ ไม่มีทางยืนหน้าตู้เก็บชิ้นเนื้อ
+        — ต้องกันที่ API ด้วย ไม่ใช่แค่ซ่อนใน dropdown"""
+        registrar, _ = admin_user
+        _, verifier, approver = signers
+        outsider, _ = _make_user(db, [external_role], external_role)
+        case = _stored_case(db, registrar.id)
+
+        r = admin_client.post(
+            "/specimen-disposal-batches",
+            json={
+                "case_ids": [case.id],
+                "disposer_id": outsider.id,
+                "verifier_id": verifier.id,
+                "approver_id": approver.id,
+            },
+        )
+        assert r.status_code == 400
+        assert "ผู้ทิ้ง" in r.json()["detail"]
+
+    def test_rejects_an_outside_verifier_or_approver_too(
+        self, db, admin_client, admin_user, signers
+    ):
+        registrar, _ = admin_user
+        disposer, verifier, _ = signers
+        outsider, _ = _make_user(db, ["clinician"], "clin")
+        case = _stored_case(db, registrar.id)
+
+        as_verifier = admin_client.post(
+            "/specimen-disposal-batches",
+            json={
+                "case_ids": [case.id],
+                "disposer_id": disposer.id,
+                "verifier_id": outsider.id,
+                "approver_id": verifier.id,
+            },
+        )
+        assert as_verifier.status_code == 400
+        assert "ผู้ตรวจสอบ" in as_verifier.json()["detail"]
+
+        as_approver = admin_client.post(
+            "/specimen-disposal-batches",
+            json={
+                "case_ids": [case.id],
+                "disposer_id": disposer.id,
+                "verifier_id": verifier.id,
+                "approver_id": outsider.id,
+            },
+        )
+        assert as_approver.status_code == 400
+        assert "ผู้อนุมัติ" in as_approver.json()["detail"]
+
+    def test_rejects_a_signer_holding_an_external_role_alongside_a_lab_role(
+        self, db, admin_client, admin_user, signers
+    ):
+        """roles เป็น list — บัญชีที่มีทั้ง gross และ clinician ก็ยังถือว่าอยู่นอกแลป"""
+        registrar, _ = admin_user
+        _, verifier, approver = signers
+        mixed, _ = _make_user(db, ["gross", "clinician"], "mixed")
+        case = _stored_case(db, registrar.id)
+
+        r = admin_client.post(
+            "/specimen-disposal-batches",
+            json={
+                "case_ids": [case.id],
+                "disposer_id": mixed.id,
+                "verifier_id": verifier.id,
+                "approver_id": approver.id,
+            },
+        )
+        assert r.status_code == 400
+
     def test_rejects_empty_case_list(self, admin_client, signers):
         disposer, verifier, approver = signers
         r = admin_client.post(

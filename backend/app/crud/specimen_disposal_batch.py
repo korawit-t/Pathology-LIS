@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.crud.slide_block_release import _full_patient_name
+from app.dependencies.auth import EXTERNAL_ROLES
 from app.models.patient import Patient
 from app.models.specimen_disposal_batch import (
     SpecimenDisposalBatch,
@@ -57,6 +58,17 @@ def _signer_name(db: Session, user_id: int, label: str) -> tuple[User, str]:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail=f"ไม่พบผู้ใช้สำหรับ{label} (id={user_id})")
+
+    # clinician/hospital เป็นบัญชีฝั่งผู้ส่งตรวจ ไม่ใช่เจ้าหน้าที่ในแลป จึงไม่มีทาง
+    # ยืนอยู่หน้าตู้เก็บชิ้นเนื้อเพื่อลงนามได้ กันที่นี่ด้วยไม่ใช่แค่ซ่อนใน dropdown
+    # เพราะ dropdown ที่กรองแล้วไม่ใช่การควบคุม แค่ยิง POST ตรงก็ผ่าน
+    roles = set(user.roles if isinstance(user.roles, list) else [])
+    if roles & EXTERNAL_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label}ต้องเป็นเจ้าหน้าที่ในห้องปฏิบัติการ — บัญชีผู้ส่งตรวจ (clinician/hospital) ลงนามไม่ได้",
+        )
+
     return user, (user.full_name or user.username)
 
 
