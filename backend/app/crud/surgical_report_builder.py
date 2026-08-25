@@ -482,6 +482,11 @@ def _get_diagnosis_html_summary(
                 SurgicalReport.case_id == db_case.id,
                 SurgicalReport.status != "cancelled",
                 ReportSigner.diagnosis_order == order,
+                # An unsigned row is an assignment, not a signature — the line
+                # below literally reads "Digitally Signed by", so listing a
+                # co-signer who hasn't signed yet puts a claim on the released
+                # report that nobody made.
+                ReportSigner.signed_at.isnot(None),
             )
             .all()
         )
@@ -578,6 +583,11 @@ def prepare_report_data(
                 SurgicalReport.case_id == db_case.id,
                 SurgicalReport.status != "cancelled",
                 ReportSigner.diagnosis_order == actual_latest_order,
+                # Same rule as the per-order block above: pathologist_name is
+                # who reported the case, so it can only name people who signed.
+                # Falls through to the case's assigned pathologist below while
+                # nobody has signed yet (draft snapshots).
+                ReportSigner.signed_at.isnot(None),
             )
         )
         if target_report_id is not None:

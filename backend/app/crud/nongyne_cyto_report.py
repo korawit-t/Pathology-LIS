@@ -85,6 +85,32 @@ def _stamp_snapshot_signed_at(report: "NongyneCytoReport", user_id: int, signed_
     ]
 
 
+def _resolve_signed_at(signer: dict, current_user_id: int | None):
+    """The signature time a signer entry ends up with on publish: whatever the
+    client already recorded, or now() for the person doing the publishing."""
+    signed_at = signer.get("signed_at")
+    if not signed_at and current_user_id and signer.get("user_id") == current_user_id:
+        signed_at = local_now()
+    return signed_at
+
+
+def _reject_if_signatures_outstanding(
+    db: Session, signers: List[dict] | None, current_user_id: int | None
+) -> None:
+    """Block a release while 'Require All Signatures (Non-Gyne)' is on and a
+    listed signer still hasn't signed. Same 400 shape the approval-path gate
+    in process_nongyne_report_approval() already raises."""
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_non_gyne_sign):
+        return
+    pending = [s for s in (signers or []) if not _resolve_signed_at(s, current_user_id)]
+    if pending:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot publish — {len(pending)} signer(s) have not signed yet.",
+        )
+
+
 def get_report_by_id(db: Session, report_id: int):
     return db.query(NongyneCytoReport).filter(NongyneCytoReport.id == report_id).first()
 
@@ -274,6 +300,14 @@ def publish_nongyne_report(
     if not report_data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
 
+    # "Require All Signatures (Non-Gyne)" has to be enforced here, not only in
+    # process_nongyne_report_approval() — that gate is unreachable whenever
+    # enable_non_gyne_approve_system is off, which is the path that publishes
+    # the report outright. Rejecting up front (rather than parking the report
+    # in pending_approval) is deliberate: nothing in the app calls the
+    # /cosign endpoint, so a held report would have no way back out.
+    _reject_if_signatures_outstanding(db, signers, current_user_id)
+
     existing_count = db.query(NongyneCytoReport).filter(NongyneCytoReport.case_id == case_id).count()
     report_data["version_no"] = existing_count + 1
 
@@ -300,10 +334,23 @@ def publish_nongyne_report(
             for u in db.query(User).filter(User.id.in_([s["user_id"] for s in signers])).all()
         }
         snapshot_signers = []
+        diag_signers = []
         for s in signers:
-            signed_at_val = s.get("signed_at")
-            if not signed_at_val and current_user_id and s["user_id"] == current_user_id:
-                signed_at_val = local_now()
+            signed_at_val = _resolve_signed_at(s, current_user_id)
+
+            diag_signers.append({
+                "user_id": s["user_id"],
+                "role": s.get("role", "primary"),
+                # signed_at has to survive onto the diagnosis copy, not just the
+                # report: the pathologist worklist's exclude_signed_by filter
+                # matches `@.signed_at != null` against this JSON, and the
+                # Signatories card reads it back from here on every page load.
+                "signed_at": (
+                    signed_at_val.isoformat()
+                    if isinstance(signed_at_val, datetime)
+                    else signed_at_val
+                ),
+            })
 
             new_signer = NongyneReportSigner(
                 report_id=db_report.id,
@@ -338,7 +385,7 @@ def publish_nongyne_report(
             .first()
         )
         if current_diag:
-            current_diag.signers = [{"user_id": s["user_id"], "role": s.get("role", "primary")} for s in signers]
+            current_diag.signers = diag_signers
             db.add(current_diag)
 
     db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()

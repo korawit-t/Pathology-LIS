@@ -1,3 +1,9 @@
+export interface NongyneSigner {
+    user_id: number;
+    role: string;
+    signed_at?: string | null;
+}
+
 export interface NongyneDiagnosisBase {
     gross_description?: string;
     microscopic_description?: string;
@@ -15,7 +21,7 @@ export interface NongyneDiagnosisUpdate extends NongyneDiagnosisBase {
     status?: string;
     slide_quality?: string;
     stain_quality?: string;
-    signers?: { user_id: number; role: string; signed_at?: string | null }[];
+    signers?: NongyneSigner[];
 }
 
 export interface NongyneDiagnosisRevise extends NongyneDiagnosisBase {
@@ -32,6 +38,7 @@ export interface NongyneDiagnosisResponse extends NongyneDiagnosisBase {
     diagnosis_at?: string;
     revision_reason?: string;
     status: string;
+    signers?: NongyneSigner[];
     created_at: string;
     updated_at: string;
 }

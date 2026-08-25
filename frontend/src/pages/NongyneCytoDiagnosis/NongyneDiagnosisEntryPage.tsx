@@ -44,7 +44,7 @@ import NongyneCaseImageService, {
   NongyneCaseImage,
 } from "../../services/nongyneCaseImageService";
 import UserService from "../../services/userService";
-import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate } from "../../types/nongyneDiagnosis";
+import { NongyneDiagnosisResponse, NongyneDiagnosisUpdate, NongyneSigner } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase, NongyneCytologyCaseUpdate } from "../../types/nongyne";
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
@@ -338,6 +338,10 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const persistDraft = async (
     values: NongyneOnFinishValues,
     extraCaseFields: Partial<NongyneCytologyCaseUpdate> = {},
+    // This page has no Signatories card, so the form never carries a signers
+    // array (the destructure below drops it) — only the send-to-pathologist
+    // hand-off passes one, to record the screener's own signature.
+    signers?: NongyneSigner[],
   ) => {
     const {
       clinical_history,
@@ -361,11 +365,15 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       ...extraCaseFields,
     });
 
+    const diagnosisPayload = signers
+      ? { ...diagnosisValues, signers }
+      : diagnosisValues;
+
     if (diagnosis) {
-      await NongyneDiagnosisService.update(diagnosis.id, diagnosisValues);
+      await NongyneDiagnosisService.update(diagnosis.id, diagnosisPayload);
     } else {
       await NongyneDiagnosisService.create({
-        ...diagnosisValues,
+        ...diagnosisPayload,
         case_id: Number(caseId),
       });
     }
@@ -401,6 +409,36 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
     setPathologistPickerOpen(true);
   };
 
+  // Handing the case to a pathologist is the screener's sign-off, so it is
+  // where their signature gets recorded. Without this the cytotechnologist's
+  // signer entry stays signed_at=null forever: they'd show PENDING on a
+  // published report, and "Require All Signatures (Non-Gyne)" could never be
+  // satisfied. Re-sending keeps the original signature time rather than
+  // re-stamping it, and re-picks the primary in case the pathologist changed.
+  const buildScreeningSigners = (pathologistId: number): NongyneSigner[] => {
+    const existing = diagnosis?.signers ?? [];
+    const self = existing.find(
+      (s) => Number(s.user_id) === Number(currentUser?.id),
+    );
+    const others = existing.filter(
+      (s) =>
+        s.role !== "primary" && Number(s.user_id) !== Number(currentUser?.id),
+    );
+    return [
+      ...others,
+      ...(currentUser?.id
+        ? [
+            {
+              user_id: currentUser.id,
+              role: self?.role ?? "cytotechnologist",
+              signed_at: self?.signed_at ?? new Date().toISOString(),
+            },
+          ]
+        : []),
+      { user_id: pathologistId, role: "primary", signed_at: null },
+    ];
+  };
+
   const handlePathologistPickerConfirm = async () => {
     if (!selectedPathologistId) return;
     try {
@@ -408,11 +446,15 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
       // Save current form values as draft first
       const values = form.getFieldsValue();
-      await persistDraft(values, {
-        pathologist_id: selectedPathologistId,
-        is_screened: true,
-        ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
-      });
+      await persistDraft(
+        values,
+        {
+          pathologist_id: selectedPathologistId,
+          is_screened: true,
+          ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
+        },
+        buildScreeningSigners(selectedPathologistId),
+      );
 
       setPathologistPickerOpen(false);
       message.success("Case sent to pathologist successfully");
