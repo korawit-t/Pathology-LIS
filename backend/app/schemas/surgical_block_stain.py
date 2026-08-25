@@ -10,6 +10,10 @@ class APTestSimple(BaseModel):
     category: str
     price_tier_1: float
     is_external: bool = False
+    # Stable handle for the system tests (HE_ROUTINE / HE_RECUT / …). The
+    # frontend needs it to tell routine H&E apart from a real special-stain
+    # order without matching on a name the hospital is free to rename.
+    system_code: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 

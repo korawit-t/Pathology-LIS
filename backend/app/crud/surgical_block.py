@@ -1,4 +1,5 @@
 import logging
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from fastapi import HTTPException
 from app.models.surgical_block import SurgicalBlock
@@ -13,7 +14,11 @@ from app.schemas.surgical_block import (
 )
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
-
+from app.models.surgical_case import SurgicalCase
+from app.utils.stain_filters import (
+    is_in_house_stain,
+    is_internal_stain_order,
+)
 
 def create_block(db: Session, obj_in: SurgicalBlockCreate):
     # 1. เช็ค Block เดิม (Logic เดิมของคุณดีอยู่แล้ว)
@@ -86,7 +91,7 @@ def get_block(db: Session, block_id: int):
     return block
 
 
-def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_fixing: bool = None, decal_history: bool = None, fix_history: bool = None, has_pending_outlab: bool = None, skip: int = 0, limit: int = 20):
+def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_fixing: bool = None, decal_history: bool = None, fix_history: bool = None, has_pending_outlab: bool = None, has_internal_stain: bool = None, skip: int = 0, limit: int = 20):
     # 1. เตรียม Base Query (ยังไม่ต้องยิงคำสั่งไปที่ DB)
     query = db.query(SurgicalBlock)
 
@@ -123,15 +128,42 @@ def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_
             .distinct()
         )
 
-    # specimen_id / has_pending_outlab queries are small — return all without pagination
-    if (specimen_id is not None and is_decal is None and is_fixing is None) or has_pending_outlab is True:
+    # HosXP Key tab on the Internal Stain page: every block carrying an
+    # in-house stain that is a real order — i.e. not the routine H&E that
+    # create_block adds to every block, which would otherwise match the whole
+    # table. Same reason as has_pending_outlab above: the page used to fetch
+    # the newest 200 blocks and filter client-side, so anything older silently
+    # vanished. Wider than list_internal_stain_cases below (special stains +
+    # recuts) because an in-house IHC still has to be keyed for billing.
+    if has_internal_stain is True:
+        query = (
+            query.join(SurgicalBlockStain, SurgicalBlockStain.block_id == SurgicalBlock.id)
+            .outerjoin(
+                AnatomicalPathologyTest,
+                SurgicalBlockStain.test_id == AnatomicalPathologyTest.id,
+            )
+            .filter(is_in_house_stain())
+            .distinct()
+        )
+
+    # specimen_id / has_pending_outlab / has_internal_stain queries are small —
+    # return all without pagination
+    unpaginated = (
+        (specimen_id is not None and is_decal is None and is_fixing is None)
+        or has_pending_outlab is True
+        or has_internal_stain is True
+    )
+    if unpaginated:
+        # block_no ordering only makes sense for a single specimen; the queue
+        # views span every case, so they want newest-first.
+        newest_first = has_pending_outlab is True or has_internal_stain is True
         items = (
             query.options(
                 joinedload(SurgicalBlock.specimen).joinedload(SurgicalSpecimen.case),
                 selectinload(SurgicalBlock.stains).selectinload(SurgicalBlockStain.stained_by),
                 selectinload(SurgicalBlock.stains).joinedload(SurgicalBlockStain.test),
             )
-            .order_by(SurgicalBlock.block_no.asc() if has_pending_outlab is not True else SurgicalBlock.id.desc())
+            .order_by(SurgicalBlock.id.desc() if newest_first else SurgicalBlock.block_no.asc())
             .all()
         )
         return {"items": items, "total": len(items)}
@@ -154,6 +186,140 @@ def list_blocks(db: Session, specimen_id: int = None, is_decal: bool = None, is_
 
     # 4. ส่งกลับแบบโครงสร้างมาตรฐานที่ Frontend ชอบ
     return {"items": items, "total": total}
+
+
+def list_internal_stain_cases(
+    db: Session,
+    search: str = None,
+    bucket: str = "all",
+    skip: int = 0,
+    limit: int = 20,
+):
+    """One page of *cases* for the Internal Stain Orders worklist.
+
+    The page groups blocks by accession number, so paginating blocks would cut
+    a case in half — the rows have to be counted and sliced per case in SQL,
+    then the blocks for the surviving cases fetched in a second query.
+
+    `bucket` mirrors the page's segmented filter: all | pending (has at least
+    one pending slide) | completed | recut.
+    """
+    # Per-case rollup over the stains this page tracks. GROUP BY runs before
+    # LIMIT, so a case is either wholly in the page or wholly out of it.
+    rollup = (
+        db.query(
+            SurgicalCase.id.label("case_id"),
+            SurgicalCase.accession_no.label("accession_no"),
+            func.count(SurgicalBlockStain.id)
+            .filter(SurgicalBlockStain.status == "pending")
+            .label("pending_count"),
+            func.count(SurgicalBlockStain.id)
+            .filter(SurgicalBlockStain.status == "stained")
+            .label("stained_count"),
+            func.count(SurgicalBlockStain.id)
+            .filter(SurgicalBlockStain.is_recut.is_(True))
+            .label("recut_count"),
+        )
+        .select_from(SurgicalBlockStain)
+        .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
+        .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+        .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
+        .outerjoin(
+            AnatomicalPathologyTest,
+            AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
+        )
+        .filter(is_internal_stain_order())
+    )
+
+    if search:
+        like = f"%{search}%"
+        rollup = rollup.filter(
+            or_(
+                SurgicalCase.accession_no.ilike(like),
+                SurgicalSpecimen.specimen_label.ilike(like),
+            )
+        )
+
+    sub = rollup.group_by(SurgicalCase.id, SurgicalCase.accession_no).subquery()
+
+    # Segmented labels and the header counters: computed off the searched set
+    # but *before* the bucket filter, so every label stays visible.
+    totals = db.query(
+        func.count().label("all"),
+        func.count().filter(sub.c.pending_count > 0).label("pending"),
+        func.count().filter(sub.c.pending_count == 0).label("completed"),
+        func.count().filter(sub.c.recut_count > 0).label("recut"),
+        func.coalesce(func.sum(sub.c.pending_count), 0).label("pending_slides"),
+        func.coalesce(func.sum(sub.c.stained_count), 0).label("stained_slides"),
+    ).select_from(sub).one()
+
+    page_q = db.query(sub.c.case_id, sub.c.accession_no)
+    if bucket == "pending":
+        page_q = page_q.filter(sub.c.pending_count > 0)
+    elif bucket == "completed":
+        page_q = page_q.filter(sub.c.pending_count == 0)
+    elif bucket == "recut":
+        page_q = page_q.filter(sub.c.recut_count > 0)
+
+    total = page_q.count()
+    rows = (
+        page_q.order_by(sub.c.accession_no.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    case_ids = [r.case_id for r in rows]
+
+    blocks_by_case = {cid: [] for cid in case_ids}
+    if case_ids:
+        # Only the blocks that carry one of this page's stains — a case's other
+        # blocks hold nothing this worklist can show, print or process.
+        relevant_block_ids = (
+            db.query(SurgicalBlockStain.block_id)
+            .outerjoin(
+                AnatomicalPathologyTest,
+                AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
+            )
+            .filter(is_internal_stain_order())
+            .subquery()
+        )
+        blocks = (
+            db.query(SurgicalBlock, SurgicalSpecimen.case_id)
+            .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+            .filter(
+                SurgicalSpecimen.case_id.in_(case_ids),
+                SurgicalBlock.id.in_(db.query(relevant_block_ids.c.block_id)),
+            )
+            .options(
+                joinedload(SurgicalBlock.specimen).joinedload(SurgicalSpecimen.case),
+                selectinload(SurgicalBlock.stains).selectinload(
+                    SurgicalBlockStain.stained_by
+                ),
+                selectinload(SurgicalBlock.stains).joinedload(SurgicalBlockStain.test),
+            )
+            .order_by(SurgicalSpecimen.specimen_label.asc(), SurgicalBlock.block_no.asc())
+            .all()
+        )
+        for block, case_id in blocks:
+            blocks_by_case[case_id].append(block)
+
+    return {
+        "items": [
+            {"accession_no": r.accession_no, "blocks": blocks_by_case[r.case_id]}
+            for r in rows
+        ],
+        "total": total,
+        "bucket_counts": {
+            "all": totals.all,
+            "pending": totals.pending,
+            "completed": totals.completed,
+            "recut": totals.recut,
+        },
+        "slide_totals": {
+            "pending": totals.pending_slides,
+            "stained": totals.stained_slides,
+        },
+    }
 
 
 def update_block(db: Session, block_id: int, data: SurgicalBlockUpdate):

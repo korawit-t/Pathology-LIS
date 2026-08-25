@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from app.models.surgical_block_stain import (
     SurgicalStainRun,
     SurgicalStainRunDetail,
@@ -17,10 +17,26 @@ from app.models.surgical_block_stain import (
     SurgicalOutlabRunDetail,
 )
 from app.utils.block_workflow import stage_filter
+from app.utils.stain_filters import is_keyable_stain
 from app.enums.case_states import SURGICAL_TERMINAL
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
+
+
+def count_unkeyed_internal_stains(db: Session) -> int:
+    """In-house stains still waiting to be keyed into HosXP for billing.
+    Mirrors isKeyableStain in the frontend's pages/Stain/stainFilters.ts."""
+    return (
+        db.query(func.count(SurgicalBlockStain.id))
+        .join(
+            AnatomicalPathologyTest,
+            AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
+        )
+        .filter(is_keyable_stain(), SurgicalBlockStain.is_hosxp_keyed.is_(False))
+        .scalar()
+        or 0
+    )
 
 
 def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:

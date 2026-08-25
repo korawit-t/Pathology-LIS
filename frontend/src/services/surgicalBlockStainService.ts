@@ -52,6 +52,16 @@ const SurgicalBlockStainService = {
     return res.data.count;
   },
 
+  /** In-house stains still waiting to be keyed into HosXP — the badge on the
+   * Internal Stain page's HosXP Key tab, so a page load that only shows the
+   * Stain Orders tab doesn't have to pull that whole worklist. */
+  getInternalUnkeyedCount: async (): Promise<number> => {
+    const res = await api.get<{ count: number }>(
+      "/surgical-block-stains/internal-unkeyed-count",
+    );
+    return res.data.count;
+  },
+
   // 1. ดึงรายการย้อมทั้งหมด
   getAllStains: async (
     params: StainQueryParams = {},

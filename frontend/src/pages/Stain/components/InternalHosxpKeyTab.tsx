@@ -37,7 +37,12 @@ interface BlockLike {
     status?: string | null;
     is_recut?: boolean | null;
     is_hosxp_keyed?: boolean | null;
-    test?: { name?: string | null; category?: string | null; is_external?: boolean | null } | null;
+    test?: {
+      name?: string | null;
+      category?: string | null;
+      is_external?: boolean | null;
+      system_code?: string | null;
+    } | null;
   }> | null;
 }
 

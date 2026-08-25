@@ -69,6 +69,37 @@ class SurgicalBlockResponse(SurgicalBlockBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InternalStainCase(BaseModel):
+    """One accession's worth of blocks on the Internal Stain Orders worklist.
+    The per-case counters are left to the client: it already has to apply the
+    same special-stain/recut rule to render each block's slide table, so
+    deriving the tags from the very rows on screen keeps the two consistent."""
+
+    accession_no: str
+    blocks: List[SurgicalBlockResponse] = []
+
+
+class InternalStainBucketCounts(BaseModel):
+    all: int = 0
+    pending: int = 0
+    completed: int = 0
+    recut: int = 0
+
+
+class InternalStainSlideTotals(BaseModel):
+    pending: int = 0
+    stained: int = 0
+
+
+class InternalStainCasePage(BaseModel):
+    items: List[InternalStainCase]
+    total: int
+    # Counted across every matching case, not just this page — they label the
+    # segmented filter and the header, which must not change as you page.
+    bucket_counts: InternalStainBucketCounts
+    slide_totals: InternalStainSlideTotals
+
+
 class BlockPaginationResponse(BaseModel):
     items: List[
         SurgicalBlockResponse
@@ -82,3 +113,5 @@ from app.schemas.surgical_block_stain import StainResponse
 
 SurgicalBlockResponse.model_rebuild()
 BlockPaginationResponse.model_rebuild()
+InternalStainCase.model_rebuild()
+InternalStainCasePage.model_rebuild()

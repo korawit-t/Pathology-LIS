@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas.surgical_block import (
@@ -6,10 +6,12 @@ from app.schemas.surgical_block import (
     SurgicalBlockUpdate,
     SurgicalBlockResponse,
     BlockPaginationResponse,
+    InternalStainCasePage,
 )
 from app.crud.surgical_block import (
     create_block,
     list_blocks,
+    list_internal_stain_cases,
     update_block,
     delete_block,
 )
@@ -39,11 +41,24 @@ def list_all_blocks(
     decal_history: bool = None,
     fix_history: bool = None,
     has_pending_outlab: bool = None,
+    has_internal_stain: bool = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
 ):
-    return list_blocks(db, specimen_id=specimen_id, is_decal=is_decal, is_fixing=is_fixing, decal_history=decal_history, fix_history=fix_history, has_pending_outlab=has_pending_outlab, skip=skip, limit=limit)
+    return list_blocks(db, specimen_id=specimen_id, is_decal=is_decal, is_fixing=is_fixing, decal_history=decal_history, fix_history=fix_history, has_pending_outlab=has_pending_outlab, has_internal_stain=has_internal_stain, skip=skip, limit=limit)
+
+
+# --- Internal Stain Orders worklist (paginated by case, not by block) ---
+@router.get("/internal-stain-cases", response_model=InternalStainCasePage)
+def list_internal_stain_case_page(
+    search: str = None,
+    bucket: str = Query("all", pattern="^(all|pending|completed|recut)$"),
+    skip: int = 0,
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return list_internal_stain_cases(db, search=search, bucket=bucket, skip=skip, limit=limit)
 
 
 # --- Update ---
