@@ -427,10 +427,17 @@
             </div>
             {% endif %}
 
+            {#- A released report only names people who actually signed: an
+                entry whose signed_at is still null is someone the case was
+                merely assigned to, and printing them under "Reported By"
+                attributes a report to a signature that was never given.
+                Previews keep the full roster, marked, so the person signing
+                off can see who is still outstanding. -#}
+            {% set shown_signers = signers if is_preview else (signers | selectattr('signed_at') | list) %}
             <div class="footer-sign">
               <div style="margin-bottom: 10px; font-weight: bold; color: #475569;">Reported By:</div>
-              {% if signers %}
-                {% for signer in signers %}
+              {% if shown_signers %}
+                {% for signer in shown_signers %}
                 <div style="margin-top: 12px;">
                   <div style="font-size: 15px; font-weight: bold; color: #002766;">
                     {{ signer.report_name or signer.full_name }}
@@ -444,6 +451,10 @@
                   {% if signer.signed_at %}
                   <div style="font-size: 10px; color: #94a3b8; margin-top: 1px;">
                     Signed: {{ signer.signed_at }}
+                  </div>
+                  {% else %}
+                  <div style="font-size: 10px; color: #b45309; margin-top: 1px;">
+                    Awaiting signature
                   </div>
                   {% endif %}
                 </div>

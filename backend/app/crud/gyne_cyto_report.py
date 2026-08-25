@@ -76,6 +76,28 @@ def _fmt_dt(val) -> str | None:
     return dt.strftime("%d/%m/%Y %H:%M")
 
 
+def _reject_if_signatures_outstanding(
+    db: Session, signers: List[dict] | None, current_user_id: int | None
+) -> None:
+    """Block a release while 'Require All Signatures (Gyne)' is on and a listed
+    signer still hasn't signed. Same 400 shape the approval-path gate in
+    process_gyne_report_approval() already raises."""
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_gyne_sign):
+        return
+    pending = [
+        s
+        for s in (signers or [])
+        if not s.get("signed_at")
+        and not (current_user_id and s.get("user_id") == current_user_id)
+    ]
+    if pending:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot publish — {len(pending)} signer(s) have not signed yet.",
+        )
+
+
 def get_report_by_id(db: Session, report_id: int):
     return db.query(GyneCytoReport).filter(GyneCytoReport.id == report_id).first()
 
@@ -306,6 +328,13 @@ def publish_gyne_report(
     report_data = prepare_gyne_report_data(db, case_id)
     if not report_data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
+
+    # "Require All Signatures (Gyne)" has to be enforced here too, not only in
+    # process_gyne_report_approval() — a NILM case that isn't sampled for QC
+    # never passes through that gate, it publishes straight out of this
+    # function. The frontend already refuses to call publish until everyone
+    # has signed when the setting is on; this is the server-side backstop.
+    _reject_if_signatures_outstanding(db, signers, current_user_id)
 
     # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
     # re-publish (e.g. revising an already-abnormal, already-reviewed case),
