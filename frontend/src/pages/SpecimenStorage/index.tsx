@@ -10,14 +10,19 @@ import {
   Tag,
   Tooltip,
   Modal,
+  Badge,
 } from "antd";
 import type { TablePaginationConfig } from "antd";
-import { CheckSquareOutlined, ReloadOutlined, DeleteOutlined, InboxOutlined, DatabaseOutlined, StopOutlined } from "@ant-design/icons";
+import { CheckSquareOutlined, ReloadOutlined, InboxOutlined, DatabaseOutlined, StopOutlined, FileProtectOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import SurgicalCaseService from "../../services/surgicalCaseService";
+import SpecimenDisposalService from "../../services/specimenDisposalService";
 import { SurgicalCase } from "../../types/surgical";
 import PageContainer from "../../components/Layout/PageContainer";
+import { formatPatientName } from "../../utils/patientName";
 import logger from "../../utils/logger";
+import CreateDisposalBatchModal from "./CreateDisposalBatchModal";
+import DisposalBatchTab from "./DisposalBatchTab";
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -39,7 +44,7 @@ const SpecimenStorage: React.FC = () => {
   const [storedPage, setStoredPage] = useState(1);
   const [storedSearch, setStoredSearch] = useState("");
   const [storedSelectedRowKeys, setStoredSelectedRowKeys] = useState<React.Key[]>([]);
-  const [isDisposing, setIsDisposing] = useState(false);
+  const [createBatchOpen, setCreateBatchOpen] = useState(false);
 
   // ==== Tab 3: Disposed Cases ====
   const [disposedCases, setDisposedCases] = useState<SurgicalCase[]>([]);
@@ -48,16 +53,31 @@ const SpecimenStorage: React.FC = () => {
   const [disposedPage, setDisposedPage] = useState(1);
   const [disposedSearch, setDisposedSearch] = useState("");
 
+  // ==== Tab 4: Disposal Batches ====
+  const [openBatchCount, setOpenBatchCount] = useState(0);
+
   useEffect(() => {
     if (activeTab === "1") {
       fetchUnstoredCases();
     } else if (activeTab === "2") {
       fetchStoredCases(storedPage, storedSearch);
-    } else {
+    } else if (activeTab === "3") {
       fetchDisposedCases(disposedPage, disposedSearch);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, storedPage, disposedPage]);
+
+  useEffect(() => {
+    refreshOpenBatchCount();
+  }, []);
+
+  const refreshOpenBatchCount = async () => {
+    try {
+      setOpenBatchCount(await SpecimenDisposalService.getOpenCount());
+    } catch (error) {
+      logger.error(error);
+    }
+  };
 
   const fetchUnstoredCases = async () => {
     try {
@@ -78,7 +98,8 @@ const SpecimenStorage: React.FC = () => {
       setLoadingStored(true);
       const limit = 20;
       const skip = (page - 1) * limit;
-      const data = await SurgicalCaseService.getStoredCases(skip, limit, search);
+      // ซ่อนเคสที่อยู่ในใบตรวจสอบที่ยังไม่ปิด กันไม่ให้ถูกใส่ซ้ำสองใบ
+      const data = await SurgicalCaseService.getStoredCases(skip, limit, search, true);
       setStoredCases(data.items);
       setStoredTotal(data.total);
     } catch (error) {
@@ -135,8 +156,7 @@ const SpecimenStorage: React.FC = () => {
               { title: "HN", dataIndex: "hn", width: 100 },
               {
                 title: "Patient Name",
-                render: (_: unknown, r: SurgicalCase) =>
-                  r.patient ? `${r.patient.name} ${r.patient.ln ?? ""}`.trim() : "-",
+                render: (_: unknown, r: SurgicalCase) => formatPatientName(r.patient),
               },
             ]}
           />
@@ -184,33 +204,29 @@ const SpecimenStorage: React.FC = () => {
     setDisposedPage(pagination.current);
   };
 
-  const handleDisposeItems = () => {
-    if (storedSelectedRowKeys.length === 0) {
-      return message.warning("กรุณาเลือกอย่างน้อย 1 รายการเพื่อทิ้ง");
-    }
+  const selectedStoredCases = storedCases.filter((c) =>
+    storedSelectedRowKeys.includes(c.id)
+  );
 
-    Modal.confirm({
-      title: "Confirm Disposal",
-      content: `You are about to dispose ${storedSelectedRowKeys.length} specimen(s). This action cannot be undone.`,
-      okText: "Confirm Dispose",
-      cancelText: "Cancel",
-      okType: "danger",
-      onOk: async () => {
-        try {
-          setIsDisposing(true);
-          await SurgicalCaseService.bulkDisposeSpecimens(
-            storedSelectedRowKeys as number[]
-          );
-          message.success(`Disposed ${storedSelectedRowKeys.length} specimen(s) successfully.`);
-          setStoredSelectedRowKeys([]);
-          fetchStoredCases(storedPage, storedSearch);
-        } catch (error) {
-          message.error("Failed to dispose specimens.");
-        } finally {
-          setIsDisposing(false);
-        }
-      },
-    });
+  const handleCreateDisposalBatch = () => {
+    if (storedSelectedRowKeys.length === 0) {
+      return message.warning("กรุณาเลือกอย่างน้อย 1 รายการ");
+    }
+    setCreateBatchOpen(true);
+  };
+
+  const handleBatchCreated = () => {
+    setCreateBatchOpen(false);
+    setStoredSelectedRowKeys([]);
+    fetchStoredCases(storedPage, storedSearch);
+    refreshOpenBatchCount();
+  };
+
+  // ใบถูกยืนยัน/ยกเลิก → ทั้งชั้นวางและรายการที่ทำลายแล้วเปลี่ยนไปพร้อมกัน
+  const handleBatchChanged = () => {
+    refreshOpenBatchCount();
+    fetchStoredCases(storedPage, storedSearch);
+    fetchDisposedCases(disposedPage, disposedSearch);
   };
 
   // ==== Columns ====
@@ -232,7 +248,7 @@ const SpecimenStorage: React.FC = () => {
       title: "Patient Name",
       key: "patient",
       render: (_: unknown, record: SurgicalCase) => (
-        <span>{record.patient ? `${record.patient.name} ${record.patient.ln ?? ""}`.trim() : "-"}</span>
+        <span>{formatPatientName(record.patient)}</span>
       ),
     },
     {
@@ -299,7 +315,7 @@ const SpecimenStorage: React.FC = () => {
       title: "Patient Name",
       key: "patient",
       render: (_: unknown, record: SurgicalCase) => (
-        <span>{record.patient ? `${record.patient.name} ${record.patient.ln ?? ""}`.trim() : "-"}</span>
+        <span>{formatPatientName(record.patient)}</span>
       ),
     },
     {
@@ -383,7 +399,7 @@ const SpecimenStorage: React.FC = () => {
       title: "Patient Name",
       key: "patient",
       render: (_: unknown, record: SurgicalCase) => (
-        <span>{record.patient ? `${record.patient.name} ${record.patient.ln ?? ""}`.trim() : "-"}</span>
+        <span>{formatPatientName(record.patient)}</span>
       ),
     },
     {
@@ -529,13 +545,11 @@ const SpecimenStorage: React.FC = () => {
                     <Space>
                       <Button
                         type="primary"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={handleDisposeItems}
-                        loading={isDisposing}
+                        icon={<FileProtectOutlined />}
+                        onClick={handleCreateDisposalBatch}
                         disabled={storedSelectedRowKeys.length === 0}
                       >
-                        Dispose ({storedSelectedRowKeys.length})
+                        สร้างใบตรวจสอบก่อนทำลาย ({storedSelectedRowKeys.length})
                       </Button>
                       <Button
                         icon={<ReloadOutlined />}
@@ -600,8 +614,30 @@ const SpecimenStorage: React.FC = () => {
                 </div>
               ),
             },
+            {
+              key: "4",
+              label: (
+                <span>
+                  <FileProtectOutlined style={{ marginRight: 6 }} />
+                  รอบการทำลาย
+                  <Badge
+                    count={openBatchCount}
+                    style={{ marginLeft: 8 }}
+                    color="orange"
+                  />
+                </span>
+              ),
+              children: <DisposalBatchTab onChanged={handleBatchChanged} />,
+            },
           ]}
         />
+
+      <CreateDisposalBatchModal
+        open={createBatchOpen}
+        cases={selectedStoredCases}
+        onCancel={() => setCreateBatchOpen(false)}
+        onCreated={handleBatchCreated}
+      />
     </PageContainer>
   );
 };

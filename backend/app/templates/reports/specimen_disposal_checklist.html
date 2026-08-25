@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ</title>
+    <style>
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Regular.ttf");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Sarabun";
+        src: url("{{ font_path | safe }}/Sarabun-Bold.ttf");
+        font-weight: 700;
+      }
+      @page {
+        size: A4;
+        margin: 15mm 14mm 18mm 14mm;
+        @bottom-left {
+          content: "{{ batch_no }} · Pathology LIS";
+          font-family: "Sarabun", sans-serif;
+          font-size: 8pt;
+          color: #666;
+        }
+        @bottom-right {
+          content: "หน้า " counter(page) " / " counter(pages);
+          font-family: "Sarabun", sans-serif;
+          font-size: 8pt;
+          color: #666;
+        }
+      }
+      body {
+        font-family: "Sarabun", sans-serif;
+        font-size: 10pt;
+        color: #000;
+        margin: 0;
+        padding: 0;
+        line-height: 1.5;
+      }
+
+      .header {
+        text-align: center;
+        border-bottom: 2px solid #000;
+        padding-bottom: 6px;
+      }
+      .header .lab-name {
+        font-size: 10pt;
+      }
+      .header .lab-address {
+        font-size: 8.5pt;
+        color: #555;
+      }
+      .header .form-title {
+        font-size: 14pt;
+        font-weight: 700;
+        margin-top: 3px;
+      }
+      .header .form-title-en {
+        font-size: 9pt;
+        color: #555;
+      }
+
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 9.5pt;
+      }
+      .meta .right {
+        text-align: right;
+      }
+      .fill {
+        border-bottom: 1px solid #000;
+        display: inline-block;
+        min-width: 40px;
+        text-align: center;
+        padding: 0 4px;
+      }
+
+      .group-head {
+        margin-top: 10px;
+        padding: 3px 8px;
+        background-color: #eeeeee;
+        border: 1px solid #999;
+        border-bottom: none;
+        font-weight: 700;
+        font-size: 10pt;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9pt;
+      }
+      thead {
+        display: table-header-group;
+      }
+      tr {
+        page-break-inside: avoid;
+      }
+      th,
+      td {
+        border: 1px solid #999;
+        padding: 4px 5px;
+      }
+      th {
+        background-color: #f2f2f2;
+        text-align: center;
+        font-weight: 700;
+      }
+      .c {
+        text-align: center;
+      }
+      .tick {
+        font-size: 12pt;
+        color: #555;
+      }
+
+      .summary {
+        margin-top: 14px;
+        border: 1px solid #000;
+        padding: 6px 10px;
+        font-size: 9.5pt;
+      }
+
+      .sig-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 34px;
+        gap: 16px;
+        page-break-inside: avoid;
+      }
+      .sig-box {
+        flex: 1;
+        text-align: center;
+        font-size: 9pt;
+      }
+      .sig-line {
+        border-bottom: 1px solid #000;
+        margin: 0 12px;
+        height: 34px;
+      }
+      .sig-name {
+        margin-top: 5px;
+      }
+      .sig-role {
+        font-weight: 700;
+      }
+      .sig-date {
+        color: #555;
+        font-size: 8.5pt;
+      }
+
+      .notice {
+        margin-top: 14px;
+        font-size: 8.5pt;
+        color: #444;
+        border-top: 1px dashed #999;
+        padding-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══ Header ═══ -->
+    <div class="header">
+      <div class="lab-name">{{ lab_name_th | safe }}</div>
+      {% if lab_address %}
+      <div class="lab-address">{{ lab_address | safe }}</div>
+      {% endif %}
+      <div class="form-title">ใบตรวจสอบและทำลายชิ้นเนื้อคงเหลือ</div>
+      <div class="form-title-en">Specimen Disposal Checklist &amp; Authorization</div>
+    </div>
+
+    <!-- ═══ Meta ═══ -->
+    <div class="meta">
+      <div>
+        <div>
+          เกณฑ์: รายงานผลแล้วเกิน
+          <span class="fill">{{ retention_days if retention_days is not none else '' }}</span>
+          วัน
+        </div>
+        <div>
+          จำนวนรวม <b>{{ total_items }}</b> รายการ / <b>{{ total_containers }}</b> กล่อง
+        </div>
+      </div>
+      <div class="right">
+        <div>เลขที่ใบ: <b>{{ batch_no }}</b></div>
+        <div>วันที่พิมพ์: {{ printed_on }} น.</div>
+        <div>ผู้พิมพ์: {{ printed_by_name }}</div>
+      </div>
+    </div>
+
+    <!-- ═══ รายการแยกตามกล่อง ═══ -->
+    {% for g in groups %}
+    <div class="group-head">กล่อง {{ g.container }} &nbsp;·&nbsp; {{ g.count }} รายการ</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 22px">✓</th>
+          <th style="width: 26px">ที่</th>
+          <th style="width: 80px">Accession No.</th>
+          <th style="width: 62px">HN</th>
+          <th>ชื่อ-สกุลผู้ป่วย</th>
+          <th style="width: 62px">วันรายงาน</th>
+          <th style="width: 38px">อายุ<br />(วัน)</th>
+          <th style="width: 78px">หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in g.rows %}
+        <tr>
+          <td class="c tick">☐</td>
+          <td class="c">{{ loop.index }}</td>
+          <td class="c">{{ row.accession_no }}</td>
+          <td class="c">{{ row.hn }}</td>
+          <td>{{ row.patient_name }}</td>
+          <td class="c">{{ row.report_date }}</td>
+          <td class="c">{{ row.age_days }}</td>
+          <td></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="group-head">ไม่มีรายการในใบนี้</div>
+    {% endfor %}
+
+    <!-- ═══ สรุปผลการตรวจสอบหน้างาน ═══ -->
+    <div class="summary">
+      <div>
+        <b>สรุปผลการตรวจสอบหน้างาน</b> &nbsp; พบและทำลาย <span class="fill"></span> รายการ
+        &nbsp;·&nbsp; ไม่พบ/ไม่ทำลาย <span class="fill"></span> รายการ
+      </div>
+      <div style="margin-top: 4px">
+        วิธีทำลาย <span class="fill" style="min-width: 380px"></span>
+      </div>
+    </div>
+
+    <!-- ═══ Signatures ═══ -->
+    <div class="sig-row">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          ({{ disposer_name if disposer_name else '............................................' }})
+        </div>
+        <div class="sig-role">ผู้ทิ้ง</div>
+        <div class="sig-date">วันที่ ......../......../........</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          ({{ verifier_name if verifier_name else '............................................' }})
+        </div>
+        <div class="sig-role">ผู้ตรวจสอบ</div>
+        <div class="sig-date">วันที่ ......../......../........</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-name">
+          ({{ approver_name if approver_name else '............................................' }})
+        </div>
+        <div class="sig-role">ผู้อนุมัติ</div>
+        <div class="sig-date">วันที่ ......../......../........</div>
+      </div>
+    </div>
+
+    <div class="notice">
+      ตรวจสอบชิ้นเนื้อทีละรายการตามกล่อง ติ๊ก ✓ เมื่อพบและนำออกทำลายแล้ว
+      รายการที่ไม่พบหรือยังไม่ทำลายให้ระบุเหตุผลในช่องหมายเหตุ
+      แล้วนำใบนี้กลับมาบันทึกยืนยันในระบบ
+    </div>
+  </body>
+</html>

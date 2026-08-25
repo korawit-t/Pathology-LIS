@@ -650,7 +650,8 @@ def get_stored_cases(
     db: Session,
     skip: int = 0,
     limit: int = 100,
-    search: str = None
+    search: str = None,
+    exclude_in_open_batch: bool = False,
 ):
     query = (
         db.query(SurgicalCase)
@@ -665,17 +666,25 @@ def get_stored_cases(
             SurgicalCase.discard_status == False
         )
     )
-    
+
+    if exclude_in_open_batch:
+        # ซ่อนเคสที่อยู่ในใบตรวจสอบซึ่งพิมพ์ไปแล้วแต่ยังไม่ปิด กันไม่ให้ถูกใส่ซ้ำสองใบ
+        from app.crud.specimen_disposal_batch import open_batch_case_ids_subquery
+
+        query = query.filter(~SurgicalCase.id.in_(open_batch_case_ids_subquery()))
+
     if search:
-        query = query.filter(
+        # join Patient ก่อน ไม่งั้นเงื่อนไข Patient.name กลายเป็น cross join เงียบ ๆ
+        query = query.join(Patient, SurgicalCase.patient_id == Patient.id).filter(
             or_(
                 SurgicalCase.accession_no.ilike(f"%{search}%"),
                 SurgicalCase.hn.ilike(f"%{search}%"),
                 SurgicalCase.specimen_storage_container.ilike(f"%{search}%"),
-                Patient.name.ilike(f"%{search}%")
+                Patient.name.ilike(f"%{search}%"),
+                Patient.ln.ilike(f"%{search}%"),
             )
         )
-        
+
     total = query.count()
     items = query.order_by(SurgicalCase.id.desc()).offset(skip).limit(limit).all()
     
@@ -701,12 +710,14 @@ def get_disposed_cases(
     )
     
     if search:
-        query = query.filter(
+        # join Patient ก่อน ไม่งั้นเงื่อนไข Patient.name กลายเป็น cross join เงียบ ๆ
+        query = query.join(Patient, SurgicalCase.patient_id == Patient.id).filter(
             or_(
                 SurgicalCase.accession_no.ilike(f"%{search}%"),
                 SurgicalCase.hn.ilike(f"%{search}%"),
                 SurgicalCase.specimen_storage_container.ilike(f"%{search}%"),
-                Patient.name.ilike(f"%{search}%")
+                Patient.name.ilike(f"%{search}%"),
+                Patient.ln.ilike(f"%{search}%"),
             )
         )
         
@@ -725,26 +736,6 @@ def bulk_update_storage_status(db: Session, case_ids: list[int], container_numbe
         c.specimen_storage_container = container_number
         c.specimen_storage_at = now
         c.specimen_storage_by_id = user_id
-        updated_cases.append(c)
-        
-    try:
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise e
-        
-    return updated_cases
-
-def bulk_dispose_storage(db: Session, case_ids: list[int], user_id: int):
-    cases = db.query(SurgicalCase).filter(SurgicalCase.id.in_(case_ids)).all()
-    updated_cases = []
-    
-    now = local_now()
-    for c in cases:
-        c.specimen_storage_status = "Discarded"
-        c.discard_status = True
-        c.discard_at = now
-        c.discard_by_id = user_id
         updated_cases.append(c)
         
     try:

@@ -208,10 +208,6 @@ class SpecimenStorageBulkUpdate(BaseModel):
     case_ids: List[int]
     container_number: str
 
-class SpecimenDisposeBulkUpdate(BaseModel):
-    case_ids: List[int]
-
-# --- Cost Summary ---
 class CostItem(BaseModel):
     test_id: int
     test_name: str

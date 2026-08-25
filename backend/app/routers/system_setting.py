@@ -113,6 +113,7 @@ EXCLUDED_TEMPLATES = {
     "barcode_label_template.html",
     "hospital_billing_summary.html",
     "slide_block_release_form.html",
+    "specimen_disposal_checklist.html",
 }
 
 

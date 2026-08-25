@@ -74,3 +74,12 @@ CAN_VIEW_HIS_EXPORT_LOG = RoleChecker(["admin"])
 
 # 3. WSI Viewer
 CAN_VIEW_WSI = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist", "histo"])
+
+# --- กลุ่มสิทธิ์สำหรับการจัดเก็บและทำลายชิ้นเนื้อ (Specimen Storage) ---
+# ตรงกับ pagePermissions["specimen-storage"] ฝั่ง frontend — คนที่ยกกล่องจริง
+# คือ gross/histo ส่วน lab_manager/admin ดูแลภาพรวม
+CAN_MANAGE_SPECIMEN_STORAGE = RoleChecker(["admin", "lab_manager", "gross", "histo"])
+
+# การยืนยันว่าทำลายไปแล้ว (และการยกเลิกใบ) เป็นการปิดรายการถาวร จึงแยกกว้างกว่า
+# การหยิบของ: ต้องเป็นระดับที่รับผิดชอบได้ ไม่ใช่ใครก็ได้ที่เข้าห้องเก็บ
+CAN_APPROVE_SPECIMEN_DISPOSAL = RoleChecker(["admin", "lab_manager", "senior_pathologist"])
