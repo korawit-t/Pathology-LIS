@@ -71,8 +71,10 @@ describe("OutLabConsultListPage — registration details", () => {
       </ThemeProvider>,
     );
 
-    const link = await screen.findByRole("button", { name: "S26-00012" });
-    fireEvent.click(link);
+    // findByText, not findByRole({name}): resolving accessible names across
+    // the whole page costs seconds in jsdom and the click bubbles from the
+    // link's own text node to the button either way.
+    fireEvent.click(await screen.findByText("S26-00012"));
 
     await waitFor(() =>
       expect(mockGetRegistrationInfo).toHaveBeenCalledWith("surgical", 7),
@@ -89,7 +91,7 @@ describe("OutLabConsultListPage — registration details", () => {
       </ThemeProvider>,
     );
 
-    await screen.findByRole("button", { name: "S26-00012" });
+    await screen.findByText("S26-00012");
     expect(mockGetRegistrationInfo).not.toHaveBeenCalled();
   });
 });

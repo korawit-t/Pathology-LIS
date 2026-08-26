@@ -109,7 +109,10 @@ describe("OutlabRegistrationModal", () => {
     render(<OutlabRegistrationModal open caseType="surgical" caseId={7} onClose={vi.fn()} />);
     await screen.findByText("1234567890123");
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy 1234567890123" }));
+    // getByLabelText, not getByRole({name}): computing accessible names for
+    // every button in the open modal takes seconds here (jsdom re-resolving
+    // pseudo-element styles per button) and blew the CI test timeout.
+    fireEvent.click(screen.getByLabelText("Copy 1234567890123"));
 
     expect(writeText).toHaveBeenCalledWith("1234567890123");
   });

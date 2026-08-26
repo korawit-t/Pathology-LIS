@@ -110,7 +110,11 @@ class TestRegistrationInfo:
             make_signable_case,
         )
 
-        title = Title(title="นาย")
+        # titles.title is globally unique and the test DB is shared across the
+        # whole run (rows committed here outlive this test), so a fixed "นาย"
+        # would collide with test_patient_name.py's own Title row.
+        title_text = f"นาย{uuid.uuid4().hex[:8]}"
+        title = Title(title=title_text)
         db.add(title)
         db.commit()
 
@@ -139,10 +143,10 @@ class TestRegistrationInfo:
 
         assert r.status_code == 200
         body = r.json()
-        assert body["patient_title"] == "นาย"
+        assert body["patient_title"] == title_text
         assert body["patient_first_name"] == "สมชาย"
         assert body["patient_last_name"] == "ใจดี"
-        assert body["patient_full_name"] == "นาย สมชาย ใจดี"
+        assert body["patient_full_name"] == f"{title_text} สมชาย ใจดี"
         assert body["cid"] == patient.cid
         assert body["hn"] == "HN-9001"
         assert body["clinician_name"] == "นพ. ผู้ส่งตรวจ"
