@@ -38,29 +38,13 @@ import CytoHistoCorrelationService, {
 } from "../../services/cytoHistoCorrelationService";
 import SurgicalCaseCorrelationService from "../../services/surgicalCaseCorrelationService";
 import logger from "../../utils/logger";
+import { copyText } from "../../utils/clipboard";
 import MarkCorrelationModal, { MarkSaveValues } from "./MarkCorrelationModal";
 import PatientHistorySection from "./PatientHistorySection";
 import { ActiveCaseType, MarkTarget } from "./types";
 import type { GyneCytoHistoryItem, NongyneCytoHistoryItem } from "../../services/patientService";
 
 const { Text } = Typography;
-
-const copyText = (text: string) => {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text);
-    return;
-  }
-  // Fallback for HTTP (non-secure context)
-  const el = document.createElement("textarea");
-  el.value = text;
-  el.style.position = "fixed";
-  el.style.opacity = "0";
-  document.body.appendChild(el);
-  el.focus();
-  el.select();
-  document.execCommand("copy");
-  document.body.removeChild(el);
-};
 
 interface PatientInfoCardProps {
   activeCase: SurgicalCase | null;
@@ -357,8 +341,8 @@ const PatientInfoCard: React.FC<PatientInfoCardProps> = ({
                   style={{ color: "#bfbfbf", padding: "0 2px" }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    copyText(activeCase.hn);
-                    message.success("Copied HN: " + activeCase.hn);
+                    if (copyText(activeCase.hn)) message.success("Copied HN: " + activeCase.hn);
+                    else message.error("Copy failed — select the text and copy manually");
                   }}
                 />
               </Tooltip>
@@ -377,8 +361,8 @@ const PatientInfoCard: React.FC<PatientInfoCardProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     const fullName = [p.title?.title, p.name, p.ln].filter(Boolean).join(" ");
-                    copyText(fullName);
-                    message.success("Copied: " + fullName);
+                    if (copyText(fullName)) message.success("Copied: " + fullName);
+                    else message.error("Copy failed — select the text and copy manually");
                   }}
                 />
               </Tooltip>

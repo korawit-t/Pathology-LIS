@@ -27,6 +27,7 @@ import logger from "../../../utils/logger";
 import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPageSelector";
 import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
 import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
+import OutlabRegistrationModal from "./OutlabRegistrationModal";
 
 const { Text, Title } = Typography;
 
@@ -43,6 +44,11 @@ interface ConsultCase {
 
 interface ExternalLab { id: number; name: string }
 
+/** Opens the "copy this into the destination lab's registration form" modal
+ *  for one case. Both the send queue and the case tracker offer it, so the
+ *  modal itself lives on the page and the tabs just ask for it. */
+type OpenRegistration = (caseType: string, caseId: number, accessionNo?: string) => void;
+
 const TYPE_COLOR: Record<string, string> = {
   surgical: "blue",
   gyne: "green",
@@ -51,7 +57,10 @@ const TYPE_COLOR: Record<string, string> = {
 
 // ─── Tab 1: Send to Consult ───────────────────────────────────────────────────
 
-const SendTab: React.FC<{ onSent: () => void }> = ({ onSent }) => {
+const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistration }> = ({
+  onSent,
+  onOpenRegistration,
+}) => {
   const { user } = useAuth();
   const [caseType, setCaseType] = useState<"surgical" | "gyne" | "nongyne">("surgical");
   const [consultStatus, setConsultStatus] = useState("pending");
@@ -210,7 +219,17 @@ const SendTab: React.FC<{ onSent: () => void }> = ({ onSent }) => {
       title: "Accession No.",
       dataIndex: "accession_no",
       width: 150,
-      render: (v) => <Text strong>{v || "—"}</Text>,
+      render: (v, r) => (
+        <Tooltip title="View details to copy into the outlab registration form">
+          <Button
+            type="link"
+            style={{ padding: 0, height: "auto", fontWeight: 600 }}
+            onClick={() => onOpenRegistration(r.case_type, r.id, r.accession_no)}
+          >
+            {v || "—"}
+          </Button>
+        </Tooltip>
+      ),
     },
     {
       title: "HN",
@@ -733,7 +752,10 @@ const BlockTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger
 
 // ─── Tab: Case Tracking ───────────────────────────────────────────────────────
 
-const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger }) => {
+const CaseTrackingTab: React.FC<{
+  refreshTrigger: number;
+  onOpenRegistration: OpenRegistration;
+}> = ({ refreshTrigger, onOpenRegistration }) => {
   const [runs, setRuns] = useState<OutlabConsultRunResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [receivingRunIds, setReceivingRunIds] = useState<Set<number>>(new Set());
@@ -889,7 +911,17 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
       title: "Accession No.",
       dataIndex: "accession_no",
       width: 140,
-      render: (v) => <Text strong style={{ color: "#1677ff" }}>{v || "—"}</Text>,
+      render: (v, r) => (
+        <Tooltip title="View details to copy into the outlab registration form">
+          <Button
+            type="link"
+            style={{ padding: 0, height: "auto", fontWeight: 600 }}
+            onClick={() => onOpenRegistration(r.case_type, r.case_id, r.accession_no)}
+          >
+            {v || "—"}
+          </Button>
+        </Tooltip>
+      ),
     },
     {
       title: "Patient",
@@ -1188,6 +1220,14 @@ const CaseTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger 
 const OutLabConsultListPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState("send");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [regTarget, setRegTarget] = useState<{
+    caseType: string;
+    caseId: number;
+    accessionNo?: string;
+  } | null>(null);
+
+  const handleOpenRegistration: OpenRegistration = (caseType, caseId, accessionNo) =>
+    setRegTarget({ caseType, caseId, accessionNo });
 
   const handleSent = () => {
     setRefreshTrigger((n) => n + 1);
@@ -1198,12 +1238,14 @@ const OutLabConsultListPage: React.FC = () => {
     {
       key: "send",
       label: <span><SendOutlined /> Send to Consult</span>,
-      children: <SendTab onSent={handleSent} />,
+      children: <SendTab onSent={handleSent} onOpenRegistration={handleOpenRegistration} />,
     },
     {
       key: "cases",
       label: <span><UnorderedListOutlined /> Case Tracking</span>,
-      children: <CaseTrackingTab refreshTrigger={refreshTrigger} />,
+      children: (
+        <CaseTrackingTab refreshTrigger={refreshTrigger} onOpenRegistration={handleOpenRegistration} />
+      ),
     },
     {
       key: "tracking",
@@ -1234,6 +1276,14 @@ const OutLabConsultListPage: React.FC = () => {
         items={tabItems}
         size="large"
         tabBarStyle={{ marginBottom: 16, borderBottom: "1px solid #f0f0f0" }}
+      />
+
+      <OutlabRegistrationModal
+        open={!!regTarget}
+        caseType={regTarget?.caseType}
+        caseId={regTarget?.caseId}
+        accessionNo={regTarget?.accessionNo}
+        onClose={() => setRegTarget(null)}
       />
 
       <style>{`

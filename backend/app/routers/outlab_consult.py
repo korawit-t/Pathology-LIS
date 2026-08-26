@@ -5,7 +5,13 @@ from typing import List
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.schemas.outlab_consult import OutlabConsultRunCreate, OutlabConsultRunResponse, OutlabConsultRunDetailResponse, OutlabConsultRunUpdateTracking
+from app.schemas.outlab_consult import (
+    OutlabConsultRunCreate,
+    OutlabConsultRunResponse,
+    OutlabConsultRunDetailResponse,
+    OutlabConsultRunUpdateTracking,
+    OutlabRegistrationInfoResponse,
+)
 from app.crud import outlab_consult as crud
 
 router = APIRouter(prefix="/outlab-consult-runs", tags=["Outlab Consult Runs"])
@@ -63,3 +69,18 @@ def delete_run(
 ):
     crud.delete_consult_run(db, run_id=run_id)
     return None
+
+
+@router.get("/registration-info/{case_type}/{case_id}", response_model=OutlabRegistrationInfoResponse)
+def get_registration_info(
+    case_type: str,
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fields a staffer has to re-key when registering the case at the
+    destination lab (patient identity, referring clinician, collection date,
+    clinical diagnosis, blocks/slides/stains) — gathered from whichever of the
+    three case types it is. Auth matches the rest of this router: any
+    authenticated user, no role gate."""
+    return crud.get_outlab_registration_info(db, case_type=case_type, case_id=case_id)

@@ -31,6 +31,7 @@ import {
 import DiagnosticTemplateService from "../../../services/diagnosticTemplateService";
 import { DiagnosticTemplate } from "../../../types/diagnosticTemplate";
 import styles from "./DiagnosticTemplateSystem.module.css";
+import { copyText } from "../../../utils/clipboard";
 import SimpleTiptapEditor, {
   TiptapEditorRef,
 } from "../../../components/Editors/SimpleTiptapEditor";
@@ -309,10 +310,9 @@ const DiagnosticTemplateSystem: FC<DiagnosticTemplateSystemProps> = ({
     };
   };
 
-  // เพิ่มฟังก์ชันสำหรับ Copy
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    message.success("Copied raw template to clipboard!");
+    if (copyText(text)) message.success("Copied raw template to clipboard!");
+    else message.error("Copy failed — select the text and copy manually");
   };
 
   const allCategories = [...new Set(templates.map((t) => t.category ?? "General"))].sort();

@@ -217,3 +217,181 @@ def delete_consult_run(db: Session, run_id: int):
     except Exception as e:
         db.rollback()
         raise e
+
+
+# ─── Registration info ────────────────────────────────────────────────────────
+
+def _slide_from_stain(stain, slide_label: str | None):
+    """Shape one stain order (surgical block stain or cyto case stain) into the
+    flat slide row the registration form needs."""
+    test = getattr(stain, "test", None)
+    return {
+        "id": stain.id,
+        "slide_label": slide_label,
+        "slide_no": stain.slide_no or 1,
+        "test_name": test.name if test else None,
+        "test_category": test.category if test else None,
+        "status": stain.status,
+        "is_recut": bool(getattr(stain, "is_recut", False)),
+    }
+
+
+def _patient_fields(patient) -> dict:
+    if not patient:
+        return {}
+    title = patient.title.title if patient.title else None
+    return {
+        "patient_title": title,
+        "patient_first_name": patient.name,
+        "patient_last_name": patient.ln,
+        # Same join the frontend uses everywhere — `name` alone is the first
+        # name only, so it's never shown without title and ln.
+        "patient_full_name": " ".join(
+            p for p in [title, patient.name, patient.ln] if p
+        )
+        or None,
+        "cid": patient.cid,
+        "gender": patient.gender,
+        "birth_date": patient.birth_date,
+        "age_display": patient.age_display,
+    }
+
+
+def get_outlab_registration_info(db: Session, case_type: str, case_id: int) -> dict:
+    """Everything a staffer has to re-key when registering a case at the
+    destination lab: patient identity, referring clinician, collection date,
+    clinical diagnosis, and the blocks/slides/stains actually being sent.
+
+    One shape for all three case types — surgical cases carry blocks (each
+    with its own slides), cytology cases carry case-level slides only."""
+    from sqlalchemy.orm import joinedload
+
+    if case_type == "surgical":
+        from app.models.surgical_case import SurgicalCase
+        from app.models.surgical_specimen import SurgicalSpecimen
+        from app.models.surgical_block import SurgicalBlock
+        from app.models.surgical_block_stain import SurgicalBlockStain
+
+        case = (
+            db.query(SurgicalCase)
+            .options(
+                joinedload(SurgicalCase.patient),
+                joinedload(SurgicalCase.hospital),
+                joinedload(SurgicalCase.department),
+            )
+            .filter(SurgicalCase.id == case_id)
+            .first()
+        )
+        if not case:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+        specimens = (
+            db.query(SurgicalSpecimen)
+            .options(
+                selectinload(SurgicalSpecimen.blocks)
+                .selectinload(SurgicalBlock.stains)
+                .joinedload(SurgicalBlockStain.test)
+            )
+            .filter(SurgicalSpecimen.case_id == case_id)
+            .order_by(SurgicalSpecimen.specimen_label)
+            .all()
+        )
+
+        blocks = []
+        slide_count = 0
+        for specimen in specimens:
+            for block in sorted(specimen.blocks, key=lambda b: b.block_no):
+                slides = [
+                    _slide_from_stain(s, block.block_code)
+                    for s in sorted(block.stains, key=lambda s: (s.slide_no or 1, s.id))
+                ]
+                slide_count += len(slides)
+                blocks.append(
+                    {
+                        "id": block.id,
+                        "block_code": block.block_code,
+                        "specimen_label": specimen.specimen_label,
+                        "specimen_name": specimen.specimen_name,
+                        "tissue_count": block.tissue_count,
+                        "status": block.status,
+                        "slides": slides,
+                    }
+                )
+
+        return {
+            "case_type": "surgical",
+            "case_id": case.id,
+            "accession_no": case.accession_no,
+            "hn": case.hn,
+            **_patient_fields(case.patient),
+            "clinician_name": case.clinician_name,
+            "collect_at": case.collect_at,
+            "clinical_diagnosis": case.clinical_diagnosis,
+            # SurgicalCase has no clinical_history column (cytology does).
+            "clinical_history": None,
+            "specimen_type": None,
+            "collection_site": None,
+            "hospital_name": case.hospital.name if case.hospital else None,
+            "department_name": case.department.name if case.department else None,
+            "consult_reason": case.consult_reason,
+            "blocks": blocks,
+            "slides": [],
+            "block_count": len(blocks),
+            "slide_count": slide_count,
+        }
+
+    if case_type in ("gyne", "nongyne"):
+        if case_type == "gyne":
+            from app.models.gyne_cyto_case import GyneCytologyCase as CaseModel
+            from app.models.gyne_cyto_stain import GyneCytologyStain as StainModel
+        else:
+            from app.models.nongyne_cyto_case import NongyneCytologyCase as CaseModel
+            from app.models.nongyne_cyto_stain import NongyneCytologyStain as StainModel
+
+        case = (
+            db.query(CaseModel)
+            .options(
+                joinedload(CaseModel.patient),
+                joinedload(CaseModel.hospital),
+                joinedload(CaseModel.department),
+            )
+            .filter(CaseModel.id == case_id)
+            .first()
+        )
+        if not case:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+        stains = (
+            db.query(StainModel)
+            .options(joinedload(StainModel.test))
+            .filter(StainModel.case_id == case_id)
+            .order_by(StainModel.slide_no, StainModel.id)
+            .all()
+        )
+        slides = [_slide_from_stain(s, case.accession_no) for s in stains]
+
+        return {
+            "case_type": case_type,
+            "case_id": case.id,
+            "accession_no": case.accession_no,
+            "hn": case.hn,
+            **_patient_fields(case.patient),
+            "clinician_name": case.clinician_name,
+            "collect_at": case.collect_at,
+            "clinical_diagnosis": case.clinical_diagnosis,
+            "clinical_history": case.clinical_history,
+            "specimen_type": case.specimen_type,
+            "collection_site": case.collection_site,
+            "hospital_name": case.hospital.name if case.hospital else None,
+            "department_name": case.department.name if case.department else None,
+            "consult_reason": case.consult_reason,
+            "blocks": [],
+            "slides": slides,
+            "block_count": 0,
+            "slide_count": len(slides),
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="case_type must be one of: surgical, gyne, nongyne",
+    )
