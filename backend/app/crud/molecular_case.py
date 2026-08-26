@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import UploadFile
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.molecular_case import MolecularCase
@@ -298,6 +298,29 @@ def get_molecular_cases(
         .all()
     )
     return [_to_response_dict(c) for c in cases]
+
+
+def count_molecular_cases(
+    db: Session,
+    status: str | None = None,
+    is_outlab: bool | None = None,
+) -> int:
+    """Row count only, for the dashboard tiles.
+
+    Deliberately its own query rather than ``len(get_molecular_cases(...))``:
+    that helper caps at ``limit`` and hydrates every row through
+    ``_to_response_dict``, so counting with it is both wrong past the cap and
+    needlessly expensive. Applies the same is_cancelled / status / is_outlab
+    filters so the count always agrees with the list it summarises.
+    """
+    query = db.query(func.count(MolecularCase.id)).filter(
+        MolecularCase.is_cancelled == False  # noqa: E712
+    )
+    if status:
+        query = query.filter(MolecularCase.status == status)
+    if is_outlab is not None:
+        query = query.filter(MolecularCase.is_outlab == is_outlab)
+    return query.scalar() or 0
 
 
 def get_molecular_case(db: Session, case_id: int) -> dict | None:
