@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ภาพรวมงานทั้งระบบ Pathology LIS — เปิดไฟล์นี้ในเบราว์เซอร์ได้ตรง ๆ
+
+  ฉบับที่แชร์ให้คนนอกทีมดู publish ไว้เป็น Artifact:
+    ภาพรวม      https://claude.ai/code/artifact/ebc03884-a31e-468a-b2d3-e66470232c28
+    รายละเอียด  https://claude.ai/code/artifact/b136bb57-b008-4d11-a86f-0a1aa2e7412b
+
+  แก้ไฟล์นี้แล้วอย่าลืม republish Artifact ตัวเดิมให้ตรงกัน (URL เดิม ไม่ต้องสร้างใหม่)
+  เนื้อหาอ้างอิงโค้ดจริง ไม่ใช่ผังที่ตั้งใจไว้ — เปลี่ยน workflow เมื่อไรต้องกลับมาแก้ที่นี่
+-->
+<title>เส้นทางเดินของเคส LIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
+<style>
+  /* ────────────────────────────────────────────────
+     โทเคนชุดเดียวกับเอกสาร Pathology LIS Case Flow
+     (hematoxylin/eosin) เพื่อให้สองหน้าอ่านเป็นชุดเดียวกัน
+     light = ค่าฐาน · dark ประกาศทับเฉพาะค่า
+     ──────────────────────────────────────────────── */
+  :root {
+    --ground:      #FAF9FC;
+    --surface:     #FFFFFF;
+    --surface-sub: #F3F1F7;
+    --ink:         #1F1B27;
+    --ink-mid:     #4A4356;
+    --ink-mute:    #6E6579;
+    --rule:        #E3DFEA;
+    --rule-soft:   #EDEAF2;
+
+    --hema:        #54408F;
+    --eosin:       #BE3A5C;
+    --cyan:        #1C6478;
+    --jade:        #2A6E52;
+    --amber:       #96610F;
+
+    --hema-wash:   #EFEBF9;
+    --eosin-wash:  #FCEBEF;
+    --cyan-wash:   #E6F1F4;
+    --jade-wash:   #E8F3EE;
+    --amber-wash:  #FAF0DF;
+
+    --shadow:      0 1px 2px rgba(31,27,39,.05), 0 8px 24px -12px rgba(31,27,39,.14);
+
+    --sans: "IBM Plex Sans Thai", "Noto Sans Thai", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #141119;
+      --surface:     #1C1926;
+      --surface-sub: #241F30;
+      --ink:         #EDEAF2;
+      --ink-mid:     #C3BCD0;
+      --ink-mute:    #948CA3;
+      --rule:        #322C40;
+      --rule-soft:   #272232;
+
+      --hema:        #A492E0;
+      --eosin:       #F08BA6;
+      --cyan:        #6FBDD2;
+      --jade:        #6FCBA4;
+      --amber:       #E0A94A;
+
+      --hema-wash:   #241E3B;
+      --eosin-wash:  #331C25;
+      --cyan-wash:   #122C34;
+      --jade-wash:   #142D24;
+      --amber-wash:  #2E2312;
+
+      --shadow:      0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #141119;
+    --surface:     #1C1926;
+    --surface-sub: #241F30;
+    --ink:         #EDEAF2;
+    --ink-mid:     #C3BCD0;
+    --ink-mute:    #948CA3;
+    --rule:        #322C40;
+    --rule-soft:   #272232;
+
+    --hema:        #A492E0;
+    --eosin:       #F08BA6;
+    --cyan:        #6FBDD2;
+    --jade:        #6FCBA4;
+    --amber:       #E0A94A;
+
+    --hema-wash:   #241E3B;
+    --eosin-wash:  #331C25;
+    --cyan-wash:   #122C34;
+    --jade-wash:   #142D24;
+    --amber-wash:  #2E2312;
+
+    --shadow:      0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--hema); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--eosin); outline-offset: 3px; border-radius: 2px; }
+
+  code {
+    font-family: var(--mono);
+    font-variant-ligatures: none;
+    font-size: .85em;
+    background: var(--surface-sub);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .06em .32em;
+    color: var(--ink-mid);
+    overflow-wrap: anywhere;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+
+  /* ───────────  shell  ─────────── */
+  .shell { max-width: 940px; margin: 0 auto; padding: 0 24px 90px; }
+
+  header.masthead { padding: 60px 0 34px; border-bottom: 1px solid var(--rule); }
+  header.masthead h1 {
+    font-size: clamp(29px, 4.6vw, 44px);
+    line-height: 1.14;
+    font-weight: 700;
+    letter-spacing: -.018em;
+    margin: 14px 0 0;
+    text-wrap: balance;
+  }
+  header.masthead .lede {
+    margin: 16px 0 0;
+    max-width: 58ch;
+    font-size: 17px;
+    color: var(--ink-mid);
+  }
+  .stamp {
+    display: inline-flex; align-items: baseline; gap: 8px;
+    max-width: 100%;
+    margin-top: 24px; padding: 7px 13px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-mute);
+    line-height: 1.5;
+  }
+  .stamp b { color: var(--ink-mid); font-weight: 500; }
+  .stamp .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--jade); flex: none; align-self: center; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 66px; padding-top: 46px; }
+  section { min-width: 0; }
+
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -.012em;
+    line-height: 1.3;
+    margin: 9px 0 0;
+    text-wrap: balance;
+  }
+  section > p { margin: 13px 0 0; max-width: 66ch; color: var(--ink-mid); }
+
+  /* ───────────  legend  ─────────── */
+  .legend {
+    margin-top: 20px;
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    padding: 13px 16px;
+    border: 1px dashed var(--rule);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--ink-mute);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .k-spine  { background: var(--hema); }
+  .k-branch { background: var(--eosin); }
+  .k-gate   { background: var(--amber); }
+  .k-side   { background: var(--cyan); }
+
+  /* ───────────  status value pill  ─────────── */
+  .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface-sub);
+    border: 1px solid var(--rule);
+    color: var(--ink-mid);
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .val.hema  { background: var(--hema-wash);  border-color: transparent; color: var(--hema); }
+  .val.jade  { background: var(--jade-wash);  border-color: transparent; color: var(--jade); }
+  .val.amber { background: var(--amber-wash); border-color: transparent; color: var(--amber); }
+  .val.eosin { background: var(--eosin-wash); border-color: transparent; color: var(--eosin); }
+
+  /* ───────────  the spine  ───────────
+     คอลัมน์ซ้ายคือราง เส้นตั้งวาดด้วย ::before ของ .rail
+     ไม่ใช้ SVG เพราะการ์ดสูงไม่เท่ากันตามเนื้อหา              */
+  .spine { margin-top: 26px; display: grid; gap: 0; }
+
+  .stop { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 16px; }
+  .stop .rail { position: relative; }
+  .stop .rail::before {
+    content: "";
+    position: absolute; left: 50%; top: 0; bottom: -1px;
+    width: 1px; margin-left: -.5px;
+    background: var(--rule);
+  }
+  .stop:first-child .rail::before { top: 15px; }
+  .stop:last-child  .rail::before { bottom: auto; height: 15px; }
+  .stop .pip {
+    position: relative;
+    display: grid; place-items: center;
+    width: 26px; height: 26px; margin: 3px auto 0;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--hema);
+    color: var(--hema);
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  }
+  .stop.done .pip { border-color: var(--jade); color: var(--jade); background: var(--jade-wash); }
+  /* หมุดว่าง = งานที่แทรกอยู่ในลำดับแต่ไม่ได้ขยับสถานะ จึงไม่ควรได้เลขขั้น */
+  .stop .pip.aux {
+    width: 13px; height: 13px; margin-top: 10px;
+    border-style: dashed; border-color: var(--ink-mute);
+    background: var(--ground);
+  }
+
+  .stop .body { padding-bottom: 14px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--hema);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    box-shadow: var(--shadow);
+  }
+  .stop.done .card { border-left-color: var(--jade); }
+
+  .card .t {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px;
+    font-size: 16px; font-weight: 600; letter-spacing: -.005em;
+  }
+  .card .t em {
+    font-style: normal; font-family: var(--mono);
+    font-size: 11.5px; font-weight: 500; color: var(--ink-mute);
+    letter-spacing: .02em;
+  }
+  .card .d { margin-top: 5px; font-size: 14px; color: var(--ink-mid); line-height: 1.6; }
+  .card .meta {
+    margin-top: 11px; padding-top: 10px;
+    border-top: 1px dashed var(--rule);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 7px 14px;
+    font-size: 12.5px; color: var(--ink-mute);
+  }
+  .card .meta .who { font-weight: 500; color: var(--ink-mid); }
+  .card .meta .arrow { font-family: var(--mono); }
+
+  /* แถบงานที่ไม่ขยับสถานะ — ขนานไปกับราง ไม่กินเลขขั้น */
+  .aside-band {
+    margin: 0 0 14px;
+    border: 1px dashed var(--rule);
+    border-radius: 8px;
+    background: var(--surface-sub);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    color: var(--ink-mid);
+  }
+  .aside-band .eyebrow { display: block; margin-bottom: 4px; }
+  .aside-band ul { margin: 7px 0 0; padding-left: 19px; }
+  .aside-band li { margin-top: 3px; }
+
+  /* ───────────  branches  ─────────── */
+  .branches { margin-top: 24px; display: grid; gap: 14px; }
+  .branch {
+    display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 14px;
+  }
+  .branch .hook { position: relative; }
+  .branch .hook::before {
+    content: "";
+    position: absolute; left: 8px; top: 0; bottom: 0;
+    border-left: 1px solid var(--eosin);
+    opacity: .45;
+  }
+  .branch .hook::after {
+    content: "";
+    position: absolute; left: 8px; top: 22px; width: 17px;
+    border-top: 1px solid var(--eosin);
+    opacity: .45;
+  }
+  .branch:last-child .hook::before { bottom: auto; height: 22px; }
+  .branch .card { border-left-color: var(--eosin); border-radius: 0 8px 8px 0; }
+  .branch .card .meta .back { color: var(--eosin); font-weight: 500; }
+
+  /* ───────────  gates  ─────────── */
+  .gates { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .gate {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--amber);
+    border-radius: 9px;
+    padding: 17px 19px;
+    box-shadow: var(--shadow);
+  }
+  .gate h3 { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
+  .gate p { margin: 9px 0 0; font-size: 13.5px; color: var(--ink-mid); line-height: 1.6; }
+  /* การ์ดทางหลัก — ไม่ใช่สวิตช์ แต่เป็นทางที่ใช้จริงเป็นปกติ */
+  .gate.primary { border-top-color: var(--jade); }
+  .gate .tagline {
+    display: inline-block; margin-left: 9px;
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--jade-wash); color: var(--jade);
+    vertical-align: middle;
+  }
+  .gate h4 {
+    margin: 14px 0 0; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  }
+  .gate ul { margin: 7px 0 0; padding-left: 19px; font-size: 13.5px; color: var(--ink-mid); }
+  .gate li { margin-top: 4px; }
+
+  .gate .flag {
+    display: block; margin-top: 13px; padding-top: 11px;
+    border-top: 1px dashed var(--rule);
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute);
+    overflow-wrap: anywhere;
+  }
+
+  /* ───────────  side systems  ─────────── */
+  .sides { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .side {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--cyan);
+    border-radius: 0 9px 9px 0;
+    padding: 17px 19px;
+    box-shadow: var(--shadow);
+  }
+  .side h3 { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
+  .side p  { margin: 8px 0 0; font-size: 13.5px; color: var(--ink-mid); line-height: 1.6; }
+  .side ul { margin: 10px 0 0; padding-left: 19px; font-size: 13.5px; color: var(--ink-mid); }
+  .side li { margin-top: 4px; }
+  .side .state {
+    display: inline-block; margin-top: 13px;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .state.on  { background: var(--jade-wash);  color: var(--jade); }
+  .state.off { background: var(--amber-wash); color: var(--amber); }
+
+  /* ───────────  next  ─────────── */
+  .next {
+    margin-top: 24px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--hema);
+    border-radius: 0 9px 9px 0;
+    padding: 19px 22px;
+    box-shadow: var(--shadow);
+  }
+  .next p { margin: 10px 0 0; font-size: 14.5px; color: var(--ink-mid); max-width: 62ch; }
+  .next ul { margin: 12px 0 0; padding-left: 19px; font-size: 14px; color: var(--ink-mid); }
+  .next li { margin-top: 5px; }
+
+  footer {
+    margin-top: 74px; padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-size: 13px; color: var(--ink-mute);
+  }
+  footer p { max-width: 68ch; margin: 8px 0 0; }
+
+  @media (max-width: 620px) {
+    .stop { grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; }
+    .branch { grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; }
+    .branch .hook::before { left: 5px; }
+    .branch .hook::after  { left: 5px; width: 12px; }
+    .card { padding: 13px 15px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <header class="masthead">
+    <span class="eyebrow">Pathology LIS · Overview</span>
+    <h1>งานทั้งระบบมีอะไรบ้าง และเรียงกันยังไง</h1>
+    <p class="lede">
+      หน้าเดียวจบ — เส้นทางหลักของเคสหนึ่งตั้งแต่รับตัวอย่างจนออกผล
+      ทางแยกที่แตกออกจากโต๊ะพยาธิแพทย์ ตอนจบว่าผลไปถึงมือคนสั่งตรวจทางไหน
+      และระบบที่เดินคู่ขนานไปกับทุกขั้น อ่านจบแล้วค่อยเจาะรายละเอียดทีละขั้นในเอกสารเต็ม
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>ตรงกับระบบ ณ <b>24 ส.ค. 2569</b> · commit <b>a5f6757</b></span>
+    </span>
+  </header>
+
+  <main>
+
+    <!-- ════════════ 1 · เส้นทางหลัก ════════════ -->
+    <section id="spine">
+      <span class="eyebrow">01 · เส้นทางหลัก</span>
+      <h2>แปดขั้นจากหน้าเคาน์เตอร์ถึงลายเซ็น</h2>
+
+      <p>
+        ทุกขั้นคือ “งานหนึ่งชิ้นที่มีคนกดบันทึกจบ” แล้วป้ายสถานะของเคสขยับตามให้เอง
+        ไม่ต้องไปกดเปลี่ยนสถานะแยก และป้ายจะขยับก็ต่อเมื่อ<strong>ครบทั้งเคส</strong>เท่านั้น —
+        ฝังบล็อกไป 3 จาก 5 บล็อก เคสยังไม่ขึ้น Embedded
+      </p>
+
+      <div class="legend" aria-label="คำอธิบายสี">
+        <span><i class="k-spine"></i>เส้นทางหลัก</span>
+        <span><i class="k-branch"></i>ทางแยกที่วนกลับ</span>
+        <span><i class="k-gate"></i>ขั้นที่เปิด/ปิดได้ด้วยสวิตช์</span>
+        <span><i class="k-side"></i>ระบบคู่ขนาน</span>
+        <span><span class="val">ค่าสถานะจริงใน DB</span></span>
+      </div>
+
+      <div class="spine">
+
+        <div class="stop">
+          <div class="rail"><div class="pip">1</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">ลงทะเบียนรับตัวอย่าง <em>Front Desk › Accession</em></div>
+              <div class="d">
+                รับของ ออกเลข accession แยกชุดตามชนิดเคส (<code>S</code> ผ่าตัด ·
+                <code>C</code> Gyne · <code>N</code> Non-Gyne) ดึงข้อมูลผู้ป่วยจาก HIS ได้ถ้าต่อไว้
+                แนบใบ request เลือกรายการตรวจที่สั่ง แล้วพิมพ์สติกเกอร์ติดกระปุก
+              </div>
+              <div class="meta">
+                <span class="who">Registration Staff</span>
+                <span class="arrow">→</span>
+                <span class="val hema">registered</span>
+                <span>ติ๊ก Extended Fixation ได้ตั้งแต่ตรงนี้ → <span class="val">formalin_fixing</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">2</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">Grossing <em>Surgical › Grossing</em></div>
+              <div class="d">
+                บรรยายลักษณะชิ้นเนื้อ ถ่ายรูป gross ตัดใส่ตลับ แล้วกำหนดบล็อก
+                มีเทมเพลตคำบรรยายให้เลือก และมี AI ช่วยร่างได้ถ้าเปิดไว้
+              </div>
+              <div class="meta">
+                <span class="who">Gross Staff</span>
+                <span class="arrow">→</span>
+                <span>ยังไม่ครบ <span class="val">in progress</span></span>
+                <span>ครบทุกชิ้น <span class="val hema">grossed</span></span>
+              </div>
+            </div>
+            <div class="aside-band" style="margin-top:12px;">
+              <span class="eyebrow">ทางอ้อมที่ไม่เปลี่ยนป้าย</span>
+              ชิ้นที่ต้องละลายแคลเซียมหรือแช่ฟอร์มาลินต่อ จะไปนอนรออยู่ที่
+              <b>Surgical › Decal &amp; Extended Fix</b> ก่อน แล้วค่อยกลับเข้าเส้นทางหลัก —
+              ระหว่างนั้นสถานะเคสไม่ขยับ ต้องดูที่คิว Decal เอง
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">3</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">Tissue Processing <em>Surgical › Tissue Processing</em></div>
+              <div class="d">
+                จัดตลับเป็นรอบเข้าเครื่อง processor เลือกโปรแกรม บันทึกเวลาเข้า-ออก
+                แล้วมารับตลับคืนที่ <b>Histology › Process Out</b>
+              </div>
+              <div class="meta">
+                <span class="who">Histotechnologist</span>
+                <span class="arrow">→</span>
+                <span class="val hema">processed</span>
+                <span>ปิดทั้งขั้นได้ด้วย <code>enable_tissue_processing_workflow</code></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">4</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">Embedding <em>Histology › Embedding</em></div>
+              <div class="d">ฝังชิ้นเนื้อในพาราฟินเป็นบล็อก จัดเป็นรอบงาน ยิงบาร์โค้ดตลับเข้ารอบได้ทีละใบ</div>
+              <div class="meta">
+                <span class="who">Histotechnologist</span>
+                <span class="arrow">→</span>
+                <span class="val hema">embedded</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">5</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">Sectioning <em>Histology › Sectioning</em></div>
+              <div class="d">เหลาบล็อกแล้วตัดบางลงสไลด์ บันทึกเป็นรอบตัด ระบุจำนวนสไลด์ต่อบล็อก</div>
+              <div class="meta">
+                <span class="who">Histotechnologist</span>
+                <span class="arrow">→</span>
+                <span class="val hema">sectioned</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">6</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">ย้อม H&amp;E <em>Histology › H&amp;E Staining</em></div>
+              <div class="d">
+                ย้อมสีมาตรฐาน จัดเป็นรอบย้อม และมีหน้า <b>H&amp;E Control Slide</b> แยกไว้คุมคุณภาพน้ำยาแต่ละรอบ
+                — ฝั่งเซลล์วิทยาใช้หน้าย้อมของตัวเอง (Gyne › Staining, Non-Gyne › Staining Batch)
+              </div>
+              <div class="meta">
+                <span class="who">Histotechnologist</span>
+                <span class="arrow">→</span>
+                <span class="val hema">stained</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip aux" aria-hidden="true"></div></div>
+          <div class="body">
+            <div class="aside-band" style="margin-bottom:0;">
+              <span class="eyebrow">พิมพ์สติกเกอร์ — ไม่ใช่ขั้นของตัวเอง</span>
+              สติกเกอร์<strong>ไม่ขยับสถานะเคส</strong> และพิมพ์จริงแค่สองจังหวะ ที่เหลือคือการยิงบาร์โค้ดที่ติดมาแล้ว:
+              <ul>
+                <li><b>พิมพ์</b> ที่หน้าเคส — สติกเกอร์เคส/ชิ้นเนื้อ มีครบทั้งสี่ชนิดเคส (ศัลย์ · Gyne · Non-Gyne · Molecular)</li>
+                <li><b>พิมพ์</b> ที่หน้าย้อม — สติกเกอร์สไลด์ แยกชุดกันระหว่าง H&amp;E · Gyne · Non-Gyne และมีของ H&amp;E Control Slide ต่างหาก</li>
+                <li><b>ยิง</b> ที่ processing · embedding · คลังบล็อก — สแกนบาร์โค้ดตลับ/บล็อกเข้ารอบงาน ไม่ได้พิมพ์ใหม่</li>
+              </ul>
+              <p style="margin:9px 0 0;">หน้าตาสติกเกอร์ (ขนาดฟอนต์ ระยะขอบ ตำแหน่ง QR) ตั้งได้ที่ System Settings › Sticker</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop">
+          <div class="rail"><div class="pip">7</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">จ่ายสไลด์ <em>Histology › Slide Dispatch</em></div>
+              <div class="d">
+                รวมสไลด์เป็นชุด ระบุว่าให้พยาธิแพทย์ท่านไหน — จุดนี้คือจุดที่เคสถูก “มอบหมาย”
+                ไม่ใช่แค่ย้ายของ ถ้าไม่จ่าย เคสจะไม่ขึ้นบน Worklist ของใครเลย
+              </div>
+              <div class="meta">
+                <span class="who">Histotechnologist</span>
+                <span class="arrow">→</span>
+                <span class="val hema">slide sent</span>
+                <span class="arrow">→</span>
+                <span class="val hema">pending diagnosis</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stop done">
+          <div class="rail"><div class="pip">8</div></div>
+          <div class="body">
+            <div class="card">
+              <div class="t">วินิจฉัยและออกผล <em>Diagnosis › My Worklist</em></div>
+              <div class="d">
+                จุดที่ทั้งสามสาย (Surgical / Gyne / Non-Gyne) มาบรรจบกัน เขียนผล เลือกเทมเพลตวินิจฉัย
+                ดูรูป gross / microscopic / WSI ประกอบ แล้วเซ็นออก — เซ็นได้หลายคน (เจ้าของเคส · ที่ปรึกษา · ผู้ร่วมเซ็น)
+              </div>
+              <div class="meta">
+                <span class="who">Pathologist</span>
+                <span class="arrow">→</span>
+                <span class="val jade">signed out</span>
+                <span>(เซลล์วิทยาใช้คำว่า <span class="val jade">published</span>)</span>
+              </div>
+            </div>
+            <div class="aside-band" style="margin-top:12px;">
+              <span class="eyebrow">พอเซ็นแล้วเกิดอะไรต่อ</span>
+              ระบบ snapshot รายงานเป็นแถวถาวร (แก้ทีหลังไม่กระทบฉบับที่ออกไปแล้ว) →
+              render PDF ด้วย WeasyPrint → เข้า <b>Report Archive</b> และคิวพิมพ์ →
+              โผล่ให้ฝั่งผู้สั่งตรวจเห็นทันทีถ้าเขามีบัญชี (ดูหัวข้อ 3) →
+              ถ้าเปิด HIS export ไว้ จะมีแถวเข้า outbox รอส่งออกด้วย
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ════════════ 2 · ทางแยก ════════════ -->
+    <section id="branches">
+      <span class="eyebrow">02 · ทางแยก</span>
+      <h2>หกทางที่แตกออกจากโต๊ะพยาธิแพทย์ แล้ววนกลับมาที่เดิม</h2>
+
+      <p>
+        ทางแยกทั้งหมดนี้ออกจากขั้นที่ 8 และ<strong>จบลงที่ขั้นที่ 8 เหมือนกัน</strong> —
+        ต่างกันแค่ว่าระหว่างรอ เคสจะไปค้างอยู่ในสถานะไหน และใครเป็นคนถือลูกบอลอยู่
+      </p>
+
+      <div class="branches">
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">ค้างเคสไว้ทำต่อ <em>บันทึกร่าง</em></div>
+            <div class="d">
+              เขียนผลค้างไว้แล้วกดบันทึก รายงานเก็บเป็นร่าง เคสยังอยู่บน Worklist
+              เปิดกลับมาเขียนต่อได้ตลอดจนกว่าจะเซ็น
+            </div>
+            <div class="meta">
+              <span>รายงาน <span class="val">draft</span></span>
+              <span>เคสยังเป็น <span class="val">pending diagnosis</span></span>
+              <span class="back">↩ กลับเองเมื่อกดเซ็น</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">สั่ง Recut <em>ขอสไลด์ใหม่จากบล็อกเดิม</em></div>
+            <div class="d">
+              สไลด์ไม่สวย ตัดตื้นไป หรืออยากได้ระดับลึกกว่าเดิม — สั่งตัดใหม่จากบล็อกเดิม
+              งานไปโผล่ที่คิวห้อง Histology
+            </div>
+            <div class="meta">
+              <span class="back">สถานะเคส<strong>ไม่ขยับ</strong> — recut ตั้งใจไม่ให้ดึงเคสถอย</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">สั่งย้อมพิเศษ / IHC <em>Internal Staining</em></div>
+            <div class="d">
+              สั่งจากในหน้าเขียนผลได้เลย ระบุบล็อกและรายการย้อม งานไปเข้าคิว
+              <b>Internal Staining › Internal Stain Orders</b> แล้วจัดเป็นรอบย้อม
+              พอผลกลับมาครบ ระบบดึงเคสกลับเข้าโต๊ะให้เอง
+            </div>
+            <div class="meta">
+              <span>Histochem → <span class="val amber">pending special stains</span></span>
+              <span>IHC → <span class="val amber">pending immuno</span></span>
+              <span class="back">↩ <span class="val">pending diagnosis</span> เมื่อไม่เหลือรายการค้าง</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">Molecular <em>Diagnosis › Molecular Pathology</em></div>
+            <div class="d">
+              เปิดเป็นเคส molecular ผูกกับเคสเดิม หรือสร้างเดี่ยว ๆ ก็ได้ ติดตามสถานะแยกจากเคสหลัก
+              ผลที่ส่งออกไปตรวจข้างนอกกลับมาเป็น PDF อัปโหลดแนบไว้ในเคสได้ แล้วปิดด้วยการ finalize
+            </div>
+            <div class="meta">
+              <span class="back">เดินสถานะของตัวเอง ไม่ผูกกับป้ายของเคสหลัก</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">Internal Consult <em>ปรึกษาในหน่วยงาน</em></div>
+            <div class="d">
+              ส่งเคสให้เพื่อนร่วมงานดู เขาตอบกลับในเคสได้ และถ้าอยากให้เขาเซ็นด้วย
+              เลื่อนสถานะเป็นผู้ร่วมเซ็น (co-signer) ได้จากที่นี่ — คำตอบขึ้นในหน้าเขียนผลของเจ้าของเคส
+            </div>
+            <div class="meta">
+              <span class="back">↩ ไม่ค้างสถานะเคส เคสยังอยู่บนโต๊ะเจ้าของเดิม</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="hook" aria-hidden="true"></div>
+          <div class="card">
+            <div class="t">ส่งออกนอกโรงพยาบาล <em>External Lab</em></div>
+            <div class="d">
+              สองแบบที่ต่างกัน — <b>Consult Request</b> คือส่งบล็อก/สไลด์ไปให้แล็บอื่นอ่าน
+              (มีเลข tracking บันทึกวันส่ง วันรับกลับ และวันคืนบล็อกทีละชิ้น)
+              ส่วน <b>External Runs / External Tracking</b> คือส่งไปย้อมข้างนอกแล้วรับผลกลับมาเข้าเคส
+            </div>
+            <div class="meta">
+              <span>รายชื่อแล็บปลายทางมาจาก Master Data › External Labs</span>
+              <span class="back">↩ ผลกลับมาแนบในเคส แล้วเซ็นตามปกติ</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ════════════ 3 · สวิตช์ ════════════ -->
+    <section id="gates">
+      <span class="eyebrow">03 · ตอนจบ</span>
+      <h2>เซ็นแล้วผลไปถึงมือคนสั่งตรวจยังไง</h2>
+
+      <p>
+        ขั้นที่ 1–8 เหมือนกันทุกที่ แต่สิ่งที่เกิดขึ้น<em>รอบ ๆ</em> การเซ็น —
+        ต้องผ่านการอนุมัติก่อนไหม และผลออกไปถึงคนสั่งตรวจทางไหน — ตั้งได้ต่างกันในแต่ละที่
+      </p>
+
+      <div class="gates">
+        <div class="gate">
+          <span class="eyebrow">Gate A</span>
+          <h3>ระบบอนุมัติ (Approval)</h3>
+          <p>
+            เปิดแล้ว เคสที่เซ็นจะยังไม่ออก แต่ไปค้างที่หน้า <b>Diagnosis › Approval</b>
+            รออาจารย์อนุมัติก่อน — เปิด/ปิด<strong>แยกกันได้ต่อชนิดเคส</strong>
+            และฝั่ง Gyne ไม่ใช่การอนุมัติทุกเคส แต่เป็นการสุ่มเคส NILM ขึ้นมาทบทวนเป็น QC
+          </p>
+          <span class="flag">
+            enable_approve_system (surgical)<br>
+            enable_non_gyne_approve_system<br>
+            enable_gyne_qc_system (สุ่ม QC)
+          </span>
+        </div>
+
+        <div class="gate primary">
+          <span class="eyebrow">Gate B</span><span class="tagline">ทางหลัก</span>
+          <h3>เปิดบัญชีให้ฝั่งผู้สั่งตรวจเข้ามาดูเอง</h3>
+          <p>
+            ทางที่ใช้จริงเป็นปกติ — ไม่ต้องต่อระบบอะไรกับใคร แค่เปิดบัญชีให้ฝั่งที่ส่งตรวจ
+            มีสองบทบาทที่เห็นคนละหน้าจอ และทั้งคู่<strong>อ่านอย่างเดียว</strong>
+            แก้อะไรในเคสไม่ได้เลย แม้แต่แนบผลจากแล็บนอก
+          </p>
+          <h4>Clinician — แพทย์ผู้สั่งตรวจ</h4>
+          <ul>
+            <li>หน้าค้นหา: ค้นด้วย HN / ชื่อผู้ป่วย หรือชื่อแพทย์ผู้สั่ง แล้วโหลด PDF ได้เลย</li>
+            <li>ครอบคลุมทั้งสี่ชนิดเคส (ศัลย์ · Gyne · Non-Gyne · Molecular) รวมรายงานเก่าที่นำเข้าระบบไว้</li>
+          </ul>
+          <h4>Hospital — เจ้าหน้าที่โรงพยาบาลที่ส่งตรวจ</h4>
+          <ul>
+            <li>หน้ากล่องขาเข้า: การ์ดสรุปสี่ใบ — ทั้งหมด · ออกผลแล้ว · กำลังดำเนินการ · ยังไม่ได้เปิดอ่าน</li>
+            <li>เห็นเคสที่<strong>ยังไม่จบ</strong>ด้วย ไม่ใช่แค่ผลที่ออกแล้ว จึงตามงานเองได้โดยไม่ต้องโทรถาม</li>
+            <li>ระบบจำว่ารายงานไหนถูกเปิดอ่านแล้ว ตัวเลข “ยังไม่ได้เปิดอ่าน” จึงบอกได้ว่าผลถึงมือหรือยัง</li>
+          </ul>
+          <p style="margin-top:12px;">
+            ทั้งสองบทบาทถูกล็อกให้เห็นเฉพาะเคสของโรงพยาบาลที่ผูกไว้กับบัญชี —
+            บัญชีที่ยังไม่ได้ผูกโรงพยาบาลจะเปิดหน้านี้ไม่ได้เลย
+          </p>
+          <span class="flag">roles: clinician · hospital (ผูกกับ hospital_ids ของบัญชี)</span>
+        </div>
+
+        <div class="gate">
+          <span class="eyebrow">Gate C</span><span class="tagline" style="background:var(--amber-wash);color:var(--amber);">ทางเสริม</span>
+          <h3>ส่งผลออกไป HIS</h3>
+          <p>
+            ตอนเซ็นจบ ระบบหย่อนงานลง outbox แล้วมีตัวส่งวนหยิบไปยิงออก พร้อม retry ถ้าปลายทางล่ม
+            ค่าเริ่มต้นคือ <b>ปิด</b> และหลายที่ก็ไม่ได้เปิด เพราะ Gate B ครอบคลุมอยู่แล้ว —
+            ปิดอยู่คือไม่มีแถวไหนถูกสร้าง ไม่มีอะไรถูกส่ง
+            ที่ใช้ได้จริงตอนนี้คือ webhook แบบ JSON ธรรมดา (ต่อกับ Mirth หรือสคริปต์ของโรงพยาบาลได้)
+            ส่วน HL7v2 / FHIR <strong>ยังไม่ได้ทำ</strong> — วางที่เสียบไว้ให้แล้ว รอสเปกจริง
+          </p>
+          <span class="flag">HIS_EXPORT_TYPE = none | generic_webhook | custom</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════ 4 · ระบบคู่ขนาน ════════════ -->
+    <section id="sides">
+      <span class="eyebrow">04 · ระบบคู่ขนาน</span>
+      <h2>สี่ระบบที่ไม่อยู่ในเส้นทาง แต่แตะทุกขั้น</h2>
+
+      <p>
+        พวกนี้ไม่ทำให้เคสเดินหน้า แต่ถ้าไม่มีหรือตั้งไม่ครบ ขั้นในเส้นทางหลักจะทำงานไม่ได้
+        หรือทำได้แต่ตามของไม่เจอ
+      </p>
+
+      <div class="sides">
+
+        <div class="side">
+          <span class="eyebrow">Side A</span>
+          <h3>ข้อมูลตั้งต้น (Master Data)</h3>
+          <p>
+            คลังตัวเลือกที่ทุกหน้าจอไปดึงไปใช้ อยู่ที่ <b>Administration › Master Data</b> 13 หมวด
+          </p>
+          <ul>
+            <li>ห้องแล็บ: เครื่อง processor · โปรแกรมการ process · รายการตรวจ · ชนิดตัวอย่าง (ศัลย์ / เซลล์วิทยา)</li>
+            <li>องค์กร: โรงพยาบาล · หน่วยงาน · ตำแหน่ง · คำนำหน้า · สิทธิการรักษา</li>
+            <li>อื่น ๆ: วันหยุด (ใช้คิด TAT เป็นวันทำการ) · แล็บภายนอก · เทมเพลตรายงาน</li>
+          </ul>
+          <p style="margin-top:11px;">
+            เทมเพลตงานเขียน (gross / วินิจฉัย / ชุดย้อม) ตั้งแยกในหน้างานของตัวเอง ไม่ได้รวมอยู่ในนี้
+          </p>
+          <span class="state on">ใช้งานอยู่</span>
+        </div>
+
+        <div class="side">
+          <span class="eyebrow">Side B</span>
+          <h3>คลังบล็อกและสไลด์</h3>
+          <p>
+            ของจริงที่ตัดเสร็จแล้วต้องรู้ว่าอยู่กล่องไหน ลิ้นชักไหน และตอนนี้ใครถืออยู่
+          </p>
+          <ul>
+            <li><b>Storage › Block Management</b> · <b>Slide Storage</b> — จัดเก็บเป็นชุด ระบุตำแหน่ง ค้นด้วยเลข accession</li>
+            <li><b>Surgical › Specimen Storage</b> — ตัวอย่างเปียกที่ยังไม่ทิ้ง</li>
+            <li><b>Front Desk › Slide / Block Release</b> — ยืมออก มีใบยืมเป็น PDF และบันทึกการคืน</li>
+            <li>ครบอายุเก็บแล้วสั่งทำลาย (dispose) ได้ทั้งบล็อกและสไลด์ โดยประวัติยังอยู่</li>
+          </ul>
+          <span class="state on">ใช้งานอยู่</span>
+        </div>
+
+        <div class="side">
+          <span class="eyebrow">Side C</span>
+          <h3>แจ้งเตือน</h3>
+          <p>
+            ยิงเข้าแชตของหน่วยงาน (LINE / Slack / Discord) ตั้งข้อความเองได้ทุกเหตุการณ์ · ค่าเริ่มต้นคือปิดทุกกฎ
+          </p>
+          <ul>
+            <li>ตามเหตุการณ์: ผลออกเป็นมะเร็ง · เคสวิกฤต · sign-out สำเร็จ · ส่ง consult นอก รพ. · สุ่ม QC เคส Gyne</li>
+            <li>ตามเวลา: รอบตรวจวันละ 4 เวลา (09/11/13/15 น.) คอยเตือนงานค้าง เช่น เคส outlab ที่ถึงนัดแล้วยังไม่คีย์ผล</li>
+            <li>เคสวิกฤตมีสมุดบันทึกแยกที่ <b>Statistics › Critical Notification Log</b> ว่าโทรแจ้งใคร เมื่อไร</li>
+          </ul>
+          <span class="state on">ใช้งานอยู่ · ต้องเปิดกฎเอง</span>
+        </div>
+
+        <div class="side">
+          <span class="eyebrow">Side D</span>
+          <h3>ผู้ช่วย AI</h3>
+          <p>
+            เสียบได้ 3 จุด แต่ละจุดเลือกโมเดลและเขียน system prompt ของตัวเองได้
+            ทั้งหมด<strong>ปิดไว้เป็นค่าเริ่มต้น</strong> และเป็นตัวช่วยร่างเท่านั้น — คนยังเป็นคนเซ็น
+          </p>
+          <ul>
+            <li><b>ช่วยร่าง gross</b> — อ่านรายการชิ้นเนื้อในเคสแล้วร่างคำบรรยายให้</li>
+            <li><b>ช่วยร่างรายงาน</b> — ร่างเนื้อรายงานในหน้าเขียนผล</li>
+            <li><b>Tumor registry</b> — ถอดผลที่เซ็นแล้วเป็นรหัส ICD-O ให้ทะเบียนมะเร็ง เลือกได้ว่าจะให้ขึ้นในรายงานหรือไม่</li>
+          </ul>
+          <span class="state off">ปิดเป็นค่าเริ่มต้น</span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ════════════ 5 · อ่านต่อ ════════════ -->
+    <section id="next">
+      <span class="eyebrow">05 · อ่านต่อ</span>
+      <h2>ลงรายละเอียดต่อที่ไหน</h2>
+
+      <div class="next">
+        <p>
+          หน้านี้ตอบว่า “มีงานอะไรบ้าง เรียงยังไง” ส่วนคำถามระดับลงมือทำ —
+          ป้ายบนจอนี้แปลว่าอะไร ทำไมเคสเด้งกลับ เคสสามชนิดใช้คำต่างกันตรงไหน —
+          อยู่ในเอกสารเต็ม:
+        </p>
+        <p style="margin-top:14px;">
+          <a href="https://claude.ai/code/artifact/b136bb57-b008-4d11-a86f-0a1aa2e7412b">
+            เปิด Pathology LIS Case Flow →
+          </a>
+        </p>
+        <ul>
+          <li>ป้ายสถานะบนหน้าจอแปลว่าอะไร และกับดักที่เจอบ่อย — หัวข้อ 1</li>
+          <li>สาย Surgical และสาย Cytology ทีละขั้นแบบละเอียด — หัวข้อ 3–4</li>
+          <li>การออกผล การเซ็นหลายคน และทางย้อนกลับทั้งหมด — หัวข้อ 5–6</li>
+          <li>ผลไปโผล่ที่ HIS ยังไง — หัวข้อ 8</li>
+          <li>สำหรับคนแก้โค้ด: เริ่มอ่านตรงไหน — หัวข้อ 9–10</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>
+      เขียนจากโค้ดจริงที่ commit <code>a5f6757</code> ไม่ได้เขียนจากผังที่ตั้งใจไว้ —
+      ชื่อเมนูในหน้านี้คือชื่อที่ขึ้นบนหน้าจอจริง และค่าสถานะในกล่องสีคือค่าที่เก็บลงฐานข้อมูลจริง
+    </p>
+    <p>
+      สิ่งที่หน้านี้<em>ไม่</em>ครอบคลุม: ระบบผู้ใช้และสิทธิ์ของฝั่งในแล็บ (ฝั่งผู้สั่งตรวจอยู่ในหัวข้อ 3) ·
+      การเข้าสู่ระบบสองชั้น (MFA) ·
+      สถิติและ TAT · WSI (สไลด์ดิจิทัล) · การเทียบผลเซลล์วิทยากับชิ้นเนื้อ (cyto-histo correlation) ·
+      ค่าใช้จ่ายและการเบิก — ทั้งหมดมีอยู่ในระบบ แต่ไม่ได้อยู่บนเส้นทางเดินของเคส
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>
