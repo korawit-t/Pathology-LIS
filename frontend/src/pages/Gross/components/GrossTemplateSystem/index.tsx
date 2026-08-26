@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 
 import styles from "./GrossTemplateSystem.module.css";
+import { copyText } from "../../../../utils/clipboard";
 import GrossTemplateService from "../../../../services/grossTemplateService";
 
 const { Text } = Typography;
@@ -183,8 +184,8 @@ const GrossTemplateSystem: FC<GrossTemplateSystemProps> = ({
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    message.success("Copied raw template to clipboard!");
+    if (copyText(text)) message.success("Copied raw template to clipboard!");
+    else message.error("คัดลอกไม่สำเร็จ — กรุณาเลือกข้อความแล้วคัดลอกเอง");
   };
 
   const columns = [

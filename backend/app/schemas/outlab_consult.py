@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 
@@ -60,3 +60,70 @@ class OutlabConsultRunResponse(BaseModel):
 
 class OutlabConsultRunUpdateTracking(BaseModel):
     tracking_number: Optional[str] = None
+
+
+# ─── Registration info (data to key into the external lab's own system) ──────
+# The staffer sending a case out has to re-register it by hand at the
+# destination lab. This bundle is exactly the fields that form asks for,
+# pulled from whichever of the three case types the case belongs to.
+
+
+class OutlabRegistrationSlide(BaseModel):
+    id: int
+    slide_label: Optional[str] = None
+    slide_no: int = 1
+    test_name: Optional[str] = None
+    test_category: Optional[str] = None
+    status: Optional[str] = None
+    is_recut: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OutlabRegistrationBlock(BaseModel):
+    id: int
+    block_code: str
+    specimen_label: Optional[str] = None
+    specimen_name: Optional[str] = None
+    tissue_count: Optional[int] = None
+    status: Optional[str] = None
+    slides: List[OutlabRegistrationSlide] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OutlabRegistrationInfoResponse(BaseModel):
+    case_type: str
+    case_id: int
+    accession_no: Optional[str] = None
+    hn: Optional[str] = None
+
+    # Patient — kept as separate parts (not just a joined display name)
+    # because the destination lab's form has one field per part.
+    patient_title: Optional[str] = None
+    patient_first_name: Optional[str] = None
+    patient_last_name: Optional[str] = None
+    patient_full_name: Optional[str] = None
+    cid: Optional[str] = None
+    gender: Optional[str] = None
+    birth_date: Optional[date] = None
+    age_display: Optional[str] = None
+
+    # Request
+    clinician_name: Optional[str] = None
+    collect_at: Optional[datetime] = None
+    clinical_diagnosis: Optional[str] = None
+    clinical_history: Optional[str] = None
+    specimen_type: Optional[str] = None
+    collection_site: Optional[str] = None
+    hospital_name: Optional[str] = None
+    department_name: Optional[str] = None
+    consult_reason: Optional[str] = None
+
+    # Material being sent. Surgical cases carry blocks (each with its own
+    # slides); cytology cases have no blocks, so their slides sit at case
+    # level in `slides`.
+    blocks: List[OutlabRegistrationBlock] = []
+    slides: List[OutlabRegistrationSlide] = []
+    block_count: int = 0
+    slide_count: int = 0

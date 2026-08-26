@@ -48,6 +48,62 @@ export interface OutlabConsultRunResponse {
   details: OutlabConsultRunDetailResponse[];
 }
 
+// ─── Registration info ───────────────────────────────────────────────────────
+// The bundle a staffer copies into the destination lab's own registration
+// form. Shape is identical for all three case types: surgical cases fill
+// `blocks` (each with its own slides), cytology cases fill `slides`.
+
+export interface OutlabRegistrationSlide {
+  id: number;
+  slide_label?: string;
+  slide_no: number;
+  test_name?: string;
+  test_category?: string;
+  status?: string;
+  is_recut: boolean;
+}
+
+export interface OutlabRegistrationBlock {
+  id: number;
+  block_code: string;
+  specimen_label?: string;
+  specimen_name?: string;
+  tissue_count?: number;
+  status?: string;
+  slides: OutlabRegistrationSlide[];
+}
+
+export interface OutlabRegistrationInfo {
+  case_type: string;
+  case_id: number;
+  accession_no?: string;
+  hn?: string;
+
+  patient_title?: string;
+  patient_first_name?: string;
+  patient_last_name?: string;
+  patient_full_name?: string;
+  cid?: string;
+  gender?: string;
+  birth_date?: string;
+  age_display?: string;
+
+  clinician_name?: string;
+  collect_at?: string;
+  clinical_diagnosis?: string;
+  clinical_history?: string;
+  specimen_type?: string;
+  collection_site?: string;
+  hospital_name?: string;
+  department_name?: string;
+  consult_reason?: string;
+
+  blocks: OutlabRegistrationBlock[];
+  slides: OutlabRegistrationSlide[];
+  block_count: number;
+  slide_count: number;
+}
+
 const OutlabConsultRunService = {
   createRun: async (payload: OutlabConsultRunCreate): Promise<OutlabConsultRunResponse> => {
     const res = await api.post<OutlabConsultRunResponse>("/outlab-consult-runs", payload);
@@ -71,6 +127,16 @@ const OutlabConsultRunService = {
 
   updateTracking: async (runId: number, trackingNumber: string | null): Promise<OutlabConsultRunResponse> => {
     const res = await api.patch<OutlabConsultRunResponse>(`/outlab-consult-runs/${runId}/tracking`, { tracking_number: trackingNumber });
+    return res.data;
+  },
+
+  getRegistrationInfo: async (
+    caseType: string,
+    caseId: number,
+  ): Promise<OutlabRegistrationInfo> => {
+    const res = await api.get<OutlabRegistrationInfo>(
+      `/outlab-consult-runs/registration-info/${caseType}/${caseId}`,
+    );
     return res.data;
   },
 
