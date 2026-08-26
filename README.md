@@ -36,6 +36,11 @@ Before installing or using this software, please read:
 
 ## Features
 
+> New to the system? **[docs/lis-workflow-overview.html](./docs/lis-workflow-overview.html)**
+> walks a single case from the front desk to a signed report on one page — the eight main
+> steps, the branches that loop back from the pathologist's desk, and the switches that
+> decide how a result reaches the requesting clinician. Open it in a browser.
+
 **Accession & Registration**
 - Surgical Pathology, Gyne Cytology, Non-Gyne Cytology case registration
 - HIS integration (HOSxP) — auto-fill patient data from hospital HIS. HOSxP is a widely-used Hospital Information System in Thailand; integration is optional and the system works fully without it.
