@@ -677,3 +677,78 @@ class TestMolecularOutlabPdfPermissions:
         )
 
         assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+
+class TestMolecularCaseCount:
+    """The dashboard's Molecular tiles read this instead of listing cases.
+
+    Counts are asserted as deltas, never absolutes: conftest commits to a real
+    Postgres and rows from earlier tests in the same run are still there, so a
+    hardcoded total would pass alone and fail in a full suite.
+    """
+
+    def _count(self, client, **params):
+        resp = client.get("/molecular-cases/count", params=params)
+        assert resp.status_code == 200, resp.text
+        return resp.json()["count"]
+
+    def _make_pending(self, db, client, *, is_external=False):
+        patient = make_patient(db, name=f"Count Patient {uuid.uuid4().hex[:8]}")
+        ap_test = make_anatomical_pathology_test(
+            db, category="Molecular", system_code=None,
+            name=f"Count Assay {uuid.uuid4().hex[:8]}",
+        )
+        ap_test.is_external = is_external
+        db.commit()
+        resp = client.post(
+            "/molecular-cases",
+            json={"patient_id": patient.id, "ap_test_id": ap_test.id},
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_route_is_not_captured_as_a_case_id(self, pathologist_client):
+        # /count must stay declared above /{case_id}; the other order makes
+        # this 422 on int parsing instead of returning a count.
+        resp = pathologist_client.get("/molecular-cases/count")
+        assert resp.status_code == 200, resp.text
+        assert isinstance(resp.json()["count"], int)
+
+    def test_pending_count_rises_with_each_new_case(self, db, pathologist_client):
+        before = self._count(pathologist_client, status="pending")
+        self._make_pending(db, pathologist_client)
+        self._make_pending(db, pathologist_client)
+        assert self._count(pathologist_client, status="pending") == before + 2
+
+    def test_is_outlab_filter_separates_the_two_tiles(self, db, pathologist_client):
+        before_in = self._count(pathologist_client, status="pending", is_outlab=False)
+        before_out = self._count(pathologist_client, status="pending", is_outlab=True)
+
+        self._make_pending(db, pathologist_client, is_external=False)
+        self._make_pending(db, pathologist_client, is_external=True)
+        self._make_pending(db, pathologist_client, is_external=True)
+
+        assert self._count(pathologist_client, status="pending", is_outlab=False) == before_in + 1
+        assert self._count(pathologist_client, status="pending", is_outlab=True) == before_out + 2
+
+    def test_cancelled_cases_drop_out_of_the_count(self, db, pathologist_client):
+        case = self._make_pending(db, pathologist_client)
+        before = self._count(pathologist_client, status="pending")
+
+        resp = pathologist_client.post(
+            f"/molecular-cases/{case['id']}/cancel",
+            json={"cancel_reason": "specimen insufficient"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert self._count(pathologist_client, status="pending") == before - 1
+
+    def test_reported_cases_leave_the_pending_count(self, db, pathologist_client):
+        case = self._make_pending(db, pathologist_client)
+        before = self._count(pathologist_client, status="pending")
+
+        resp = pathologist_client.post(
+            f"/molecular-cases/{case['id']}/finalize",
+            json={"result_text": "<p>No mutation detected.</p>"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert self._count(pathologist_client, status="pending") == before - 1

@@ -92,6 +92,11 @@ export interface MolecularCaseCancel {
   cancel_reason?: string | null;
 }
 
+export interface MolecularCaseCountParams {
+  status?: string;
+  is_outlab?: boolean;
+}
+
 export interface MolecularCaseListParams {
   skip?: number;
   limit?: number;
@@ -109,6 +114,12 @@ export const MolecularCaseService = {
 
   getAll: (params?: MolecularCaseListParams): Promise<MolecularCaseResponse[]> =>
     api.get("/molecular-cases", { params }).then((r) => r.data),
+
+  // Count without fetching the rows. getAll caps at `limit` and returns fully
+  // hydrated cases, so counting with its .length is wrong past the cap and
+  // ships a payload the dashboard throws away.
+  count: (params?: MolecularCaseCountParams): Promise<number> =>
+    api.get("/molecular-cases/count", { params }).then((r) => r.data.count ?? 0),
 
   getById: (caseId: number): Promise<MolecularCaseResponse> =>
     api.get(`/molecular-cases/${caseId}`).then((r) => r.data),

@@ -60,6 +60,25 @@ def list_molecular_cases(
     )
 
 
+@router.get("/count", dependencies=[Depends(CAN_READ_REPORT)])
+def count_molecular_cases(
+    status: Optional[str] = None,
+    is_outlab: Optional[bool] = None,
+    db: Session = Depends(get_db),
+):
+    """Count matching cases without fetching them — for the dashboard tiles.
+
+    Must stay declared above ``/{case_id}``: FastAPI matches in declaration
+    order, so the other way round "count" is captured as a case id and the
+    request 422s on int parsing.
+    """
+    return {
+        "count": molecular_crud.count_molecular_cases(
+            db, status=status, is_outlab=is_outlab
+        )
+    }
+
+
 @router.get("/{case_id}", response_model=MolecularCaseResponse, dependencies=[Depends(CAN_READ_REPORT)])
 def get_molecular_case(case_id: int, db: Session = Depends(get_db)):
     case = molecular_crud.get_molecular_case(db, case_id)
