@@ -195,6 +195,7 @@ def get_all_reports_paginated(
     status_filter: str = None,
     hospital_id: int = None,
     is_print: bool = None,
+    unprinted_first: bool = False,
 ):
     query = db.query(SurgicalReport).options(
         joinedload(SurgicalReport.microscopic_images)
@@ -228,9 +229,12 @@ def get_all_reports_paginated(
 
     total = query.count()
     skip = (page - 1) * size
-    items = (
-        query.order_by(SurgicalReport.created_at.desc()).offset(skip).limit(size).all()
-    )
+    # The print queue asks for everything still waiting to be printed up front,
+    # newest first within each group.
+    order_by = [SurgicalReport.created_at.desc()]
+    if unprinted_first:
+        order_by.insert(0, SurgicalReport.is_print.asc())
+    items = query.order_by(*order_by).offset(skip).limit(size).all()
 
     return {"items": items, "total": total, "page": page, "size": size}
 

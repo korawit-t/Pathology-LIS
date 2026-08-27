@@ -5,6 +5,8 @@ get_pending_cosign_worklist, and the report list/pagination/search helpers.
 Previously only exercised via the happy-path in test_surgical_consult_finalize.py.
 """
 
+from datetime import datetime
+
 import pytest
 from fastapi import HTTPException
 
@@ -361,6 +363,35 @@ class TestGetAllReportsPaginated:
         result = get_all_reports_paginated(db, is_print=True)
         assert any(r.id == report.id for r in result["items"])
         assert all(r.is_print is True for r in result["items"])
+
+    def test_unprinted_first_pulls_pending_prints_to_the_front(self, db, admin_user, two_pathologists):
+        """The print queue pages through published reports; anything still waiting
+        to be printed has to land on the first pages, even when a printed report
+        is newer."""
+        registrar, _ = admin_user
+        path1, _ = two_pathologists
+
+        case_a, spec_a = make_signable_case(db, registrar_id=registrar.id)
+        pending = finalize_and_snapshot_orchestrator(db, case_a.id, build_bulk_save_payload(case_a.id, spec_a.id, path1.id), path1.id)
+        case_b, spec_b = make_signable_case(db, registrar_id=registrar.id)
+        printed = finalize_and_snapshot_orchestrator(db, case_b.id, build_bulk_save_payload(case_b.id, spec_b.id, path1.id), path1.id)
+
+        # printed is the newer of the two, so plain created_at ordering ranks it first
+        pending.is_print = False
+        pending.created_at = datetime(2026, 8, 1, 9, 0)
+        printed.is_print = True
+        printed.created_at = datetime(2026, 8, 20, 9, 0)
+        db.commit()
+
+        default_ids = [r.id for r in get_all_reports_paginated(db, size=500)["items"]]
+        assert default_ids.index(printed.id) < default_ids.index(pending.id)
+
+        items = get_all_reports_paginated(db, size=500, unprinted_first=True)["items"]
+        ids = [r.id for r in items]
+        assert ids.index(pending.id) < ids.index(printed.id)
+        # no printed report may sit above an unprinted one anywhere in the page
+        flags = [r.is_print for r in items]
+        assert flags == sorted(flags)
 
     def test_search_status_prefix_overrides_plain_text(self, db, admin_user, two_pathologists):
         registrar, _ = admin_user

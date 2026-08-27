@@ -114,11 +114,12 @@ const SurgicalReportService = {
     search?: string,
     status?: string,
     is_print?: boolean,
+    unprinted_first?: boolean,
   ): Promise<SurgicalReportPagination> => {
     const response = await api.get<SurgicalReportPagination>(
       `/surgical-reports/all`,
       {
-        params: { page, size, search, status, is_print },
+        params: { page, size, search, status, is_print, unprinted_first },
       },
     );
     return response.data;
