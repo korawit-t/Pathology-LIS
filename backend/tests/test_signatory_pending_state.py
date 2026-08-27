@@ -228,7 +228,11 @@ class TestRequireAllSignaturesGatesPublish:
             )
 
         assert exc.value.status_code == 400
-        assert "have not signed yet" in exc.value.detail
+        # Names the outstanding signer — a bare count leaves the pathologist
+        # unable to tell which row is blocking the sign-out.
+        assert cytotech.full_name in exc.value.detail
+        assert "cytotechnologist" in exc.value.detail
+        assert pathologist.full_name not in exc.value.detail
 
     def test_nongyne_publish_allowed_once_everyone_has_signed(
         self, db, admin_user, two_pathologists, cytotech
@@ -304,7 +308,8 @@ class TestRequireAllSignaturesGatesPublish:
             )
 
         assert exc.value.status_code == 400
-        assert "have not signed yet" in exc.value.detail
+        assert cytotech.full_name in exc.value.detail
+        assert pathologist.full_name not in exc.value.detail
 
     def test_gyne_publish_allowed_once_everyone_has_signed(
         self, db, admin_user, two_pathologists, cytotech
