@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Table, Tag, Input, Space, Button, Typography, message, Modal, Select,
-  Popconfirm, Tabs, Badge, Segmented, Tooltip, Upload, DatePicker,
+  Popconfirm, Tabs, Badge, Segmented, Tooltip, Upload, DatePicker, Alert,
 } from "antd";
 import {
   SendOutlined, UnorderedListOutlined, CheckCircleOutlined, DeleteOutlined,
   ReloadOutlined, ClockCircleOutlined, InboxOutlined, SearchOutlined,
   GlobalOutlined, EditOutlined, UploadOutlined, FilePdfOutlined,
+  FileSearchOutlined, BulbOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -48,6 +49,38 @@ interface ExternalLab { id: number; name: string }
  *  for one case. Both the send queue and the case tracker offer it, so the
  *  modal itself lives on the page and the tabs just ask for it. */
 type OpenRegistration = (caseType: string, caseId: number, accessionNo?: string) => void;
+
+/** The accession cell, rendered as an obvious link: a magnifier icon plus a
+ *  standing underline. Plain blue bold text (what this column used to be)
+ *  reads as styling, not as something you can click. */
+const AccessionLink: React.FC<{
+  accessionNo?: string;
+  onClick: () => void;
+}> = ({ accessionNo, onClick }) => (
+  <Tooltip title="View details to copy into the outlab registration form">
+    <Button
+      type="link"
+      icon={<FileSearchOutlined />}
+      style={{ padding: 0, height: "auto", fontWeight: 600 }}
+      onClick={onClick}
+    >
+      <span style={{ textDecoration: "underline", textUnderlineOffset: 3 }}>
+        {accessionNo || "—"}
+      </span>
+    </Button>
+  </Tooltip>
+);
+
+/** Same one-liner above both tables — the link alone is easy to scroll past. */
+const RegistrationHint: React.FC = () => (
+  <Alert
+    type="info"
+    showIcon
+    icon={<BulbOutlined />}
+    style={{ marginBottom: 12 }}
+    message="คลิกที่ Accession No. เพื่อดูรายละเอียดสำหรับลงทะเบียน outlab — ชื่อ-สกุล, CID, แพทย์ผู้ส่งตรวจ, วันที่เก็บสิ่งส่งตรวจ, block/slide/stain (คัดลอกได้ทีละช่อง)"
+  />
+);
 
 const TYPE_COLOR: Record<string, string> = {
   surgical: "blue",
@@ -220,15 +253,10 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
       dataIndex: "accession_no",
       width: 150,
       render: (v, r) => (
-        <Tooltip title="View details to copy into the outlab registration form">
-          <Button
-            type="link"
-            style={{ padding: 0, height: "auto", fontWeight: 600 }}
-            onClick={() => onOpenRegistration(r.case_type, r.id, r.accession_no)}
-          >
-            {v || "—"}
-          </Button>
-        </Tooltip>
+        <AccessionLink
+          accessionNo={v}
+          onClick={() => onOpenRegistration(r.case_type, r.id, r.accession_no)}
+        />
       ),
     },
     {
@@ -300,6 +328,8 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
           Send Consult ({selectedKeys.length})
         </Button>
       </div>
+
+      <RegistrationHint />
 
       <Table
         rowSelection={{
@@ -912,15 +942,10 @@ const CaseTrackingTab: React.FC<{
       dataIndex: "accession_no",
       width: 140,
       render: (v, r) => (
-        <Tooltip title="View details to copy into the outlab registration form">
-          <Button
-            type="link"
-            style={{ padding: 0, height: "auto", fontWeight: 600 }}
-            onClick={() => onOpenRegistration(r.case_type, r.case_id, r.accession_no)}
-          >
-            {v || "—"}
-          </Button>
-        </Tooltip>
+        <AccessionLink
+          accessionNo={v}
+          onClick={() => onOpenRegistration(r.case_type, r.case_id, r.accession_no)}
+        />
       ),
     },
     {
@@ -1116,6 +1141,8 @@ const CaseTrackingTab: React.FC<{
           <Button icon={<ReloadOutlined />} onClick={fetchRuns} loading={loading}>Refresh</Button>
         </Space>
       </div>
+
+      <RegistrationHint />
 
       <Table
         columns={columns}
