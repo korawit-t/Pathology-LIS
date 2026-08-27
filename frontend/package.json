@@ -21,7 +21,7 @@
     "@lexical/rich-text": "^0.49.0",
     "@tiptap/extension-bullet-list": "^3.29.0",
     "@tiptap/extension-ordered-list": "^3.29.0",
-    "@tiptap/extension-placeholder": "^3.29.0",
+    "@tiptap/extension-placeholder": "^3.30.3",
     "@tiptap/extension-strike": "^3.29.0",
     "@tiptap/extension-text-style": "^3.29.0",
     "@tiptap/react": "^3.29.0",
