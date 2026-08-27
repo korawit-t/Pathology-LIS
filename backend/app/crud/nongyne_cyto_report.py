@@ -104,11 +104,27 @@ def _reject_if_signatures_outstanding(
     if not (settings and settings.require_all_non_gyne_sign):
         return
     pending = [s for s in (signers or []) if not _resolve_signed_at(s, current_user_id)]
-    if pending:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot publish — {len(pending)} signer(s) have not signed yet.",
-        )
+    if not pending:
+        return
+    raise HTTPException(status_code=400, detail=_outstanding_detail(db, pending))
+
+
+def _outstanding_detail(db: Session, pending: List[dict]) -> str:
+    """Name who is still outstanding. A bare count tells the pathologist
+    nothing they can act on — the Signatories card can hold several rows and
+    they cannot tell from a number which one is holding up the sign-out."""
+    names = {
+        u.id: (u.report_name or u.full_name)
+        for u in db.query(User)
+        .filter(User.id.in_([s.get("user_id") for s in pending]))
+        .all()
+    }
+    labels = [
+        f"{names.get(s.get('user_id')) or 'user ' + str(s.get('user_id'))}"
+        f" ({s.get('role') or 'primary'})"
+        for s in pending
+    ]
+    return "Cannot publish — still waiting on a signature from: " + ", ".join(labels)
 
 
 def get_report_by_id(db: Session, report_id: int):

@@ -91,11 +91,25 @@ def _reject_if_signatures_outstanding(
         if not s.get("signed_at")
         and not (current_user_id and s.get("user_id") == current_user_id)
     ]
-    if pending:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot publish — {len(pending)} signer(s) have not signed yet.",
-        )
+    if not pending:
+        return
+    # Name who is outstanding rather than counting them — a bare number leaves
+    # the person signing off with no way to tell which row is blocking them.
+    names = {
+        u.id: (u.report_name or u.full_name)
+        for u in db.query(User)
+        .filter(User.id.in_([s.get("user_id") for s in pending]))
+        .all()
+    }
+    labels = [
+        f"{names.get(s.get('user_id')) or 'user ' + str(s.get('user_id'))}"
+        f" ({s.get('role') or 'primary'})"
+        for s in pending
+    ]
+    raise HTTPException(
+        status_code=400,
+        detail="Cannot publish — still waiting on a signature from: " + ", ".join(labels),
+    )
 
 
 def get_report_by_id(db: Session, report_id: int):

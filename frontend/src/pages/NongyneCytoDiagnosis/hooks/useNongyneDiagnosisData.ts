@@ -167,16 +167,22 @@ export function useNongyneDiagnosisData(
       .catch((e) => logger.error(e));
   }, [caseId, caseData?.status]);
 
+  // Only ever used when the diagnosis carries no signers at all — i.e. the
+  // cytotechnologist never signed off, because handing the case to a
+  // pathologist is what records their signature and that writes a signers
+  // array. So seeding a cytotechnologist row here can only ever produce an
+  // unsigned one, and case.cytotechnologist_id is set merely by saving a
+  // draft, not by signing. That row then blocked the whole sign-out under
+  // "Require All Signatures (Non-Gyne)" and was a name on the report nobody
+  // had put there. A screener who did sign off arrives via the diagnosis
+  // instead, signature and all.
   const defaultSigners = useMemo(() => {
     const signers: {
       user_id: number;
       role: string;
       signed_at: string | null;
     }[] = [];
-    const cytoId = caseData?.cytotechnologist?.id || caseData?.cytotechnologist_id;
     const pathoId = caseData?.pathologist?.id || caseData?.pathologist_id;
-    if (cytoId)
-      signers.push({ user_id: cytoId, role: "cytotechnologist", signed_at: null });
     if (pathoId)
       signers.push({ user_id: pathoId, role: "primary", signed_at: null });
     return signers;

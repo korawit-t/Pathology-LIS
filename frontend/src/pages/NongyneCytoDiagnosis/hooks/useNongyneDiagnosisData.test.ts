@@ -222,6 +222,38 @@ describe("useNongyneDiagnosisData", () => {
     await waitFor(() => expect(UserService.getUsers).toHaveBeenCalledWith());
   });
 
+  describe("defaultSigners", () => {
+    it("seeds the assigned pathologist only", async () => {
+      (NongyneCytologyCaseService.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeCaseData({ pathologist_id: 7, cytotechnologist_id: 9 }),
+      );
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+
+      await waitFor(() => expect(result.current.caseData).not.toBeNull());
+
+      expect(result.current.defaultSigners).toEqual([
+        { user_id: 7, role: "primary", signed_at: null },
+      ]);
+    });
+
+    it("does not seed an unsigned cytotechnologist row", async () => {
+      // cytotechnologist_id is set merely by saving a draft, so seeding it
+      // here produced a signatory who had not signed — which blocked the
+      // sign-out under require_all_non_gyne_sign and put an unearned name on
+      // the report. A screener who did sign off comes in via the diagnosis.
+      (NongyneCytologyCaseService.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeCaseData({ cytotechnologist_id: 9 }),
+      );
+      const form = makeForm();
+      const { result } = renderHook(() => useNongyneDiagnosisData("400", form));
+
+      await waitFor(() => expect(result.current.caseData).not.toBeNull());
+
+      expect(result.current.defaultSigners).toEqual([]);
+    });
+  });
+
   describe("saveDraft", () => {
     const values = {
       clinical_history: "Updated history",
