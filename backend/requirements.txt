@@ -43,7 +43,7 @@ PyMySQL==1.2.0
 pyotp==2.10.0
 pypdf==6.15.0
 pymupdf==1.28.0
-pyphen==0.17.2
+pyphen==0.18.1
 pytest==9.1.1
 pythainlp==5.3.4
 python-barcode==0.16.1
