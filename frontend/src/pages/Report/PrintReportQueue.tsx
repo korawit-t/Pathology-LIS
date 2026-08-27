@@ -88,7 +88,14 @@ const PrintReportQueue: React.FC = () => {
         let tot = 0;
 
         if (source === "surgical") {
-          const data = await SurgicalReportService.getAllReports(page, size, search, "published");
+          const data = await SurgicalReportService.getAllReports(
+            page,
+            size,
+            search,
+            "published",
+            undefined,
+            true,
+          );
           items = (data.items || []).map((r: SurgicalReport) => ({
             id: r.id,
             _source: "surgical",
@@ -106,11 +113,25 @@ const PrintReportQueue: React.FC = () => {
           }));
           tot = data.total || 0;
         } else if (source === "gyne") {
-          const data = await GyneReportService.getAllReports(page, size, search, "published");
+          const data = await GyneReportService.getAllReports(
+            page,
+            size,
+            search,
+            "published",
+            undefined,
+            true,
+          );
           items = (data.items || []).map((r) => ({ ...r, _source: "gyne" as ReportSource }));
           tot = data.total || 0;
         } else {
-          const data = await NongyneReportService.getAllReports(page, size, search, "published");
+          const data = await NongyneReportService.getAllReports(
+            page,
+            size,
+            search,
+            "published",
+            undefined,
+            true,
+          );
           items = (data.items || []).map((r) => ({ ...r, _source: "nongyne" as ReportSource }));
           tot = data.total || 0;
         }

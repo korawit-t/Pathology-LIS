@@ -232,12 +232,21 @@ def read_all_reports(
     search: Optional[str] = None,
     status: Optional[str] = Query(None),
     is_print: Optional[bool] = Query(None),
+    unprinted_first: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     """
     ดึงรายงานทั้งหมดของทุกเคส (หน้า All List)
     """
-    return get_all_reports_paginated(db, page=page, size=size, search=search, status_filter=status, is_print=is_print)
+    return get_all_reports_paginated(
+        db,
+        page=page,
+        size=size,
+        search=search,
+        status_filter=status,
+        is_print=is_print,
+        unprinted_first=unprinted_first,
+    )
 
 
 @router.get(

@@ -112,10 +112,19 @@ def read_all_reports(
     search: str = None,
     status: Optional[str] = None,
     is_print: Optional[bool] = None,
+    unprinted_first: bool = False,
     db: Session = Depends(get_db)
 ):
     """ดึงรายงานทั้งหมด (Pagination)"""
-    return get_all_reports(db, skip=skip, limit=limit, search=search, status=status, is_print=is_print)
+    return get_all_reports(
+        db,
+        skip=skip,
+        limit=limit,
+        search=search,
+        status=status,
+        is_print=is_print,
+        unprinted_first=unprinted_first,
+    )
 
 
 @router.get(

@@ -101,6 +101,24 @@ beforeEach(() => {
   }
 });
 
+describe("PrintReportQueue ordering", () => {
+  it.each(Object.keys(services) as TabName[])(
+    "asks the backend to put %s reports still awaiting print first",
+    async (tab) => {
+      renderQueue();
+      const { service, accession } = services[tab];
+      if (tab !== "Surgical") {
+        fireEvent.click(within(screen.getByRole("tablist")).getByText(tab));
+      }
+      await waitFor(() => expect(screen.getByText(accession)).toBeInTheDocument());
+
+      // last arg is unprinted_first — without it a printed report can outrank a
+      // pending one and push it off the first pages
+      expect(service.getAllReports).toHaveBeenCalledWith(1, 10, "", "published", undefined, true);
+    },
+  );
+});
+
 describe("PrintReportQueue barcode requests", () => {
   it.each(Object.keys(services) as TabName[])(
     "asks for the %s report with its footer barcode",

@@ -43,9 +43,17 @@ const NongyneReportService = {
     search?: string,
     status?: string,
     is_print?: boolean,
+    unprinted_first?: boolean,
   ): Promise<NongyneReportPagination> => {
     const res = await api.get("/nongyne-cyto-reports", {
-      params: { skip: (page - 1) * size, limit: size, search, status, is_print },
+      params: {
+        skip: (page - 1) * size,
+        limit: size,
+        search,
+        status,
+        is_print,
+        unprinted_first,
+      },
     });
     return res.data;
   },

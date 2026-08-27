@@ -111,7 +111,7 @@ def get_reports_by_case(db: Session, case_id: int):
     )
 
 
-def get_all_reports(db: Session, skip: int = 0, limit: int = 20, search: str = None, status: str = None, is_print: bool = None):
+def get_all_reports(db: Session, skip: int = 0, limit: int = 20, search: str = None, status: str = None, is_print: bool = None, unprinted_first: bool = False):
     query = db.query(GyneCytoReport).join(GyneCytologyCase)
 
     if status:
@@ -130,7 +130,12 @@ def get_all_reports(db: Session, skip: int = 0, limit: int = 20, search: str = N
         )
 
     total = query.count()
-    items = query.order_by(GyneCytoReport.created_at.desc()).offset(skip).limit(limit).all()
+    # The print queue asks for everything still waiting to be printed up front,
+    # newest first within each group.
+    order_by = [GyneCytoReport.created_at.desc()]
+    if unprinted_first:
+        order_by.insert(0, GyneCytoReport.is_print.asc())
+    items = query.order_by(*order_by).offset(skip).limit(limit).all()
 
     current_page = (skip // limit) + 1 if limit > 0 else 1
 
