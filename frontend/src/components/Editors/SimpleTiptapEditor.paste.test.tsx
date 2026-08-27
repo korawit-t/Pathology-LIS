@@ -74,6 +74,52 @@ describe("SimpleTiptapEditor paste sanitization", () => {
     expect(lastHtml).toContain("ขนาด 10 x 3 x 4 cm");
   });
 
+  it("strips the &nbsp; blank lines an HTML source pads its content with", () => {
+    const handleChange = vi.fn();
+    const { container } = render(
+      <ThemeProvider>
+        <SimpleTiptapEditor value="<p></p>" onChange={handleChange} />
+      </ThemeProvider>,
+    );
+    const editable = container.querySelector(".ProseMirror") as HTMLElement;
+
+    // Word and most rendered-HTML sources write a blank line as a paragraph
+    // holding a non-breaking space, not as an empty <p></p>.
+    act(() =>
+      firePaste(
+        editable,
+        "<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>Invasive ductal carcinoma</p><p>&nbsp;</p><p>&nbsp;</p>",
+        "Invasive ductal carcinoma",
+      ),
+    );
+
+    const lastHtml = handleChange.mock.calls.at(-1)?.[0] as string;
+    expect(lastHtml).toBe("<p>Invasive ductal carcinoma</p>");
+  });
+
+  it("keeps blank lines that sit between pasted paragraphs", () => {
+    const handleChange = vi.fn();
+    const { container } = render(
+      <ThemeProvider>
+        <SimpleTiptapEditor value="<p></p>" onChange={handleChange} />
+      </ThemeProvider>,
+    );
+    const editable = container.querySelector(".ProseMirror") as HTMLElement;
+
+    act(() =>
+      firePaste(
+        editable,
+        "<p>&nbsp;</p><p>A. RIGHT BREAST</p><p>&nbsp;</p><p>B. LEFT BREAST</p><p>&nbsp;</p>",
+        "A. RIGHT BREAST\n\nB. LEFT BREAST",
+      ),
+    );
+
+    const lastHtml = handleChange.mock.calls.at(-1)?.[0] as string;
+    expect(lastHtml).toBe(
+      "<p>A. RIGHT BREAST</p><p>&nbsp;</p><p>B. LEFT BREAST</p>",
+    );
+  });
+
   it("still merges a verbatim inline-text paste with no surrounding blanks correctly", () => {
     const handleChange = vi.fn();
     const { container } = render(
