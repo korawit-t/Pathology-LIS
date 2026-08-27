@@ -31,6 +31,7 @@ import {
   EyeOutlined,
   PictureOutlined,
   UserOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { UserRole } from "../../constants/roles.constants";
@@ -49,6 +50,7 @@ import { NongyneCytologyCase, NongyneCytologyCaseUpdate } from "../../types/nong
 import { User } from "../../types/user";
 import type { BadgeProps } from "antd";
 import PatientInfoCard from "../../components/PatientInfoCard";
+import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/PathologistDiagnosisManager";
 import PageContainer from "../../components/Layout/PageContainer";
 import StyledCard from "../../components/Layout/StyledCard";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
@@ -169,6 +171,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
     number | null
   >(null);
   const [slideDispatchEnabled, setSlideDispatchEnabled] = useState(true);
+  const [requireAllSign, setRequireAllSign] = useState(false);
 
   const PATHO_ROLES: UserRole[] = [
     "pathologist",
@@ -184,6 +187,29 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
           label: u.full_name ?? u.username ?? String(u.id),
         })),
     [allUsers],
+  );
+
+  const SIGNERS_PATH = useMemo(() => ["signers"], []);
+
+  // Pathologists *and* cytotechnologists — a screener can add a second
+  // cytotech as a co-signer, so the picker can't be narrowed to PATHO_ROLES
+  // the way pathologistOptions above is.
+  const signerOptions = useMemo(
+    () =>
+      allUsers.filter((u) =>
+        u.roles?.some(
+          (r) => PATHO_ROLES.includes(r) || r === "cytotechnologist",
+        ),
+      ),
+    [allUsers],
+  );
+
+  // The shared manager reads the surgical setting name; map the non-gyne one
+  // onto it so the policy badge tells the truth on this page (same shim gyne
+  // uses).
+  const signerManagerSettings = useMemo(
+    () => ({ require_all_pathologists_sign: requireAllSign }),
+    [requireAllSign],
   );
 
   const handleToggleOutLabConsult = async (checked: boolean) => {
@@ -257,7 +283,10 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   useEffect(() => {
     if (!caseId) return;
     SystemSettingService.getSettings()
-      .then((s) => setSlideDispatchEnabled(s.nongyne_slide_dispatch_enabled ?? true))
+      .then((s) => {
+        setSlideDispatchEnabled(s.nongyne_slide_dispatch_enabled ?? true);
+        setRequireAllSign(!!s.require_all_non_gyne_sign);
+      })
       .catch(() => {});
     Promise.all([
       NongyneCytologyCaseService.getById(Number(caseId)),
@@ -338,9 +367,9 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   const persistDraft = async (
     values: NongyneOnFinishValues,
     extraCaseFields: Partial<NongyneCytologyCaseUpdate> = {},
-    // This page has no Signatories card, so the form never carries a signers
-    // array (the destructure below drops it) — only the send-to-pathologist
-    // hand-off passes one, to record the screener's own signature.
+    // Overrides the Signatories card for the send-to-pathologist hand-off,
+    // which stamps the screener's own signature rather than saving the list
+    // as displayed.
     signers?: NongyneSigner[],
   ) => {
     const {
@@ -350,7 +379,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       received_volume_ml,
       has_malignancy,
       has_critical,
-      signers: _s,
+      signers: formSigners,
       ...diagnosisValues
     } = values;
 
@@ -365,8 +394,12 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
       ...extraCaseFields,
     });
 
-    const diagnosisPayload = signers
-      ? { ...diagnosisValues, signers }
+    // Explicit list (the send-to-pathologist hand-off) wins; otherwise carry
+    // whatever the Signatories card is showing, so edits there survive a
+    // plain Save Draft.
+    const effectiveSigners = signers ?? formSigners;
+    const diagnosisPayload = effectiveSigners
+      ? { ...diagnosisValues, signers: effectiveSigners }
       : diagnosisValues;
 
     if (diagnosis) {
@@ -416,7 +449,8 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
   // satisfied. Re-sending keeps the original signature time rather than
   // re-stamping it, and re-picks the primary in case the pathologist changed.
   const buildScreeningSigners = (pathologistId: number): NongyneSigner[] => {
-    const existing = diagnosis?.signers ?? [];
+    const existing: NongyneSigner[] =
+      form.getFieldValue("signers") ?? diagnosis?.signers ?? [];
     const self = existing.find(
       (s) => Number(s.user_id) === Number(currentUser?.id),
     );
@@ -1020,7 +1054,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
 
             {/* ── Comment + Signatories — same row ── */}
             <Row gutter={16} align="stretch">
-              <Col xs={24} lg={24}>
+              <Col xs={24} lg={14}>
                 <StyledCard
                   styles={{ body: { padding: "24px" } }}
                   style={{ height: "100%" }}
@@ -1040,6 +1074,31 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
                     </Form.Item>
                   </section>
                 </StyledCard>
+              </Col>
+              <Col xs={24} lg={10}>
+                {/* Deliberately seeds nothing. A row here is a signature the
+                    case is waiting on — under "Require All Signatures
+                    (Non-Gyne)" an unsigned one blocks the pathologist's
+                    sign-out, and it prints on the report as a reporter. So
+                    rows only appear once somebody actually signs (below) or
+                    the screener deliberately adds a co-signer. */}
+                <PathologistDiagnosisManager
+                  pathologists={signerOptions}
+                  defaultPathologistId={
+                    caseData?.pathologist?.id ?? caseData?.pathologist_id
+                  }
+                  isLocked={isFormLocked}
+                  namePath={SIGNERS_PATH}
+                  settings={signerManagerSettings}
+                />
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginTop: -8 }}
+                >
+                  <InfoCircleOutlined style={{ marginRight: 6 }} />
+                  Your signature is recorded when you send the case to a
+                  pathologist.
+                </Text>
               </Col>
             </Row>
 

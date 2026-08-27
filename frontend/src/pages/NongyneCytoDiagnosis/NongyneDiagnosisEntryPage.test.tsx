@@ -159,6 +159,81 @@ describe("NongyneDiagnosisEntryPage", () => {
     );
   });
 
+  describe("Signatories card", () => {
+    const STAFF = [
+      { id: 9, full_name: "Cyto Person", roles: ["cytotechnologist"] },
+      { id: 42, full_name: "Dr. Somsak", roles: ["pathologist"] },
+    ] as User[];
+
+    const setup = async (
+      signers: unknown[] | undefined,
+      settings: Record<string, unknown> = {},
+      diagnosisFields: Record<string, unknown> = {},
+    ) => {
+      (UserService.getUsers as ReturnType<typeof vi.fn>).mockResolvedValue(STAFF);
+      (SystemSettingService.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+        nongyne_slide_dispatch_enabled: true,
+        ...settings,
+      });
+      (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: 900, status: "draft", signers, ...diagnosisFields },
+      ]);
+      renderPage();
+      expect(await screen.findByText("Signatories")).toBeInTheDocument();
+    };
+
+    it("renders, and tells the screener when their signature gets recorded", async () => {
+      await setup(undefined);
+      expect(
+        screen.getByText(/signature is recorded when you send the case/i),
+      ).toBeInTheDocument();
+    });
+
+    it("starts empty rather than seeding an unsigned row", async () => {
+      // A row here is a signature the sign-out waits on and a name that
+      // prints on the report, so one must never appear before somebody signs.
+      await setup(undefined);
+      expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
+      expect(screen.queryByText("SIGNED")).not.toBeInTheDocument();
+    });
+
+    it("shows each signer's real state once signatures exist", async () => {
+      await setup([
+        { user_id: 9, role: "cytotechnologist", signed_at: "2026-08-20T09:30:00" },
+        { user_id: 42, role: "primary", signed_at: null },
+      ]);
+      expect(await screen.findByText("SIGNED")).toBeInTheDocument();
+      expect(screen.getByText("PENDING")).toBeInTheDocument();
+    });
+
+    it("reflects the non-gyne signing policy, not the surgical one", async () => {
+      await setup(undefined, {
+        require_all_non_gyne_sign: true,
+        require_all_pathologists_sign: false,
+      });
+      expect(await screen.findByText("REQUIRE ALL SIGN")).toBeInTheDocument();
+    });
+
+    it("persists the displayed signers on Save Draft", async () => {
+      const signers = [
+        { user_id: 9, role: "cytotechnologist", signed_at: "2026-08-20T09:30:00" },
+      ];
+      // specimen_type and diagnosis are required, so the form has to be valid
+      // for submit to reach onFinish at all.
+      mockGetById.mockResolvedValue(makeCaseData({ specimen_type: "Fluid" }));
+      await setup(signers, {}, { diagnosis: "NILM" });
+
+      fireEvent.click(screen.getByRole("button", { name: /Save Draft/i }));
+
+      await waitFor(() =>
+        expect(NongyneDiagnosisService.update).toHaveBeenCalled(),
+      );
+      const [, payload] = (NongyneDiagnosisService.update as ReturnType<typeof vi.fn>)
+        .mock.calls[0];
+      expect(payload.signers).toEqual(signers);
+    });
+  });
+
   it("does not render an empty gallery header when no image is flagged show_in_report", async () => {
     mockGetById.mockResolvedValue(makeCaseData({ status: "published" }));
     (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([
