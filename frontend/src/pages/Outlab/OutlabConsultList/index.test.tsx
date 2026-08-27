@@ -84,6 +84,17 @@ describe("OutLabConsultListPage — registration details", () => {
     expect(screen.getByText("01/08/2026 09:30")).toBeInTheDocument();
   });
 
+  it("spells out that the accession is clickable", async () => {
+    render(
+      <ThemeProvider>
+        <OutLabConsultListPage />
+      </ThemeProvider>,
+    );
+
+    await screen.findByText("S26-00012");
+    expect(screen.getByText(/คลิกที่ Accession No./)).toBeInTheDocument();
+  });
+
   it("does not fetch registration details until a case is clicked", async () => {
     render(
       <ThemeProvider>
