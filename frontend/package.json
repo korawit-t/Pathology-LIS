@@ -24,7 +24,7 @@
     "@tiptap/extension-placeholder": "^3.29.0",
     "@tiptap/extension-strike": "^3.29.0",
     "@tiptap/extension-text-style": "^3.29.0",
-    "@tiptap/react": "^3.29.0",
+    "@tiptap/react": "^3.30.3",
     "@tiptap/starter-kit": "^3.29.0",
     "@types/dompurify": "^3.2.0",
     "antd": "^6.0.1",
