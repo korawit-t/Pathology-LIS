@@ -22,6 +22,7 @@ import ConsultRequestModal from "../../components/InternalConsult/ConsultRequest
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
+import CytoPathConcordanceCard from "../../components/CytoPathConcordanceCard";
 import type { SurgicalCase } from "../../types/surgical";
 import logger from "../../utils/logger";
 import { useGyneDiagnosisData } from "./hooks/useGyneDiagnosisData";
@@ -690,6 +691,9 @@ const PathologistGyneDiagnosisPage: React.FC<
               diagnosisSnapshot={diagnosis?.interpretation ?? undefined}
               isLocked={isEditorLocked}
             />
+
+            {/* Cytotech screening vs this signed-out result */}
+            <CytoPathConcordanceCard caseId={Number(caseId)} caseType="gyne" />
 
             {activeReportId && (
               <>

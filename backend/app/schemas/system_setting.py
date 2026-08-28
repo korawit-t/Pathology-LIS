@@ -34,6 +34,7 @@ class SystemSettingBase(BaseModel):
     # SystemSettingBase
     enable_approve_system: bool = False
     enable_gyne_qc_system: bool = False
+    enable_cyto_path_qc: bool = False
     enable_non_gyne_approve_system: bool = False
     nongyne_slide_dispatch_enabled: bool = True
     enable_tissue_processing_workflow: bool = True
@@ -120,6 +121,7 @@ class SystemSettingUpdate(SystemSettingBase):
     require_all_non_gyne_sign: Optional[bool] = None
     enable_approve_system: Optional[bool] = None
     enable_gyne_qc_system: Optional[bool] = None
+    enable_cyto_path_qc: Optional[bool] = None
     enable_non_gyne_approve_system: Optional[bool] = None
     nongyne_slide_dispatch_enabled: Optional[bool] = None
     enable_tissue_processing_workflow: Optional[bool] = None

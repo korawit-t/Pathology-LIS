@@ -20,6 +20,7 @@ from typing import List
 import base64
 from pathlib import Path
 from app.crud import his_export_log as his_export_crud
+from app.crud import cyto_path_correlation as cyto_path_qc
 from app.services.notification_service import notify_event
 
 _BKK = ZoneInfo("Asia/Bangkok")
@@ -434,6 +435,9 @@ def publish_gyne_report(
             db_case.needs_review = True
             db_case.review_reason = "abnormal"
             db_case.status = "pending_review"
+            cyto_path_qc.safe_capture_screening(
+                db, case_type="gyne", case=db_case
+            )
         else:
             flagged_for_review = False
 
@@ -500,6 +504,9 @@ def publish_gyne_report(
                         db_case.review_reason = "random_10pct"
                         db_case.status = "pending_review"
                         flagged_for_review = True
+                        cyto_path_qc.safe_capture_screening(
+                            db, case_type="gyne", case=db_case, cytotech_id=ct_user_id
+                        )
 
                         cytotech = (
                             db.query(User).filter(User.id == ct_user_id).first()
@@ -517,6 +524,13 @@ def publish_gyne_report(
             if not flagged_for_review:
                 # NILM not sampled (or QC disabled) → publish directly
                 db_case.status = "published"
+                # A case that had been sent back after a "disagree" lands here
+                # on its corrected re-publish — that corrected text is the
+                # final one the ledger was waiting for. Cases that never
+                # entered QC review stay out of the ledger entirely.
+                cyto_path_qc.safe_capture_final(
+                    db, case_type="gyne", case=db_case, only_if_tracked=True
+                )
                 db_report.status = GyneReportStatus.PUBLISHED
                 db_report.published_at = local_now()
                 his_export_crud.enqueue(
@@ -558,6 +572,28 @@ def complete_gyne_review(
     db_case.review_result = review_result
     db_case.review_note = review_note
     db_case.discrepancy_level = discrepancy_level if review_result == "disagree" else None
+
+    # The QC ledger's verdict comes straight from this decision — gyne already
+    # asks the pathologist exactly the concordance question, so nobody has to
+    # grade the case a second time in the QC worklist.
+    #
+    # On "agree" the text standing now IS the final one, so freeze it. On
+    # "disagree" it is still the cytotech's original: the corrected diagnosis
+    # only exists after they redo it, and the re-publish above fills the final
+    # side in then. Freezing here would record the rejected call as the final
+    # result and make every disagreement look word-for-word identical.
+    if review_result == "agree":
+        cyto_path_qc.safe_capture_final(
+            db, case_type="gyne", case=db_case, pathologist_id=reviewer_id
+        )
+    cyto_path_qc.safe_apply_gyne_review(
+        db,
+        case=db_case,
+        reviewer_id=reviewer_id,
+        review_result=review_result,
+        discrepancy_level=discrepancy_level,
+        review_note=review_note,
+    )
 
     latest_report = (
         db.query(GyneCytoReport)

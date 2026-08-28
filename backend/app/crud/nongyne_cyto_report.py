@@ -20,6 +20,7 @@ import base64
 import re
 from pathlib import Path
 from app.crud import his_export_log as his_export_crud
+from app.crud import cyto_path_correlation as cyto_path_qc
 
 _BKK = ZoneInfo("Asia/Bangkok")
 
@@ -441,6 +442,18 @@ def publish_nongyne_report(
                 payload_snapshot=build_nongyne_export_payload(db_report),
             )
 
+        # Freeze the signed-out diagnosis next to whatever the cytotech
+        # screened, so the two are still comparable after the fact. Under the
+        # approve workflow the case isn't published yet, but the pathologist's
+        # text is final here — an approver rejecting it sends the case back and
+        # the next publish overwrites this side.
+        cyto_path_qc.safe_capture_final(
+            db,
+            case_type="nongyne",
+            case=db_case,
+            pathologist_id=current_user_id,
+        )
+
     db.commit()
     db.refresh(db_report)
     return db_report
@@ -687,6 +700,15 @@ def process_nongyne_report_approval(
             if db_case:
                 db_case.status = "published"
                 db_case.report_at = now
+                # Re-freeze: an approver can be the first to see the case reach
+                # a terminal state, and the diagnosis may have been revised
+                # between publish and approval.
+                cyto_path_qc.safe_capture_final(
+                    db,
+                    case_type="nongyne",
+                    case=db_case,
+                    pathologist_id=db_report.pathologist_id,
+                )
 
     elif action in ["REJECT", "REQUEST_CHANGES"]:
         db_report.status = NongyneReportStatus.DRAFT

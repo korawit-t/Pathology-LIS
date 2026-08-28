@@ -67,6 +67,7 @@ from .ihc_result_extra_value import IHCResultExtraValue
 from .nongyne_ihc_result import NongyneIHCResult
 from .nongyne_cyto_histo_correlation import NongyneCytoHistoCorrelation
 from .surgical_case_correlation import SurgicalCaseCorrelation
+from .cyto_path_correlation import CytoPathCorrelation
 from .internal_consult import InternalConsult
 from .revoked_token import RevokedToken
 from .cyto_workload import CytoWorkloadLog
@@ -170,6 +171,7 @@ __all__ = [
     "NongyneIHCResult",
     "NongyneCytoHistoCorrelation",
     "SurgicalCaseCorrelation",
+    "CytoPathCorrelation",
     "InternalConsult",
     "RevokedToken",
     "UserMfaMethod",

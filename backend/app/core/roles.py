@@ -52,6 +52,14 @@ CAN_READ_NONGYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_path
 # Defined separately so it can be tightened independently if lab policy changes.
 CAN_APPROVE_NONGYNE_CYTO = RoleChecker(["admin", "senior_pathologist", "cytotechnologist"])
 
+# --- สิทธิ์สำหรับ Cyto-Path Concordance QC ---
+# Cytotechnologists can read: the point of the feature is that a screener sees
+# their own numbers. crud.scope_to_user pins them to their own rows.
+CAN_READ_CYTO_PATH_QC = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager"])
+# Grading a case is a judgement on someone else's screening, so the screener is
+# not in it — same reasoning as CAN_WRITE_REPORT gating cyto-histo correlation.
+CAN_WRITE_CYTO_PATH_QC = RoleChecker(["admin", "pathologist", "senior_pathologist", "lab_manager"])
+
 # --- สิทธิ์สำหรับ Internal Consult ---
 CAN_REQUEST_CONSULT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist"])
 

@@ -10,6 +10,7 @@ from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.patient import Patient
 from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.schemas.nongyne_cyto_case import NongyneCytologyCaseCreate, NongyneCytologyCaseUpdate
+from app.crud import cyto_path_correlation as cyto_path_qc
 
 
 def _get_next_nongyne_accession_no(db: Session) -> str:
@@ -322,6 +323,76 @@ def update_nongyne_case(
     except Exception as e:
         db.rollback()
         raise e
+
+
+def send_nongyne_to_pathologist(
+    db: Session,
+    case_id: int,
+    pathologist_id: int,
+    current_user_id: int,
+    status_override: str | None = None,
+    signers: list | None = None,
+):
+    """Cytotechnologist hands a screened case to a pathologist.
+
+    Until this existed the hand-off was two independent client calls (PATCH the
+    case, PUT the diagnosis) with no server-side transition to hang anything
+    off. Doing it here means `screened_at` finally gets written — it never was,
+    which is why crud/cyto_workload.py's coalesce(screened_at, report_at, ...)
+    has been dating cytotech workload to the report day — and it gives the QC
+    ledger the one moment when the screening diagnosis is still the
+    cytotechnologist's own words.
+    """
+    db_obj = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    if not db_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+    db_obj.pathologist_id = pathologist_id
+    if not db_obj.cytotechnologist_id:
+        db_obj.cytotechnologist_id = current_user_id
+    db_obj.is_screened = True
+    if db_obj.screened_at is None:
+        db_obj.screened_at = local_now()
+    if status_override:
+        db_obj.status = status_override
+
+    if signers is not None:
+        current_diag = (
+            db.query(NongyneDiagnosis)
+            .filter(
+                NongyneDiagnosis.case_id == case_id,
+                NongyneDiagnosis.is_current.is_(True),
+            )
+            .first()
+        )
+        if current_diag:
+            current_diag.signers = signers
+            db.add(current_diag)
+
+    db.add(db_obj)
+    db.flush()
+
+    cyto_path_qc.safe_capture_screening(
+        db, case_type="nongyne", case=db_obj, cytotech_id=db_obj.cytotechnologist_id
+    )
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return (
+        db.query(NongyneCytologyCase)
+        .options(
+            selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.hospital),
+            selectinload(NongyneCytologyCase.pathologist),
+            selectinload(NongyneCytologyCase.cytotechnologist),
+        )
+        .filter(NongyneCytologyCase.id == case_id)
+        .first()
+    )
 
 
 def delete_nongyne_case(db: Session, case_id: int):

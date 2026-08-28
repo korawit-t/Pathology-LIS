@@ -27,6 +27,7 @@ import TumorRegistryPage from "./TumorRegistryPage";
 import LabTechStatPage from "./LabTechStatPage";
 import SlideQualityStatPage from "./SlideQualityStatPage";
 import CytoHistoCorrelationReport from "./CytoHistoCorrelationReport";
+import CytoPathConcordanceReport from "./CytoPathConcordanceReport";
 import CytoWorkloadPage from "./CytoWorkloadPage";
 import CytoTATDashboard from "./CytoTATDashboard";
 import IHCStatPage from "./IHCStatPage";
@@ -154,6 +155,11 @@ const ReportAnalyticsHub: React.FC = () => {
                     label: <span><LinkOutlined style={{ marginRight: 6 }} />Cyto-Histo Correlation</span>,
                     children: <CytoHistoCorrelationReport />,
                   },
+                  ...(settings?.enable_cyto_path_qc ? [{
+                    key: "cyto-path-concordance",
+                    label: <span><TeamOutlined style={{ marginRight: 6 }} />Cyto–Path Concordance</span>,
+                    children: <CytoPathConcordanceReport />,
+                  }] : []),
                   {
                     key: "cancer-registry",
                     label: <span><MedicineBoxOutlined style={{ marginRight: 6 }} />Cancer Registry</span>,
