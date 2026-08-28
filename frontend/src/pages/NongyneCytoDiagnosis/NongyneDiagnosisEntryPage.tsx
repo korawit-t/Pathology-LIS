@@ -478,17 +478,20 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
     try {
       setSubmitting(true);
 
-      // Save current form values as draft first
+      // Save the text first — the hand-off below snapshots whatever the
+      // diagnosis row holds at that moment, and this is the last point where
+      // it is still the cytotechnologist's own wording.
       const values = form.getFieldsValue();
-      await persistDraft(
-        values,
-        {
-          pathologist_id: selectedPathologistId,
-          is_screened: true,
-          ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
-        },
-        buildScreeningSigners(selectedPathologistId),
-      );
+      await persistDraft(values);
+
+      // One server-side transition instead of a PATCH/PUT pair: it stamps
+      // is_screened + screened_at, records the screener's signature, and
+      // freezes the screening side of the QC comparison atomically.
+      await NongyneCytologyCaseService.sendToPathologist(Number(caseId), {
+        pathologist_id: selectedPathologistId,
+        ...(!slideDispatchEnabled ? { status: "slide sent" } : {}),
+        signers: buildScreeningSigners(selectedPathologistId),
+      });
 
       setPathologistPickerOpen(false);
       message.success("Case sent to pathologist successfully");

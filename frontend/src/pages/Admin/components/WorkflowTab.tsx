@@ -238,6 +238,19 @@ const WorkflowTab: React.FC = () => {
           )}
 
           <SettingRow
+            title="Enable Cyto–Path Concordance QC"
+            description="Shows the QC report comparing each cytotechnologist's screening diagnosis against the pathologist's signed-out result. The comparison is recorded either way, so history is already there when this is switched on"
+          >
+            <Form.Item
+              name="enable_cyto_path_qc"
+              valuePropName="checked"
+              noStyle
+            >
+              <Switch checkedChildren="ON" unCheckedChildren="OFF" />
+            </Form.Item>
+          </SettingRow>
+
+          <SettingRow
             title="Enable Non-Gyne Approval"
             description="Requires approval of Non-Gynecology results before printing the report"
           >

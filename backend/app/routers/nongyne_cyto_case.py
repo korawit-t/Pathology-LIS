@@ -17,6 +17,8 @@ from app.schemas.nongyne_cyto_case import (
 )
 from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
+from app.schemas.cyto_path_correlation import SendToPathologistRequest
+from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT
 from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -282,6 +284,28 @@ def cancel_case(
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
     return db_case
+
+
+@router.post(
+    "/{case_id}/send-to-pathologist",
+    response_model=NongyneCytologyCaseResponse,
+    dependencies=[Depends(CAN_WRITE_NONGYNE_CYTO_REPORT)],
+)
+def send_to_pathologist(
+    case_id: int,
+    payload: SendToPathologistRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One atomic hand-off replacing the client's PATCH-then-PUT pair."""
+    return crud.send_nongyne_to_pathologist(
+        db,
+        case_id=case_id,
+        pathologist_id=payload.pathologist_id,
+        current_user_id=current_user.id,
+        status_override=payload.status,
+        signers=payload.signers,
+    )
 
 
 @router.post("/{case_id}/request-files", response_model=None)

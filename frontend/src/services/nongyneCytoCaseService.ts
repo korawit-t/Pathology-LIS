@@ -5,6 +5,7 @@ import {
   NongyneCytologyCaseCreate,
   NongyneCytologyCaseUpdate,
 } from "../types/nongyne";
+import type { NongyneSigner } from "../types/nongyneDiagnosis";
 
 export interface NongyneCytologyListResponse {
   items: NongyneCytologyCase[];
@@ -70,6 +71,24 @@ const NongyneCytologyCaseService = {
   ): Promise<NongyneCytologyCase> => {
     const res = await api.patch<NongyneCytologyCase>(
       `/nongyne-cytology/${id}`,
+      payload,
+    );
+    return res.data;
+  },
+
+  /**
+   * ส่งเคสให้ pathologist — การส่งมอบของ cytotech ในคำสั่งเดียว
+   *
+   * แทนที่การยิง PATCH เคส + PUT diagnosis สองครั้งแยกกัน ฝั่ง server จะเซ็ต
+   * is_screened/screened_at และ freeze ข้อความที่ cytotech อ่านไว้เข้า QC ledger
+   * ก่อนที่ pathologist จะเข้ามาแก้ทับ (ทั้งสองฝ่ายเขียนลงแถวเดียวกัน)
+   */
+  sendToPathologist: async (
+    id: number,
+    payload: { pathologist_id: number; status?: string; signers?: NongyneSigner[] },
+  ): Promise<NongyneCytologyCase> => {
+    const res = await api.post<NongyneCytologyCase>(
+      `/nongyne-cytology/${id}/send-to-pathologist`,
       payload,
     );
     return res.data;

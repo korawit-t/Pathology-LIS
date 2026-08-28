@@ -28,6 +28,7 @@ vi.mock("../../services/nongyneCytoCaseService", () => ({
   default: {
     getById: vi.fn(),
     update: vi.fn().mockResolvedValue({}),
+    sendToPathologist: vi.fn().mockResolvedValue({}),
   },
 }));
 vi.mock("../../services/notificationRuleService", () => ({
@@ -152,11 +153,54 @@ describe("NongyneDiagnosisEntryPage", () => {
     fireEvent.click(await screen.findByText("Dr. Somsak"));
     fireEvent.click(screen.getByRole("button", { name: /Confirm & Continue/i }));
 
-    await waitFor(() => expect(NongyneCytologyCaseService.update).toHaveBeenCalled());
-    const [, payload] = (NongyneCytologyCaseService.update as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(payload).toEqual(
-      expect.objectContaining({ pathologist_id: 42, is_screened: true }),
+    // The hand-off is one server-side call, not a PATCH/PUT pair: the server
+    // stamps is_screened/screened_at and freezes the screening diagnosis for
+    // the QC comparison before the pathologist can edit over it.
+    await waitFor(() =>
+      expect(NongyneCytologyCaseService.sendToPathologist).toHaveBeenCalled(),
     );
+    const [caseId, payload] = (
+      NongyneCytologyCaseService.sendToPathologist as ReturnType<typeof vi.fn>
+    ).mock.calls[0];
+    expect(caseId).toBe(500);
+    expect(payload).toEqual(expect.objectContaining({ pathologist_id: 42 }));
+    expect(payload.signers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ user_id: 42, role: "primary", signed_at: null }),
+      ]),
+    );
+  });
+
+  it("saves the diagnosis text before handing the case over", async () => {
+    // The server snapshots whatever the diagnosis row holds at hand-off time,
+    // so an unsaved edit would be frozen as someone else's words.
+    (UserService.getUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 42, full_name: "Dr. Somsak", roles: ["pathologist"] } as User,
+    ]);
+    (NongyneDiagnosisService.getByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 900, status: "draft" },
+    ]);
+    const order: string[] = [];
+    (NongyneDiagnosisService.update as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => {
+        order.push("save-diagnosis");
+        return {};
+      },
+    );
+    (
+      NongyneCytologyCaseService.sendToPathologist as ReturnType<typeof vi.fn>
+    ).mockImplementation(async () => {
+      order.push("hand-off");
+      return {};
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Send to Pathologist/i }));
+    fireEvent.mouseDown(screen.getByText("Select pathologist..."));
+    fireEvent.click(await screen.findByText("Dr. Somsak"));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm & Continue/i }));
+
+    await waitFor(() => expect(order).toEqual(["save-diagnosis", "hand-off"]));
   });
 
   describe("Signatories card", () => {

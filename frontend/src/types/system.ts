@@ -63,6 +63,9 @@ export interface SystemSetting {
   // เปิด/ปิด ระบบการ Approve ผลโดยพยาธิแพทย์
   enable_approve_system: boolean;
   enable_gyne_qc_system: boolean;
+  /** Shows the Cyto–Path Concordance tab. The ledger is written either
+   *  way, so switching it on later still has history behind it. */
+  enable_cyto_path_qc?: boolean;
   enable_non_gyne_approve_system: boolean;
   nongyne_slide_dispatch_enabled: boolean;
   enable_tissue_processing_workflow: boolean;

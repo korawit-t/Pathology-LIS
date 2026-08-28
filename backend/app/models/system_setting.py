@@ -112,6 +112,10 @@ class SystemSetting(Base):
     enable_approve_system = Column(Boolean, default=False) # Surgical (Legacy name)
     enable_gyne_qc_system = Column(Boolean, default=False) # Gyne — controls NILM random sampling
     enable_non_gyne_approve_system = Column(Boolean, default=False) # Non-Gyne
+    # Cyto-Path Concordance QC ledger (cytotech screening vs pathologist final).
+    # Off by default: it only shows the Report Analytics tab, the ledger is
+    # written either way so turning it on later still has history behind it.
+    enable_cyto_path_qc = Column(Boolean, default=False, nullable=False, server_default="false")
     # 🚩 กำหนดว่าต้องเซ็นครบทุกคนก่อนส่ง Approve หรือไม่
     # 🚩 กำหนดว่าต้องเซ็นครบทุกคนก่อนส่ง Approve หรือไม่
     require_all_pathologists_sign = Column(Boolean, default=False) # Surgical (Legacy name)

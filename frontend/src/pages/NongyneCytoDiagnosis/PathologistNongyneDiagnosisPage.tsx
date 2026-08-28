@@ -46,6 +46,7 @@ import NongyneFinalizedResultCard from "./components/NongyneFinalizedResultCard"
 import NongyneCytologyImageCaptureModal from "./components/NongyneCytologyImageCaptureModal";
 import logger from "../../utils/logger";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
+import CytoPathConcordanceCard from "../../components/CytoPathConcordanceCard";
 import DiagnosticTemplateSystem from "../Pathologist/SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import GrossTemplateSystem from "../Gross/components/GrossTemplateSystem";
 import NongyneSignOffPage from "./components/NongyneSignOffPage";
@@ -605,6 +606,9 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
               diagnosisSnapshot={diagnosis?.diagnosis ?? undefined}
               isLocked={isEditorLocked}
             />
+
+            {/* Cytotech screening vs this signed-out result */}
+            <CytoPathConcordanceCard caseId={Number(caseId)} caseType="nongyne" />
 
             {/* Comment + Signatories */}
             <Row gutter={16} align="stretch">
