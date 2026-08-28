@@ -14,6 +14,7 @@ import {
 import dayjs from "dayjs";
 import { TYPE_TAG } from "./constants";
 import ConsultRunExpansionPanel from "./ConsultRunExpansionPanel";
+import "../../styles/table-common.css";
 import type { OutlabConsultRunResponse } from "../../services/outlabConsultRunService";
 
 const { Text } = Typography;
@@ -38,8 +39,6 @@ const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
       <Button icon={<ReloadOutlined />} onClick={onRefresh} loading={loading}>
         Refresh
       </Button>
-    </Space>
-    <Space style={{ marginBottom: 12 }}>
       <Tag color="processing">Pending: {pendingCount}</Tag>
       <Tag color="success">Completed: {runs.length - pendingCount}</Tag>
     </Space>
@@ -47,14 +46,20 @@ const OutlabTabContent: React.FC<OutlabTabContentProps> = ({
       dataSource={runs}
       rowKey="id"
       loading={loading}
+      className="standard-table"
+      // Only expandable rows get the clickable-row affordance (cursor + hover
+      // highlight) — a run with no cases does nothing when clicked.
+      rowClassName={(run: OutlabConsultRunResponse) => (run.details.length > 0 ? "editable-row" : "")}
       size="middle"
       bordered
-      pagination={{ pageSize: 20, showTotal: (t) => `Total ${t} runs`, hideOnSinglePage: true }}
-      scroll={{ x: 900, y: "calc(100vh - 380px)" }}
+      pagination={{
+        pageSize: 20,
+        showSizeChanger: false,
+        showTotal: (t) => `Total ${t} runs`,
+        hideOnSinglePage: true,
+      }}
+      scroll={{ x: 900, y: "calc(100vh - 360px)" }}
       sticky
-      onRow={(run: OutlabConsultRunResponse) => ({
-        style: run.details.length > 0 ? { cursor: "pointer" } : undefined,
-      })}
       expandable={{
         // Click anywhere on the run row to see its cases — same affordance as
         // OutlabManagement's TrackingTab, except the expand icon stays visible
