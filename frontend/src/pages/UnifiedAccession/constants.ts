@@ -19,11 +19,9 @@ export const CYTO_STATUS: Record<string, { color: string; label: string }> = {
   cancelled: { color: "error", label: "Cancelled" },
 };
 
-export const MOLECULAR_STATUS_MAP: Record<string, { color: string; label: string }> = {
-  pending: { color: "gold", label: "Pending" },
-  reported: { color: "green", label: "Reported" },
-  cancelled: { color: "error", label: "Cancelled" },
-};
+// Shared with the standalone Molecular page's table (MolecularCaseTable) so
+// both render the same status tag.
+export { MOLECULAR_STATUS_MAP } from "../../constants/lab.constants";
 
 export const STAIN_STATUS_COLOR: Record<string, string> = {
   pending: "default",

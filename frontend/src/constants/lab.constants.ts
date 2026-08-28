@@ -115,3 +115,17 @@ export const REPORT_TYPE_COLORS: Record<string, string> = {
   Corrected: "orange",
   Preliminary: "purple",
 };
+
+// =======================
+// Molecular
+// =======================
+// Backend keeps molecular cancellation in a separate `is_cancelled` flag —
+// only the unified-case query folds it into `status` (see
+// backend/app/crud/unified_case.py::_molecular_branch). Callers reading the
+// plain /molecular endpoint must map `is_cancelled` to "cancelled" themselves
+// so both tables render the same tag.
+export const MOLECULAR_STATUS_MAP: Record<string, { color: string; label: string }> = {
+  pending: { color: "gold", label: "Pending" },
+  reported: { color: "green", label: "Reported" },
+  cancelled: { color: "error", label: "Cancelled" },
+};

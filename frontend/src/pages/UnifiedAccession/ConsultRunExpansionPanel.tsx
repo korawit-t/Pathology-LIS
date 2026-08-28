@@ -6,6 +6,7 @@ import {
   FilePdfOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import AccessionTag from "../../components/AccessionTag";
 import { TYPE_TAG } from "./constants";
 import type { OutlabConsultRunDetailResponse } from "../../services/outlabConsultRunService";
 
@@ -72,7 +73,7 @@ export const ConsultRunExpansionPanel: React.FC<ConsultRunExpansionPanelProps> =
                 >
                   {TYPE_TAG[first.case_type]?.label || first.case_type}
                 </Tag>
-                <Text strong style={{ color: "#1890ff" }}>{acc}</Text>
+                <AccessionTag value={acc} />
               </Space>
               <Text style={{ minWidth: 160, paddingTop: 2 }}>{first.patient_name || "—"}</Text>
               <Space wrap size={[8, 4]}>
@@ -84,7 +85,7 @@ export const ConsultRunExpansionPanel: React.FC<ConsultRunExpansionPanelProps> =
                   >
                     {d.block_returned ? (
                       <Tooltip
-                        title={`Block returned${d.block_returned_at ? ` ${dayjs(d.block_returned_at).format("DD/MM/YYYY HH:mm")}` : ""}`}
+                        title={`Block returned${d.block_returned_at ? ` ${dayjs(d.block_returned_at).format("DD/MM/YY HH:mm")}` : ""}`}
                       >
                         <CheckCircleOutlined style={{ color: "#52c41a" }} />
                       </Tooltip>
