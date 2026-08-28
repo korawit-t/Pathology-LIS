@@ -59,6 +59,22 @@ jobs:
         working-directory: backend
         run: ruff check .
 
+  version-sync:
+    name: Version Sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      # Blocking gate: backend/app/core/config.py and frontend/package.json
+      # hold the same number in two places because the Docker build contexts
+      # are ./backend and ./frontend, so a root VERSION file would be outside
+      # both. Drift between them is invisible until someone reports GET
+      # /version and the login footer disagreeing on one deployment.
+      - name: Check the backend and frontend versions match
+        run: python scripts/version.py check
+
   frontend-tests:
     name: Frontend Tests (vitest)
     runs-on: ubuntu-latest

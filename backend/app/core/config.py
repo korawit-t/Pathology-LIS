@@ -59,7 +59,7 @@ OPENAI_COMPATIBLE_API_KEY: str = os.getenv("OPENAI_COMPATIBLE_API_KEY", "")
 
 class Settings:
     PROJECT_NAME: str = "Pathology LIS"
-    VERSION: str = "1.0.0"
+    VERSION: str = "2.0.0"
     ENVIRONMENT: str = ENVIRONMENT
     IS_PRODUCTION: bool = IS_PRODUCTION
 

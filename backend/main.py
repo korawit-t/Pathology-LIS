@@ -71,7 +71,7 @@ from app.routers import (
 )
 from app.middleware.audit_middleware import AuditContextMiddleware
 from app.services.audit_service import register_audit_listeners
-from app.core.config import IS_PRODUCTION
+from app.core.config import IS_PRODUCTION, settings
 from app.his_export.worker import run_forever as run_his_export_worker
 from app.scheduled_notifications.worker import run_forever as run_scheduled_notifications_worker
 
@@ -106,7 +106,7 @@ async def app_lifespan(app: FastAPI):
 # endpoint map is not publicly reachable (SECURITY_AUDIT.md §C5).
 app = FastAPI(
     title="Pathology LIS API",
-    version="1.0.0",
+    version=settings.VERSION,
     docs_url=None if IS_PRODUCTION else "/docs",
     redoc_url=None if IS_PRODUCTION else "/redoc",
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
