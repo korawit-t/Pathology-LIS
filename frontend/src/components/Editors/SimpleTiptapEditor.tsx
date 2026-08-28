@@ -64,7 +64,7 @@ const styles: Record<string, React.CSSProperties> = {
 /* =======================
    Empty-paragraph trimming
 ======================= */
-const EMPTY_P_SOURCE = "<p>(?:\\s|&nbsp;)*</p>";
+const EMPTY_P_SOURCE = "<p>(?:\\s|&nbsp;|<br\\s*/?>)*</p>";
 const LEADING_EMPTY_P = new RegExp(`^(?:${EMPTY_P_SOURCE})+`, "i");
 const TRAILING_EMPTY_P = new RegExp(`(?:${EMPTY_P_SOURCE})+$`, "i");
 
@@ -74,6 +74,11 @@ const TRAILING_EMPTY_P = new RegExp(`(?:${EMPTY_P_SOURCE})+$`, "i");
 function trimEdgeEmptyParagraphs(html: string): string {
   return html.replace(LEADING_EMPTY_P, "").replace(TRAILING_EMPTY_P, "");
 }
+
+// Whitespace a "blank" paragraph may be padded with: regular spaces/newlines,
+// plus the non-breaking and zero-width characters HTML sources use as filler
+// (\s already covers \u00a0/\ufeff; \u200b it does not).
+const BLANK_TEXT = /^[\s\u200b]*$/;
 
 // Same idea as trimEdgeEmptyParagraphs above, but applied to a pasted Slice
 // instead of an HTML string. Copying a selection out of another editor in
@@ -96,8 +101,25 @@ function trimEdgeEmptySliceParagraphs(slice: Slice): Slice {
   let openEnd = slice.openEnd;
   let changed = false;
 
-  const isEmptyParagraph = (node: (typeof nodes)[number]) =>
-    node.type.name === "paragraph" && node.content.size === 0;
+  const isEmptyParagraph = (node: (typeof nodes)[number]) => {
+    if (node.type.name !== "paragraph") return false;
+    if (node.content.size === 0) return true;
+    // A blank line copied out of any non-ProseMirror HTML source (Word, a web
+    // page, a rendered report) arrives as <p>&nbsp;</p> rather than an empty
+    // <p></p>, so a size check alone lets those through and the paste lands
+    // with the source's leading/trailing blank lines intact. Treat a paragraph
+    // holding nothing but blank text and/or line breaks as empty too. Anything
+    // else (an image, an inline node) counts as real content and stops the trim.
+    let blank = true;
+    node.forEach((child) => {
+      if (child.isText) {
+        if (!BLANK_TEXT.test(child.text ?? "")) blank = false;
+      } else if (child.type.name !== "hardBreak") {
+        blank = false;
+      }
+    });
+    return blank;
+  };
 
   while (nodes.length > 1 && isEmptyParagraph(nodes[0])) {
     nodes.shift();
