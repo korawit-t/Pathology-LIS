@@ -280,6 +280,61 @@ Drop any `*.html` file into `backend/app/templates/reports/` with the correct pr
 
 ---
 
+## Versioning and Releases
+
+Backend and frontend ship together under one version number. The running
+version is visible in three places:
+
+```bash
+curl http://localhost:8000/version      # {"version": "2.0.0", "environment": "..."}
+```
+
+…in the footer of the login page, and in **System Settings → About**, which
+lists the frontend and backend numbers separately — they should always match.
+
+The number is [Semantic Versioning](https://semver.org/spec/v2.0.0.html), read
+from the point of view of whoever performs the upgrade:
+
+| Part | Bump when |
+|---|---|
+| **MAJOR** | the upgrade needs a human — a new or renamed env var, hand-run SQL, a data backfill, a required starting alembic revision, or a workflow change users must be retrained on |
+| **MINOR** | at least one new feature (`feat:`) |
+| **PATCH** | fixes and internal work only |
+
+A migration that `alembic upgrade head` applies by itself is **not** a MAJOR —
+both the Railway deploy and the on-prem `start.ps1` run it automatically before
+the server starts. MAJOR is reserved for upgrades that fail, or silently do the
+wrong thing, if nobody reads the release notes first.
+
+Every release is a git tag, so `git checkout v2.0.0` gets you the exact code a
+given deployment is running. [CHANGELOG.md](./CHANGELOG.md) lists what changed
+in each one, and carries the upgrade notes for any MAJOR.
+
+### Cutting a release
+
+Tag when you deploy to a real lab, not on every merge — the version should
+answer "what is running in the hospital right now".
+
+```bash
+python scripts/version.py bump minor    # or: major | patch | set 2.1.0
+```
+
+That rewrites `backend/app/core/config.py` and `frontend/package.json` (plus
+the lock file) together; CI fails the **Version Sync** check if they ever
+disagree. Then collect the entries for CHANGELOG.md:
+
+```bash
+git log v2.0.0..HEAD --format='- %s' --no-merges
+```
+
+Commit, merge the PR, and tag the merge commit on `main`:
+
+```bash
+git tag -a v2.1.0 -m "v2.1.0" && git push origin v2.1.0
+```
+
+---
+
 ## Database Migrations
 
 Migrations are managed with Alembic. After pulling updates that include model changes:
