@@ -1,7 +1,9 @@
-import os
-import uuid
+import logging
 from pathlib import Path
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import (
+    save_microscopic_image_local,
+    delete_microscopic_image_local,
+)
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -10,6 +12,7 @@ from typing import Optional, List
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_ACCESS_MICROSCOPIC_IMAGE
+from app.utils.case_lock import assert_surgical_specimen_unlocked
 from app.models.user import User
 from app.models.surgical_specimen import SurgicalSpecimen  # 🚩 ตรวจสอบชื่อรุ่น
 from app.models.microscopic_image import MicroscopicImage
@@ -19,6 +22,8 @@ from app.schemas.microscopic_image import (
     MicroscopicImageUpdate,
 )
 from app.crud.microscopic_image import create_micro_image
+
+logger = logging.getLogger(__name__)
 
 # 🔒 SECURITY_AUDIT.md N1: every route in this router is gated by
 # CAN_ACCESS_MICROSCOPIC_IMAGE — only admin / pathologist / senior_pathologist.
@@ -48,18 +53,18 @@ async def upload_micro_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Validate magic bytes, enforce size cap, strip EXIF — raises HTTP 400/413 on violation
-    data, ext = validate_and_sanitize(file, allowed="image")
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_surgical_specimen_unlocked(db, specimen_id)
 
-    unique_filename = f"{uuid.uuid4()}.{ext}"
-    file_path = UPLOAD_DIR / unique_filename
+    # Validates magic bytes, enforces the size cap and strips EXIF —
+    # raises HTTP 400/413 on violation.
     try:
-        file_path.write_bytes(data)
+        db_image_url = await save_microscopic_image_local(file)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ไม่สามารถบันทึกไฟล์ได้: {str(e)}")
 
-    # 4. บันทึกข้อมูลลงฐานข้อมูล
-    db_image_url = f"microscopic_images/{unique_filename}"
     image_in = MicroscopicImageCreate(
         image_url=db_image_url,
         original_filename=file.filename,
@@ -144,6 +149,9 @@ def update_micro_image(
     if not db_image:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลภาพที่ต้องการแก้ไข")
 
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_surgical_specimen_unlocked(db, db_image.specimen_id)
+
     # 2. เตรียมข้อมูลที่จะ Update (กรองเอาเฉพาะฟิลด์ที่ส่งมา)
     update_data = image_in.model_dump(exclude_unset=True)
 
@@ -172,10 +180,67 @@ def delete_micro_image(
     if not image:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลภาพ")
 
-    file_path = STORAGE_DIR / image.image_url
-    if file_path.exists():
-        os.remove(file_path)
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_surgical_specimen_unlocked(db, image.specimen_id)
+
+    try:
+        delete_microscopic_image_local(image.image_url)
+    except Exception as e:
+        # A missing file is no reason to leave an orphaned DB row behind.
+        logger.warning(
+            "Failed to delete microscopic image file %s: %s", image.image_url, e
+        )
 
     db.delete(image)
     db.commit()
     return {"detail": "ลบรูปภาพสำเร็จ"}
+
+
+@router.put("/{image_id}/content", response_model=MicroscopicImageResponse)
+async def replace_micro_image_content(
+    image_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Replace the stored file of an existing microscopic image, keeping its row,
+    its specimen link and all of its metadata. Backs the "re-crop / rotate /
+    annotate an already-uploaded image" flow.
+
+    The new file is written before the old one is dropped, so a failure can
+    never leave the row pointing at a file that no longer exists.
+    """
+    db_image = (
+        db.query(MicroscopicImage).filter(MicroscopicImage.id == image_id).first()
+    )
+    if not db_image:
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลภาพที่ต้องการแก้ไข")
+
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_surgical_specimen_unlocked(db, db_image.specimen_id)
+
+    old_url = db_image.image_url
+    try:
+        new_url = await save_microscopic_image_local(file)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ไม่สามารถบันทึกไฟล์ได้: {str(e)}")
+
+    db_image.image_url = new_url
+    if file.filename:
+        db_image.original_filename = file.filename
+    db.add(db_image)
+    db.commit()
+    db.refresh(db_image)
+
+    if old_url and old_url != new_url:
+        try:
+            delete_microscopic_image_local(old_url)
+        except Exception as e:
+            logger.warning(
+                "Failed to delete replaced microscopic image file %s: %s", old_url, e
+            )
+
+    return db_image

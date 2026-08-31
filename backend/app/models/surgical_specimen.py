@@ -50,8 +50,8 @@ class SurgicalSpecimen(Base):
     
     # เชื่อมต่อไปยังตารางลูกอื่นๆ (ถ้ามี)
     blocks = relationship("SurgicalBlock", back_populates="specimen", cascade="all, delete-orphan")
-    gross_images = relationship("GrossImage", back_populates="specimen", cascade="all, delete-orphan")
-    microscopic_images = relationship("MicroscopicImage", back_populates="specimen", cascade="all, delete-orphan")
+    gross_images = relationship("GrossImage", back_populates="specimen", cascade="all, delete-orphan", order_by="GrossImage.order")
+    microscopic_images = relationship("MicroscopicImage", back_populates="specimen", cascade="all, delete-orphan", order_by="MicroscopicImage.sort_order")
     ap_tests = relationship("SurgicalSpecimenAPTest", back_populates="surgical_specimen", cascade="all, delete-orphan")
     
 

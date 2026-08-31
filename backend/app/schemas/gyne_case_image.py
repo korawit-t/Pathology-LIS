@@ -7,12 +7,14 @@ class GyneCaseImageCreate(BaseModel):
     image_url: str
     original_filename: Optional[str] = None
     description: Optional[str] = None
+    stain: Optional[str] = None
     order: Optional[int] = 1
     show_in_report: Optional[bool] = True
 
 
 class GyneCaseImageUpdate(BaseModel):
     description: Optional[str] = None
+    stain: Optional[str] = None
     order: Optional[int] = None
     show_in_report: Optional[bool] = None
 

@@ -62,6 +62,7 @@ import logger from "../../../utils/logger";
 import type { User } from "../../../types/user";
 import { oversizeMessage } from "../../../utils/imageUpload";
 import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
+import { getErrorDetail } from "../../../utils/errorHandler";
 import type { SurgicalReport } from "../../../types/surgicalReport";
 import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
@@ -644,7 +645,7 @@ const handleOpenFinalizeModal = async () => {
       setIsMicroModalOpen(false);
       setEditingImage(null);
     } catch (error) {
-      message.error("Operation failed");
+      message.error(getErrorDetail(error) ?? "Operation failed");
       logger.error(error);
     }
   };

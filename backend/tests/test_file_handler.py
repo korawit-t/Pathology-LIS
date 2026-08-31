@@ -25,6 +25,8 @@ from app.utils.file_handler import (
     delete_gross_image_local,
     delete_nongyne_image_local,
     delete_gyne_image_local,
+    save_microscopic_image_local,
+    delete_microscopic_image_local,
 )
 
 
@@ -230,6 +232,50 @@ class TestDeleteImageLocal:
             delete_nongyne_image_local("/storage/gross_images/1/abc.png")
         with pytest.raises(ValueError):
             delete_gyne_image_local("/storage/nongyne_images/1/abc.png")
+
+
+class TestMicroscopicImageLocal:
+    # Microscopic images keep a different on-disk layout from the other three
+    # domains — flat under uploads/microscopic_images/ with no per-specimen
+    # subdirectory, and a stored URL with no "/storage/" prefix, because they
+    # are served by their own router endpoint. The guards must still hold.
+
+    def test_save_uses_the_flat_prefixless_layout(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+
+        url = _run(save_microscopic_image_local(FakeUploadFile(_image_bytes("JPEG"))))
+
+        assert url.startswith("microscopic_images/")
+        assert not url.startswith("/storage/")
+        assert (tmp_path / url).exists()
+
+    def test_delete_removes_an_existing_file_and_returns_true(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        dest = tmp_path / "microscopic_images"
+        dest.mkdir(parents=True)
+        (dest / "abc123.png").write_bytes(b"fake png bytes")
+
+        assert delete_microscopic_image_local("microscopic_images/abc123.png") is True
+        assert not (dest / "abc123.png").exists()
+
+    def test_missing_file_returns_false_without_raising(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+
+        assert delete_microscopic_image_local("microscopic_images/nope.png") is False
+
+    def test_rejects_traversal_and_other_image_kinds(self, monkeypatch, tmp_path):
+        # Previously the router deleted via `STORAGE_DIR / image.image_url`
+        # with no validation at all; these are the guards that closes.
+        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        for bad in (
+            "microscopic_images/../../etc/passwd",
+            "../../etc/passwd",
+            "/etc/passwd",
+            "/storage/microscopic_images/abc.png",
+            "gross_images/1/abc.png",
+        ):
+            with pytest.raises(ValueError):
+                delete_microscopic_image_local(bad)
 
 
 def _run(coro):

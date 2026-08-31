@@ -44,6 +44,22 @@ const GrossImageService = {
     await api.delete(`/surgical-specimens/images/${imageId}`);
   },
 
+
+  /**
+   * 🔁 แทนที่ไฟล์รูปเดิมด้วยรูปที่แก้แล้ว (crop / หมุน / annotate) — PUT
+   * แถวใน DB และ metadata ทั้งหมดคงเดิม เปลี่ยนแค่ตัวไฟล์
+   */
+  replaceContent: async (imageId: number, blob: Blob, fileName = "edited.jpg"): Promise<GrossImage> => {
+    const formData = new FormData();
+    formData.append("file", blob, fileName);
+    const res = await api.put<GrossImage>(
+      `/surgical-specimens/images/${imageId}/content`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
   /**
    * ✏️ อัปเดตข้อมูลรูปภาพ Gross (PATCH)
    * @param imageId - ID ของรูปภาพ Gross

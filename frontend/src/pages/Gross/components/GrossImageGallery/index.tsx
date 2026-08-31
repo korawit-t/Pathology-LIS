@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 // 🌟 นำเข้า Image จาก antd
 import {
   Card,
@@ -11,11 +11,13 @@ import {
   Tag,
   Space,
   Image,
+  Input,
   Switch, // 🚩 เพิ่ม Switch สำหรับ Toggle
 } from "antd";
 import {
   CameraOutlined,
   DeleteOutlined,
+  EditOutlined,
   PictureOutlined,
   EyeOutlined,
 } from "@ant-design/icons";
@@ -32,6 +34,8 @@ interface GrossImageGalleryProps {
   images: GrossImage[];
   specimens: Specimen[];
   onOpenCapture: () => void;
+  /** Opens the capture modal in edit mode (caption + crop/rotate/annotate). */
+  onEditImage: (image: GrossImage) => void;
   onDeleteImage: (id: number) => void;
   onRefresh?: () => void; // 🚩 Callback สำหรับโหลดรูปใหม่หลังสลับสถานะ
   loading?: boolean;
@@ -41,10 +45,28 @@ const GrossImageGallery: React.FC<GrossImageGalleryProps> = ({
   images,
   specimens,
   onOpenCapture,
+  onEditImage,
   onDeleteImage,
   onRefresh,
   loading,
 }) => {
+  // Local drafts so typing isn't lost between refreshes; once a save lands the
+  // draft matches the refetched value and becomes a no-op.
+  const [descDraft, setDescDraft] = useState<Record<number, string>>({});
+  const descValue = (image: GrossImage) =>
+    descDraft[image.id] ?? image.description ?? "";
+
+  const handleSaveDescription = async (image: GrossImage) => {
+    const value = descValue(image);
+    if (value === (image.description ?? "")) return;
+    try {
+      await GrossImageService.updateImage(image.id, { description: value });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      logger.error("Failed to update image description", err);
+    }
+  };
+
   const handleToggleVisibility = async (imageId: number, checked: boolean) => {
     try {
       await GrossImageService.updateImage(imageId, { show_in_report: checked });
@@ -104,6 +126,13 @@ const GrossImageGallery: React.FC<GrossImageGalleryProps> = ({
                       />
                     }
                     actions={[
+                      <EditOutlined
+                        key="edit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditImage(image);
+                        }}
+                      />,
                       <div onClick={(e) => e.stopPropagation()}>
                         <Switch
                           key="visibility"
@@ -152,6 +181,23 @@ const GrossImageGallery: React.FC<GrossImageGalleryProps> = ({
                             {image.original_filename}
                           </Text>
                         </Space>
+                      }
+                      description={
+                        <Input
+                          size="small"
+                          placeholder="Description..."
+                          value={descValue(image)}
+                          style={{ fontSize: 11 }}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) =>
+                            setDescDraft((prev) => ({
+                              ...prev,
+                              [image.id]: e.target.value,
+                            }))
+                          }
+                          onBlur={() => handleSaveDescription(image)}
+                          onPressEnter={() => handleSaveDescription(image)}
+                        />
                       }
                     />
                   </Card>

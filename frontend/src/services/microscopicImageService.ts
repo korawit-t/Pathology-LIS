@@ -37,6 +37,26 @@ const MicroscopicImageService = {
     return res.data;
   },
 
+
+  /**
+   * 🔁 แทนที่ไฟล์รูปเดิมด้วยรูปที่แก้แล้ว (crop / หมุน / annotate) — PUT
+   * แถวใน DB และ metadata ทั้งหมดคงเดิม เปลี่ยนแค่ตัวไฟล์
+   */
+  replaceContent: async (
+    imageId: number,
+    blob: Blob,
+    fileName = "edited.jpg"
+  ): Promise<MicroscopicImage> => {
+    const formData = new FormData();
+    formData.append("file", blob, fileName);
+    const res = await api.put<MicroscopicImage>(
+      `/microscopic-images/${imageId}/content`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    return res.data;
+  },
+
   /**
    * 🖼️ ดึงรายการรูปภาพ Microscopic ทั้งหมดของชิ้นเนื้อ (GET)
    */

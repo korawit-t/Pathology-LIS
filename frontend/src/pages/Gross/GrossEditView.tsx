@@ -39,6 +39,7 @@ import type { User } from "../../types/user";
 import ClinicalInfoSection from "../../components/ClinicalInfoSection";
 import { useAuth } from "../../hooks/useAuth";
 import GrossImageCaptureModal from "./components/GrossImageCaptureModal";
+import type { GrossImage } from "../../types/image";
 import GrossImageGallery from "./components/GrossImageGallery";
 import PatientInfoCard from "../../components/PatientInfoCard";
 import SpecimenManagerSection from "../../components/SpecimenManagerSection/SpecimenManagerSection";
@@ -102,6 +103,7 @@ const GrossEditView: React.FC<Props> = ({
 
   const [loading, setLoading] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
+  const [editingGrossImage, setEditingGrossImage] = useState<GrossImage | null>(null);
   const [isAssistModalOpen, setIsAssistModalOpen] = useState(false);
   const [currentSpecimens, setCurrentSpecimens] = useState<any[]>([]);
 
@@ -392,7 +394,14 @@ const GrossEditView: React.FC<Props> = ({
         <GrossImageGallery
           images={grossImages}
           specimens={currentSpecimens}
-          onOpenCapture={() => setIsCaptureModalOpen(true)}
+          onOpenCapture={() => {
+            setEditingGrossImage(null);
+            setIsCaptureModalOpen(true);
+          }}
+          onEditImage={(image) => {
+            setEditingGrossImage(image);
+            setIsCaptureModalOpen(true);
+          }}
           onDeleteImage={handleDeleteImage}
           onRefresh={() => fetchImagesAllSpecimens(currentSpecimens)}
         />
@@ -691,9 +700,16 @@ const GrossEditView: React.FC<Props> = ({
 
       <GrossImageCaptureModal
         open={isCaptureModalOpen}
-        onClose={() => setIsCaptureModalOpen(false)}
+        editingImage={editingGrossImage}
+        onClose={() => {
+          setIsCaptureModalOpen(false);
+          setEditingGrossImage(null);
+        }}
+        onSuccess={() => fetchImagesAllSpecimens(currentSpecimens)}
         specimens={currentSpecimens}
-        onCaptureAndUpload={(src, id) => handleCaptureAndUpload(src, id, currentSpecimens)}
+        onCaptureAndUpload={(src, id, description) =>
+          handleCaptureAndUpload(src, id, currentSpecimens, description)
+        }
       />
 
       <GrossingAssistModal
