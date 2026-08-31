@@ -4,7 +4,7 @@ from app.schemas.tissue_processing import TissueProcessingRunCreate, ProcessorMa
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.utils.time import local_now
-from app.enums.case_states import SURGICAL_TERMINAL
+from app.enums.case_states import surgical_at_or_past
 from app.utils.block_workflow import statuses_from
 from fastapi import HTTPException
 
@@ -410,18 +410,15 @@ def complete_processing_run(
             if total_blocks > 0 and total_blocks == done_blocks:
                 from app.models.surgical_case import SurgicalCase  # import มาถ้ายังไม่มี
 
-                # อย่าแตะเคสที่ปิดไปแล้ว — บล็อกที่ recut/เพิ่มเข้ามาหลัง sign out
-                # ทำให้เงื่อนไข "ครบทุกบล็อก" เป็นจริงอีกรอบ แล้วดันเคสที่ออกผล
-                # ไปแล้วถอยกลับมาเป็น "processed"
-                db.query(SurgicalCase).filter(
-                    SurgicalCase.id == specimen.case_id,
-                    SurgicalCase.status.notin_(sorted(SURGICAL_TERMINAL)),
-                ).update(
-                    {
-                        "is_processed": True,
-                        "status": "processed",  # ปรับให้ตรงกับ Enum status ใน Case Model
-                    }
-                )
+                # อย่าแตะเคสที่เดินเลยขั้น process ไปแล้ว — บล็อกที่ recut/เพิ่ม
+                # เข้ามาทีหลังทำให้เงื่อนไข "ครบทุกบล็อก" เป็นจริงอีกรอบ เดิมกันไว้
+                # แค่ SURGICAL_TERMINAL เคสที่ "slide sent"/"pending diagnosis"
+                # (ส่ง pathologist แล้วแต่ยังไม่เซ็นออก) จึงถอยกลับมาเป็น "processed"
+                case = db.get(SurgicalCase, specimen.case_id)
+                if case and not surgical_at_or_past(case.status, "processed"):
+                    case.is_processed = True
+                    # ปรับให้ตรงกับ Enum status ใน Case Model
+                    case.status = "processed"
 
         db.commit()
         db.refresh(db_run)
