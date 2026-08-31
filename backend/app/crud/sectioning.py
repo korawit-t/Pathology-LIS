@@ -10,7 +10,7 @@ from app.schemas.sectioning import (
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
-from app.enums.case_states import SURGICAL_TERMINAL
+from app.enums.case_states import surgical_at_or_past
 from app.utils.block_workflow import assert_blocks_ready
 from app.utils.time import local_now
 
@@ -36,9 +36,11 @@ def _promote_cases_if_fully_sectioned(db: Session, block_ids: list[int]) -> None
         )
         if not_sectioned == 0:
             case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
-            # เคสที่ปิดแล้วต้องไม่ถูกดันถอยกลับ — บล็อกที่ตัดหลัง sign out
-            # ทำให้ not_sectioned กลับเป็น 0 ได้อีกรอบ
-            if case and case.status not in SURGICAL_TERMINAL:
+            # เคสที่เดินเลยขั้นตัดไปแล้วต้องไม่ถูกดันถอยกลับ — บล็อกที่เพิ่ม/recut
+            # ทีหลังทำให้ not_sectioned กลับเป็น 0 ได้อีกรอบ เดิมกันไว้แค่
+            # SURGICAL_TERMINAL เคสที่ "slide sent"/"pending diagnosis"
+            # (ส่ง pathologist แล้วแต่ยังไม่เซ็นออก) จึงเด้งกลับเป็น "sectioned"
+            if case and not surgical_at_or_past(case.status, "sectioned"):
                 case.status = "sectioned"
 
 
