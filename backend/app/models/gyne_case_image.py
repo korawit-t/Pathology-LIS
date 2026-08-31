@@ -17,6 +17,9 @@ class GyneCaseImage(Base):
     image_url = Column(String, nullable=False)
     original_filename = Column(String, nullable=True)
     description = Column(String, nullable=True)
+    # Stain used for this image (PAP / LBC / H&E / Giemsa ...), shown as an
+    # overlay in the capture modal and available as a report caption.
+    stain = Column(String, nullable=True)
     show_in_report = Column(Boolean, default=True)
     order = Column(Integer, default=1)
 

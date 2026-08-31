@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Image, Input, Switch, Typography } from "antd";
+import { App, Button, Image, Input, Switch, Typography } from "antd";
 import {
   EditOutlined,
   DeleteOutlined,
@@ -11,6 +11,7 @@ import SecureImage from "../../../components/SecureImage";
 import GyneCaseImageService, {
   GyneCaseImage,
 } from "../../../services/gyneCaseImageService";
+import { getErrorDetail } from "../../../utils/errorHandler";
 import { API_BASE_URL } from "../../../services/httpClient";
 
 const { Title } = Typography;
@@ -35,101 +36,119 @@ const GyneCytologyImagesSection: React.FC<GyneCytologyImagesSectionProps> = ({
   onRefresh,
   onEdit,
   onCapture,
-}) => (
-  <StyledCard
-    size="small"
-    title={
-      <Title
-        level={5}
-        style={{
-          margin: 0,
-          textTransform: "uppercase",
-          letterSpacing: "1.2px",
-          fontWeight: 600,
-        }}
-      >
-        <CameraOutlined style={{ marginRight: 8 }} />
-        Cytology Images
-      </Title>
-    }
-    style={{ marginBottom: 16 }}
-  >
-    <Image.PreviewGroup>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: images.length > 0 ? 12 : 0,
-        }}
-      >
-        {images.map((img) => (
-          <div key={img.id} style={{ position: "relative", width: 160 }}>
-            <SecureImage
-              src={`${API_BASE_URL}${img.image_url}`}
-              width={160}
-              height={120}
-              style={{
-                objectFit: "cover",
-                borderRadius: 4,
-                border: "1px solid #d9d9d9",
-              }}
-              preview={true}
-            />
-            <Input
-              size="small"
-              placeholder="Description..."
-              value={descMap[img.id] ?? ""}
-              disabled={isFormLocked}
-              style={{ marginTop: 4, fontSize: 11 }}
-              onChange={(e) => onDescChange(img.id, e.target.value)}
-              onBlur={() => onDescSave(img.id)}
-              onPressEnter={() => onDescSave(img.id)}
-            />
-            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-              <Switch
-                size="small"
-                checked={img.show_in_report}
-                checkedChildren="In Report"
-                unCheckedChildren="Hidden"
-                disabled={isFormLocked}
-                onChange={async (checked) => {
-                  await GyneCaseImageService.update(img.id, {
-                    show_in_report: checked,
-                  });
-                  onRefresh();
-                }}
-              />
-              {!isFormLocked && (
-                <>
-                  <Button
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => onEdit(img)}
-                  />
-                  <Button
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={async () => {
-                      await GyneCaseImageService.delete(img.id);
-                      onRefresh();
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Image.PreviewGroup>
+}) => {
+  const { message } = App.useApp();
 
-    {!isFormLocked && (
-      <Button icon={<PlusOutlined />} onClick={onCapture}>
-        Capture / Upload Image
-      </Button>
-    )}
-  </StyledCard>
-);
+  // The backend rejects image writes on a signed-out / published case with
+  // 423; without a catch these buttons failed silently and left the grid
+  // showing state the server never accepted.
+  const run = async (action: () => Promise<unknown>, fallback: string) => {
+    try {
+      await action();
+      onRefresh();
+    } catch (err) {
+      message.error(getErrorDetail(err) ?? fallback);
+    }
+  };
+
+  return (
+    <StyledCard
+      size="small"
+      title={
+        <Title
+          level={5}
+          style={{
+            margin: 0,
+            textTransform: "uppercase",
+            letterSpacing: "1.2px",
+            fontWeight: 600,
+          }}
+        >
+          <CameraOutlined style={{ marginRight: 8 }} />
+          Cytology Images
+        </Title>
+      }
+      style={{ marginBottom: 16 }}
+    >
+      <Image.PreviewGroup>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: images.length > 0 ? 12 : 0,
+          }}
+        >
+          {images.map((img) => (
+            <div key={img.id} style={{ position: "relative", width: 160 }}>
+              <SecureImage
+                src={`${API_BASE_URL}${img.image_url}`}
+                width={160}
+                height={120}
+                style={{
+                  objectFit: "cover",
+                  borderRadius: 4,
+                  border: "1px solid #d9d9d9",
+                }}
+                preview={true}
+              />
+              <Input
+                size="small"
+                placeholder="Description..."
+                value={descMap[img.id] ?? ""}
+                disabled={isFormLocked}
+                style={{ marginTop: 4, fontSize: 11 }}
+                onChange={(e) => onDescChange(img.id, e.target.value)}
+                onBlur={() => onDescSave(img.id)}
+                onPressEnter={() => onDescSave(img.id)}
+              />
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                <Switch
+                  size="small"
+                  checked={img.show_in_report}
+                  checkedChildren="In Report"
+                  unCheckedChildren="Hidden"
+                  disabled={isFormLocked}
+                  onChange={(checked) =>
+                    run(
+                      () => GyneCaseImageService.update(img.id, { show_in_report: checked }),
+                      "Failed to update the image",
+                    )
+                  }
+                />
+                {!isFormLocked && (
+                  <>
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => onEdit(img)}
+                    />
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() =>
+                        run(
+                          () => GyneCaseImageService.delete(img.id),
+                          "Failed to delete the image",
+                        )
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Image.PreviewGroup>
+
+      {!isFormLocked && (
+        <Button icon={<PlusOutlined />} onClick={onCapture}>
+          Capture / Upload Image
+        </Button>
+      )}
+    </StyledCard>
+  );
+};
 
 export default GyneCytologyImagesSection;

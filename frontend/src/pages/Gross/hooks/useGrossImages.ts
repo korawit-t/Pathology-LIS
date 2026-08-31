@@ -6,6 +6,7 @@ import { GrossImage } from "../../../types/image";
 import logger from "../../../utils/logger";
 import { oversizeMessage } from "../../../utils/imageUpload";
 import { MAX_IMAGE_UPLOAD_BYTES } from "../../../constants/upload.constants";
+import { getErrorDetail } from "../../../utils/errorHandler";
 
 export const useGrossImages = (activeCase: unknown) => {
   const [grossImages, setGrossImages] = useState<GrossImage[]>([]);
@@ -33,6 +34,7 @@ export const useGrossImages = (activeCase: unknown) => {
     imageSrc: string,
     specimenId: number | null,
     currentSpecimens: { id: number }[],
+    description?: string,
   ) => {
     if (!specimenId) {
       message.warning("Please select a specimen before uploading an image");
@@ -53,6 +55,7 @@ export const useGrossImages = (activeCase: unknown) => {
 
       const formData = new FormData();
       formData.append("file", blob, fileName);
+      if (description) formData.append("description", description);
 
       await GrossImageService.uploadImage(specimenId, formData);
       message.success("Image uploaded successfully");
@@ -60,7 +63,7 @@ export const useGrossImages = (activeCase: unknown) => {
       await fetchImagesAllSpecimens(currentSpecimens);
     } catch (err) {
       logger.error(err);
-      message.error("Upload failed");
+      message.error(getErrorDetail(err) ?? "Upload failed");
     }
   };
 
@@ -70,7 +73,7 @@ export const useGrossImages = (activeCase: unknown) => {
       setGrossImages((prev) => prev.filter((img) => img.id !== imageId));
       message.success("Image deleted successfully");
     } catch (error) {
-      message.error("Failed to delete image");
+      message.error(getErrorDetail(error) ?? "Failed to delete image");
     }
   };
 

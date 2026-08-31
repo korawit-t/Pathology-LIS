@@ -12,6 +12,10 @@ from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.utils.file_handler import save_nongyne_image_local, delete_nongyne_image_local
 from app.dependencies.auth import get_current_user, check_password_status
 from app.core.roles import CAN_ACCESS_NONGYNE_CYTO_IMAGE
+from app.utils.case_lock import (
+    assert_nongyne_case_unlocked,
+    assert_nongyne_case_id_unlocked,
+)
 
 # 🔒 SECURITY_AUDIT.md N1 follow-up: gate every route in this router on
 # CAN_ACCESS_NONGYNE_CYTO_IMAGE (admin / pathologist / senior_pathologist /
@@ -34,6 +38,7 @@ async def upload_nongyne_image(
     case_id: int,
     file: UploadFile = File(...),
     description: str = Form(None),
+    stain: str = Form(None),
     order: int = Form(1),
     show_in_report: bool = Form(True),
     db: Session = Depends(get_db),
@@ -43,6 +48,9 @@ async def upload_nongyne_image(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_nongyne_case_unlocked(case)
+
     image_url = await save_nongyne_image_local(case_id, file)
 
     db_image = NongyneCaseImage(
@@ -50,6 +58,7 @@ async def upload_nongyne_image(
         image_url=image_url,
         original_filename=file.filename,
         description=description,
+        stain=stain,
         order=order,
         show_in_report=show_in_report,
     )
@@ -78,6 +87,10 @@ def update_nongyne_image(
     db_image = db.query(NongyneCaseImage).filter(NongyneCaseImage.id == image_id).first()
     if not db_image:
         raise HTTPException(status_code=404, detail="Image not found")
+
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_nongyne_case_id_unlocked(db, db_image.case_id)
+
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(db_image, field, value)
     db.commit()
@@ -90,6 +103,10 @@ def delete_nongyne_image(image_id: int, db: Session = Depends(get_db)):
     db_image = db.query(NongyneCaseImage).filter(NongyneCaseImage.id == image_id).first()
     if not db_image:
         raise HTTPException(status_code=404, detail="Image not found")
+
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_nongyne_case_id_unlocked(db, db_image.case_id)
+
     try:
         delete_nongyne_image_local(db_image.image_url)
     except Exception as exc:
@@ -97,3 +114,52 @@ def delete_nongyne_image(image_id: int, db: Session = Depends(get_db)):
     db.delete(db_image)
     db.commit()
     return None
+
+
+@router.put("/images/{image_id}/content", response_model=NongyneCaseImageResponse)
+async def replace_nongyne_image_content(
+    image_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Replace the stored file of an existing non-gyne cytology case image, keeping its row and
+    all of its metadata. Backs the "re-crop / rotate / annotate an image that
+    was already uploaded" flow.
+
+    The new file is written before the old one is dropped, so a failure can
+    never leave the row pointing at a file that no longer exists.
+    """
+    db_image = (
+        db.query(NongyneCaseImage).filter(NongyneCaseImage.id == image_id).first()
+    )
+    if not db_image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
+    assert_nongyne_case_id_unlocked(db, db_image.case_id)
+
+    old_url = db_image.image_url
+    try:
+        new_url = await save_nongyne_image_local(db_image.case_id, file)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {e}")
+
+    db_image.image_url = new_url
+    if file.filename:
+        db_image.original_filename = file.filename
+    db.commit()
+    db.refresh(db_image)
+
+    if old_url and old_url != new_url:
+        try:
+            delete_nongyne_image_local(old_url)
+        except Exception as e:
+            logger.warning(
+                "Failed to delete replaced non-gyne image file %s: %s", old_url, e
+            )
+
+    return db_image

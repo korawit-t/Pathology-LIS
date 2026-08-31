@@ -203,3 +203,45 @@ def delete_gross_image_local(image_url: str):
         os.remove(file_path)
         return True
     return False
+
+
+async def save_microscopic_image_local(file: UploadFile) -> str:
+    """
+    Validate, sanitise (EXIF strip), and save a microscopic image.
+
+    The layout deliberately differs from the other three image domains: files
+    are flat in uploads/microscopic_images/ (no per-specimen subdirectory) and
+    the stored URL carries no "/storage/" prefix, because this domain is served
+    by its own /microscopic-images/get-image/ endpoint instead of the shared
+    storage router. Kept as-is so existing rows keep resolving.
+    """
+    data, ext = validate_and_sanitize(file, allowed="image")
+
+    dest_dir = STORAGE_ROOT / "microscopic_images"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    unique_filename = f"{uuid.uuid4()}.{ext}"
+    (dest_dir / unique_filename).write_bytes(data)
+    return f"microscopic_images/{unique_filename}"
+
+
+def delete_microscopic_image_local(image_url: str):
+    """
+    Delete a microscopic image from local storage using its stored URL.
+    Mirrors the whitelist + containment guards of the other delete helpers;
+    the pattern has no "/storage/" prefix and no id segment to match the
+    flat layout described in save_microscopic_image_local.
+    """
+    import re
+    if not re.fullmatch(r"microscopic_images/[\w\-]+\.\w+", image_url):
+        raise ValueError(f"Invalid image_url format: {image_url}")
+
+    file_path = (STORAGE_ROOT / image_url).resolve()
+
+    storage_root_resolved = STORAGE_ROOT.resolve()
+    if not file_path.is_relative_to(storage_root_resolved):
+        raise ValueError("Path traversal attempt detected")
+
+    if file_path.exists():
+        os.remove(file_path)
+        return True
+    return False

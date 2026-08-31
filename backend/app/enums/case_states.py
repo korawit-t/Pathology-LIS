@@ -139,6 +139,22 @@ NONGYNE_ACTIVE: Final = NONGYNE_ALL - NONGYNE_TERMINAL
 # ใช้นับยอดในแดชบอร์ด (status.in_(...)) — คือทุกสถานะที่ยังไม่ปิดเคส
 SURGICAL_PIPELINE: Final = SURGICAL_ACTIVE
 
+# "เนื้อหารายงานถูกแช่แล้ว" — กว้างกว่า *_TERMINAL ตรงที่รวมสถานะรออนุมัติ
+# ด้วย: ระหว่างที่หัวหน้ากำลังตรวจ เนื้อหาต้องนิ่ง ไม่ใช่แค่ตอนออกผลไปแล้ว
+#
+# ใช้กับการ์ดฝั่งหลังบ้านที่กันการเขียนรูปเข้าเคสที่ปิดแล้ว
+# (utils/case_lock.py) ให้ตรงกับที่หน้าบ้านซ่อนปุ่มแก้ไขอยู่แล้ว
+#
+# "revised" ไม่อยู่ในเซ็ตนี้โดยตั้งใจ (สืบทอดจาก GYNE_TERMINAL) — เคสที่กด
+# แก้ผลแล้วต้องแก้รูปประกอบต่อได้ ไม่งั้น flow แก้ผลพังทั้งเส้น
+#
+# surgical มีเงื่อนไขเพิ่มที่ไม่ใช่สถานะ: เคสที่ "signed out" กลับมาแก้ได้อีก
+# ครั้งเมื่อมี diagnosis ที่ยังเป็น draft ค้างอยู่ (โหมด addendum) สถานะอย่าง
+# เดียวจึงไม่พอ — ดู case_lock.assert_surgical_case_unlocked
+SURGICAL_CONTENT_LOCKED: Final = SURGICAL_TERMINAL | frozenset(SURGICAL_REVIEW)
+GYNE_CONTENT_LOCKED: Final = GYNE_TERMINAL | frozenset(GYNE_REVIEW)
+NONGYNE_CONTENT_LOCKED: Final = NONGYNE_TERMINAL | frozenset(NONGYNE_REVIEW)
+
 CATALOGUE: Final[dict[str, frozenset[str]]] = {
     "surgical": SURGICAL_ALL,
     "gyne": GYNE_ALL,
@@ -210,4 +226,22 @@ def is_terminal(status: str | None, case_type: str) -> bool:
         "surgical": SURGICAL_TERMINAL,
         "gyne": GYNE_TERMINAL,
         "nongyne": NONGYNE_TERMINAL,
+    }[case_type]
+
+
+def is_content_locked(status: str | None, case_type: str) -> bool:
+    """
+    True ถ้าเนื้อหารายงานของเคสถูกแช่แล้ว — ออกผล/ยกเลิก/รออนุมัติ
+
+    ต่างจาก :func:`is_terminal` ตรงที่นับสถานะรออนุมัติเข้ามาด้วย
+
+    **สำหรับ surgical สถานะอย่างเดียวยังไม่พอ** — เคสที่ "signed out"
+    ปลดล็อกอีกครั้งได้ถ้ามี diagnosis draft ค้างอยู่ ใช้
+    :func:`app.utils.case_lock.assert_surgical_case_unlocked` แทนการเรียก
+    ฟังก์ชันนี้ตรง ๆ กับเคส surgical
+    """
+    return (status or "") in {
+        "surgical": SURGICAL_CONTENT_LOCKED,
+        "gyne": GYNE_CONTENT_LOCKED,
+        "nongyne": NONGYNE_CONTENT_LOCKED,
     }[case_type]
