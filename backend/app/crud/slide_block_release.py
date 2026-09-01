@@ -286,6 +286,7 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
     # ── Fetch case with patient ─────────────────────────────────────
     patient_name = ""
     patient_cid = ""
+    patient_hn = ""
     accession_no = ""
     block_codes: list[str] = []
     he_block_codes: list[str] = []
@@ -309,6 +310,7 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
         if case:
             patient_name = _full_patient_name(case.patient)
             patient_cid = case.patient.cid if case.patient else ""
+            patient_hn = case.hn or ""
             accession_no = case.accession_no
             for spec in case.specimens:
                 for block in sorted(spec.blocks, key=lambda b: b.block_no):
@@ -335,6 +337,7 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
         if case:
             patient_name = _full_patient_name(case.patient)
             patient_cid = case.patient.cid if case.patient else ""
+            patient_hn = case.hn or ""
             accession_no = case.accession_no
             cyto_slide_nos = [accession_no] if accession_no else []
 
@@ -363,6 +366,7 @@ def build_release_form_data(db: Session, release_id: int) -> dict:
         "lab_address": lab_address,
         "patient_name": patient_name,
         "patient_cid": patient_cid,
+        "patient_hn": patient_hn,
         "accession_no": accession_no,
         "remark": release.remark or "",
         "recipient_name": release.recipient_name,
