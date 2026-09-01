@@ -11,6 +11,7 @@ from app.crud.slide_block_release import (
     verify_accession_for_release,
     create_release,
     delete_release,
+    build_release_form_data,
 )
 from app.schemas.slide_block_release import SlideBlockReleaseCreate
 from app.models.slide_block_release import SlideBlockRelease
@@ -171,3 +172,36 @@ class TestDeleteReleaseRecomputesFlags:
 
     def test_missing_release_returns_false(self, db):
         assert delete_release(db, 999999) is False
+
+
+class TestBuildReleaseFormData:
+    """The printed form identifies the case by HN + accession no, not just by
+    patient name/CID — both used to be missing from the rendered template."""
+
+    @pytest.mark.parametrize(
+        "case_type,factory",
+        [
+            ("SURGICAL", lambda db, registrar_id: make_signable_case(db, registrar_id=registrar_id)[0]),
+            ("GYNE_CYTO", make_bare_gyne_case),
+            ("NONGYNE_CYTO", make_bare_nongyne_case),
+        ],
+    )
+    def test_form_data_carries_hn_and_accession_no(self, db, admin_user, case_type, factory):
+        registrar, _ = admin_user
+        case = factory(db, registrar_id=registrar.id)
+        case.hn = f"HN-{uuid.uuid4().hex[:8]}"
+        case.is_reported = True
+        db.commit()
+
+        release = create_release(
+            db,
+            SlideBlockReleaseCreate(
+                case_id=case.id, case_type=case_type, release_type="SLIDE", recipient_name="Dr. X"
+            ),
+            released_by_id=registrar.id,
+        )
+
+        data = build_release_form_data(db, release.id)
+
+        assert data["patient_hn"] == case.hn
+        assert data["accession_no"] == case.accession_no
