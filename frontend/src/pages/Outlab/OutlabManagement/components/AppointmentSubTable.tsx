@@ -8,11 +8,26 @@ const { Text } = Typography;
 interface AppointmentSubTableProps {
   appointments?: OutlabAppointment[];
   loading?: boolean;
+  /** The HIS lookup failed — distinct from it succeeding with no rows. */
+  unavailable?: boolean;
 }
 
 /** HosXP appointment history shown in HosxpKeyTab's row-expansion. */
-export const AppointmentSubTable: React.FC<AppointmentSubTableProps> = ({ appointments, loading }) => {
+export const AppointmentSubTable: React.FC<AppointmentSubTableProps> = ({
+  appointments,
+  loading,
+  unavailable,
+}) => {
   if (loading) return <Spin size="small" style={{ padding: 12 }} />;
+  // "Could not ask" and "asked, found none" are different facts and must not
+  // render the same. A failed lookup shown as "no appointments found" is a
+  // confident wrong answer about a patient's follow-up.
+  if (unavailable)
+    return (
+      <Text type="danger" style={{ padding: "8px 12px", display: "block" }}>
+        Cannot reach the HIS — appointments unknown
+      </Text>
+    );
   if (!appointments || appointments.length === 0)
     return (
       <Text type="secondary" style={{ padding: "8px 12px", display: "block" }}>
