@@ -5,23 +5,52 @@ Supports different case types: surgical, gyne (PAP), nongyne.
 """
 
 import os
+from datetime import timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from app.his_adapters import HisAdapterBase
 from app.schemas.his import HisPatientResult
+from app.utils.time import local_now
 
 
-def get_hns_with_visit_today(his_db: Session) -> List[str]:
-    """All HNs with a visit recorded today, per HOSxP's vn_stat table
-    (vstdate = actual visit date, distinct from a merely-scheduled oapp
-    appointment). Single batched query with no HN filter — used to check
-    "is this patient actually at the hospital today" across many candidate
-    HNs at once, rather than looping a per-HN appointment lookup."""
-    rows = his_db.execute(
-        text("SELECT hn FROM vn_stat WHERE DATE(vstdate) = CURRENT_DATE")
-    ).fetchall()
+def get_hns_with_visit_today(his_db: Session, hns: Optional[List[str]] = None) -> List[str]:
+    """HNs with a visit recorded today, per HOSxP's vn_stat table (vstdate =
+    actual visit date, distinct from a merely-scheduled oapp appointment).
+    One batched query — used to check "is this patient actually at the
+    hospital today" across many candidate HNs at once, rather than looping a
+    per-HN appointment lookup.
+
+    Two things keep this off a full table scan of vn_stat, which holds ~5.1M
+    rows on the live HOSxP:
+
+    - The date predicate is a half-open range on the raw column rather than
+      DATE(vstdate) = CURRENT_DATE. Wrapping the column in DATE() makes the
+      predicate non-sargable, so MySQL read the whole table and the query
+      died mid-flight with pymysql 2013 "Lost connection to MySQL server
+      during query" on the scheduled_notifications worker. The bound date
+      comes from the app's own Asia/Bangkok clock instead of the server's
+      CURRENT_DATE so "today" means the same thing on both sides.
+    - `hns` restricts the query to the caller's candidate patients, letting
+      MySQL answer from the hn index. Callers that already hold a candidate
+      set (the outlab worker) should pass it; the /his/visits-today endpoint
+      still asks for the unfiltered list because its caller intersects
+      client-side.
+    """
+    if hns is not None and not hns:
+        return []
+
+    today = local_now().date()
+    params = {"today": today, "tomorrow": today + timedelta(days=1)}
+    sql = "SELECT DISTINCT hn FROM vn_stat WHERE vstdate >= :today AND vstdate < :tomorrow"
+
+    stmt = text(sql)
+    if hns is not None:
+        stmt = text(sql + " AND hn IN :hns").bindparams(bindparam("hns", expanding=True))
+        params["hns"] = list(hns)
+
+    rows = his_db.execute(stmt, params).fetchall()
     return [r[0] for r in rows if r[0]]
 
 

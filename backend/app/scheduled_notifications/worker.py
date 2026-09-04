@@ -60,29 +60,45 @@ def _seconds_until_next_run() -> float:
     return max((target - now).total_seconds(), 1.0)
 
 
+def _load_unkeyed_outlab_by_hn() -> dict:
+    db = SessionLocal()
+    try:
+        return surgical_block_stain_crud.get_unkeyed_outlab_by_hn(db)
+    finally:
+        db.close()
+
+
+def _load_visiting_hns(hns: List[str]) -> set:
+    """Empty set when HIS isn't configured — no HIS means no way to tell who
+    turned up, which is the same "notify nobody" outcome as nobody visiting."""
+    his_db = get_his_session_direct()
+    if his_db is None:
+        return set()
+    try:
+        return set(hosxp_get_hns_with_visit_today(his_db, hns=hns))
+    finally:
+        his_db.close()
+
+
 async def _check_outlab_pending_visit_today(rule, channels: List[NotificationChannel]) -> None:
     """The one scheduled check: patients who actually visited the hospital
     today (per HOSxP's vn_stat table) who still have un-keyed outlab
     results. Uses a single batched "who's here today" query rather than a
     per-HN appointment lookup — an appointment (oapp) is only a schedule,
-    not proof the patient showed up, so this checks actual arrival instead."""
-    db = SessionLocal()
-    try:
-        by_hn = surgical_block_stain_crud.get_unkeyed_outlab_by_hn(db)
-    finally:
-        db.close()
+    not proof the patient showed up, so this checks actual arrival instead.
 
+    Both lookups are synchronous SQLAlchemy calls, so they run in a worker
+    thread: this coroutine shares the server's event loop, and a slow HIS
+    query executed inline would stall every in-flight HTTP request until the
+    hospital's MySQL answered."""
+    by_hn = await asyncio.to_thread(_load_unkeyed_outlab_by_hn)
     if not by_hn:
         return
 
-    his_db = get_his_session_direct()
-    if his_db is None:
-        return
-
-    try:
-        visiting_hns = set(hosxp_get_hns_with_visit_today(his_db))
-    finally:
-        his_db.close()
+    # Only these patients matter, so the HN filter goes into the SQL rather
+    # than pulling every HN that visited today back for a client-side
+    # intersection.
+    visiting_hns = await asyncio.to_thread(_load_visiting_hns, list(by_hn.keys()))
 
     now_dt = local_now()
     today_iso = now_dt.date().isoformat()
