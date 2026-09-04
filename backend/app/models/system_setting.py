@@ -64,6 +64,14 @@ class SystemSetting(Base):
     # เพราะแต่ละที่วางรูปแบบเลข/ครั้งที่แก้ไข/วันบังคับใช้ไม่เหมือนกัน
     specimen_disposal_doc_no = Column(String, nullable=True)
 
+    # เกณฑ์จำนวนวันหลังรายงานผลก่อนทิ้งสิ่งส่งตรวจ non-gyne — บังคับจริงใน
+    # crud/nongyne_specimen_disposal_batch.create_batch ไม่ใช่แค่ข้อความบนใบ
+    nongyne_specimen_retention_days = Column(
+        Integer, default=30, nullable=False, server_default="30"
+    )
+    # เลขคุมเอกสารของใบทำลาย non-gyne — คนละใบกับของ surgical จึงคนละเลข
+    nongyne_specimen_disposal_doc_no = Column(String, nullable=True)
+
     # --- Report Color Scheme ---
     report_primary_color = Column(String, nullable=True)  # hex e.g. "#0056b3"
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Form, Switch, Input, Card, Row, Col, Typography, Divider, Button, message } from "antd";
+import { Form, Switch, Input, InputNumber, Card, Row, Col, Typography, Divider, Button, message } from "antd";
 import { SaveOutlined } from "@ant-design/icons";
 import SystemSettingService from "../../../services/systemSettingService";
 
@@ -112,6 +112,33 @@ const ReportTab = () => {
               label="ใบตรวจสอบและทำลายชิ้นเนื้อ (Specimen Disposal Checklist)"
             >
               <Input placeholder="e.g. FM-PAT-025 แก้ไขครั้งที่ 01" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={16}>
+            <Form.Item
+              name="nongyne_specimen_disposal_doc_no"
+              label="ใบตรวจสอบและทำลายสิ่งส่งตรวจ Non-Gyne (Non-Gyne Disposal Checklist)"
+            >
+              <Input placeholder="e.g. FM-CYT-011 แก้ไขครั้งที่ 01" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Divider />
+        <Text strong>Non-Gyne Specimen Retention</Text>
+        <Text type="secondary" style={{ display: "block", marginBottom: 16, marginTop: 4 }}>
+          จำนวนวันหลังรายงานผลที่ต้องเก็บสิ่งส่งตรวจ non-gyne ไว้ก่อนทำลาย
+          ระบบบังคับตามค่านี้จริง — เคสที่ยังไม่ครบกำหนด หรือยังค้าง Pending
+          จะใส่ในใบตรวจสอบก่อนทำลายไม่ได้
+        </Text>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item
+              name="nongyne_specimen_retention_days"
+              label="เก็บไว้อย่างน้อย (วันนับจากวันรายงานผล)"
+            >
+              <InputNumber min={0} style={{ width: "100%" }} placeholder="30" />
             </Form.Item>
           </Col>
         </Row>

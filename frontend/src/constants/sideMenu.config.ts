@@ -236,6 +236,12 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         view: "nongyne-cell-block",
         roles: PAGE_PERMISSIONS["nongyne-cell-block"],
       },
+      {
+        key: "nongyne-specimen-disposal",
+        label: "Specimen Disposal",
+        view: "nongyne-specimen-disposal",
+        roles: PAGE_PERMISSIONS["nongyne-specimen-disposal"],
+      },
     ],
   },
 

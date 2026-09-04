@@ -84,6 +84,15 @@ class NongyneCytologyCase(Base):
     cell_block_prepared_at = Column(DateTime, nullable=True)
     cell_block_prepared_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # --- Specimen Disposal ---
+    # ไม่มีขั้นตอนจัดเก็บเข้ากล่องแบบ surgical — สิ่งส่งตรวจ non-gyne (fluid/FNA/sputum)
+    # อยู่ในตู้เย็นจนครบกำหนดแล้วทิ้ง จึงบันทึกเฉพาะฝั่งทำลาย
+    discard_status = Column(
+        Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    discard_at = Column(DateTime, nullable=True)
+    discard_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     # --- 5. Results Summary ---
     # สำหรับกรองรวดเร็ว
     has_malignancy = Column(Boolean, index=True, nullable=True)
@@ -107,6 +116,7 @@ class NongyneCytologyCase(Base):
     pathologist = relationship("User", foreign_keys=[pathologist_id])
     registerer = relationship("User", foreign_keys=[registrar_id])
     cell_block_prepared_by = relationship("User", foreign_keys=[cell_block_prepared_by_id])
+    specimen_disposer = relationship("User", foreign_keys=[discard_by_id])
     hospital = relationship("Hospital")
     department = relationship("Department")
     medical_scheme = relationship("MedicalScheme")
