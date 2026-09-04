@@ -82,7 +82,30 @@ jobs:
             "GHSA-qwww-vcr4-c8h2"
           )
 
-          npm audit --audit-level=high --json > audit.json || true
+          # `npm audit` exits non-zero whenever it finds anything, so its exit
+          # code can't tell "found vulnerabilities" apart from "registry is
+          # down" — hence the `|| true`. But a registry outage writes an error
+          # object with no .vulnerabilities key, and the jq filter below reads
+          # that as zero findings and passes the job. (Observed: a 503 from
+          # registry.npmjs.org/-/npm/v1/security/audits/quick.) Retry a few
+          # times, then fail closed rather than reporting a silent green.
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high --json > audit.json || true
+            if jq -e 'has("vulnerabilities")' audit.json >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "npm audit returned no usable report (attempt $attempt/3); retrying in $((attempt * 15))s"
+              sleep $((attempt * 15))
+            fi
+          done
+
+          if ! jq -e 'has("vulnerabilities")' audit.json >/dev/null 2>&1; then
+            echo "npm audit did not return a usable report after 3 attempts — failing closed."
+            echo "Last response was:"
+            head -c 2000 audit.json
+            exit 1
+          fi
 
           ALLOWED_JSON=$(printf '%s\n' "${ALLOWED_ADVISORIES[@]}" | jq -R . | jq -s .)
           UNALLOWED=$(jq -r --argjson allowed "$ALLOWED_JSON" '
