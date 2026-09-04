@@ -6,7 +6,9 @@ import HisService from "../../../services/hisService";
 vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: { getPendingOutlabByHn: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
-vi.mock("../../../services/hisService", () => ({ default: { getVisitsToday: vi.fn() } }));
+vi.mock("../../../services/hisService", () => ({
+  default: { getVisitsToday: vi.fn(), getInfo: vi.fn() },
+}));
 
 const pendingItem = (overrides = {}) => ({
   id: 1,
@@ -116,5 +118,56 @@ describe("TodayPatientsTab", () => {
 
     await waitFor(() => expect(SurgicalBlockStainService.toggleHosxpKeyed).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText("HN-001")).not.toBeInTheDocument());
+  });
+});
+
+describe("TodayPatientsTab when the HIS cannot be reached", () => {
+  // Regression: this used to `.catch(() => ({ hns: [] }))`, which filtered
+  // every pending patient out and rendered the green "all clear" banner —
+  // telling staff there was nothing to key in precisely when we could not tell.
+  const onePendingPatient = () =>
+    SurgicalBlockStainService.getPendingOutlabByHn.mockResolvedValue({
+      "HN-001": { patient_name: "Somchai Jaidee", items: [pendingItem()] },
+    });
+
+  it("does not claim all clear", async () => {
+    onePendingPatient();
+    HisService.getVisitsToday.mockRejectedValue(new Error("503"));
+    render(<TodayPatientsTab refreshTrigger={0} />);
+
+    expect(await screen.findByText(/this list is unavailable, not empty/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+  });
+
+  it("says the list is unknown rather than empty in the table body", async () => {
+    onePendingPatient();
+    HisService.getVisitsToday.mockRejectedValue(new Error("503"));
+    render(<TodayPatientsTab refreshTrigger={0} />);
+
+    expect(
+      await screen.findByText(/HIS unavailable — cannot determine who is here today/i),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the warning again once the HIS answers on a later refresh", async () => {
+    onePendingPatient();
+    HisService.getVisitsToday.mockRejectedValueOnce(new Error("503"));
+    render(<TodayPatientsTab refreshTrigger={0} />);
+    await screen.findByText(/this list is unavailable, not empty/i);
+
+    HisService.getVisitsToday.mockResolvedValue({ hns: ["HN-001"] });
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+
+    expect(await screen.findByText("Somchai Jaidee")).toBeInTheDocument();
+    expect(screen.queryByText(/this list is unavailable, not empty/i)).not.toBeInTheDocument();
+  });
+
+  it("still shows the genuine all-clear when the HIS answers with nobody here", async () => {
+    onePendingPatient();
+    HisService.getVisitsToday.mockResolvedValue({ hns: [] });
+    render(<TodayPatientsTab refreshTrigger={0} />);
+
+    expect(await screen.findByText(/all clear/i)).toBeInTheDocument();
+    expect(screen.queryByText(/this list is unavailable, not empty/i)).not.toBeInTheDocument();
   });
 });

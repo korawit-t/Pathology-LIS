@@ -1,10 +1,15 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import OutlabManagement from "./index";
+import HisService from "../../../services/hisService";
+import { resetHisConfiguredCache } from "../../../hooks/useHisConfigured";
 
 vi.mock("../../../contexts/ThemeContext", () => ({
   useTheme: () => ({ isDarkMode: false }),
 }));
+vi.mock("../../../services/hisService", () => ({ default: { getInfo: vi.fn() } }));
+
+const mockGetInfo = vi.mocked(HisService.getInfo);
 
 vi.mock("./PendingQueueTab", () => ({
   PendingQueueTab: ({ onSent }: { onSent?: () => void }) => (
@@ -44,6 +49,13 @@ vi.mock("./TodayPatientsTab", () => ({
 // literal JSX whitespace (`<Icon /> Some Label`) shows up as a leading space
 // in textContent — trim it.
 const activeTabLabel = () => document.querySelector(".ant-tabs-tab-active")?.textContent?.trim();
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetHisConfiguredCache();
+  // Default for the existing cases: a site with HOSxP wired up, i.e. every tab.
+  mockGetInfo.mockResolvedValue({ configured: true, his_type: "HOSxP" });
+});
 
 describe("OutlabManagement wrapper", () => {
   it("renders the title and starts on the Send to Outlab tab", () => {
@@ -87,5 +99,35 @@ describe("OutlabManagement wrapper", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Tracking \/ Receive/i }));
     expect(screen.getByTestId("mock-tracking")).toHaveTextContent("refreshTrigger:1");
+  });
+});
+
+describe("deployments without a HIS", () => {
+  const tabLabels = () =>
+    [...document.querySelectorAll(".ant-tabs-tab")].map((t) => t.textContent?.trim());
+
+  it("drops the two HOSxP-only tabs when no HIS is configured", async () => {
+    mockGetInfo.mockResolvedValue({ configured: false, his_type: "Unknown" });
+    render(<OutlabManagement />);
+
+    await waitFor(() => expect(tabLabels()).not.toContain("HosXP Key"));
+    expect(tabLabels()).not.toContain("Today's Patients");
+    // The HIS-independent tabs are untouched.
+    expect(tabLabels()).toEqual(["Send to Outlab", "Tracking / Receive", "By Case"]);
+  });
+
+  it("keeps every tab when a HIS is configured", async () => {
+    render(<OutlabManagement />);
+
+    await waitFor(() => expect(tabLabels()).toContain("HosXP Key"));
+    expect(tabLabels()).toContain("Today's Patients");
+  });
+
+  it("keeps every tab when the lookup itself fails, rather than hiding working features", async () => {
+    mockGetInfo.mockRejectedValue(new Error("network"));
+    render(<OutlabManagement />);
+
+    await waitFor(() => expect(tabLabels()).toContain("HosXP Key"));
+    expect(tabLabels()).toContain("Today's Patients");
   });
 });
