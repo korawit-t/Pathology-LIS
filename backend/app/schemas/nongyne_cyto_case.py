@@ -198,6 +198,16 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     # Computed: whether a cyto-histo correlation exists for this case
     has_correlation: Optional[bool] = None
 
+    # Workflow timestamps. report_at is the case-level release date — it was
+    # declared on the frontend type but never actually exposed here, so the
+    # "Reported" tag in NongyneTable was grey for every row in production.
+    screened_at: Optional[datetime] = None
+    report_at: Optional[datetime] = None
+
+    # Specimen disposal
+    discard_status: bool = False
+    discard_at: Optional[datetime] = None
+
     # Cancellation
     is_cancelled: bool = False
     cancelled_at: Optional[datetime] = None
@@ -214,4 +224,43 @@ class NongyneCaseCancelRequest(BaseModel):
 class NongyneCytologyListResponse(BaseModel):
     items: List[NongyneCytologyCaseResponse]
     total: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneDisposalCandidateResponse(BaseModel):
+    """เคสหนึ่งแถวในหน้าทิ้งสิ่งส่งตรวจ
+
+    days_since_report / is_due / block_reason คำนวณจากฝั่ง server ทั้งหมด เพื่อให้
+    ตัวเลขที่คนเห็นบนจอเป็นตัวเดียวกับที่ใช้บล็อกตอนสร้างใบจริง ๆ
+    """
+
+    id: int
+    accession_no: str
+    hn: Optional[str] = None
+    status: str
+    specimen_type: Optional[str] = None
+    collection_site: Optional[str] = None
+    registered_at: Optional[datetime] = None
+    report_at: Optional[datetime] = None
+    is_pending: bool = False
+    pending_reason: Optional[str] = None
+
+    days_since_report: Optional[int] = None
+    is_due: bool = False
+    block_reason: Optional[str] = None
+
+    discard_status: bool = False
+    discard_at: Optional[datetime] = None
+    specimen_disposer: Optional[UserMinimalResponse] = None
+
+    patient: Optional[PatientMinimalResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneDisposalCandidateList(BaseModel):
+    items: List[NongyneDisposalCandidateResponse]
+    total: int
+    retention_days: int
+
     model_config = ConfigDict(from_attributes=True)

@@ -91,3 +91,12 @@ CAN_MANAGE_SPECIMEN_STORAGE = RoleChecker(["admin", "lab_manager", "gross", "his
 # การยืนยันว่าทำลายไปแล้ว (และการยกเลิกใบ) เป็นการปิดรายการถาวร จึงแยกกว้างกว่า
 # การหยิบของ: ต้องเป็นระดับที่รับผิดชอบได้ ไม่ใช่ใครก็ได้ที่เข้าห้องเก็บ
 CAN_APPROVE_SPECIMEN_DISPOSAL = RoleChecker(["admin", "lab_manager", "senior_pathologist"])
+
+# --- การทำลายสิ่งส่งตรวจ Non-Gyne Cytology ---
+# คนที่จับสิ่งส่งตรวจ non-gyne (fluid/FNA/sputum) จริงคือ cytotechnologist ไม่ใช่
+# gross/histo จึงไม่ reuse CAN_MANAGE_SPECIMEN_STORAGE ที่ผูกกับห้องเก็บชิ้นเนื้อ
+# ส่วนการยืนยัน/ยกเลิกใบยังใช้ CAN_APPROVE_SPECIMEN_DISPOSAL ตัวเดียวกับ surgical
+# ทำให้คนสร้างใบกับคนปิดใบเป็นคนละกลุ่มโดยอัตโนมัติ
+CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL = RoleChecker(
+    ["admin", "lab_manager", "cytotechnologist"]
+)

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import func, or_, cast, and_, literal
+from sqlalchemy import Date, func, or_, cast, and_, literal
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
@@ -550,3 +550,168 @@ def get_nongyne_slide_quality_stats(db: Session, start_date, end_date):
             for c in comment_rows
         ],
     }
+
+
+# =====================================================================
+# Specimen Disposal — รายการเคสสำหรับหน้าทิ้งสิ่งส่งตรวจ
+#
+# ต่างจาก surgical (get_stored_cases) ตรงที่ไม่มีขั้นตอนจัดเก็บเข้ากล่อง
+# เกณฑ์ว่าทิ้งได้หรือยังจึงมาจากวันที่รายงานผลล้วน ๆ และคำนวณใน SQL
+# ไม่ใช่ใน Python หลัง query เพราะ count()/pagination ต้องนับชุดเดียวกัน
+# =====================================================================
+
+DISPOSAL_BUCKETS = ("due", "not_due", "blocked")
+
+
+def _days_since_report_expr():
+    """จำนวนวันนับจากวันรายงานผลถึงวันนี้ แบบนับเป็นวันปฏิทิน
+
+    cast เป็น DATE ทั้งสองข้างก่อนลบ (Postgres คืน integer) เพื่อให้ได้เลขเดียวกับ
+    (today - report_at.date()).days ฝั่ง Python — ถ้าใช้ now() - report_at ตรง ๆ
+    รายงานที่ออกเมื่อ 23:00 เมื่อวานจะนับเป็น 0 วัน
+    """
+    return cast(literal(local_now()), Date) - cast(NongyneCytologyCase.report_at, Date)
+
+
+def _disposal_base_query(db: Session, search: str = None):
+    query = db.query(NongyneCytologyCase).filter(
+        NongyneCytologyCase.is_cancelled.is_(False),
+        NongyneCytologyCase.discard_status.is_(False),
+    )
+    if search:
+        s = f"%{search}%"
+        query = query.join(
+            Patient, NongyneCytologyCase.patient_id == Patient.id
+        ).filter(
+            or_(
+                NongyneCytologyCase.accession_no.ilike(s),
+                NongyneCytologyCase.hn.ilike(s),
+                Patient.name.ilike(s),
+                Patient.ln.ilike(s),
+            )
+        )
+    return query
+
+
+def _reported_filters():
+    """เคสที่ออกผลจริงแล้วเท่านั้นจึงจะเข้าคิวทิ้งได้
+
+    เคสที่ยังไม่ published ไม่โผล่ในหน้านี้เลย — มันยังเป็นงานของ worklist วินิจฉัย
+    """
+    return (
+        NongyneCytologyCase.status == "published",
+        NongyneCytologyCase.report_at.is_not(None),
+        NongyneCytologyCase.is_pending.is_(False),
+    )
+
+
+def get_disposal_candidates(
+    db: Session,
+    *,
+    bucket: str = "due",
+    skip: int = 0,
+    limit: int = 20,
+    search: str = None,
+    retention_days: int = 30,
+) -> dict:
+    """เคสที่รอทิ้ง แยกเป็น 3 ถัง
+
+    due      = ออกผลแล้วครบ retention_days วัน ไม่ค้าง pending และยังไม่อยู่ในใบที่เปิดค้าง
+    not_due  = ออกผลแล้วแต่ยังไม่ครบกำหนด
+    blocked  = ค้าง pending อยู่ (ทุก status) — ไว้ให้แลปตามเก็บ
+    """
+    from app.crud.nongyne_specimen_disposal_batch import open_batch_case_ids_subquery
+
+    if bucket not in DISPOSAL_BUCKETS:
+        bucket = "due"
+
+    age = _days_since_report_expr()
+    query = _disposal_base_query(db, search)
+
+    if bucket == "blocked":
+        query = query.filter(NongyneCytologyCase.is_pending.is_(True))
+        order_col = NongyneCytologyCase.registered_at.asc()
+    else:
+        query = query.filter(*_reported_filters())
+        if bucket == "due":
+            query = query.filter(age >= retention_days).filter(
+                ~NongyneCytologyCase.id.in_(open_batch_case_ids_subquery())
+            )
+        else:
+            query = query.filter(age < retention_days)
+        # ของเก่าสุดขึ้นก่อน — คนทำงานไล่ทิ้งจากที่ค้างนานที่สุด
+        order_col = NongyneCytologyCase.report_at.asc()
+
+    total = query.count()
+    items = (
+        query.options(
+            selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.specimen_disposer),
+        )
+        .order_by(order_col)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    today = local_now().date()
+    for case in items:
+        days = (today - case.report_at.date()).days if case.report_at else None
+        case.days_since_report = days
+        case.is_due = bucket == "due"
+        case.block_reason = _disposal_block_reason(case, days, retention_days)
+
+    return {"items": items, "total": total, "retention_days": retention_days}
+
+
+def _disposal_block_reason(case, days, retention_days) -> str | None:
+    """เหตุผลที่ยังทิ้งไม่ได้ — ข้อความเดียวกับที่ create_batch จะปฏิเสธ"""
+    if case.is_pending:
+        return f"ค้าง Pending{f' ({case.pending_reason})' if case.pending_reason else ''}"
+    if case.status != "published" or not case.report_at:
+        return "ยังไม่ได้รายงานผล"
+    if days is not None and days < retention_days:
+        return f"ยังไม่ครบ {retention_days} วันหลังรายงานผล (ครบแล้ว {days} วัน)"
+    return None
+
+
+def get_disposed_nongyne_cases(
+    db: Session, skip: int = 0, limit: int = 20, search: str = None
+) -> dict:
+    query = db.query(NongyneCytologyCase).filter(
+        NongyneCytologyCase.discard_status.is_(True)
+    )
+    if search:
+        s = f"%{search}%"
+        query = query.join(
+            Patient, NongyneCytologyCase.patient_id == Patient.id
+        ).filter(
+            or_(
+                NongyneCytologyCase.accession_no.ilike(s),
+                NongyneCytologyCase.hn.ilike(s),
+                Patient.name.ilike(s),
+                Patient.ln.ilike(s),
+            )
+        )
+
+    total = query.count()
+    items = (
+        query.options(
+            selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.specimen_disposer),
+        )
+        .order_by(NongyneCytologyCase.discard_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    today = local_now().date()
+    for case in items:
+        case.days_since_report = (
+            (today - case.report_at.date()).days if case.report_at else None
+        )
+        case.is_due = False
+        case.block_reason = None
+
+    return {"items": items, "total": total}

@@ -59,6 +59,11 @@ export interface SystemSetting {
 
   // เลขคุมเอกสารตามระบบคุณภาพ พิมพ์มุมล่างซ้ายของใบตรวจสอบการทำลายชิ้นเนื้อ
   specimen_disposal_doc_no?: string;
+  nongyne_specimen_disposal_doc_no?: string;
+
+  // เกณฑ์จำนวนวันหลังรายงานผลก่อนทิ้งสิ่งส่งตรวจ non-gyne
+  // backend บังคับตามค่านี้จริง ไม่ใช่แค่ข้อความบนใบ
+  nongyne_specimen_retention_days?: number;
 
   // เปิด/ปิด ระบบการ Approve ผลโดยพยาธิแพทย์
   enable_approve_system: boolean;

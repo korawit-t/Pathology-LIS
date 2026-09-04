@@ -14,11 +14,16 @@ from app.schemas.nongyne_cyto_case import (
     NongyneCytologyCaseResponse,
     NongyneCytologyListResponse,
     NongyneCaseCancelRequest,
+    NongyneDisposalCandidateList,
 )
 from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.schemas.cyto_path_correlation import SendToPathologistRequest
-from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT
+from app.core.roles import (
+    CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL,
+    CAN_WRITE_NONGYNE_CYTO_REPORT,
+)
+from app.crud import nongyne_specimen_disposal_batch as disposal_crud
 from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -236,6 +241,52 @@ def get_nongyne_tat_stats(
         "express_distribution": express_dist,
         "monthly": monthly,
     }
+
+
+# =====================================================================
+# Specimen Disposal
+# ประกาศไว้ก่อน /{case_id} เพื่อให้อ่านเป็นชุดเดียวกับ endpoint ทำลายฝั่ง surgical
+# (app/routers/surgical_case.py section "storage")
+# =====================================================================
+
+
+@router.get("/disposal/candidates", response_model=NongyneDisposalCandidateList)
+def list_disposal_candidates(
+    bucket: str = Query("due", pattern="^(due|not_due|blocked)$"),
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+):
+    """เคสที่รอทิ้ง แยกตามถัง due / not_due / blocked
+
+    retention_days ถูกส่งกลับไปด้วยเพื่อให้หน้าจอโชว์เกณฑ์ที่ backend ใช้จริง
+    ไม่ต้องไปเดาเองหรือ hardcode
+    """
+    retention_days = disposal_crud.get_retention_days(db)
+    data = crud.get_disposal_candidates(
+        db,
+        bucket=bucket,
+        skip=skip,
+        limit=limit,
+        search=search,
+        retention_days=retention_days,
+    )
+    return data
+
+
+@router.get("/disposal/disposed", response_model=NongyneDisposalCandidateList)
+def list_disposed_specimens(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+):
+    data = crud.get_disposed_nongyne_cases(db, skip=skip, limit=limit, search=search)
+    data["retention_days"] = disposal_crud.get_retention_days(db)
+    return data
 
 
 @router.get("/{case_id}", response_model=NongyneCytologyCaseResponse)

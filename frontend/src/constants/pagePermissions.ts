@@ -54,6 +54,7 @@ export type PageKey =
   | "accession"
   | "results"
   | "nongyne-cell-block"
+  | "nongyne-specimen-disposal"
   | "gyne-qc-review"
   | "wsi-file-list"
   | "wsi-slide-gallery"
@@ -96,6 +97,9 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "gyne-cyto-stains": ["admin", "lab_manager", "cytotechnologist"],
   "nongyne-cyto-stains": ["admin", "lab_manager", "cytotechnologist"],
   "nongyne-cell-block": ["admin", "lab_manager", "cytotechnologist"],
+  // ตรงกับ CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL ฝั่ง backend — คนที่จับ
+  // สิ่งส่งตรวจ non-gyne จริงคือ cytotechnologist ไม่ใช่ gross/histo
+  "nongyne-specimen-disposal": ["admin", "lab_manager", "cytotechnologist"],
   "gyne-qc-review": [
     "admin",
     "lab_manager",
