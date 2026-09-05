@@ -116,6 +116,7 @@ class SystemSettingUpdate(SystemSettingBase):
     is_cumulative_report: Optional[bool] = None
     show_specimen_name: Optional[bool] = None
     specimen_disposal_doc_no: Optional[str] = None
+    specimen_retention_days: Optional[int] = None
     nongyne_specimen_disposal_doc_no: Optional[str] = None
     nongyne_specimen_retention_days: Optional[int] = None
     require_all_pathologists_sign: Optional[bool] = None
@@ -195,8 +196,9 @@ class SystemSettingAdminResponse(SystemSettingResponse):
     mfa_trusted_device_days: Optional[int] = None
     mfa_step_up_minutes: Optional[int] = None
 
-    # เกณฑ์/เลขคุมเอกสารการทำลายสิ่งส่งตรวจ non-gyne — เป็น config ของแลป
+    # เกณฑ์/เลขคุมเอกสารการทำลายสิ่งส่งตรวจ — เป็น config ของแลป
     # หน้า login ไม่ได้ใช้ จึงไม่ต้องอยู่ใน shape ที่ /public คืนออกไป
+    specimen_retention_days: Optional[int] = None
     nongyne_specimen_disposal_doc_no: Optional[str] = None
     nongyne_specimen_retention_days: Optional[int] = None
 

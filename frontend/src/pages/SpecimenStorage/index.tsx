@@ -22,6 +22,7 @@ import PageContainer from "../../components/Layout/PageContainer";
 import { formatPatientName } from "../../utils/patientName";
 import logger from "../../utils/logger";
 import CreateDisposalBatchModal from "./CreateDisposalBatchModal";
+import { daysSinceReport, disposalBlockReason } from "./disposalEligibility";
 import DisposalBatchTab from "./DisposalBatchTab";
 
 const { Title, Text } = Typography;
@@ -45,6 +46,8 @@ const SpecimenStorage: React.FC = () => {
   const [storedSearch, setStoredSearch] = useState("");
   const [storedSelectedRowKeys, setStoredSelectedRowKeys] = useState<React.Key[]>([]);
   const [createBatchOpen, setCreateBatchOpen] = useState(false);
+  // เกณฑ์อายุมาจาก backend ไม่ hardcode ฝั่งนี้ — 30 เป็นค่าตั้งต้นก่อนโหลดเสร็จ
+  const [retentionDays, setRetentionDays] = useState(30);
 
   // ==== Tab 3: Disposed Cases ====
   const [disposedCases, setDisposedCases] = useState<SurgicalCase[]>([]);
@@ -102,6 +105,9 @@ const SpecimenStorage: React.FC = () => {
       const data = await SurgicalCaseService.getStoredCases(skip, limit, search, true);
       setStoredCases(data.items);
       setStoredTotal(data.total);
+      if (typeof data.retention_days === "number") {
+        setRetentionDays(data.retention_days);
+      }
     } catch (error) {
       logger.error(error);
       message.error("ไม่สามารถโหลดข้อมูลชิ้นเนื้อที่จัดเก็บแล้วได้");
@@ -344,11 +350,16 @@ const SpecimenStorage: React.FC = () => {
       title: "Days since reported",
       key: "days_reported",
       render: (_: unknown, record: SurgicalCase) => {
-        // ใช้ report_at หรือ published_at (ถ้ามี)
-        const publishedDate = record.report_at || record.published_at;
-        if (!publishedDate) return <Text type="secondary">-</Text>;
-        const days = dayjs().startOf("day").diff(dayjs(publishedDate).startOf("day"), "day");
-        return <Text>{days} days</Text>;
+        const days = daysSinceReport(record);
+        if (days === null) return <Text type="secondary">-</Text>;
+        // ครบกำหนดหรือยัง คิดด้วยเกณฑ์เดียวกับที่ backend ใช้บล็อกตอนสร้างใบ
+        const due = days >= retentionDays;
+        return (
+          <Space size={6}>
+            <Text>{days} days</Text>
+            {!due && <Tag color="orange">ยังไม่ครบ {retentionDays} วัน</Tag>}
+          </Space>
+        );
       },
     },
     {
@@ -558,6 +569,9 @@ const SpecimenStorage: React.FC = () => {
                       >
                         Refresh
                       </Button>
+                      <Text type="secondary">
+                        เกณฑ์การทำลาย: ครบ {retentionDays} วันหลังรายงานผล และไม่ค้าง Pending
+                      </Text>
                     </Space>
                   </div>
                   <Table
@@ -566,6 +580,13 @@ const SpecimenStorage: React.FC = () => {
                     rowSelection={{
                       selectedRowKeys: storedSelectedRowKeys,
                       onChange: (keys) => setStoredSelectedRowKeys(keys),
+                      // ปิดช่องติ๊กของเคสที่ backend จะปฏิเสธอยู่แล้ว
+                      // (ยังไม่ครบกำหนด / ยังไม่รายงานผล / ค้าง Pending)
+                      getCheckboxProps: (record: SurgicalCase) => ({
+                        disabled: Boolean(
+                          disposalBlockReason(record, retentionDays)
+                        ),
+                      }),
                     }}
                     columns={storedColumns}
                     dataSource={storedCases}
@@ -635,6 +656,7 @@ const SpecimenStorage: React.FC = () => {
       <CreateDisposalBatchModal
         open={createBatchOpen}
         cases={selectedStoredCases}
+        retentionDays={retentionDays}
         onCancel={() => setCreateBatchOpen(false)}
         onCreated={handleBatchCreated}
       />

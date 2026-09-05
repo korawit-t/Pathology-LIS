@@ -9,17 +9,34 @@ than whoever clicked confirm.
 """
 
 import uuid
+from datetime import timedelta
 
 import pytest
 from passlib.context import CryptContext
 
 from app.models.specimen_disposal_batch import SpecimenDisposalBatch
 from app.models.surgical_case import SurgicalCase
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.utils.time import local_now
 from tests.factories import make_bare_case
 
 _pwd = CryptContext(schemes=["argon2"], deprecated="auto")
+
+RETENTION = 30
+
+
+@pytest.fixture(autouse=True)
+def retention_setting(db):
+    """Pin the retention rule so the gate tests don't depend on whatever the
+    settings row happens to hold from an earlier test in the same run."""
+    settings = db.query(SystemSetting).first()
+    if not settings:
+        settings = SystemSetting(hospital_slug="master")
+        db.add(settings)
+    settings.specimen_retention_days = RETENTION
+    db.commit()
+    return settings
 
 
 def _make_user(db, roles: list[str], prefix: str) -> tuple[User, str]:
@@ -60,25 +77,40 @@ def signers(db):
     return disposer, verifier, approver
 
 
-def _stored_case(db, registrar_id: int, container: str = "B-12") -> SurgicalCase:
+def _stored_case(
+    db,
+    registrar_id: int,
+    container: str = "B-12",
+    *,
+    days_ago: int = RETENTION * 3,
+    reported: bool = True,
+    is_pending: bool = False,
+    is_cancelled: bool = False,
+) -> SurgicalCase:
+    """A stored case old enough to dispose unless a test says otherwise.
+
+    days_ago backdates report_at, which is what the retention gate measures —
+    without it every case would be a day old and fail the gate.
+    """
     case = make_bare_case(db, registrar_id=registrar_id)
     case.specimen_storage_status = "Stored"
     case.specimen_storage_container = container
     case.specimen_storage_at = local_now()
-    case.report_at = local_now()
+    case.report_at = local_now() - timedelta(days=days_ago) if reported else None
+    case.is_pending = is_pending
+    case.is_cancelled = is_cancelled
     db.commit()
     db.refresh(case)
     return case
 
 
-def _payload(cases, signers, retention_days: int = 90) -> dict:
+def _payload(cases, signers) -> dict:
     disposer, verifier, approver = signers
     return {
         "case_ids": [c.id for c in cases],
         "disposer_id": disposer.id,
         "verifier_id": verifier.id,
         "approver_id": approver.id,
-        "retention_days": retention_days,
     }
 
 
@@ -123,7 +155,7 @@ class TestCreateBatch:
 
         assert body["batch_no"].startswith("DSP-")
         assert body["status"] == "PRINTED"
-        assert body["retention_days"] == 90
+        assert body["retention_days"] == RETENTION
         assert body["item_count"] == 2
         assert body["disposer_name"] == disposer.full_name
         assert body["verifier_name"] == verifier.full_name
@@ -289,6 +321,104 @@ class TestCreateBatch:
             },
         )
         assert r.status_code == 422
+
+
+class TestRetentionGate:
+    """เกณฑ์อายุบังคับที่ backend ไม่ใช่แค่ซ่อนปุ่มบนจอ — ยิง POST ตรงก็ต้องโดนปฏิเสธ"""
+
+    def test_rejects_a_case_that_has_not_reached_retention(
+        self, db, admin_client, admin_user, signers
+    ):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, days_ago=RETENTION - 1)
+
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 400
+        detail = r.json()["detail"]
+        assert f"ยังไม่ครบ {RETENTION} วัน" in detail
+        assert case.accession_no in detail
+        assert f"{RETENTION - 1} วัน" in detail
+
+    def test_exactly_retention_days_is_accepted(self, db, admin_client, admin_user, signers):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, days_ago=RETENTION)
+
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 201, r.text
+
+    def test_one_young_case_blocks_the_whole_sheet(
+        self, db, admin_client, admin_user, signers
+    ):
+        """ใบเดียวปนเคสที่ยังไม่ครบกำหนด = ทั้งใบต้องไม่ถูกสร้าง
+        ไม่ใช่สร้างแบบตัดเคสนั้นออกเงียบ ๆ แล้วคนถือกระดาษไม่รู้ตัว"""
+        registrar, _ = admin_user
+        old_case = _stored_case(db, registrar.id)
+        young = _stored_case(db, registrar.id, days_ago=1)
+        # นับก่อน/หลัง ไม่ใช่ == 0 เพราะเทสต์อื่นใน run เดียวกัน commit ใบไว้แล้ว
+        before = db.query(SpecimenDisposalBatch).count()
+
+        r = admin_client.post(
+            "/specimen-disposal-batches", json=_payload([old_case, young], signers)
+        )
+        assert r.status_code == 400
+        assert young.accession_no in r.json()["detail"]
+        assert db.query(SpecimenDisposalBatch).count() == before
+
+    def test_rejects_a_case_with_no_report_date(self, db, admin_client, admin_user, signers):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, reported=False)
+
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 400
+        assert "ยังไม่ได้รายงานผล" in r.json()["detail"]
+
+    def test_rejects_a_pending_case(self, db, admin_client, admin_user, signers):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, is_pending=True)
+
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 400
+        assert "Pending" in r.json()["detail"]
+
+    def test_rejects_a_cancelled_case(self, db, admin_client, admin_user, signers):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, is_cancelled=True)
+
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 400
+        assert "ยกเลิก" in r.json()["detail"]
+
+
+class TestRetentionSetting:
+    def test_gate_follows_the_setting(
+        self, db, admin_client, admin_user, signers, retention_setting
+    ):
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, days_ago=10)
+        assert admin_client.post(
+            "/specimen-disposal-batches", json=_payload([case], signers)
+        ).status_code == 400
+
+        retention_setting.specimen_retention_days = 7
+        db.commit()
+        r = admin_client.post("/specimen-disposal-batches", json=_payload([case], signers))
+        assert r.status_code == 201, r.text
+
+    def test_client_cannot_supply_retention_days(self, db, admin_client, admin_user, signers):
+        """รับค่าจาก payload เมื่อไหร่ คนยิง API ก็ส่ง 0 มาข้ามเกณฑ์ได้ทันที"""
+        registrar, _ = admin_user
+        case = _stored_case(db, registrar.id, days_ago=1)
+
+        payload = _payload([case], signers) | {"retention_days": 0}
+        r = admin_client.post("/specimen-disposal-batches", json=payload)
+        assert r.status_code == 400
+        assert f"ยังไม่ครบ {RETENTION} วัน" in r.json()["detail"]
+
+    def test_stored_picker_reports_the_same_criterion(self, admin_client, retention_setting):
+        """หน้าจอต้องได้เกณฑ์จาก server ไม่ใช่ hardcode เลขของตัวเอง"""
+        r = admin_client.get("/surgical-cases/stored/specimens", params={"limit": 1})
+        assert r.status_code == 200
+        assert r.json()["retention_days"] == RETENTION
 
 
 class TestStoredListExclusion:
@@ -477,7 +607,6 @@ class TestChecklistPdf:
             disposer_id=disposer.id,
             verifier_id=verifier.id,
             approver_id=approver.id,
-            retention_days=90,
             printed_by_id=registrar.id,
         )
 
@@ -487,8 +616,8 @@ class TestChecklistPdf:
         assert data["total_items"] == 3
         assert data["total_containers"] == 2
         assert data["disposer_name"] == disposer.full_name
-        # report_at ตั้งเป็นวันนี้ อายุจึงเป็น 0 วัน ไม่ใช่ "-"
-        assert data["groups"][0]["rows"][0]["age_days"] == 0
+        # อายุนับจาก report_at ที่ _stored_case ย้อนไว้ — เป็นตัวเลข ไม่ใช่ "-"
+        assert data["groups"][0]["rows"][0]["age_days"] == RETENTION * 3
 
         # วันที่จัดเก็บพิมพ์ต่อจากชื่อผู้ป่วย ให้เทียบกับสติกเกอร์บนกล่องได้
         today_str = local_now().strftime("%d/%m/%Y")
@@ -514,21 +643,26 @@ class TestChecklistPdf:
             disposer_id=disposer.id,
             verifier_id=verifier.id,
             approver_id=approver.id,
-            retention_days=None,
             printed_by_id=registrar.id,
         )
         data = build_disposal_checklist_data(db, batch.id)
         assert data["groups"][0]["rows"][0]["storage_date"] == "-"
 
     def test_pdf_survives_a_case_with_no_report_date(self, db, admin_client, admin_user, signers):
+        """report_at ถูกล้างทีหลังได้ (แก้เคส/ถอนผล) ใบที่พิมพ์ไปแล้วต้องยังเรนเดอร์ได้
+
+        ล้างหลังสร้างใบ เพราะตอนสร้าง gate บังคับว่าต้องมี report_at อยู่แล้ว
+        """
         registrar, _ = admin_user
         case = _stored_case(db, registrar.id)
-        case.report_at = None
-        db.commit()
 
         batch = admin_client.post(
             "/specimen-disposal-batches", json=_payload([case], signers)
         ).json()
+
+        case.report_at = None
+        db.commit()
+
         r = admin_client.get(f"/specimen-disposal-batches/{batch['id']}/checklist-pdf")
         assert r.status_code == 200
         assert r.content[:4] == b"%PDF"
@@ -554,7 +688,6 @@ class TestControlledDocumentNo:
             disposer_id=disposer.id,
             verifier_id=verifier.id,
             approver_id=approver.id,
-            retention_days=None,
             printed_by_id=registrar.id,
         )
 
@@ -599,7 +732,8 @@ class TestPatientNameOnTheSheet:
         case = make_bare_case(db, registrar_id=registrar.id, patient=patient)
         case.specimen_storage_status = "Stored"
         case.specimen_storage_container = "B-99"
-        case.report_at = local_now()
+        # ย้อนวันรายงานผลให้พ้นเกณฑ์ ไม่งั้นโดน retention gate ปฏิเสธก่อน
+        case.report_at = local_now() - timedelta(days=RETENTION * 3)
         db.commit()
 
         batch = admin_client.post(

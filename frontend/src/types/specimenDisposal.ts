@@ -56,5 +56,5 @@ export interface DisposalBatchCreatePayload {
   disposer_id: number;
   verifier_id: number;
   approver_id: number;
-  retention_days?: number | null;
+  // ไม่มี retention_days — เกณฑ์มาจาก SystemSetting ฝั่ง server เท่านั้น
 }
