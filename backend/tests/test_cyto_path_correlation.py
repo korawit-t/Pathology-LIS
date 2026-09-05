@@ -11,7 +11,7 @@ See app/crud/cyto_path_correlation.py.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -28,6 +28,7 @@ from app.crud.nongyne_diagnosis import (
 )
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate
 from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate, NongyneDiagnosisUpdate
+from app.utils.time import local_now
 from tests.conftest import _login, _make_user
 from tests.factories import (
     make_bare_gyne_case,
@@ -432,7 +433,11 @@ class TestRouterAccess:
         cyto = _cytotech(db)
         case = _screened_nongyne_case(db, registrar.id, cyto, pathologist.id)
         publish_nongyne_report(db, case.id, current_user_id=pathologist.id)
-        today = date.today()
+        # local_now() ไม่ใช่ date.today() — signed_out_at ถูกประทับด้วยเวลาไทย
+        # (app/utils/time.py) ส่วน date.today() คืนวันตาม timezone ของเครื่องที่รัน
+        # เครื่อง dev อยู่ไทยจึงตรงกันเสมอ แต่ CI รันบน UTC ช่วง 17:00-24:00 UTC
+        # ฝั่งไทยข้ามไปวันใหม่แล้ว เทสต์จึงกรองผิดวันและได้ 0 แถว
+        today = local_now().date()
 
         inside = admin_client.get(
             "/cyto-path-correlations",
