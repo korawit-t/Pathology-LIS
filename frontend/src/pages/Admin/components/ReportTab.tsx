@@ -126,6 +126,23 @@ const ReportTab = () => {
           </Col>
         </Row>
         <Divider />
+        <Text strong>Surgical Specimen Retention</Text>
+        <Text type="secondary" style={{ display: "block", marginBottom: 16, marginTop: 4 }}>
+          จำนวนวันหลังรายงานผลที่ต้องเก็บชิ้นเนื้อ surgical ไว้ก่อนทำลาย
+          ระบบบังคับตามค่านี้จริง — เคสที่ยังไม่ครบกำหนด ยังไม่ได้รายงานผล
+          หรือยังค้าง Pending จะใส่ในใบตรวจสอบก่อนทำลายไม่ได้
+        </Text>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item
+              name="specimen_retention_days"
+              label="เก็บไว้อย่างน้อย (วันนับจากวันรายงานผล)"
+            >
+              <InputNumber min={0} style={{ width: "100%" }} placeholder="30" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Divider />
         <Text strong>Non-Gyne Specimen Retention</Text>
         <Text type="secondary" style={{ display: "block", marginBottom: 16, marginTop: 4 }}>
           จำนวนวันหลังรายงานผลที่ต้องเก็บสิ่งส่งตรวจ non-gyne ไว้ก่อนทำลาย

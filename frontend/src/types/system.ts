@@ -63,6 +63,7 @@ export interface SystemSetting {
 
   // เกณฑ์จำนวนวันหลังรายงานผลก่อนทิ้งสิ่งส่งตรวจ non-gyne
   // backend บังคับตามค่านี้จริง ไม่ใช่แค่ข้อความบนใบ
+  specimen_retention_days?: number;
   nongyne_specimen_retention_days?: number;
 
   // เปิด/ปิด ระบบการ Approve ผลโดยพยาธิแพทย์

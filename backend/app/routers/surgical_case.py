@@ -33,6 +33,7 @@ from app.schemas.surgical_case import (
     SurgicalCaseCreate,
     SurgicalCaseResponse,
     SurgicalCaseUpdate,
+    StoredSpecimenPaginationResponse,
     SurgicalCasePaginationResponse,
     CaseCancelRequest,
     SpecimenStorageBulkUpdate,
@@ -562,7 +563,7 @@ def get_unstored_specimens(
     """
     return crud_case.get_unstored_cases(db=db)
 
-@router.get("/stored/specimens", response_model=SurgicalCasePaginationResponse)
+@router.get("/stored/specimens", response_model=StoredSpecimenPaginationResponse)
 def get_stored_specimens(
     skip: int = 0,
     limit: int = 50,
@@ -577,13 +578,18 @@ def get_stored_specimens(
     exclude_in_open_batch ซ่อนเคสที่ค้างอยู่ในใบตรวจสอบการทำลายที่ยังไม่ปิด
     เพื่อไม่ให้เคสเดียวถูกใส่ลงสองใบพร้อมกัน
     """
-    return crud_case.get_stored_cases(
+    from app.crud import specimen_disposal_batch as disposal_crud
+
+    data = crud_case.get_stored_cases(
         db=db,
         skip=skip,
         limit=limit,
         search=search,
         exclude_in_open_batch=exclude_in_open_batch,
     )
+    # เกณฑ์อายุมาจาก server เสมอ เพื่อให้ตัวเลขบนจอเป็นตัวเดียวกับที่ใช้บล็อก
+    data["retention_days"] = disposal_crud.get_retention_days(db)
+    return data
 
 @router.get("/disposed/specimens", response_model=SurgicalCasePaginationResponse)
 def get_disposed_specimens(
