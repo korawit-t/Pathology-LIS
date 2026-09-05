@@ -22,6 +22,13 @@ from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_block_stain import SurgicalBlockStain
 from app.schemas.surgical_bulk import BulkSaveDraft, DiagnosisEntry
+from app.utils.time import local_now
+
+# ทุก factory ประทับ registered_at ด้วย local_now() เอง ไม่ปล่อยให้ใช้ column
+# default (func.now() = นาฬิกาของ Postgres) เพราะเวลาที่เหลือทั้งระบบมาจาก
+# local_now() (Asia/Bangkok) เครื่อง dev ตั้ง DB เป็นไทยจึงตรงกันเสมอ แต่
+# Postgres ของ CI เป็น UTC พอรันช่วง 17:00-24:00 UTC แถวจะถูกประทับเป็นวัน
+# ก่อนหน้าเทียบกับวันไทยที่เทสต์ใช้กรอง สถิติจึงคืนศูนย์แถว
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate
 from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
 from app.crud.gyne_diagnosis import create_initial_diagnosis
@@ -59,6 +66,7 @@ def make_bare_case(db, registrar_id: int, hospital: Hospital = None, patient: Pa
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
+        registered_at=local_now(),
     )
     db.add(case)
     db.commit()
@@ -107,6 +115,7 @@ def make_bare_nongyne_case(db, registrar_id: int, hospital: Hospital = None, pat
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
+        registered_at=local_now(),
     )
     db.add(case)
     db.commit()
@@ -124,6 +133,7 @@ def make_bare_gyne_case(db, registrar_id: int, hospital: Hospital = None, patien
         patient_id=patient.id,
         registrar_id=registrar_id,
         hospital_id=hospital.id,
+        registered_at=local_now(),
     )
     db.add(case)
     db.commit()

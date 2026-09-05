@@ -5,7 +5,7 @@ coverage focuses on the two functions with real calculation logic
 coverage for the rest to confirm date-range filtering doesn't crash or leak
 data outside the window."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app.crud.surgical_statistics import (
     get_surgical_statistics,
@@ -16,6 +16,7 @@ from app.crud.surgical_statistics import (
     get_storage_stats,
     get_outlab_stats,
 )
+from app.utils.time import local_now
 
 from tests.factories import make_signable_case, make_bare_gyne_case, make_bare_nongyne_case
 
@@ -23,9 +24,9 @@ from tests.factories import make_signable_case, make_bare_gyne_case, make_bare_n
 class TestGetSurgicalStatistics:
     def test_excludes_cancelled_cases(self, db, admin_user):
         registrar, _ = admin_user
-        today = date.today()
+        today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.is_cancelled = True
         db.commit()
 
@@ -39,9 +40,9 @@ class TestGetSurgicalStatistics:
 
     def test_counts_cases_registered_in_range(self, db, admin_user):
         registrar, _ = admin_user
-        today = date.today()
+        today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         db.commit()
 
         with_case = get_surgical_statistics(db, today, today)
@@ -56,9 +57,9 @@ class TestGetSurgicalStatistics:
         # would average in every sibling test's finalize-produced case too.
         registrar, _ = admin_user
         path1, _ = two_pathologists
-        today = date.today()
+        today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.pathologist_id = path1.id
         case.is_reported = True
         case.report_at = case.registered_at + timedelta(days=2)
@@ -72,9 +73,9 @@ class TestGetSurgicalStatistics:
     def test_pathologist_filter_scopes_results(self, db, admin_user, two_pathologists):
         registrar, _ = admin_user
         path1, path2 = two_pathologists
-        today = date.today()
+        today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.pathologist_id = path1.id
         db.commit()
 
@@ -88,14 +89,14 @@ class TestGetSurgicalStatistics:
 class TestGetStaffRegistrationStats:
     def test_totals_summed_across_case_types(self, db, admin_user):
         registrar, _ = admin_user
-        today = date.today()
+        today = local_now().date()
 
         surg_case, _ = make_signable_case(db, registrar_id=registrar.id)
-        surg_case.registered_at = surg_case.created_at
+        surg_case.registered_at = local_now()
         gyne_case = make_bare_gyne_case(db, registrar_id=registrar.id)
-        gyne_case.registered_at = gyne_case.created_at
+        gyne_case.registered_at = local_now()
         nongyne_case = make_bare_nongyne_case(db, registrar_id=registrar.id)
-        nongyne_case.registered_at = nongyne_case.created_at
+        nongyne_case.registered_at = local_now()
         db.commit()
 
         rows = get_staff_registration_stats(db, today, today)
@@ -108,15 +109,15 @@ class TestGetStaffRegistrationStats:
         assert row["total"] == row["surgical"] + row["gyne"] + row["nongyne"]
 
     def test_empty_range_returns_empty_list(self, db, admin_user):
-        future = date.today() + timedelta(days=365)
+        future = local_now().date() + timedelta(days=365)
         assert get_staff_registration_stats(db, future, future) == []
 
     def test_sorted_by_total_descending(self, db, admin_user, two_pathologists):
         registrar, _ = admin_user
-        today = date.today()
+        today = local_now().date()
         # Two registrars with different volumes.
         case1, _ = make_signable_case(db, registrar_id=registrar.id)
-        case1.registered_at = case1.created_at
+        case1.registered_at = local_now()
         db.commit()
 
         rows = get_staff_registration_stats(db, today, today)
@@ -131,28 +132,28 @@ class TestSmokeCoverage:
 
     def test_lab_tech_statistics_runs_and_filters_by_date(self, db, admin_user):
         registrar, _ = admin_user
-        today = date.today()
+        today = local_now().date()
         result = get_lab_tech_statistics(db, today, today)
         assert "grossed_cases" in result
         assert "complexity_breakdown" in result
 
     def test_staff_gross_stats_runs(self, db, admin_user):
-        today = date.today()
+        today = local_now().date()
         result = get_staff_gross_stats(db, today, today)
         assert "examiners" in result
         assert "assistants" in result
 
     def test_tissue_process_stats_runs(self, db, admin_user):
-        today = date.today()
+        today = local_now().date()
         result = get_tissue_process_stats(db, today, today)
         assert set(result.keys()) == {"embedding", "sectioning", "staining", "tissue_processing"}
 
     def test_storage_stats_runs(self, db, admin_user):
-        today = date.today()
+        today = local_now().date()
         result = get_storage_stats(db, today, today)
         assert set(result.keys()) == {"block_storage", "slide_storage"}
 
     def test_outlab_stats_runs(self, db, admin_user):
-        today = date.today()
+        today = local_now().date()
         result = get_outlab_stats(db, today, today)
         assert set(result.keys()) == {"outlab_stain", "outlab_consult"}
