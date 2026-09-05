@@ -26,7 +26,7 @@ class TestGetSurgicalStatistics:
         registrar, _ = admin_user
         today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.is_cancelled = True
         db.commit()
 
@@ -42,7 +42,7 @@ class TestGetSurgicalStatistics:
         registrar, _ = admin_user
         today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         db.commit()
 
         with_case = get_surgical_statistics(db, today, today)
@@ -59,7 +59,7 @@ class TestGetSurgicalStatistics:
         path1, _ = two_pathologists
         today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.pathologist_id = path1.id
         case.is_reported = True
         case.report_at = case.registered_at + timedelta(days=2)
@@ -75,7 +75,7 @@ class TestGetSurgicalStatistics:
         path1, path2 = two_pathologists
         today = local_now().date()
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
-        case.registered_at = case.created_at
+        case.registered_at = local_now()
         case.pathologist_id = path1.id
         db.commit()
 
@@ -92,11 +92,11 @@ class TestGetStaffRegistrationStats:
         today = local_now().date()
 
         surg_case, _ = make_signable_case(db, registrar_id=registrar.id)
-        surg_case.registered_at = surg_case.created_at
+        surg_case.registered_at = local_now()
         gyne_case = make_bare_gyne_case(db, registrar_id=registrar.id)
-        gyne_case.registered_at = gyne_case.created_at
+        gyne_case.registered_at = local_now()
         nongyne_case = make_bare_nongyne_case(db, registrar_id=registrar.id)
-        nongyne_case.registered_at = nongyne_case.created_at
+        nongyne_case.registered_at = local_now()
         db.commit()
 
         rows = get_staff_registration_stats(db, today, today)
@@ -117,7 +117,7 @@ class TestGetStaffRegistrationStats:
         today = local_now().date()
         # Two registrars with different volumes.
         case1, _ = make_signable_case(db, registrar_id=registrar.id)
-        case1.registered_at = case1.created_at
+        case1.registered_at = local_now()
         db.commit()
 
         rows = get_staff_registration_stats(db, today, today)
