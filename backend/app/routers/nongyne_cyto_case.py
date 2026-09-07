@@ -74,6 +74,7 @@ def read_cases(
     is_screened: Optional[bool] = Query(None),
     is_pending: Optional[bool] = Query(None),
     is_express: Optional[bool] = Query(None),
+    prioritize_unreported: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
@@ -110,6 +111,7 @@ def read_cases(
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         stain_status=stain_status,
         is_express=is_express,
+        prioritize_unreported=prioritize_unreported,
     )
 
 
