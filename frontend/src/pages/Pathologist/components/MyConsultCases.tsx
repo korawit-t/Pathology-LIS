@@ -23,6 +23,17 @@ const CONSULT_STATUS_QUERY: Record<string, string> = {
   received: "received",
 };
 
+/** The rows the Pathologist worklist's "External Consult" badge counts: this
+ *  pathologist's out-lab consults still awaiting a result. Exported so the
+ *  badge can be counted without mounting this panel — antd renders a tab pane
+ *  lazily, so a badge fed only by `onCountChange` reads 0 until the tab is
+ *  opened. Keep the panel's own query built from this so the two can't drift. */
+export const buildMyConsultBadgeParams = (pathologistId: number) => ({
+  pathologist_id: pathologistId,
+  is_out_lab_consult: true,
+  consult_status: CONSULT_STATUS_QUERY.active,
+});
+
 // Backend only ever produces "pending" | "processing" | "received" — there is
 // no "completed" status. (Was previously keyed on "completed", which never
 // matched, so this tab and tag always rendered empty/default.)
@@ -52,17 +63,19 @@ const MyConsultCases: React.FC<Props> = ({ pathologistId, onSelectCase, onCountC
     setLoading(true);
     try {
       const res = await SurgicalCaseService.getCases({
+        ...buildMyConsultBadgeParams(pathologistId),
+        consult_status: CONSULT_STATUS_QUERY[consultStatus] ?? consultStatus,
         skip: (page - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
         search: search || undefined,
-        pathologist_id: pathologistId,
-        is_out_lab_consult: true,
-        consult_status: CONSULT_STATUS_QUERY[consultStatus] ?? consultStatus,
       });
       setCases(res.items || []);
       const t = res.total || 0;
       setTotal(t);
-      onCountChange?.(t);
+      // Only the unfiltered "active" bucket is what the badge means. Reporting
+      // a searched or "received" total would leave the badge stuck on that
+      // filter's number after the user navigates away from the tab.
+      if (consultStatus === "active" && !search) onCountChange?.(t);
     } catch {
       message.error("Failed to load consult cases");
     } finally {

@@ -20,6 +20,17 @@ interface Props {
   onCountChange?: (count: number) => void;
 }
 
+/** The rows the Pathologist worklist's "Approve Outlab" badge counts. Exported
+ *  so the badge can be counted without mounting this panel — antd renders a tab
+ *  pane lazily, so a badge fed only by `onCountChange` reads 0 until the tab is
+ *  opened. Keep the panel's own query built from this so the two can't drift. */
+export const buildOutlabApprovalBadgeParams = (pathologistId: number) => ({
+  assigned_user_id: pathologistId,
+  is_out_lab: true,
+  has_out_lab_result: true,
+  outlab_result_approved: false,
+});
+
 /** Out-lab test result PDFs awaiting this pathologist's sign-off before a
  * clinician can see them — mirrors MyConsultCases.tsx's shape. */
 const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCountChange }) => {
@@ -43,18 +54,16 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     setLoading(true);
     try {
       const res = await GyneCytologyCaseService.getAll({
+        ...buildOutlabApprovalBadgeParams(pathologistId),
         skip: (page - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
         search: search || undefined,
-        assigned_user_id: pathologistId,
-        is_out_lab: true,
-        has_out_lab_result: true,
-        outlab_result_approved: false,
       });
       setCases(res.items || []);
       const t = res.total || 0;
       setTotal(t);
-      onCountChange?.(t);
+      // A searched total is not what the badge means — see MyConsultCases.tsx.
+      if (!search) onCountChange?.(t);
     } catch {
       message.error("Failed to load outlab approval worklist");
     } finally {
