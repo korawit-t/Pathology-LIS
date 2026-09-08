@@ -123,8 +123,11 @@ export interface NongyneCytologyCaseCreate {
 
 export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCreate> {
   status?: string;
-  cytotechnologist_id?: number;
-  pathologist_id?: number;
+  // null, not just undefined: clearing an assignment has to be sent explicitly
+  // or the backend's exclude_unset dump leaves the old value in place.
+  cytotechnologist_id?: number | null;
+  pathologist_id?: number | null;
+  collect_at?: string | null;
   is_screened?: boolean;
   is_reported?: boolean;
   has_malignancy?: boolean;

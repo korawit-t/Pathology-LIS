@@ -118,8 +118,14 @@ export interface GyneCytologyCaseCreate {
 
 export interface GyneCytologyCaseUpdate extends Partial<GyneCytologyCaseCreate> {
   status?: string;
-  cytotechnologist_id?: number;
-  pathologist_id?: number;
+  // null, not just undefined: clearing an assignment has to be sent explicitly
+  // or the backend's exclude_unset dump leaves the old value in place.
+  cytotechnologist_id?: number | null;
+  pathologist_id?: number | null;
+  department_id?: number | null;
+  medical_scheme_id?: number | null;
+  last_menstrual_period?: string | null;
+  collect_at?: string | null;
   is_out_lab_consult?: boolean;
   is_out_lab?: boolean;
   out_lab_result_pdf_path?: string | null;
