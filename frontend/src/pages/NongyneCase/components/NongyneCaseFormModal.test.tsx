@@ -124,6 +124,47 @@ describe("NongyneCaseFormModal", () => {
     );
   });
 
+  it("sends an explicit null when an existing case's pathologist is cleared", async () => {
+    (UserService.getUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 9, full_name: "Dr. Patho", roles: ["pathologist"] },
+    ]);
+    (NongyneCytologyCaseService.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 42,
+      accession_no: "N26-00042",
+      status: "registered",
+      hn: "HN001",
+      specimen_type: "Fluid",
+      patient: mockPatient,
+      hospital: { id: 1, name: "General Hospital" },
+      pathologist: { id: 9, full_name: "Dr. Patho" },
+    });
+    (NongyneCytologyCaseService.update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 42 });
+
+    renderModal({ editingId: 42 });
+    expect(await screen.findByText("Edit Non-Gyne Cyto Case")).toBeInTheDocument();
+    expect(await screen.findByText("Dr. Patho")).toBeInTheDocument();
+
+    const clearIcon = document
+      .getElementById("pathologist_id")
+      ?.closest(".ant-select")
+      ?.querySelector(".ant-select-clear");
+    fireEvent.mouseDown(clearIcon as Element);
+    await waitFor(() => expect(screen.queryByText("Dr. Patho")).not.toBeInTheDocument());
+
+    // The button carries a loading spinner (and an extra "loading" in its
+    // accessible name) until the case finishes loading — wait it out.
+    const saveButton = await screen.findByRole("button", { name: /Save Changes/ });
+    await waitFor(() => expect(saveButton).not.toHaveClass("ant-btn-loading"));
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(NongyneCytologyCaseService.update).toHaveBeenCalled());
+    const [, payload] = (NongyneCytologyCaseService.update as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    // null, not undefined — undefined is dropped by JSON.stringify and the
+    // backend's exclude_unset dump would leave the old pathologist in place.
+    expect(payload).toHaveProperty("pathologist_id", null);
+  });
+
   it("flushes a pre-save queued file to the backend right after case creation", async () => {
     (NongyneCytologyCaseService.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 99,
