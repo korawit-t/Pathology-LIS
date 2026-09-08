@@ -37,6 +37,8 @@ const NongyneCytologyCaseService = {
     is_screened?: boolean;
     is_pending?: boolean;
     is_express?: boolean;
+    /** Order cases still to be reported ahead of the finished ones. */
+    prioritize_unreported?: boolean;
   }): Promise<NongyneCytologyListResponse> => {
     const res = await api.get<NongyneCytologyListResponse>("/nongyne-cytology", {
       params,

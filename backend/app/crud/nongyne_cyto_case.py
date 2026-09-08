@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Date, func, or_, cast, and_, literal
+from sqlalchemy import Date, case as sql_case, func, or_, cast, and_, literal
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
@@ -138,6 +138,7 @@ def get_nongyne_cases(
     date_to: datetime = None,
     stain_status: str = None,
     is_express: bool = None,
+    prioritize_unreported: bool = None,
 ):
     query = db.query(NongyneCytologyCase).join(Patient)
 
@@ -232,6 +233,18 @@ def get_nongyne_cases(
 
     total = query.count()
 
+    # Float the cases still to be reported to the top, ahead of the finished
+    # ones, the way surgical's "All" tab does with prioritize_status. It has to
+    # happen here rather than in the client's Table sorter: the sorter only
+    # reaches the rows already fetched, so an unreported case sitting past the
+    # page limit never surfaces.
+    order_by_clauses = []
+    if prioritize_unreported:
+        order_by_clauses.append(
+            sql_case((NongyneCytologyCase.is_reported.is_(False), 0), else_=1)
+        )
+    order_by_clauses.append(NongyneCytologyCase.id.desc())
+
     items = (
         query.options(
             selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
@@ -241,7 +254,7 @@ def get_nongyne_cases(
             selectinload(NongyneCytologyCase.department),
             selectinload(NongyneCytologyCase.medical_scheme),
         )
-        .order_by(NongyneCytologyCase.id.desc())
+        .order_by(*order_by_clauses)
         .offset(skip)
         .limit(limit)
         .all()
