@@ -21,8 +21,7 @@ class NongyneSpecimenDisposalBatch(Base):
     พิมพ์ใบก่อน (status=PRINTED) ถือไปตรวจสอบหน้างาน เซ็นสามช่อง แล้วกลับมา
     ยืนยัน (DISPOSED) หรือยกเลิก (CANCELLED)
 
-    ต่างกันสองอย่าง: ไม่มี container เพราะ non-gyne ไม่มีขั้นตอนจัดเก็บเข้ากล่อง
-    และเลขใบขึ้นต้น NDSP- เพื่อไม่ให้ลำดับปนกับ DSP- ของ surgical
+    ต่างจากของ surgical ตรงที่เลขใบขึ้นต้น NDSP- เพื่อไม่ให้ลำดับปนกัน
     """
 
     __tablename__ = "nongyne_specimen_disposal_batches"
@@ -96,6 +95,10 @@ class NongyneSpecimenDisposalBatchItem(Base):
     case_id = Column(
         Integer, ForeignKey("nongyne_cytology_cases.id"), nullable=False
     )
+
+    # ที่เก็บ ณ ตอนพิมพ์ใบ — ถ้ามีการย้ายที่ทีหลัง ใบเดิมยังพิมพ์ซ้ำได้ตรงกับกระดาษ
+    # ที่เซ็นไปแล้ว
+    container_snapshot = Column(String, nullable=True)
 
     batch = relationship("NongyneSpecimenDisposalBatch", back_populates="items")
     case = relationship("NongyneCytologyCase", foreign_keys=[case_id])

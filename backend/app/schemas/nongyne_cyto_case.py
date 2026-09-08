@@ -204,7 +204,10 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     screened_at: Optional[datetime] = None
     report_at: Optional[datetime] = None
 
-    # Specimen disposal
+    # Specimen storage & disposal
+    specimen_storage_status: Optional[str] = None
+    specimen_storage_container: Optional[str] = None
+    specimen_storage_at: Optional[datetime] = None
     discard_status: bool = False
     discard_at: Optional[datetime] = None
 
@@ -249,6 +252,11 @@ class NongyneDisposalCandidateResponse(BaseModel):
     is_due: bool = False
     block_reason: Optional[str] = None
 
+    specimen_storage_status: Optional[str] = None
+    specimen_storage_container: Optional[str] = None
+    specimen_storage_at: Optional[datetime] = None
+    specimen_storer: Optional[UserMinimalResponse] = None
+
     discard_status: bool = False
     discard_at: Optional[datetime] = None
     specimen_disposer: Optional[UserMinimalResponse] = None
@@ -264,3 +272,8 @@ class NongyneDisposalCandidateList(BaseModel):
     retention_days: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NongyneSpecimenStorageBulkUpdate(BaseModel):
+    case_ids: List[int] = Field(..., min_length=1)
+    container_number: str = Field(..., min_length=1)

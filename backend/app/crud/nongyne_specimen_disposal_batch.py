@@ -132,6 +132,13 @@ def create_batch(
             detail=f"เคสยังค้าง Pending อยู่ จึงยังทำลายไม่ได้: {', '.join(pending)}",
         )
 
+    not_stored = [c.accession_no for c in cases if not c.specimen_storage_status]
+    if not_stored:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เคสยังไม่ได้จัดเก็บ จึงยังทำลายไม่ได้: {', '.join(not_stored)}",
+        )
+
     too_young = [
         f"{c.accession_no} ({_age_days(c, today)} วัน)"
         for c in cases
@@ -171,7 +178,12 @@ def create_batch(
         approver_name=approver_name,
     )
     for case in cases:
-        batch.items.append(NongyneSpecimenDisposalBatchItem(case_id=case.id))
+        batch.items.append(
+            NongyneSpecimenDisposalBatchItem(
+                case_id=case.id,
+                container_snapshot=case.specimen_storage_container,
+            )
+        )
 
     db.add(batch)
     try:
@@ -255,6 +267,7 @@ def build_disposal_checklist_data(db: Session, batch_id: int) -> dict:
                 "accession_no": case.accession_no or "-",
                 "hn": case.hn or "-",
                 "patient_name": _full_patient_name(case.patient),
+                "container": item.container_snapshot or "-",
                 "collection_site": case.collection_site or "-",
                 "report_date": report_at.strftime("%d/%m/%Y") if report_at else "-",
                 "age_days": (today - report_at.date()).days if report_at else "-",
@@ -308,6 +321,7 @@ def confirm_batch_disposal(
         case = item.case
         if not case:
             continue
+        case.specimen_storage_status = "Discarded"
         case.discard_status = True
         case.discard_at = now
         # ผู้ทิ้งคือคนที่ลงมือทิ้งและเซ็นบนกระดาษ ไม่ใช่คนที่นั่งกดยืนยันในระบบ

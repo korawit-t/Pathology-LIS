@@ -36,6 +36,7 @@ class NongyneDisposalBatchItemResponse(BaseModel):
     accession_no: Optional[str] = None
     hn: Optional[str] = None
     patient_name: Optional[str] = None
+    container_snapshot: Optional[str] = None
     specimen_type: Optional[str] = None
     collection_site: Optional[str] = None
     report_at: Optional[datetime] = None

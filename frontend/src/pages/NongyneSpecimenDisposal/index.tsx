@@ -14,9 +14,11 @@ import {
 } from "antd";
 import type { TablePaginationConfig } from "antd";
 import {
+  DatabaseOutlined,
   DeleteOutlined,
   ExperimentOutlined,
   FileProtectOutlined,
+  InboxOutlined,
   ReloadOutlined,
   StopOutlined,
 } from "@ant-design/icons";
@@ -31,6 +33,8 @@ import { formatPatientName } from "../../utils/patientName";
 import logger from "../../utils/logger";
 import CreateNongyneDisposalBatchModal from "./CreateNongyneDisposalBatchModal";
 import NongyneDisposalBatchTab from "./NongyneDisposalBatchTab";
+import NongyneStoredTab from "./NongyneStoredTab";
+import NongyneUnstoredTab from "./NongyneUnstoredTab";
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -38,6 +42,10 @@ const PAGE_SIZE = 20;
 
 const NongyneSpecimenDisposal: React.FC = () => {
   const [activeTab, setActiveTab] = useState("1");
+
+  // ==== Tab 1-2: Storage ====
+  const [storageSearch, setStorageSearch] = useState("");
+  const [storageRefreshKey, setStorageRefreshKey] = useState(0);
 
   // ==== Tab 1: รอทำลาย ====
   const [bucket, setBucket] = useState<NongyneDisposalBucket>("due");
@@ -111,9 +119,9 @@ const NongyneSpecimenDisposal: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "1") {
+    if (activeTab === "3") {
       fetchCandidates(candidatePage, candidateSearch, bucket);
-    } else if (activeTab === "2") {
+    } else if (activeTab === "4") {
       fetchDisposed(disposedPage, disposedSearch);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,11 +145,18 @@ const NongyneSpecimenDisposal: React.FC = () => {
     refreshOpenBatchCount();
   };
 
+  // ระบุที่เก็บแล้ว เคสอาจเข้าเกณฑ์ทิ้งได้ทันที คิวรอทิ้งจึงต้องรีเฟรชด้วย
+  const handleStorageChanged = () => {
+    setStorageRefreshKey((k) => k + 1);
+    fetchCandidates(candidatePage, candidateSearch, bucket);
+  };
+
   // ใบถูกยืนยัน/ยกเลิก → ทั้งคิวรอทิ้งและรายการที่ทำลายแล้วเปลี่ยนไปพร้อมกัน
   const handleBatchChanged = () => {
     refreshOpenBatchCount();
     fetchCandidates(candidatePage, candidateSearch, bucket);
     fetchDisposed(disposedPage, disposedSearch);
+    setStorageRefreshKey((k) => k + 1);
   };
 
   const selectedCases = candidates.filter((c) => selectedRowKeys.includes(c.id));
@@ -178,6 +193,14 @@ const NongyneSpecimenDisposal: React.FC = () => {
       render: (text: string) => text || "-",
     },
     {
+      title: "ที่เก็บ",
+      dataIndex: "specimen_storage_container",
+      key: "specimen_storage_container",
+      width: 120,
+      render: (text: string) =>
+        text ? <Tag color="blue">{text}</Tag> : <Text type="warning">ยังไม่ระบุ</Text>,
+    },
+    {
       title: "วันรายงานผล",
       dataIndex: "report_at",
       key: "report_at",
@@ -212,6 +235,13 @@ const NongyneSpecimenDisposal: React.FC = () => {
             </Tooltip>
           );
         }
+        if (!record.specimen_storage_status) {
+          return (
+            <Tooltip title={record.block_reason || "ยังไม่ได้ระบุที่เก็บ"}>
+              <Tag color="warning">ยังไม่ระบุที่เก็บ</Tag>
+            </Tooltip>
+          );
+        }
         if (record.block_reason) {
           return (
             <Tooltip title={record.block_reason}>
@@ -242,11 +272,11 @@ const NongyneSpecimenDisposal: React.FC = () => {
       render: (text: string) => <Tag color="blue">{text || "-"}</Tag>,
     },
     {
-      title: "วันรายงานผล",
-      dataIndex: "report_at",
-      key: "report_at",
-      width: 130,
-      render: (date: string) => (date ? dayjs(date).format("DD/MM/YYYY") : "-"),
+      title: "ที่เก็บเดิม",
+      dataIndex: "specimen_storage_container",
+      key: "specimen_storage_container",
+      width: 120,
+      render: (text: string) => <Tag color="default">{text || "-"}</Tag>,
     },
     {
       title: "วันที่ทำลาย",
@@ -282,7 +312,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
       title={
         <Title level={3} style={{ margin: 0 }}>
           <ExperimentOutlined style={{ marginRight: 8, color: "#595959" }} />
-          ทำลายสิ่งส่งตรวจ Non-Gyne Cytology
+          จัดเก็บและทำลายสิ่งส่งตรวจ Non-Gyne Cytology
         </Title>
       }
     >
@@ -291,7 +321,16 @@ const NongyneSpecimenDisposal: React.FC = () => {
         onChange={(key) => setActiveTab(key)}
         tabBarStyle={{ padding: "0 24px", marginBottom: 0 }}
         tabBarExtraContent={
-          activeTab === "1" ? (
+          activeTab === "1" || activeTab === "2" ? (
+            <Search
+              placeholder="ค้นหา Accession No, HN, ชื่อผู้ป่วย, ที่เก็บ"
+              allowClear
+              enterButton="ค้นหา"
+              size="middle"
+              onSearch={(value) => setStorageSearch(value)}
+              style={{ width: 380 }}
+            />
+          ) : activeTab === "3" ? (
             <Search
               placeholder="ค้นหา Accession No, HN, ชื่อผู้ป่วย"
               allowClear
@@ -304,7 +343,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
               }}
               style={{ width: 380 }}
             />
-          ) : activeTab === "2" ? (
+          ) : activeTab === "4" ? (
             <Search
               placeholder="ค้นหา Accession No, HN, ชื่อผู้ป่วย"
               allowClear
@@ -322,6 +361,38 @@ const NongyneSpecimenDisposal: React.FC = () => {
         items={[
           {
             key: "1",
+            label: (
+              <span>
+                <InboxOutlined style={{ marginRight: 6 }} />
+                รอจัดเก็บ
+              </span>
+            ),
+            children: (
+              <NongyneUnstoredTab
+                key={`unstored-${storageRefreshKey}`}
+                search={storageSearch}
+                onChanged={handleStorageChanged}
+              />
+            ),
+          },
+          {
+            key: "2",
+            label: (
+              <span>
+                <DatabaseOutlined style={{ marginRight: 6 }} />
+                จัดเก็บแล้ว
+              </span>
+            ),
+            children: (
+              <NongyneStoredTab
+                key={`stored-${storageRefreshKey}`}
+                search={storageSearch}
+                onRetentionDays={setRetentionDays}
+              />
+            ),
+          },
+          {
+            key: "3",
             label: (
               <span>
                 <DeleteOutlined style={{ marginRight: 6 }} />
@@ -347,7 +418,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
                     options={[
                       { label: `ครบกำหนด (≥ ${retentionDays} วัน)`, value: "due" },
                       { label: "ยังไม่ครบกำหนด", value: "not_due" },
-                      { label: "ค้าง Pending", value: "blocked" },
+                      { label: "ติดเงื่อนไข", value: "blocked" },
                     ]}
                   />
                   <Space>
@@ -403,7 +474,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
             ),
           },
           {
-            key: "2",
+            key: "4",
             label: (
               <span>
                 <StopOutlined style={{ marginRight: 6 }} />
@@ -442,7 +513,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
             ),
           },
           {
-            key: "3",
+            key: "5",
             label: (
               <span>
                 <FileProtectOutlined style={{ marginRight: 6 }} />
