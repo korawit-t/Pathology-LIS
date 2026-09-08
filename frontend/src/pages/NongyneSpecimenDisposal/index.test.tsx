@@ -17,6 +17,9 @@ vi.mock("../../services/nongyneSpecimenDisposalService", () => ({
   default: {
     getCandidates: vi.fn(),
     getDisposed: vi.fn(),
+    getUnstored: vi.fn(),
+    getStored: vi.fn(),
+    bulkUpdateStorage: vi.fn(),
     getOpenCount: vi.fn(),
     getAll: vi.fn(),
     create: vi.fn(),
@@ -81,47 +84,53 @@ const renderPage = () =>
     </AntdApp>,
   );
 
+/** Storage is now the landing tab — the disposal queue sits behind "รอทำลาย". */
+const openDisposalQueue = async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole("tab", { name: /รอทำลาย/ }));
+  await waitFor(() => expect(svc.getCandidates).toHaveBeenCalled());
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockCandidates([makeCandidate()]);
   svc.getDisposed.mockResolvedValue({ items: [], total: 0, retention_days: RETENTION });
+  svc.getUnstored.mockResolvedValue([]);
+  svc.getStored.mockResolvedValue({ items: [], total: 0, retention_days: RETENTION });
   svc.getOpenCount.mockResolvedValue(2);
   svc.getAll.mockResolvedValue({ items: [], total: 0 });
 });
 
 describe("NongyneSpecimenDisposal", () => {
-  it("opens on the cases that are actually due", async () => {
-    renderPage();
-    await waitFor(() =>
-      expect(svc.getCandidates).toHaveBeenCalledWith(
-        expect.objectContaining({ bucket: "due" }),
-      ),
+  it("opens the disposal queue on the cases that are actually due", async () => {
+    await openDisposalQueue();
+    expect(svc.getCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ bucket: "due" }),
     );
     expect(await inTable().findByText("N26-00123")).toBeInTheDocument();
   });
 
   it("labels the due filter with the retention rule from the server", async () => {
-    renderPage();
+    await openDisposalQueue();
     await waitFor(() =>
       expect(inFilter().getByText(`ครบกำหนด (≥ ${RETENTION} วัน)`)).toBeInTheDocument(),
     );
   });
 
   it("shows the day count the server computed, not one it derives itself", async () => {
-    renderPage();
+    await openDisposalQueue();
     expect(await inTable().findByText("65 วัน")).toBeInTheDocument();
   });
 
   it("renders the full patient name with title and surname", async () => {
-    renderPage();
+    await openDisposalQueue();
     expect(await inTable().findByText("นาง สมศรี ใจงาม")).toBeInTheDocument();
   });
 
   it("switching bucket refetches with that bucket", async () => {
-    renderPage();
-    await waitFor(() => expect(svc.getCandidates).toHaveBeenCalled());
+    await openDisposalQueue();
 
-    fireEvent.click(inFilter().getByText("ค้าง Pending"));
+    fireEvent.click(inFilter().getByText("ติดเงื่อนไข"));
     await waitFor(() =>
       expect(svc.getCandidates).toHaveBeenCalledWith(
         expect.objectContaining({ bucket: "blocked" }),
@@ -130,7 +139,7 @@ describe("NongyneSpecimenDisposal", () => {
   });
 
   it("cannot start a sheet with nothing selected", async () => {
-    renderPage();
+    await openDisposalQueue();
     const button = await screen.findByRole("button", {
       name: /สร้างใบตรวจสอบก่อนทำลาย \(0\)/,
     });
@@ -138,8 +147,7 @@ describe("NongyneSpecimenDisposal", () => {
   });
 
   it("cases that are not due are read-only — no checkboxes to select them", async () => {
-    renderPage();
-    await waitFor(() => expect(svc.getCandidates).toHaveBeenCalled());
+    await openDisposalQueue();
     expect(inTable().queryAllByRole("checkbox").length).toBeGreaterThan(0);
 
     fireEvent.click(inFilter().getByText("ยังไม่ครบกำหนด"));
@@ -154,8 +162,7 @@ describe("NongyneSpecimenDisposal", () => {
   });
 
   it("selecting a due case enables the sheet button", async () => {
-    renderPage();
-    await waitFor(() => expect(svc.getCandidates).toHaveBeenCalled());
+    await openDisposalQueue();
 
     const rowCheckbox = inTable().getAllByRole("checkbox").at(-1) as HTMLElement;
     fireEvent.click(rowCheckbox);
@@ -176,7 +183,7 @@ describe("NongyneSpecimenDisposal", () => {
         block_reason: "ค้าง Pending (รอ cell block)",
       }),
     ]);
-    renderPage();
+    await openDisposalQueue();
     expect(await inTable().findByText("ค้าง Pending")).toBeInTheDocument();
   });
 
@@ -200,7 +207,7 @@ describe("NongyneSpecimenDisposal", () => {
     });
     renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: /ทำลายแล้ว/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /ทำลายแล้ว/ }));
     await waitFor(() => expect(svc.getDisposed).toHaveBeenCalled());
     expect(await inTable().findByText("สมชาย ใจดี")).toBeInTheDocument();
   });

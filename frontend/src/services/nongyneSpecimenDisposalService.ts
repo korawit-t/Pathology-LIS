@@ -5,6 +5,8 @@ import type {
   NongyneDisposalBatchStatus,
   NongyneDisposalBucket,
   NongyneDisposalCandidateList,
+  NongyneDisposalCandidate,
+  NongyneStorageBulkUpdatePayload,
 } from "../types/nongyneSpecimenDisposal";
 
 const BASE = "/nongyne-specimen-disposal-batches";
@@ -69,6 +71,29 @@ const NongyneSpecimenDisposalService = {
     params: { skip?: number; limit?: number; search?: string } = {}
   ): Promise<NongyneDisposalCandidateList> => {
     const res = await api.get("/nongyne-cytology/disposal/disposed", { params });
+    return res.data;
+  },
+
+  // ---- Specimen storage ----
+  // เคสที่ยังไม่ระบุที่เก็บ ไม่ต้อง paginate — คิวนี้ควรถูกเคลียร์ให้หมดอยู่แล้ว
+  getUnstored: async (search?: string): Promise<NongyneDisposalCandidate[]> => {
+    const res = await api.get("/nongyne-cytology/storage/unstored", {
+      params: { search: search || undefined },
+    });
+    return res.data;
+  },
+
+  getStored: async (
+    params: { skip?: number; limit?: number; search?: string } = {}
+  ): Promise<NongyneDisposalCandidateList> => {
+    const res = await api.get("/nongyne-cytology/storage/stored", { params });
+    return res.data;
+  },
+
+  bulkUpdateStorage: async (
+    payload: NongyneStorageBulkUpdatePayload
+  ): Promise<NongyneDisposalCandidate[]> => {
+    const res = await api.post("/nongyne-cytology/storage/bulk-update", payload);
     return res.data;
   },
 

@@ -207,11 +207,11 @@ const NongyneDisposalBatchTab: React.FC<Props> = ({ onChanged }) => {
       key: "item_count",
       width: 110,
       render: (count: number, record: NongyneDisposalBatch) => {
-        const types = new Set(
-          record.items.map((i) => i.specimen_type || "-")
+        const containers = new Set(
+          record.items.map((i) => i.container_snapshot || "-")
         );
         return (
-          <Tooltip title={`ชนิด: ${Array.from(types).sort().join(", ")}`}>
+          <Tooltip title={`ที่เก็บ: ${Array.from(containers).sort().join(", ")}`}>
             <span>{count} รายการ</span>
           </Tooltip>
         );
@@ -322,6 +322,7 @@ const NongyneDisposalBatchTab: React.FC<Props> = ({ onChanged }) => {
         pagination={false}
         dataSource={record.items}
         columns={[
+          { title: "ที่เก็บ", dataIndex: "container_snapshot", width: 100 },
           { title: "Accession No.", dataIndex: "accession_no", width: 140 },
           { title: "HN", dataIndex: "hn", width: 110 },
           { title: "ชื่อ-สกุลผู้ป่วย", dataIndex: "patient_name" },

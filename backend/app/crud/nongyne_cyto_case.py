@@ -566,11 +566,11 @@ def get_nongyne_slide_quality_stats(db: Session, start_date, end_date):
 
 
 # =====================================================================
-# Specimen Disposal — รายการเคสสำหรับหน้าทิ้งสิ่งส่งตรวจ
+# Specimen Storage & Disposal — รายการเคสสำหรับหน้าจัดเก็บ/ทำลายสิ่งส่งตรวจ
 #
-# ต่างจาก surgical (get_stored_cases) ตรงที่ไม่มีขั้นตอนจัดเก็บเข้ากล่อง
-# เกณฑ์ว่าทิ้งได้หรือยังจึงมาจากวันที่รายงานผลล้วน ๆ และคำนวณใน SQL
-# ไม่ใช่ใน Python หลัง query เพราะ count()/pagination ต้องนับชุดเดียวกัน
+# เกณฑ์ว่าทิ้งได้หรือยังมาจากสองอย่าง: ระบุที่เก็บแล้ว และออกผลมาครบกำหนด
+# อายุคำนวณใน SQL ไม่ใช่ใน Python หลัง query เพราะ count()/pagination
+# ต้องนับชุดเดียวกัน
 # =====================================================================
 
 DISPOSAL_BUCKETS = ("due", "not_due", "blocked")
@@ -642,13 +642,28 @@ def get_disposal_candidates(
     query = _disposal_base_query(db, search)
 
     if bucket == "blocked":
-        query = query.filter(NongyneCytologyCase.is_pending.is_(True))
+        # ครบกำหนดวันแล้วแต่ยังทิ้งไม่ได้ — ค้าง pending หรือยังไม่ระบุที่เก็บ
+        # ถ้าไม่รวมข้อหลังไว้ด้วย เคสที่ถึงกำหนดแต่ยังไม่ได้จัดเก็บจะหายไปจากทุกถัง
+        query = query.filter(
+            or_(
+                NongyneCytologyCase.is_pending.is_(True),
+                and_(
+                    NongyneCytologyCase.status == "published",
+                    NongyneCytologyCase.report_at.is_not(None),
+                    age >= retention_days,
+                    NongyneCytologyCase.specimen_storage_status.is_(None),
+                ),
+            )
+        )
         order_col = NongyneCytologyCase.registered_at.asc()
     else:
         query = query.filter(*_reported_filters())
         if bucket == "due":
-            query = query.filter(age >= retention_days).filter(
-                ~NongyneCytologyCase.id.in_(open_batch_case_ids_subquery())
+            query = (
+                query.filter(age >= retention_days)
+                # ของที่ยังไม่ระบุที่เก็บ หยิบไปทิ้งตามใบไม่ได้ เพราะไม่รู้ว่าอยู่ไหน
+                .filter(NongyneCytologyCase.specimen_storage_status.is_not(None))
+                .filter(~NongyneCytologyCase.id.in_(open_batch_case_ids_subquery()))
             )
         else:
             query = query.filter(age < retention_days)
@@ -659,6 +674,7 @@ def get_disposal_candidates(
     items = (
         query.options(
             selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.specimen_storer),
             selectinload(NongyneCytologyCase.specimen_disposer),
         )
         .order_by(order_col)
@@ -685,6 +701,8 @@ def _disposal_block_reason(case, days, retention_days) -> str | None:
         return "ยังไม่ได้รายงานผล"
     if days is not None and days < retention_days:
         return f"ยังไม่ครบ {retention_days} วันหลังรายงานผล (ครบแล้ว {days} วัน)"
+    if not case.specimen_storage_status:
+        return "ยังไม่ได้ระบุที่เก็บ"
     return None
 
 
@@ -711,6 +729,7 @@ def get_disposed_nongyne_cases(
     items = (
         query.options(
             selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.specimen_storer),
             selectinload(NongyneCytologyCase.specimen_disposer),
         )
         .order_by(NongyneCytologyCase.discard_at.desc())
@@ -728,3 +747,106 @@ def get_disposed_nongyne_cases(
         case.block_reason = None
 
     return {"items": items, "total": total}
+
+
+def get_unstored_nongyne_cases(db: Session, search: str = None):
+    """เคสที่ยังไม่ได้ระบุที่เก็บสิ่งส่งตรวจ
+
+    mirror get_unstored_cases ฝั่ง surgical — ตัดเคสที่ยกเลิก และเคสที่ส่งออกไป
+    แลปนอก เพราะของไม่ได้อยู่ในตู้เย็นของเรา จึงไม่มีอะไรให้ระบุที่เก็บ
+    """
+    query = (
+        db.query(NongyneCytologyCase)
+        .options(selectinload(NongyneCytologyCase.patient).selectinload(Patient.title))
+        .filter(
+            NongyneCytologyCase.is_cancelled.is_(False),
+            NongyneCytologyCase.specimen_storage_status.is_(None),
+            NongyneCytologyCase.discard_status.is_(False),
+            NongyneCytologyCase.is_out_lab.is_(False),
+            NongyneCytologyCase.is_out_lab_consult.is_(False),
+        )
+    )
+    if search:
+        s = f"%{search}%"
+        query = query.join(
+            Patient, NongyneCytologyCase.patient_id == Patient.id
+        ).filter(
+            or_(
+                NongyneCytologyCase.accession_no.ilike(s),
+                NongyneCytologyCase.hn.ilike(s),
+                Patient.name.ilike(s),
+                Patient.ln.ilike(s),
+            )
+        )
+    return query.order_by(NongyneCytologyCase.id.desc()).all()
+
+
+def get_stored_nongyne_cases(
+    db: Session, skip: int = 0, limit: int = 20, search: str = None
+) -> dict:
+    """เคสที่ระบุที่เก็บแล้วและยังไม่ถูกทำลาย — คือของที่ยังอยู่ในตู้เย็นจริง"""
+    query = db.query(NongyneCytologyCase).filter(
+        NongyneCytologyCase.is_cancelled.is_(False),
+        NongyneCytologyCase.specimen_storage_status.is_not(None),
+        NongyneCytologyCase.discard_status.is_(False),
+    )
+    if search:
+        s = f"%{search}%"
+        query = query.join(
+            Patient, NongyneCytologyCase.patient_id == Patient.id
+        ).filter(
+            or_(
+                NongyneCytologyCase.accession_no.ilike(s),
+                NongyneCytologyCase.hn.ilike(s),
+                NongyneCytologyCase.specimen_storage_container.ilike(s),
+                Patient.name.ilike(s),
+                Patient.ln.ilike(s),
+            )
+        )
+
+    total = query.count()
+    items = (
+        query.options(
+            selectinload(NongyneCytologyCase.patient).selectinload(Patient.title),
+            selectinload(NongyneCytologyCase.specimen_storer),
+        )
+        .order_by(NongyneCytologyCase.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    today = local_now().date()
+    for case in items:
+        case.days_since_report = (
+            (today - case.report_at.date()).days if case.report_at else None
+        )
+        case.is_due = False
+        case.block_reason = None
+
+    return {"items": items, "total": total}
+
+
+def bulk_update_nongyne_storage_status(
+    db: Session, case_ids: list[int], container_number: str, user_id: int
+):
+    cases = (
+        db.query(NongyneCytologyCase)
+        .filter(NongyneCytologyCase.id.in_(case_ids))
+        .all()
+    )
+
+    now = local_now()
+    for c in cases:
+        c.specimen_storage_status = "Stored"
+        c.specimen_storage_container = container_number
+        c.specimen_storage_at = now
+        c.specimen_storage_by_id = user_id
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return cases

@@ -67,7 +67,7 @@ def retention_setting(db):
 
 @pytest.fixture
 def cyto_user(db):
-    """cytotechnologist holds CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL but not
+    """cytotechnologist holds CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE but not
     CAN_APPROVE_SPECIMEN_DISPOSAL."""
     return _make_user(db, ["cytotechnologist"], "cyto")
 
@@ -122,10 +122,14 @@ def _case(
     is_pending: bool = False,
     is_cancelled: bool = False,
     specimen_type: str = "Fluid",
+    stored: bool = True,
+    container: str = "NG-01",
 ) -> NongyneCytologyCase:
     """A non-gyne case whose report went out `days_ago` days ago.
 
     days_ago=None leaves report_at NULL (never reported).
+    stored=False leaves the specimen with no recorded location, which blocks
+    disposal the same way an unstored surgical case does.
     """
     case = NongyneCytologyCase(
         accession_no=f"N26-{uuid.uuid4().hex[:12]}",
@@ -138,6 +142,9 @@ def _case(
         is_pending=is_pending,
         is_cancelled=is_cancelled,
         report_at=None if days_ago is None else local_now() - timedelta(days=days_ago),
+        specimen_storage_status="Stored" if stored else None,
+        specimen_storage_container=container if stored else None,
+        specimen_storage_at=local_now() if stored else None,
     )
     db.add(case)
     db.commit()
@@ -232,6 +239,14 @@ class TestEligibilityGate:
         r = cyto_client.post(BATCHES, json=_payload([case], signers))
         assert r.status_code == 400
         assert "ถูกทำลายไปแล้ว" in r.json()["detail"]
+
+    def test_unstored_case_rejected(self, cyto_client, cyto_user, db, signers):
+        """Nobody can fetch a jar the system cannot name a location for."""
+        case = _case(db, cyto_user[0].id, stored=False)
+        r = cyto_client.post(BATCHES, json=_payload([case], signers))
+        assert r.status_code == 400
+        assert "ยังไม่ได้จัดเก็บ" in r.json()["detail"]
+        assert case.accession_no in r.json()["detail"]
 
     def test_one_bad_case_blocks_the_whole_sheet(self, cyto_client, cyto_user, db, signers):
         good = _case(db, cyto_user[0].id)
@@ -346,8 +361,9 @@ class TestCreateBatch:
         assert body["approver_name"] == approver.full_name
 
     def test_item_carries_specimen_details(self, cyto_client, cyto_user, db, signers):
-        case = _case(db, cyto_user[0].id, specimen_type="Sputum")
+        case = _case(db, cyto_user[0].id, specimen_type="Sputum", container="NG-07")
         item = cyto_client.post(BATCHES, json=_payload([case], signers)).json()["items"][0]
+        assert item["container_snapshot"] == "NG-07"
         assert item["specimen_type"] == "Sputum"
         assert item["collection_site"] == "Pleural fluid"
         assert item["days_since_report"] == RETENTION
@@ -383,6 +399,21 @@ class TestCandidateBuckets:
         accs = self._accessions(r)
         assert pending.accession_no in accs
         assert clean.accession_no not in accs
+
+    def test_unstored_due_case_is_blocked_not_due(self, cyto_client, cyto_user, db):
+        """A case past its retention date but with no recorded location has to
+        stay visible somewhere — otherwise it silently falls out of every bucket."""
+        case = _case(db, cyto_user[0].id, days_ago=RETENTION + 5, stored=False)
+
+        due = cyto_client.get(f"{CANDIDATES}?bucket=due&limit=200")
+        assert case.accession_no not in self._accessions(due)
+
+        blocked = cyto_client.get(f"{CANDIDATES}?bucket=blocked&limit=200")
+        assert case.accession_no in self._accessions(blocked)
+        row = next(
+            i for i in blocked.json()["items"] if i["accession_no"] == case.accession_no
+        )
+        assert row["block_reason"] == "ยังไม่ได้ระบุที่เก็บ"
 
     def test_pending_case_never_shows_as_due(self, cyto_client, cyto_user, db):
         pending = _case(db, cyto_user[0].id, days_ago=RETENTION * 2, is_pending=True)
@@ -436,6 +467,7 @@ class TestConfirm:
         db.refresh(case)
         assert case.discard_status is True
         assert case.discard_at is not None
+        assert case.specimen_storage_status == "Discarded"
         # the person who signed the paper as ผู้ทิ้ง, not whoever clicked confirm
         assert case.discard_by_id == signers[0].id
 

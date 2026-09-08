@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.roles import (
     CAN_APPROVE_SPECIMEN_DISPOSAL,
-    CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL,
+    CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE,
 )
 from app.crud import nongyne_specimen_disposal_batch as crud
 from app.crud.slide_block_release import _full_patient_name
@@ -43,6 +43,7 @@ def _serialize(batch: NongyneSpecimenDisposalBatch) -> dict:
                 "accession_no": case.accession_no if case else None,
                 "hn": case.hn if case else None,
                 "patient_name": _full_patient_name(case.patient) if case else None,
+                "container_snapshot": item.container_snapshot,
                 "specimen_type": case.specimen_type if case else None,
                 "collection_site": case.collection_site if case else None,
                 "report_at": report_at,
@@ -83,7 +84,7 @@ def create_disposal_batch(
     payload: NongyneDisposalBatchCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
 ):
     batch = crud.create_batch(
         db,
@@ -102,7 +103,7 @@ def list_disposal_batches(
     limit: int = 20,
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
-    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
 ):
     data = crud.get_batches(db, skip=skip, limit=limit, status=status_filter)
     return {
@@ -114,7 +115,7 @@ def list_disposal_batches(
 @router.get("/open-count")
 def get_open_batch_count(
     db: Session = Depends(get_db),
-    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
 ):
     return {"count": crud.count_open_batches(db)}
 
@@ -123,7 +124,7 @@ def get_open_batch_count(
 def get_disposal_batch(
     batch_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
 ):
     return _serialize(crud.get_batch(db, batch_id))
 
@@ -132,7 +133,7 @@ def get_disposal_batch(
 def download_disposal_checklist(
     batch_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_DISPOSAL),
+    _: User = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
 ):
     from app.services.pdf_service import generate_pdf_blob
 

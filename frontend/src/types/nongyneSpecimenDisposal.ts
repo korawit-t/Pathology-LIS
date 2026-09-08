@@ -22,6 +22,7 @@ export interface NongyneDisposalBatchItem {
   accession_no?: string | null;
   hn?: string | null;
   patient_name?: string | null;
+  container_snapshot?: string | null;
   specimen_type?: string | null;
   collection_site?: string | null;
   report_at?: string | null;
@@ -84,6 +85,11 @@ export interface NongyneDisposalCandidate {
   is_due: boolean;
   block_reason?: string | null;
 
+  specimen_storage_status?: string | null;
+  specimen_storage_container?: string | null;
+  specimen_storage_at?: string | null;
+  specimen_storer?: NongyneDisposalBatchUser | null;
+
   discard_status: boolean;
   discard_at?: string | null;
   specimen_disposer?: NongyneDisposalBatchUser | null;
@@ -100,4 +106,9 @@ export interface NongyneDisposalCandidateList {
   items: NongyneDisposalCandidate[];
   total: number;
   retention_days: number;
+}
+
+export interface NongyneStorageBulkUpdatePayload {
+  case_ids: number[];
+  container_number: string;
 }

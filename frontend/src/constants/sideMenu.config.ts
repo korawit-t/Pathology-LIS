@@ -238,7 +238,7 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       },
       {
         key: "nongyne-specimen-disposal",
-        label: "Specimen Disposal",
+        label: "Specimen Storage",
         view: "nongyne-specimen-disposal",
         roles: PAGE_PERMISSIONS["nongyne-specimen-disposal"],
       },

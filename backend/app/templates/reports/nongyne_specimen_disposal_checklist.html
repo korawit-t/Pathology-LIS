@@ -204,7 +204,8 @@
           <th style="width: 78px">Accession No.</th>
           <th style="width: 58px">HN</th>
           <th>ชื่อ-สกุลผู้ป่วย</th>
-          <th style="width: 92px">ตำแหน่งที่เก็บ</th>
+          <th style="width: 54px">ที่เก็บ</th>
+          <th style="width: 86px">ตำแหน่งที่เก็บ</th>
           <th style="width: 58px">วันรายงาน</th>
           <th style="width: 34px">อายุ<br />(วัน)</th>
           <th style="width: 66px">หมายเหตุ</th>
@@ -218,6 +219,7 @@
           <td class="c">{{ row.accession_no }}</td>
           <td class="c">{{ row.hn }}</td>
           <td>{{ row.patient_name }}</td>
+          <td class="c">{{ row.container }}</td>
           <td>{{ row.collection_site }}</td>
           <td class="c">{{ row.report_date }}</td>
           <td class="c">{{ row.age_days }}</td>
