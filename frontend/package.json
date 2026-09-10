@@ -33,7 +33,7 @@
     "jszip": "^3.10.1",
     "konva": "^10.3.0",
     "lodash": "^4.17.21",
-    "openseadragon": "^6.0.2",
+    "openseadragon": "^6.1.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
     "pdfmake": "^0.2.20",
