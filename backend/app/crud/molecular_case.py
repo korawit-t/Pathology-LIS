@@ -674,6 +674,7 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
             selectinload(MolecularCase.patient).selectinload(Patient.title),
             selectinload(MolecularCase.hospital),
             selectinload(MolecularCase.department),
+            selectinload(MolecularCase.reported_by),
         )
         .filter(MolecularCase.id == case_id)
         .first()
@@ -728,6 +729,20 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
         "registered_at": case.registered_at,
         "reported_at": case.reported_at,
         "consult_pdf_thumbnail_snapshot": json.dumps(thumbnails),
+        # Who signed the case out, in the cover's "Digitally Signed by" slot —
+        # the same slot the Surgical consult cover and the Gyne out-lab cover
+        # fill, and built the same way they build it (report_name is the name a
+        # user has chosen to appear on reports; a username must never reach a
+        # signature line). Molecular has no separate approval step for the
+        # uploaded file — no outlab_result_approved_by_id the way Gyne has — so
+        # finalizing the case IS the sign-out, and reported_by is the signer.
+        # Stays empty until then, so a pending case's cover claims no signer.
+        "consult_pdf_approved_by_snapshot": (
+            (case.reported_by.report_name or case.reported_by.full_name)
+            if case.reported_by
+            else None
+        ),
+        "consult_pdf_approved_at_snapshot": case.reported_at,
     }
     if with_barcode:
         report_data.update(_build_footer_barcode(fields, case.accession_no, settings))
