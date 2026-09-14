@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.roles import (
@@ -19,6 +19,8 @@ from app.schemas.molecular_case import (
     MolecularCaseFinalize,
     MolecularCaseResponse,
     MolecularCaseUpdate,
+    MolecularPrintQueuePagination,
+    MolecularPrintStatusUpdate,
 )
 import app.crud.molecular_case as molecular_crud
 
@@ -77,6 +79,56 @@ def count_molecular_cases(
             db, status=status, is_outlab=is_outlab
         )
     }
+
+
+@router.get("/print-queue", response_model=MolecularPrintQueuePagination, dependencies=[Depends(CAN_READ_REPORT)])
+def read_molecular_print_queue(
+    page: int = 1,
+    size: int = 10,
+    search: Optional[str] = None,
+    is_print: Optional[bool] = None,
+    unprinted_first: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Reported Molecular cases for the Print Report Queue screen.
+
+    Must stay declared above ``/{case_id}`` for the same reason ``/count``
+    does — otherwise "print-queue" is captured as a case id and 422s.
+    """
+    return molecular_crud.get_molecular_print_queue(
+        db, page=page, size=size, search=search,
+        is_print=is_print, unprinted_first=unprinted_first,
+    )
+
+
+@router.post("/barcode-pdf", dependencies=[Depends(CAN_READ_REPORT)])
+def generate_molecular_barcode_label_pdf(payload: dict, db: Session = Depends(get_db)):
+    """Code 39 label sheet for the selected Molecular cases.
+    payload: {"case_ids": [1, 2, 3]}
+
+    Unlike the report footer, the label sheet is not gated on the case having a
+    VN/AN — its accession-number fallback is scanned for in-lab tracking, not
+    by the HIS. Same rule the Surgical/Gyne/Non-Gyne label sheets follow.
+    """
+    from app.services.pdf_service import generate_pdf_blob
+
+    case_ids = payload.get("case_ids", [])
+    if not case_ids:
+        raise HTTPException(status_code=400, detail="case_ids is required")
+
+    labels = molecular_crud.build_molecular_barcode_labels(db, case_ids)
+    if not labels:
+        raise HTTPException(status_code=404, detail="No valid Molecular cases found")
+
+    pdf_blob = generate_pdf_blob(
+        {"labels": labels},
+        template_name="reports/barcode_label_template.html",
+    )
+    return Response(
+        content=pdf_blob,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=barcode_labels.pdf"},
+    )
 
 
 @router.get("/{case_id}", response_model=MolecularCaseResponse, dependencies=[Depends(CAN_READ_REPORT)])
@@ -176,7 +228,11 @@ def upload_outlab_pdf(
 
 
 @router.get("/{case_id}/outlab-pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def download_outlab_pdf(case_id: int, db: Session = Depends(get_db)):
+def download_outlab_pdf(
+    case_id: int,
+    with_barcode: bool = Query(False),
+    db: Session = Depends(get_db),
+):
     case = molecular_crud.get_molecular_case(db, case_id)
     if not case or not case.get("outlab_pdf_path"):
         raise HTTPException(status_code=404, detail="No out-lab PDF uploaded for this case")
@@ -184,7 +240,9 @@ def download_outlab_pdf(case_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Out-lab PDF file missing on disk")
     # Same lab-header + patient/accession cover sheet as the Surgical/Non-Gyne
     # external-consult PDF — regenerated fresh on every request.
-    pdf_bytes = molecular_crud.get_outlab_pdf_with_cover(db, case_id)
+    # with_barcode is off by default so the on-screen archive preview stays as
+    # it was; only the print queue, whose output goes to paper, asks for it.
+    pdf_bytes = molecular_crud.get_outlab_pdf_with_cover(db, case_id, with_barcode=with_barcode)
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
@@ -208,8 +266,29 @@ def delete_outlab_pdf(
 # --- Free-text result PDF (live-generated, no snapshot table) ---
 
 @router.get("/{case_id}/result-pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def download_result_pdf(case_id: int, db: Session = Depends(get_db)):
-    pdf_bytes = molecular_crud.get_molecular_result_pdf(db, case_id)
+def download_result_pdf(
+    case_id: int,
+    with_barcode: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    pdf_bytes = molecular_crud.get_molecular_result_pdf(db, case_id, with_barcode=with_barcode)
     if pdf_bytes is None:
         raise HTTPException(status_code=404, detail="Molecular case not found")
     return Response(content=pdf_bytes, media_type="application/pdf")
+
+
+@router.patch(
+    "/{case_id}/print-status",
+    response_model=MolecularCaseResponse,
+    dependencies=[Depends(CAN_READ_REPORT)],
+)
+def update_molecular_print_status(
+    case_id: int,
+    payload: MolecularPrintStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    """Mark a Molecular case printed / un-printed from the print queue."""
+    case = molecular_crud.set_molecular_print_status(db, case_id, payload.is_print)
+    if not case:
+        raise HTTPException(status_code=404, detail="Molecular case not found")
+    return case
