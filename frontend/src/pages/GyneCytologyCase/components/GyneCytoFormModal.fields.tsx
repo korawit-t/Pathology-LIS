@@ -115,9 +115,11 @@ const GyneCytoFormFields: React.FC<GyneCytoFormFieldsProps> = ({
         </Col>
         <Col span={6}>
           <Form.Item name="collection_site" label="Collection Site">
+            {/* No allowClear: collection_site is non-nullable in the response
+                schema (defaults to Cervical/Endocervical), so a null would
+                make the case fail to serialize on the next GET. */}
             <Select
               placeholder="Select collection site"
-              allowClear
               options={[
                 { value: "Vaginal", label: "Vaginal" },
                 { value: "Cervical", label: "Cervical" },

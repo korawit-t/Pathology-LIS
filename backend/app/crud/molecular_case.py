@@ -201,6 +201,10 @@ def _to_response_dict(case: MolecularCase) -> dict:
         "parent_case_accession_no": parent.accession_no if parent else None,
         "patient_name": patient_name,
         "hn": hn,
+        # Live values, not frozen at registration like the PDF's age is — these
+        # exist to identify the patient in a worklist row, not to be reported.
+        "patient_gender": getattr(patient, "gender", None) if patient else None,
+        "patient_age_display": getattr(patient, "age_display", None) if patient else None,
         "stain_id": case.stain_id,
         "ap_test_id": case.ap_test_id,
         "test_name": case.ap_test.name if case.ap_test else None,
@@ -224,6 +228,7 @@ def _to_response_dict(case: MolecularCase) -> dict:
             if case.reported_by
             else None
         ),
+        "is_print": case.is_print,
         "is_cancelled": case.is_cancelled,
         "cancelled_at": case.cancelled_at,
         "cancel_reason": case.cancel_reason,
@@ -262,6 +267,21 @@ def get_molecular_cases(
         query = query.filter(MolecularCase.parent_case_id == parent_case_id)
     if stain_id is not None:
         query = query.filter(MolecularCase.stain_id == stain_id)
+    query = _apply_case_search(query, search, clinician)
+
+    cases = (
+        query.order_by(MolecularCase.registered_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [_to_response_dict(c) for c in cases]
+
+
+def _apply_case_search(query, search: str | None, clinician: str | None):
+    """Shared search/clinician filtering for the list and print-queue queries —
+    both have to reach through parent_case_id for the parent-linked cases,
+    whose HN/accession/patient all live on the Surgical case."""
     if search or clinician:
         query = query.outerjoin(SurgicalCase, MolecularCase.parent_case_id == SurgicalCase.id)
     if search:
@@ -290,14 +310,58 @@ def get_molecular_cases(
                 SurgicalCase.clinician_name.ilike(c),
             )
         )
+    return query
 
-    cases = (
-        query.order_by(MolecularCase.registered_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
+
+def get_molecular_print_queue(
+    db: Session,
+    page: int = 1,
+    size: int = 10,
+    search: str | None = None,
+    is_print: bool | None = None,
+    unprinted_first: bool = False,
+) -> dict:
+    """Reported Molecular cases for the print queue, in the same
+    {items, total, page, size} envelope the Surgical/Gyne/Non-Gyne report
+    queues return.
+
+    Only "reported" cases appear: those are Molecular's equivalent of a
+    published report, and an unfinalized case has no PDF worth handing to a
+    clinician. Cancelled cases are excluded the same way the list query
+    excludes them.
+    """
+    query = _base_query(db).filter(
+        MolecularCase.is_cancelled == False,  # noqa: E712
+        MolecularCase.status == "reported",
     )
-    return [_to_response_dict(c) for c in cases]
+    if is_print is not None:
+        query = query.filter(MolecularCase.is_print == is_print)
+    query = _apply_case_search(query, search, clinician=None)
+
+    total = query.count()
+
+    # The print queue asks for everything still waiting to be printed up front,
+    # newest first within each group — same ordering as the other three queues.
+    order_by = [MolecularCase.reported_at.desc()]
+    if unprinted_first:
+        order_by.insert(0, MolecularCase.is_print.asc())
+
+    cases = query.order_by(*order_by).offset((page - 1) * size).limit(size).all()
+    return {
+        "items": [_to_response_dict(c) for c in cases],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+def set_molecular_print_status(db: Session, case_id: int, is_print: bool) -> dict | None:
+    case = _get_case_obj(db, case_id)
+    if not case:
+        return None
+    case.is_print = is_print
+    db.commit()
+    return get_molecular_case(db, case_id)
 
 
 def count_molecular_cases(
@@ -473,6 +537,8 @@ def _resolve_display_fields(case: MolecularCase) -> dict:
         return {
             "patient": parent.patient,
             "hn": parent.hn,
+            "vn": parent.vn,
+            "an": parent.an,
             "hospital": parent.hospital,
             "department": parent.department,
             "clinician_name": parent.clinician_name,
@@ -481,6 +547,8 @@ def _resolve_display_fields(case: MolecularCase) -> dict:
     return {
         "patient": case.patient,
         "hn": case.hn,
+        "vn": case.vn,
+        "an": case.an,
         "hospital": case.hospital,
         "department": case.department,
         "clinician_name": case.clinician_name,
@@ -488,7 +556,101 @@ def _resolve_display_fields(case: MolecularCase) -> dict:
     }
 
 
-def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
+def build_molecular_barcode_value(fields: dict, accession_no: str, setting) -> tuple[str, str]:
+    """Barcode value for a Molecular case, mirroring surgical's
+    _build_barcode_value: visit number with the OPD prefix, else admission
+    number with the IPD prefix, so HOSxP resolves every case type the same way.
+
+    Takes the already-resolved `fields` from _resolve_display_fields rather
+    than the case itself, because a parent-linked Molecular case carries no
+    VN/AN of its own — those live on the parent Surgical case, same as HN.
+
+    Returns (barcode_value, barcode_type_label).
+    """
+    vn = ((fields.get("vn") or "")).strip()
+    an = ((fields.get("an") or "")).strip()
+
+    opd_prefix = (setting.barcode_opd_prefix or "2") if setting else "2"
+    ipd_prefix = (setting.barcode_ipd_prefix or "3") if setting else "3"
+    type_code = (setting.barcode_molecular_type_code or "11") if setting else "11"
+
+    if vn:
+        return f"{opd_prefix}{type_code}{vn}", f"OPD VN: {vn}"
+    if an:
+        return f"{ipd_prefix}{type_code}{an}", f"IPD AN: {an}"
+    return (accession_no or ""), "Accession No."
+
+
+def build_molecular_barcode_labels(db: Session, case_ids: list[int]) -> list[dict]:
+    """Label-sheet rows for barcode_label_template.html, one per Molecular case.
+
+    Unlike the report footer this is NOT gated on the case having a VN/AN:
+    build_molecular_barcode_value's accession-number fallback is scanned for
+    in-lab tracking, not by the HIS — same rule the other label sheets follow.
+    """
+    from app.services.barcode_service import generate_code39_base64_img
+
+    setting = get_system_settings(db)
+    labels = []
+    for cid in case_ids:
+        case = _base_query(db).filter(MolecularCase.id == cid).first()
+        if not case:
+            continue
+        fields = _resolve_display_fields(case)
+        patient = fields["patient"]
+        title = getattr(patient, "title", None) if patient else None
+        hospital = fields["hospital"]
+
+        barcode_value, barcode_type = build_molecular_barcode_value(
+            fields, case.accession_no, setting
+        )
+        svg, width_mm, height_mm = generate_code39_base64_img(barcode_value)
+
+        labels.append({
+            "accession_no": case.accession_no,
+            "patient_title": (title.title if title else "") or "",
+            "patient_name": patient.name if patient else "",
+            "patient_ln": (patient.ln if patient else "") or "",
+            "patient_hn": fields["hn"],
+            "patient_age_display": (patient.age_display if patient else None) or "-",
+            "patient_gender": patient.gender if patient else "",
+            "hospital_name": hospital.name if hospital else None,
+            "barcode_svg": svg,
+            "barcode_value": barcode_value,
+            "barcode_type": barcode_type,
+            "barcode_width_mm": width_mm,
+            "barcode_height_mm": height_mm,
+        })
+    return labels
+
+
+def _build_footer_barcode(fields: dict, accession_no: str, setting) -> dict:
+    """Footer-barcode fields for a Molecular PDF, or {} when there is nothing
+    the HIS could resolve.
+
+    Empty when the case has no VN/AN: build_molecular_barcode_value falls back
+    to the accession number for the label sheet's benefit, but on the report
+    that is a barcode the HIS cannot resolve, so the footer is left off
+    entirely instead — same rule the other three case types apply via
+    has_scannable_visit().
+    """
+    from app.services.barcode_service import generate_report_footer_barcode
+
+    if not ((fields.get("vn") or "").strip() or (fields.get("an") or "").strip()):
+        return {}
+
+    barcode_value, barcode_type = build_molecular_barcode_value(fields, accession_no, setting)
+    svg, width_mm, height_mm = generate_report_footer_barcode(barcode_value)
+    return {
+        "barcode_svg": svg,
+        "barcode_value": barcode_value,
+        "barcode_type": barcode_type,
+        "barcode_width_mm": width_mm,
+        "barcode_height_mm": height_mm,
+    }
+
+
+def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = False) -> bytes | None:
     """The uploaded out-lab PDF with a cover sheet (lab header + patient/
     accession info + one image per page of the PDF) prepended — reuses the
     exact same template/rasterize/merge pipeline as the Surgical/Non-Gyne
@@ -496,7 +658,13 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
     `generate_consult_cover_pdf`/`get_consult_pdf_thumbnails_base64`).
     Regenerated fresh on every call, same as those report-PDF endpoints —
     no cache, no snapshot table (Molecular has no separate "report" row to
-    freeze thumbnails against)."""
+    freeze thumbnails against).
+
+    with_barcode adds the footer barcode to the cover pages only — the pages
+    we render. The out-lab PDF appended after them is the external lab's own
+    document, passed through byte-for-byte; we do not stamp it. The cover has
+    one page per page of that PDF, so every source page still has a scannable
+    facing page."""
     case = (
         db.query(MolecularCase)
         .options(
@@ -506,6 +674,7 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
             selectinload(MolecularCase.patient).selectinload(Patient.title),
             selectinload(MolecularCase.hospital),
             selectinload(MolecularCase.department),
+            selectinload(MolecularCase.reported_by),
         )
         .filter(MolecularCase.id == case_id)
         .first()
@@ -560,7 +729,23 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
         "registered_at": case.registered_at,
         "reported_at": case.reported_at,
         "consult_pdf_thumbnail_snapshot": json.dumps(thumbnails),
+        # Who signed the case out, in the cover's "Digitally Signed by" slot —
+        # the same slot the Surgical consult cover and the Gyne out-lab cover
+        # fill, and built the same way they build it (report_name is the name a
+        # user has chosen to appear on reports; a username must never reach a
+        # signature line). Molecular has no separate approval step for the
+        # uploaded file — no outlab_result_approved_by_id the way Gyne has — so
+        # finalizing the case IS the sign-out, and reported_by is the signer.
+        # Stays empty until then, so a pending case's cover claims no signer.
+        "consult_pdf_approved_by_snapshot": (
+            (case.reported_by.report_name or case.reported_by.full_name)
+            if case.reported_by
+            else None
+        ),
+        "consult_pdf_approved_at_snapshot": case.reported_at,
     }
+    if with_barcode:
+        report_data.update(_build_footer_barcode(fields, case.accession_no, settings))
 
     cover_bytes = generate_consult_cover_pdf(report_data)
 
@@ -572,7 +757,7 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int) -> bytes | None:
     return merged_io.getvalue()
 
 
-def _build_molecular_report_data(db: Session, case: MolecularCase) -> dict:
+def _build_molecular_report_data(db: Session, case: MolecularCase, with_barcode: bool = False) -> dict:
     """Assembles the report_data dict for the free-text result PDF (see
     get_molecular_result_pdf) — mirrors get_outlab_pdf_with_cover's
     data-gathering (same _resolve_display_fields reuse, same inline
@@ -637,10 +822,11 @@ def _build_molecular_report_data(db: Session, case: MolecularCase) -> dict:
         ),
         "status": case.status,
         "is_preview": case.status != "reported",
+        **(_build_footer_barcode(fields, case.accession_no, settings) if with_barcode else {}),
     }
 
 
-def get_molecular_result_pdf(db: Session, case_id: int) -> bytes | None:
+def get_molecular_result_pdf(db: Session, case_id: int, with_barcode: bool = False) -> bytes | None:
     """Live-generated PDF of a Molecular case's free-text in-house result —
     regenerated fresh on every call from the current row, same as
     get_outlab_pdf_with_cover; Molecular has no snapshot/versioning table to
@@ -667,7 +853,7 @@ def get_molecular_result_pdf(db: Session, case_id: int) -> bytes | None:
     if not case:
         return None
 
-    report_data = _build_molecular_report_data(db, case)
+    report_data = _build_molecular_report_data(db, case, with_barcode=with_barcode)
     return generate_pdf_blob(
         report_data,
         template_name="reports/molecular_report_template.html",

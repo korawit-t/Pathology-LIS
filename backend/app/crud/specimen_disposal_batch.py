@@ -17,6 +17,13 @@ from app.models.user import User
 from app.utils.time import local_now
 
 OPEN_STATUS = "PRINTED"
+DEFAULT_RETENTION_DAYS = 30
+
+
+def get_retention_days(db: Session) -> int:
+    settings = db.query(SystemSetting).first()
+    value = settings.specimen_retention_days if settings else None
+    return DEFAULT_RETENTION_DAYS if value is None else int(value)
 
 
 def open_batch_case_ids_subquery():
@@ -72,6 +79,10 @@ def _signer_name(db: Session, user_id: int, label: str) -> tuple[User, str]:
     return user, (user.full_name or user.username)
 
 
+def _age_days(case: SurgicalCase, today) -> Optional[int]:
+    return (today - case.report_at.date()).days if case.report_at else None
+
+
 def create_batch(
     db: Session,
     *,
@@ -79,14 +90,21 @@ def create_batch(
     disposer_id: int,
     verifier_id: int,
     approver_id: int,
-    retention_days: Optional[int],
     printed_by_id: int,
 ) -> SpecimenDisposalBatch:
+    """สร้างใบตรวจสอบก่อนทำลาย
+
+    เงื่อนไข "ออกผลแล้วกี่วัน / ไม่ค้าง pending" บังคับที่นี่ ไม่ใช่แค่ซ่อนปุ่มฝั่ง
+    frontend — ยิง POST ตรงเข้ามาก็ต้องโดนปฏิเสธเหมือนกัน
+    """
     if disposer_id == verifier_id:
         raise HTTPException(
             status_code=400,
             detail="ผู้ตรวจสอบต้องเป็นคนละคนกับผู้ทิ้ง",
         )
+
+    retention_days = get_retention_days(db)
+    today = local_now().date()
 
     unique_ids = list(dict.fromkeys(case_ids))
     cases = db.query(SurgicalCase).filter(SurgicalCase.id.in_(unique_ids)).all()
@@ -95,6 +113,13 @@ def create_batch(
     missing = [i for i in unique_ids if i not in found]
     if missing:
         raise HTTPException(status_code=400, detail=f"ไม่พบเคส id: {missing}")
+
+    cancelled = [c.accession_no for c in cases if c.is_cancelled]
+    if cancelled:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เคสถูกยกเลิกแล้ว: {', '.join(cancelled)}",
+        )
 
     already_discarded = [c.accession_no for c in cases if c.discard_status]
     if already_discarded:
@@ -108,6 +133,35 @@ def create_batch(
         raise HTTPException(
             status_code=400,
             detail=f"เคสยังไม่ได้จัดเก็บ จึงยังทำลายไม่ได้: {', '.join(not_stored)}",
+        )
+
+    # ดูที่ report_at ไม่ใช่ status เพราะ surgical ออกผลจบได้หลายสถานะ
+    # (signed out / addendum signed) และ report_at คือตัวเดียวกับที่ใช้นับอายุ
+    not_reported = [c.accession_no for c in cases if c.report_at is None]
+    if not_reported:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เคสยังไม่ได้รายงานผล จึงยังทำลายไม่ได้: {', '.join(not_reported)}",
+        )
+
+    pending = [c.accession_no for c in cases if c.is_pending]
+    if pending:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เคสยังค้าง Pending อยู่ จึงยังทำลายไม่ได้: {', '.join(pending)}",
+        )
+
+    too_young = [
+        f"{c.accession_no} ({_age_days(c, today)} วัน)"
+        for c in cases
+        if (_age_days(c, today) or 0) < retention_days
+    ]
+    if too_young:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"ยังไม่ครบ {retention_days} วันหลังรายงานผล: {', '.join(too_young)}"
+            ),
         )
 
     open_ids = set(db.scalars(open_batch_case_ids_subquery()).all())

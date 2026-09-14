@@ -80,7 +80,6 @@ def create_disposal_batch(
         disposer_id=payload.disposer_id,
         verifier_id=payload.verifier_id,
         approver_id=payload.approver_id,
-        retention_days=payload.retention_days,
         printed_by_id=current_user.id,
     )
     return _serialize(batch)

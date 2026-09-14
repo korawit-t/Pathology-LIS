@@ -277,7 +277,8 @@ const SurgicalCaseService = {
     limit: number = 50,
     search?: string,
     excludeInOpenBatch: boolean = false
-  ): Promise<{ items: SurgicalCase[]; total: number }> => {
+    // retention_days คือเกณฑ์ที่ backend ใช้บล็อกจริงตอนสร้างใบทำลาย
+  ): Promise<{ items: SurgicalCase[]; total: number; retention_days: number }> => {
     const res = await api.get("/surgical-cases/stored/specimens", {
       params: { skip, limit, search, exclude_in_open_batch: excludeInOpenBatch },
     });

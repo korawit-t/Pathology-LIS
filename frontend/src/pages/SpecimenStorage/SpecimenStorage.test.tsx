@@ -33,12 +33,17 @@ vi.mock("../../services/userService", () => ({
   default: { getUsers: vi.fn().mockResolvedValue([]) },
 }));
 
+const RETENTION = 30;
+/** วันรายงานผลที่พ้นเกณฑ์แล้ว — เคสที่ยังไม่ครบกำหนดจะติ๊กเลือกไม่ได้ */
+const longAgo = new Date(Date.now() - 400 * 86_400_000).toISOString();
+
 const storedCase = {
   id: 11,
   accession_no: "S26-00123",
   hn: "0012345",
   specimen_storage_container: "B-12",
   specimen_storage_status: "Stored",
+  report_at: longAgo,
   patient: { title: { title: "นาง" }, name: "สมศรี", ln: "ใจงาม" },
 } as unknown as SurgicalCase;
 
@@ -50,6 +55,7 @@ beforeEach(() => {
   mocked(SurgicalCaseService.getStoredCases).mockResolvedValue({
     items: [storedCase],
     total: 1,
+    retention_days: RETENTION,
   });
   mocked(SurgicalCaseService.getDisposedCases).mockResolvedValue({ items: [], total: 0 });
   mocked(SpecimenDisposalService.getOpenCount).mockResolvedValue(3);
@@ -115,6 +121,46 @@ describe("SpecimenStorage", () => {
       await screen.findByText("สร้างใบตรวจสอบก่อนทำลายชิ้นเนื้อ"),
     ).toBeInTheDocument();
     await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
+  });
+
+  it("shows the retention criterion the server sent, not a hardcoded number", async () => {
+    mocked(SurgicalCaseService.getStoredCases).mockResolvedValue({
+      items: [storedCase],
+      total: 1,
+      retention_days: 90,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: /Stored Specimens/ }));
+
+    expect(
+      await screen.findByText(/ครบ 90 วันหลังรายงานผล/),
+    ).toBeInTheDocument();
+  });
+
+  it("will not let a case that has not reached retention be ticked", async () => {
+    const young = {
+      ...storedCase,
+      report_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+    } as SurgicalCase;
+    mocked(SurgicalCaseService.getStoredCases).mockResolvedValue({
+      items: [young],
+      total: 1,
+      retention_days: RETENTION,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: /Stored Specimens/ }));
+
+    const panel = await waitFor(() => {
+      const el = document.querySelector(".ant-tabs-tabpane-active");
+      if (!el) throw new Error("no active tab panel");
+      return el as HTMLElement;
+    });
+    expect(
+      await within(panel).findByText(`ยังไม่ครบ ${RETENTION} วัน`),
+    ).toBeInTheDocument();
+
+    const rowCheckboxes = within(panel).getAllByRole("checkbox");
+    expect(rowCheckboxes[rowCheckboxes.length - 1]).toBeDisabled();
   });
 
   it("renders the disposal-sheet tab from the batch service", async () => {

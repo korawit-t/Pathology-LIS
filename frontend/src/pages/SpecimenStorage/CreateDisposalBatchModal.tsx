@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Form,
-  InputNumber,
   Modal,
   Select,
   Space,
@@ -19,6 +18,7 @@ import type { User } from "../../types/user";
 import type { DisposalBatch } from "../../types/specimenDisposal";
 import { formatPatientName } from "../../utils/patientName";
 import { isExternalRole } from "../../constants/roles.constants";
+import { disposalBlockReason } from "./disposalEligibility";
 import logger from "../../utils/logger";
 
 const { Text } = Typography;
@@ -26,6 +26,8 @@ const { Text } = Typography;
 interface Props {
   open: boolean;
   cases: SurgicalCase[];
+  /** เกณฑ์อายุที่ backend ใช้บล็อกจริง มาจาก /surgical-cases/stored/specimens */
+  retentionDays: number;
   onCancel: () => void;
   /** ยิงหลังสร้างใบสำเร็จ (PDF ถูกเปิดใน tab ใหม่ให้แล้ว) */
   onCreated: (batch: DisposalBatch) => void;
@@ -35,12 +37,12 @@ interface FormValues {
   disposer_id: number;
   verifier_id: number;
   approver_id: number;
-  retention_days?: number | null;
 }
 
 const CreateDisposalBatchModal: React.FC<Props> = ({
   open,
   cases,
+  retentionDays,
   onCancel,
   onCreated,
 }) => {
@@ -87,6 +89,17 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
       .map(([container, count]) => ({ container, count }));
   }, [cases]);
 
+  // เคสที่ backend จะปฏิเสธ — โชว์ก่อนสั่งพิมพ์ ไม่ใช่ปล่อยให้ POST เด้ง error
+  const blocked = useMemo(
+    () =>
+      cases
+        .map((c) => ({ case: c, reason: disposalBlockReason(c, retentionDays) }))
+        .filter((row): row is { case: SurgicalCase; reason: string } =>
+          Boolean(row.reason)
+        ),
+    [cases, retentionDays]
+  );
+
   const userOptions = useMemo(
     () =>
       users.map((u) => ({
@@ -111,7 +124,6 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
         disposer_id: values.disposer_id,
         verifier_id: values.verifier_id,
         approver_id: values.approver_id,
-        retention_days: values.retention_days ?? null,
       });
       message.success(`สร้างใบ ${batch.batch_no} แล้ว`);
       await SpecimenDisposalService.openChecklistPdf(batch.id);
@@ -134,7 +146,11 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
       width={720}
       okText="สร้างใบและพิมพ์"
       cancelText="ยกเลิก"
-      okButtonProps={{ icon: <PrinterOutlined />, loading: submitting }}
+      okButtonProps={{
+        icon: <PrinterOutlined />,
+        loading: submitting,
+        disabled: blocked.length > 0,
+      }}
       onOk={handleOk}
       onCancel={() => {
         form.resetFields();
@@ -161,6 +177,24 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
           </Space>
         }
       />
+
+      {blocked.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title={`มี ${blocked.length} รายการที่ยังทำลายไม่ได้ — เอาออกจากรายการเลือกก่อน`}
+          description={
+            <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
+              {blocked.map(({ case: c, reason }) => (
+                <Text key={c.id} style={{ fontSize: 12 }}>
+                  {c.accession_no} — {reason}
+                </Text>
+              ))}
+            </Space>
+          }
+        />
+      )}
 
       <Form form={form} layout="vertical" requiredMark>
         <Form.Item
@@ -218,15 +252,15 @@ const CreateDisposalBatchModal: React.FC<Props> = ({
             placeholder="หัวหน้าหน่วย / ผู้มีอำนาจอนุมัติ"
           />
         </Form.Item>
-
-        <Form.Item
-          name="retention_days"
-          label="เกณฑ์อายุที่ใช้ (วันนับจากวันรายงานผล)"
-          tooltip="ตัวเลือก — พิมพ์ลงหัวใบไว้เป็นหลักฐานว่ารอบนี้ใช้เกณฑ์อะไร ถ้าเว้นว่าง ใบจะเว้นช่องให้เขียนมือ"
-        >
-          <InputNumber min={0} style={{ width: 220 }} placeholder="เว้นว่างไว้เขียนมือก็ได้" />
-        </Form.Item>
       </Form>
+
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        เกณฑ์อายุที่ใช้รอบนี้:{" "}
+        <Text strong style={{ fontSize: 12 }}>
+          {retentionDays} วันนับจากวันรายงานผล
+        </Text>{" "}
+        — ตั้งค่าที่ Settings → Report; ระบบใช้ค่านี้บล็อกจริง ไม่ใช่แค่พิมพ์ลงหัวใบ
+      </Text>
 
       <Text type="secondary" style={{ fontSize: 12 }}>
         รายการที่จะอยู่บนใบ

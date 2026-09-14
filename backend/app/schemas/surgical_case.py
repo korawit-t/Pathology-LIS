@@ -187,6 +187,16 @@ class SurgicalCasePaginationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class StoredSpecimenPaginationResponse(SurgicalCasePaginationResponse):
+    """ชิ้นเนื้อที่จัดเก็บแล้ว + เกณฑ์อายุที่ backend ใช้บล็อกจริง
+
+    ส่ง retention_days ไปด้วยเพื่อให้หน้าจอโชว์เกณฑ์ตัวเดียวกับที่ create_batch ใช้
+    แทนที่จะ hardcode ฝั่ง frontend — pattern เดียวกับ NongyneDisposalCandidateList
+    """
+
+    retention_days: int
+
+
 class CaseCancelRequest(BaseModel):
     reason: str
 

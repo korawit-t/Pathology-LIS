@@ -41,6 +41,7 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
   const [caseMap, setCaseMap] = useState<Record<string, CaseInfo>>({});
   const [appointmentMap, setAppointmentMap] = useState<Record<string, OutlabAppointment[]>>({});
   const [loadingAppt, setLoadingAppt] = useState<Record<string, boolean>>({});
+  const [apptUnavailable, setApptUnavailable] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filterKeyed, setFilterKeyed] = useState<"all" | "pending" | "keyed">("all");
@@ -53,8 +54,13 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
     try {
       const data = await HisService.getAppointments(hn);
       setAppointmentMap((prev) => ({ ...prev, [hn]: data as unknown as OutlabAppointment[] }));
+      setApptUnavailable((prev) => ({ ...prev, [hn]: false }));
     } catch {
+      // Was `[]`, which AppointmentSubTable rendered as "No appointments found
+      // in HosXP" — a definite answer we hadn't earned. Flag it instead so the
+      // row can say the lookup failed.
       setAppointmentMap((prev) => ({ ...prev, [hn]: [] }));
+      setApptUnavailable((prev) => ({ ...prev, [hn]: true }));
     } finally {
       setLoadingAppt((prev) => ({ ...prev, [hn]: false }));
     }
@@ -297,6 +303,7 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
             <AppointmentSubTable
               appointments={appointmentMap[record.hn]}
               loading={loadingAppt[record.hn]}
+              unavailable={apptUnavailable[record.hn]}
             />
           ),
         }}
