@@ -153,6 +153,7 @@ class SystemSetting(Base):
     barcode_surgical_type_code = Column(String, default="08")
     barcode_gyne_type_code = Column(String, default="09")
     barcode_nongyne_type_code = Column(String, default="10")
+    barcode_molecular_type_code = Column(String, default="11")
 
     # --- Sticker / Label Print Settings ---
     sticker_width_cm = Column(Float, default=2.0, nullable=False)

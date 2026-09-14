@@ -171,6 +171,7 @@ class SystemSettingUpdate(SystemSettingBase):
     barcode_surgical_type_code: Optional[str] = None
     barcode_gyne_type_code: Optional[str] = None
     barcode_nongyne_type_code: Optional[str] = None
+    barcode_molecular_type_code: Optional[str] = None
 
 
 class SystemSettingResponse(SystemSettingBase):
@@ -209,3 +210,4 @@ class SystemSettingAdminResponse(SystemSettingResponse):
     barcode_surgical_type_code: Optional[str] = None
     barcode_gyne_type_code: Optional[str] = None
     barcode_nongyne_type_code: Optional[str] = None
+    barcode_molecular_type_code: Optional[str] = None

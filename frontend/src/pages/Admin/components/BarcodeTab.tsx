@@ -52,18 +52,21 @@ const BarcodePreview: React.FC<{
   surgicalCode: string;
   gyneCode: string;
   nongyneCode: string;
-}> = ({ opdPrefix, ipdPrefix, surgicalCode, gyneCode, nongyneCode }) => {
+  molecularCode: string;
+}> = ({ opdPrefix, ipdPrefix, surgicalCode, gyneCode, nongyneCode, molecularCode }) => {
   const op = opdPrefix || "2";
   const ip = ipdPrefix || "3";
   const sc = surgicalCode || "08";
   const gc = gyneCode || "09";
   const nc = nongyneCode || "10";
+  const mc = molecularCode || "11";
 
   const examples = [
     { label: "Surgical OPD (VN)", value: `${op}${sc}VN001234`, color: "blue" },
     { label: "Surgical IPD (AN)", value: `${ip}${sc}AN001234`, color: "geekblue" },
     { label: "Gyne OPD (VN)", value: `${op}${gc}VN001234`, color: "pink" },
     { label: "Non-Gyne OPD (VN)", value: `${op}${nc}VN001234`, color: "purple" },
+    { label: "Molecular OPD (VN)", value: `${op}${mc}VN001234`, color: "magenta" },
   ];
 
   return (
@@ -112,6 +115,7 @@ const BarcodeTabInner: React.FC = () => {
   const surgicalCode = Form.useWatch("barcode_surgical_type_code", form);
   const gyneCode = Form.useWatch("barcode_gyne_type_code", form);
   const nongyneCode = Form.useWatch("barcode_nongyne_type_code", form);
+  const molecularCode = Form.useWatch("barcode_molecular_type_code", form);
 
   const load = async () => {
     try {
@@ -260,6 +264,19 @@ const BarcodeTabInner: React.FC = () => {
                 />
               </Form.Item>
             </SettingRow>
+
+            <SettingRow
+              title="Molecular Pathology Code"
+              description="Code for Molecular Pathology cases (in-house and out-lab) — default: 11"
+            >
+              <Form.Item name="barcode_molecular_type_code" noStyle>
+                <Input
+                  style={{ width: 120, fontFamily: "monospace", fontSize: 16 }}
+                  maxLength={4}
+                  placeholder="11"
+                />
+              </Form.Item>
+            </SettingRow>
           </div>
 
           <Divider />
@@ -270,6 +287,7 @@ const BarcodeTabInner: React.FC = () => {
             surgicalCode={surgicalCode}
             gyneCode={gyneCode}
             nongyneCode={nongyneCode}
+            molecularCode={molecularCode}
           />
         </div>
       </div>
