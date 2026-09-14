@@ -210,16 +210,28 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
     }
   };
 
+  // A cleared antd field comes back as `undefined`, and JSON.stringify drops
+  // undefined keys from the request body — so the PATCH endpoint, which dumps
+  // with exclude_unset, reads a cleared field as "don't touch this" and the
+  // old value stays. Every field the form lets you clear has to go out as an
+  // explicit null instead.
+  const buildPayload = (values: Record<string, unknown>) => ({
+    ...values,
+    department_id: (values.department_id as number | undefined) ?? null,
+    medical_scheme_id: (values.medical_scheme_id as number | undefined) ?? null,
+    pathologist_id: (values.pathologist_id as number | undefined) ?? null,
+    last_menstrual_period:
+      (values.last_menstrual_period as Dayjs | null | undefined)?.format(
+        "YYYY-MM-DD",
+      ) ?? null,
+    collect_at:
+      (values.collect_at as Dayjs | null | undefined)?.toISOString() ?? null,
+  });
+
   const doSave = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
-      const payload = {
-        ...values,
-        last_menstrual_period: (
-          values.last_menstrual_period as { format: (f: string) => string } | undefined
-        )?.format("YYYY-MM-DD"),
-        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
-      };
+      const payload = buildPayload(values);
       const res = editingId
         ? await GyneCytologyCaseService.update(editingId, payload)
         : await GyneCytologyCaseService.create(
@@ -257,13 +269,7 @@ const GyneCytoFormModal: React.FC<GyneCytoFormModalProps> = ({
   const doSaveAndNew = async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
-      const payload = {
-        ...values,
-        last_menstrual_period: (
-          values.last_menstrual_period as { format: (f: string) => string } | undefined
-        )?.format("YYYY-MM-DD"),
-        collect_at: (values.collect_at as Dayjs | undefined)?.toISOString(),
-      };
+      const payload = buildPayload(values);
       const res = await GyneCytologyCaseService.create(
         payload as unknown as GyneCytologyCaseCreate,
       );

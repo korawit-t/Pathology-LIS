@@ -20,6 +20,9 @@ const SlideDispatchListPage = lazy(
   () => import("../SlideDispatch/SlideDispatchListPage.tsx"),
 );
 const SpecimenStorage = lazy(() => import("../SpecimenStorage"));
+const NongyneSpecimenDisposal = lazy(
+  () => import("../NongyneSpecimenDisposal")
+);
 const PathologistPage = lazy(() => import("../Pathologist"));
 const SurgicalReportForm = lazy(
   () => import("../Pathologist/SurgicalDiagnosisReportForm"),
@@ -252,6 +255,10 @@ const VIEW_CONFIG: Record<
   "nongyne-cell-block": {
     pageKey: "nongyne-cell-block",
     component: CellBlockTrackingPage,
+  },
+  "nongyne-specimen-disposal": {
+    pageKey: "nongyne-specimen-disposal",
+    component: NongyneSpecimenDisposal,
   },
 
   "outlab-management": {

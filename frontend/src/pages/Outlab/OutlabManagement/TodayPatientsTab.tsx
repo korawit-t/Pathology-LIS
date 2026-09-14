@@ -23,9 +23,12 @@ export const TodayPatientsTab: React.FC<TodayPatientsTabProps> = ({ refreshTrigg
   // fetch keeps rows expanded by default while still letting the user
   // manually collapse one via the row's own expand toggle if they want.
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  // Distinct from "nobody is here today": see the catch below.
+  const [hisUnavailable, setHisUnavailable] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
+    setHisUnavailable(false);
     try {
       // 1. Not-yet-HosXP-keyed outlab items, already grouped by HN in one
       // backend query — replaces the old "fetch all runs, then N+1
@@ -40,7 +43,19 @@ export const TodayPatientsTab: React.FC<TodayPatientsTabProps> = ({ refreshTrigg
       // batched HOSxP query (vn_stat), not a per-HN appointment lookup:
       // an appointment can be scheduled and never show up, so this checks
       // actual arrival instead.
-      const { hns: visitingHns } = await HisService.getVisitsToday().catch(() => ({ hns: [] as string[] }));
+      let visitingHns: string[];
+      try {
+        ({ hns: visitingHns } = await HisService.getVisitsToday());
+      } catch {
+        // A failed HIS lookup must never be rendered as an empty result. This
+        // previously fell back to `{ hns: [] }`, which filtered every patient
+        // out and surfaced as the green "all clear" banner — telling staff
+        // there is nothing to key in, at the exact moment we cannot actually
+        // tell. Say we don't know instead.
+        setHisUnavailable(true);
+        setRows([]);
+        return;
+      }
       const visitingSet = new Set(visitingHns);
 
       // 3. Keep only patients who actually visited TODAY
@@ -125,7 +140,15 @@ export const TodayPatientsTab: React.FC<TodayPatientsTabProps> = ({ refreshTrigg
 
   return (
     <>
-      {rows.length > 0 ? (
+      {hisUnavailable ? (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Cannot reach the HIS — this list is unavailable, not empty"
+          description="There may well be patients here today with pending outlab stains; we just cannot ask the HIS who checked in. Use the HosXP Key tab to work from the pending list directly."
+        />
+      ) : rows.length > 0 ? (
         <Alert
           type="warning"
           showIcon
@@ -209,7 +232,13 @@ export const TodayPatientsTab: React.FC<TodayPatientsTabProps> = ({ refreshTrigg
           ),
           rowExpandable: () => true,
         }}
-        locale={{ emptyText: loading ? " " : "No patients here today with pending outlab stains" }}
+        locale={{
+          emptyText: loading
+            ? " "
+            : hisUnavailable
+              ? "HIS unavailable — cannot determine who is here today"
+              : "No patients here today with pending outlab stains",
+        }}
       />
     </>
   );

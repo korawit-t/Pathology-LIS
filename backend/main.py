@@ -57,6 +57,7 @@ from app.routers import (
     outlab_consult,
     slide_block_release,
     specimen_disposal_batch,
+    nongyne_specimen_disposal_batch,
     internal_consult,
     surgical_block_event,
     ihc,
@@ -291,6 +292,7 @@ app.include_router(outlab_consult.router)
 app.include_router(internal_consult.router)
 app.include_router(slide_block_release.router)
 app.include_router(specimen_disposal_batch.router)
+app.include_router(nongyne_specimen_disposal_batch.router)
 app.include_router(surgical_block_event.router)
 app.include_router(ihc.router)
 app.include_router(molecular_case.router)

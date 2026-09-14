@@ -6,6 +6,10 @@ import SpecimenDisposalService from "../../services/specimenDisposalService";
 import UserService from "../../services/userService";
 import type { SurgicalCase } from "../../types/surgical";
 
+const RETENTION = 30;
+/** วันรายงานผลที่พ้นเกณฑ์แล้ว — ไม่งั้นทุกเคสติด retention gate ตั้งแต่ render */
+const longAgo = new Date(Date.now() - 400 * 86_400_000).toISOString();
+
 vi.mock("../../services/specimenDisposalService", () => ({
   default: { create: vi.fn(), openChecklistPdf: vi.fn() },
 }));
@@ -30,6 +34,7 @@ const cases = [
     accession_no: "S26-00123",
     hn: "0012345",
     specimen_storage_container: "B-12",
+    report_at: longAgo,
     patient: { title: { title: "นาง" }, name: "สมศรี", ln: "ใจงาม" },
   },
   {
@@ -37,6 +42,7 @@ const cases = [
     accession_no: "S26-00124",
     hn: "0012346",
     specimen_storage_container: "B-13",
+    report_at: longAgo,
     patient: { name: "วิชัย", ln: "ศรีสุข" },
   },
 ] as unknown as SurgicalCase[];
@@ -49,6 +55,7 @@ const renderModal = (
       <CreateDisposalBatchModal
         open
         cases={cases}
+        retentionDays={RETENTION}
         onCancel={vi.fn()}
         onCreated={vi.fn()}
         {...props}
@@ -160,6 +167,69 @@ describe("CreateDisposalBatchModal", () => {
     expect(await screen.findByText("กรุณาเลือกผู้ตรวจสอบ")).toBeInTheDocument();
     expect(await screen.findByText("กรุณาเลือกผู้อนุมัติ")).toBeInTheDocument();
     expect(SpecimenDisposalService.create).not.toHaveBeenCalled();
+  });
+
+  it("states the criterion the server enforces instead of asking for it", async () => {
+    renderModal();
+    expect(
+      await screen.findByText(`${RETENTION} วันนับจากวันรายงานผล`),
+    ).toBeInTheDocument();
+    // ช่องกรอกเกณฑ์เองถูกถอดออกแล้ว — ถ้ากรอกได้ ก็ส่ง 0 มาข้ามเกณฑ์ได้
+    expect(document.getElementById("retention_days")).toBeNull();
+  });
+});
+
+
+describe("CreateDisposalBatchModal retention gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (UserService.getUsers as ReturnType<typeof vi.fn>).mockResolvedValue(users);
+  });
+
+  const withCases = (overrides: Partial<SurgicalCase>[]) =>
+    cases.map((c, i) => ({ ...c, ...overrides[i] })) as SurgicalCase[];
+
+  it("refuses to print when a case has not reached the retention period", async () => {
+    const recent = new Date(Date.now() - 5 * 86_400_000).toISOString();
+    renderModal({ cases: withCases([{}, { report_at: recent }]) });
+
+    expect(
+      await screen.findByText(`S26-00124 — ยังไม่ครบ ${RETENTION} วัน (5 วัน)`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /สร้างใบและพิมพ์/ }),
+    ).toBeDisabled();
+  });
+
+  it("refuses to print a case that has no report date yet", async () => {
+    renderModal({ cases: withCases([{}, { report_at: null }]) });
+
+    expect(
+      await screen.findByText("S26-00124 — ยังไม่ได้รายงานผล"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /สร้างใบและพิมพ์/ }),
+    ).toBeDisabled();
+  });
+
+  it("refuses to print a case still marked pending", async () => {
+    renderModal({ cases: withCases([{}, { is_pending: true }]) });
+
+    expect(
+      await screen.findByText("S26-00124 — ยังค้าง Pending"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /สร้างใบและพิมพ์/ }),
+    ).toBeDisabled();
+  });
+
+  it("prints normally once every case is past the criterion", async () => {
+    renderModal();
+    await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
+
+    expect(
+      screen.getByRole("button", { name: /สร้างใบและพิมพ์/ }),
+    ).toBeEnabled();
   });
 });
 

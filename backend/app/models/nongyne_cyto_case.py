@@ -84,6 +84,20 @@ class NongyneCytologyCase(Base):
     cell_block_prepared_at = Column(DateTime, nullable=True)
     cell_block_prepared_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # --- Specimen Storage & Disposal ---
+    # สิ่งส่งตรวจ non-gyne (fluid/FNA/sputum) ถูกระบุที่เก็บตั้งแต่รับเคส แล้วอยู่ใน
+    # ตู้เย็นจนครบกำหนดจึงทำลาย — โครงเดียวกับ surgical_case.py
+    specimen_storage_status = Column(String, nullable=True)
+    specimen_storage_container = Column(String, nullable=True)
+    specimen_storage_at = Column(DateTime, nullable=True)
+    specimen_storage_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    discard_status = Column(
+        Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    discard_at = Column(DateTime, nullable=True)
+    discard_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     # --- 5. Results Summary ---
     # สำหรับกรองรวดเร็ว
     has_malignancy = Column(Boolean, index=True, nullable=True)
@@ -107,6 +121,8 @@ class NongyneCytologyCase(Base):
     pathologist = relationship("User", foreign_keys=[pathologist_id])
     registerer = relationship("User", foreign_keys=[registrar_id])
     cell_block_prepared_by = relationship("User", foreign_keys=[cell_block_prepared_by_id])
+    specimen_storer = relationship("User", foreign_keys=[specimen_storage_by_id])
+    specimen_disposer = relationship("User", foreign_keys=[discard_by_id])
     hospital = relationship("Hospital")
     department = relationship("Department")
     medical_scheme = relationship("MedicalScheme")

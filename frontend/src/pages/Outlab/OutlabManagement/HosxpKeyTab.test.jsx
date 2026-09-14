@@ -8,7 +8,9 @@ vi.mock("../../../services/surgicalBlockStainService", () => ({
   default: { getOutlabRuns: vi.fn(), toggleHosxpKeyed: vi.fn() },
 }));
 vi.mock("../../../services/surgicalCaseService", () => ({ default: { getCases: vi.fn() } }));
-vi.mock("../../../services/hisService", () => ({ default: { getAppointments: vi.fn() } }));
+vi.mock("../../../services/hisService", () => ({
+  default: { getAppointments: vi.fn(), getInfo: vi.fn() },
+}));
 
 const detail = (overrides = {}) => ({
   id: 100,
@@ -136,5 +138,20 @@ describe("HosxpKeyTab", () => {
     fireEvent.click(container.querySelector(".ant-table-row-expand-icon"));
 
     expect(await screen.findByText("No appointments found in HosXP")).toBeInTheDocument();
+  });
+
+  // Regression: a failed lookup used to be stored as `[]`, so the row claimed
+  // "No appointments found in HosXP" — a definite answer about a patient's
+  // follow-up that we had not actually earned.
+  it("says the lookup failed, not that there are no appointments, when HosXP errors", async () => {
+    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([run({ details: [detail({ id: 1 })] })]);
+    HisService.getAppointments.mockRejectedValue(new Error("503"));
+    const { container } = render(<HosxpKeyTab refreshTrigger={0} />);
+    await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
+
+    fireEvent.click(container.querySelector(".ant-table-row-expand-icon"));
+
+    expect(await screen.findByText(/Cannot reach the HIS — appointments unknown/i)).toBeInTheDocument();
+    expect(screen.queryByText("No appointments found in HosXP")).not.toBeInTheDocument();
   });
 });

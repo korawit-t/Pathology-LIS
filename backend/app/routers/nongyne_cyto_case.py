@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from app.utils.file_handler import validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Any, Optional
+from typing import Any, List, Optional
 from datetime import datetime, date, time
 
 from app.db.database import get_db
@@ -14,11 +14,18 @@ from app.schemas.nongyne_cyto_case import (
     NongyneCytologyCaseResponse,
     NongyneCytologyListResponse,
     NongyneCaseCancelRequest,
+    NongyneDisposalCandidateList,
+    NongyneDisposalCandidateResponse,
+    NongyneSpecimenStorageBulkUpdate,
 )
 from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.schemas.cyto_path_correlation import SendToPathologistRequest
-from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT
+from app.core.roles import (
+    CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE,
+    CAN_WRITE_NONGYNE_CYTO_REPORT,
+)
+from app.crud import nongyne_specimen_disposal_batch as disposal_crud
 from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -69,6 +76,7 @@ def read_cases(
     is_screened: Optional[bool] = Query(None),
     is_pending: Optional[bool] = Query(None),
     is_express: Optional[bool] = Query(None),
+    prioritize_unreported: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
@@ -105,6 +113,7 @@ def read_cases(
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         stain_status=stain_status,
         is_express=is_express,
+        prioritize_unreported=prioritize_unreported,
     )
 
 
@@ -236,6 +245,99 @@ def get_nongyne_tat_stats(
         "express_distribution": express_dist,
         "monthly": monthly,
     }
+
+
+# =====================================================================
+# Specimen Storage
+# =====================================================================
+
+
+@router.get("/storage/unstored", response_model=List[NongyneDisposalCandidateResponse])
+def list_unstored_specimens(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
+):
+    """เคสที่ยังไม่ได้ระบุที่เก็บสิ่งส่งตรวจ"""
+    return crud.get_unstored_nongyne_cases(db, search=search)
+
+
+@router.get("/storage/stored", response_model=NongyneDisposalCandidateList)
+def list_stored_specimens(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
+):
+    """เคสที่ระบุที่เก็บแล้วและยังไม่ถูกทำลาย"""
+    data = crud.get_stored_nongyne_cases(db, skip=skip, limit=limit, search=search)
+    data["retention_days"] = disposal_crud.get_retention_days(db)
+    return data
+
+
+@router.post(
+    "/storage/bulk-update", response_model=List[NongyneDisposalCandidateResponse]
+)
+def bulk_update_storage(
+    payload: NongyneSpecimenStorageBulkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
+):
+    """ระบุที่เก็บให้หลายเคสพร้อมกัน"""
+    return crud.bulk_update_nongyne_storage_status(
+        db,
+        case_ids=payload.case_ids,
+        container_number=payload.container_number,
+        user_id=current_user.id,
+    )
+
+
+# =====================================================================
+# Specimen Disposal
+# ประกาศไว้ก่อน /{case_id} เพื่อให้อ่านเป็นชุดเดียวกับ endpoint ทำลายฝั่ง surgical
+# (app/routers/surgical_case.py section "storage")
+# =====================================================================
+
+
+@router.get("/disposal/candidates", response_model=NongyneDisposalCandidateList)
+def list_disposal_candidates(
+    bucket: str = Query("due", pattern="^(due|not_due|blocked)$"),
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
+):
+    """เคสที่รอทิ้ง แยกตามถัง due / not_due / blocked
+
+    retention_days ถูกส่งกลับไปด้วยเพื่อให้หน้าจอโชว์เกณฑ์ที่ backend ใช้จริง
+    ไม่ต้องไปเดาเองหรือ hardcode
+    """
+    retention_days = disposal_crud.get_retention_days(db)
+    data = crud.get_disposal_candidates(
+        db,
+        bucket=bucket,
+        skip=skip,
+        limit=limit,
+        search=search,
+        retention_days=retention_days,
+    )
+    return data
+
+
+@router.get("/disposal/disposed", response_model=NongyneDisposalCandidateList)
+def list_disposed_specimens(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: Any = Depends(CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE),
+):
+    data = crud.get_disposed_nongyne_cases(db, skip=skip, limit=limit, search=search)
+    data["retention_days"] = disposal_crud.get_retention_days(db)
+    return data
 
 
 @router.get("/{case_id}", response_model=NongyneCytologyCaseResponse)

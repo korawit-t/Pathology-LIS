@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Tabs, Button, Badge, Modal, Typography, Tag, Space, Alert, Table, Spin } from "antd";
 import {
   ReloadOutlined,
@@ -23,6 +23,7 @@ import {
 const { Text } = Typography;
 import { useSurgicalCaseWorklist } from "./hooks/useCaseWorklist";
 import { useMyTatStatus } from "./hooks/useMyTatStatus";
+import { useTabBadgeCounts } from "./hooks/useTabBadgeCounts";
 import SurgicalCaseWorklist, { WorklistRow } from "./SurgicalDiagnosisReportForm/SurgicalCaseWorklist";
 import type { User } from "../../types/user";
 import { CASE_STATUS } from "../../constants/lab.constants";
@@ -36,11 +37,6 @@ import MyOutlabApprovals from "./components/MyOutlabApprovals";
 import InternalConsultWorklistPanel from "../../components/InternalConsult/InternalConsultWorklistPanel";
 import PageContainer from "../../components/Layout/PageContainer";
 import { useTheme } from "../../contexts/ThemeContext";
-import api from "../../services/httpClient";
-
-interface ReadyStainCase {
-  stains: Array<{ status: string }>;
-}
 
 const PathologistPage: React.FC<{
   user: User;
@@ -55,13 +51,21 @@ const PathologistPage: React.FC<{
     setActiveTab(key);
     onActiveTabChange?.(key);
   };
-  const [readyStainCount, setReadyStainCount] = useState(0);
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
-  const [pendingConsultCount, setPendingConsultCount] = useState(0);
-  const [externalConsultCount, setExternalConsultCount] = useState(0);
-  const [outlabApprovalCount, setOutlabApprovalCount] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const { overdueCases: tatCases, loading: tatLoading } = useMyTatStatus(user?.id);
+
+  // Badges for tabs antd hasn't mounted yet — see useTabBadgeCounts.
+  const {
+    readyStainCount,
+    externalConsultCount,
+    outlabApprovalCount,
+    internalConsultCount,
+    setExternalConsultCount,
+    setOutlabApprovalCount,
+    setInternalConsultCount,
+    refreshBadgeCounts,
+  } = useTabBadgeCounts(user?.id);
 
   const {
     filteredData,
@@ -82,24 +86,9 @@ const PathologistPage: React.FC<{
 
   const handleRefresh = () => {
     refresh();
+    refreshBadgeCounts();
     setCytoRefreshTrigger((n) => n + 1);
   };
-
-  useEffect(() => {
-    if (!user?.id) return;
-    api
-      .get("/surgical-block-stains/ready-additional", {
-        params: { pathologist_id: user.id },
-      })
-      .then((res) => {
-        const cases = res.data as ReadyStainCase[];
-        const readyCount = cases.filter((c) =>
-          c.stains.some((s) => s.status !== "completed"),
-        ).length;
-        setReadyStainCount(readyCount);
-      })
-      .catch(() => {});
-  }, [user?.id]);
 
 const renderWorklist = (
     data: WorklistRow[],
@@ -253,7 +242,6 @@ const renderWorklist = (
     },
     {
       key: "outlab-approval",
-      forceRender: true,
       label: (
         <span>
           <FilePdfOutlined style={{ marginRight: 6 }} />
@@ -271,10 +259,10 @@ const renderWorklist = (
         <span>
           <CommentOutlined style={{ marginRight: 6 }} />
           Internal Consult{" "}
-          <Badge count={pendingConsultCount} size="small" color="orange" />
+          <Badge count={internalConsultCount} size="small" color="orange" />
         </span>
       ),
-      children: <InternalConsultWorklistPanel onCountChange={setPendingConsultCount} />,
+      children: <InternalConsultWorklistPanel onCountChange={setInternalConsultCount} />,
     },
     {
       key: "dispatches",

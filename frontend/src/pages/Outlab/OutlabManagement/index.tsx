@@ -9,6 +9,7 @@ import {
   BellOutlined,
 } from "@ant-design/icons";
 import PageContainer from "../../../components/Layout/PageContainer";
+import { useHisConfigured } from "../../../hooks/useHisConfigured";
 import { PendingQueueTab } from "./PendingQueueTab";
 import { TrackingTab } from "./TrackingTab";
 import { CaseViewTab } from "./CaseViewTab";
@@ -16,6 +17,9 @@ import { HosxpKeyTab } from "./HosxpKeyTab";
 import { TodayPatientsTab } from "./TodayPatientsTab";
 
 const { Title } = Typography;
+
+/** Tab keys that cannot work without a HIS connection. */
+const HIS_ONLY_TABS = ["hosxp-key", "today"];
 
 const OutlabManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState("queue");
@@ -30,6 +34,13 @@ const OutlabManagement: React.FC = () => {
     setSentTrigger((n) => n + 1);
   };
 
+  const { hisConfigured } = useHisConfigured();
+
+  // The last two tabs both query HOSxP and are meaningless without it: one
+  // lists a patient's HIS appointments, the other asks the HIS who checked in
+  // today. On a site with no HIS configured they only ever 503, so they are
+  // dropped rather than shown broken. Kept while the lookup is undefined so
+  // the common (configured) case doesn't flash a shorter tab bar.
   const items = [
     {
       key: "queue",
@@ -76,7 +87,7 @@ const OutlabManagement: React.FC = () => {
       ),
       children: <TodayPatientsTab refreshTrigger={sentTrigger} />,
     },
-  ];
+  ].filter((tab) => hisConfigured !== false || !HIS_ONLY_TABS.includes(tab.key));
 
   return (
     <PageContainer

@@ -253,16 +253,26 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     });
   };
 
+  // A cleared antd field comes back as `undefined`, and JSON.stringify drops
+  // undefined keys from the request body — so the PATCH endpoint, which dumps
+  // with exclude_unset, reads a cleared field as "don't touch this" and the
+  // old value stays. Every field the form lets you clear has to go out as an
+  // explicit null instead.
+  const buildPayload = (values: Record<string, unknown>) => ({
+    ...values,
+    collect_at: values.collect_at
+      ? (values.collect_at as Dayjs).toISOString()
+      : null,
+    cytotechnologist_id:
+      (values.cytotechnologist_id as number | undefined) ?? null,
+    pathologist_id: (values.pathologist_id as number | undefined) ?? null,
+  });
+
   const handleSubmit = async (values: Record<string, unknown>) => {
     if (!(await confirmRegistrationWarnings(values))) return;
     setLoading(true);
     try {
-      const formattedValues = {
-        ...values,
-        collect_at: values.collect_at
-          ? (values.collect_at as Dayjs).toISOString()
-          : null,
-      };
+      const formattedValues = buildPayload(values);
 
       let savedResult;
       if (editingId) {
@@ -300,12 +310,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
     if (!(await confirmRegistrationWarnings(values))) return;
     setLoading(true);
     try {
-      const formattedValues = {
-        ...values,
-        collect_at: values.collect_at
-          ? (values.collect_at as Dayjs).toISOString()
-          : null,
-      };
+      const formattedValues = buildPayload(values);
       const saved = await NongyneCytologyCaseService.create(
         formattedValues as unknown as NongyneCytologyCaseCreate,
       );

@@ -17,7 +17,8 @@ class DisposalBatchCreate(BaseModel):
     disposer_id: int
     verifier_id: int
     approver_id: int
-    retention_days: Optional[int] = Field(default=None, ge=0)
+    # ไม่มี retention_days ให้ส่งเข้ามา — server อ่านจาก SystemSetting เอง
+    # ถ้าให้ client กรอกได้ ก็เลี่ยงเกณฑ์ที่ใช้บล็อกได้ด้วยการส่ง 0 มา
 
 
 class DisposalBatchConfirm(BaseModel):

@@ -22,6 +22,11 @@ export interface HisPatientResult {
   age: number | null;
 }
 
+export interface HisInfo {
+  configured: boolean;
+  his_type: string;
+}
+
 export interface HisSearchParams {
   hn?: string;
   date_start?: string;
@@ -58,6 +63,16 @@ const HisService = {
    */
   getVisitsToday: async (): Promise<{ hns: string[] }> => {
     const res = await api.get("/his/visits-today");
+    return res.data;
+  },
+
+  /**
+   * What HIS, if any, this deployment is wired to. Answers from the backend's
+   * own configuration without touching the HIS, so it is safe to call on a
+   * site that has none — the other calls here 503 in that case.
+   */
+  getInfo: async (): Promise<HisInfo> => {
+    const res = await api.get<HisInfo>("/his/info");
     return res.data;
   },
 };

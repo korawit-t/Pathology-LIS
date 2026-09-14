@@ -20,6 +20,7 @@ from app.models.molecular_case import MolecularCase
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.enums.quality_enum import QualityEnum
 from app.utils.tat import business_days_between, get_holiday_dates
+from app.utils.time import local_now
 
 from tests.factories import (
     make_bare_case,
@@ -89,7 +90,7 @@ class TestWorkloadSummary:
 class TestWorkloadDaily:
     def test_zero_fills_every_day_in_range(self, db, admin_client, pathologist_user):
         pathologist, _ = pathologist_user
-        today = datetime.utcnow().date()
+        today = local_now().date()
         case = _stain_case(db, pathologist.id, pathologist.id, "IHC")
         case.registered_at = datetime.combine(today, datetime.min.time())
         db.commit()
@@ -195,7 +196,7 @@ class TestTatStatsAndTatCases:
         # expected bucket is unambiguous regardless of weekday/holiday
         # alignment; the actual bucket is derived via the same
         # business_days_between() production util, not guessed.
-        now = datetime.utcnow()
+        now = local_now()
         offsets_hours = [4, 96, 168, 480]  # ~0.17d, ~4d, ~7d, ~20d of wall-clock spacing
         cases = []
         for hours in offsets_hours:
@@ -259,7 +260,7 @@ class TestTatStatsAndTatCases:
 class TestCancerRegistrySummary:
     def test_malignant_benign_split_and_top_specimens(self, db, admin_client, admin_user):
         registrar, _ = admin_user
-        today = datetime.utcnow().date()
+        today = local_now().date()
 
         malignant = make_bare_case(db, registrar.id)
         malignant.has_malignancy = True
@@ -291,7 +292,7 @@ class TestCancerRegistrySummary:
 class TestSlideQualityStats:
     def test_groups_by_quality_with_unspecified_fallback(self, db, admin_client, admin_user):
         registrar, _ = admin_user
-        today = datetime.utcnow().date()
+        today = local_now().date()
 
         good_case = make_bare_case(db, registrar.id)
         good_case.slide_quality = QualityEnum.good

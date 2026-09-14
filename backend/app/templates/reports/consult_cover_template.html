@@ -35,7 +35,9 @@
       }
       @page {
         size: A4;
-        margin: 0.8cm 1cm 1.5cm 1cm;
+        /* Bottom band is 2cm, not 1.5cm, purely to hold .footer-barcode —
+           see that rule for why the two values only ever change together. */
+        margin: 0.8cm 1cm 2cm 1cm;
       }
       body {
         font-family: "Sarabun", sans-serif;
@@ -89,9 +91,51 @@
       .consult-page-break {
         page-break-before: always;
       }
+
+      .footer-barcode {
+        /* Same geometry as surgical_report_template.html's footer barcode, so
+           a report whose cover and body are printed together puts the symbol
+           at the same spot on every sheet. This box is ~15.7mm tall (12mm
+           barcode + HN label), so -1.7cm in a 2cm band keeps the bars clear of
+           the content area; the two values only ever change together.
+
+           position:fixed repeats it on every page, which is what we want here:
+           the cover has one page per page of the out-lab PDF, so whichever
+           sheet gets pulled out of the stack is scannable. */
+        position: fixed;
+        bottom: -1.7cm;
+        left: 0;
+        right: 0;
+        text-align: center;
+        z-index: 1000;
+      }
     </style>
   </head>
   <body>
+    {% if barcode_svg %}
+    <div class="footer-barcode">
+      <!-- Pinned to the barcode's own physical size. A CSS height here scales
+           the whole symbol, and that is exactly what dropped the X-dimension
+           to 0.423mm and made it unscannable. See barcode_service.py. -->
+      <img
+        src="{{ barcode_svg | safe }}"
+        {% if barcode_width_mm %}width="{{ barcode_width_mm }}mm" height="{{ barcode_height_mm }}mm"{% endif %}
+        style="display: block; margin: 0 auto"
+      />
+      <div
+        style="
+          font-size: 8px;
+          color: #475569;
+          font-weight: bold;
+          margin-top: 1px;
+          letter-spacing: 0.5px;
+        "
+      >
+        {{ patient_hn if barcode_value == patient_hn else accession_no }}
+      </div>
+    </div>
+    {% endif %}
+
     <table class="report-container">
       <thead>
         <tr>

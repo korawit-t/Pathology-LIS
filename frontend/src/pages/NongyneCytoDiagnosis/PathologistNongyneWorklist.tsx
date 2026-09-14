@@ -118,6 +118,11 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         // Scoped to cases assigned to me (including already-reported ones),
         // matching how the Surgical and Gyne worklists scope their "All" tab.
         params.assigned_to_me = true;
+        // ...and, like Surgical's "All" (prioritize_status), the work still to
+        // be done comes first. This has to be the server's ORDER BY: the Table
+        // sorter below only reaches the rows already fetched, so an unreported
+        // case sitting past the page limit would never reach the top.
+        params.prioritize_unreported = true;
       }
       if (searchText.trim()) params.search = searchText.trim();
 
@@ -137,10 +142,9 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       dataIndex: "accession_no",
       key: "accession_no",
       sorter: (a: NongyneCytologyCase, b: NongyneCytologyCase) => {
-        // Pin "My New Cases" (assigned to me, not yet reported) to the top
-        // of the "All" tab. The Table applies this comparator client-side
-        // to the whole page, so the priority has to live in the comparator
-        // itself, not just in fetch order.
+        // Orders within the fetched page, on the same rule the server sorts by
+        // (prioritize_unreported) so the two agree: unreported first, then by
+        // accession. The server decides which cases land on the page at all.
         const isMyNewCase = (c: NongyneCytologyCase) =>
           !!currentUser &&
           (c.pathologist_id === currentUser.id || c.cytotechnologist_id === currentUser.id) &&
