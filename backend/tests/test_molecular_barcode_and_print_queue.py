@@ -38,6 +38,25 @@ def _valid_pdf_bytes(pages: int = 1) -> bytes:
     return buf.getvalue()
 
 
+def _accession_hits(pdf_bytes: bytes, accession: str, page: int = 0) -> int:
+    """How many times the accession number is drawn on `page`.
+
+    The footer barcode prints the accession as its caption, so a page that
+    carries one shows the accession twice (info bar + caption) and a page
+    without it once. That is the observable difference, and unlike comparing
+    the two PDFs byte-for-byte it does not depend on the renders happening in
+    the same second — WeasyPrint stamps a creation timestamp, and the
+    compressed stream around it can differ by a byte between two calls.
+
+    The barcode symbol itself is vector rects with no extractable text, which
+    is why the caption is what gets counted.
+    """
+    import fitz
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    return len(doc[page].search_for(accession))
+
+
 def _order_molecular(db, pathologist_client, admin_user, is_external=True):
     registrar, _ = admin_user
     case, specimen = make_signable_case(db, registrar_id=registrar.id)
@@ -122,9 +141,8 @@ class TestOutlabPdfFooterBarcode:
         without_bc = pathologist_client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
         assert with_bc.status_code == 200
         assert without_bc.status_code == 200
-        # The barcode is drawn as vector rects, so it isn't extractable text —
-        # a bigger rendered cover is the observable signal that it landed.
-        assert len(with_bc.content) > len(without_bc.content)
+        assert _accession_hits(with_bc.content, mcase["accession_no"]) == 2
+        assert _accession_hits(without_bc.content, mcase["accession_no"]) == 1
 
     def test_case_without_vn_or_an_prints_no_barcode(
         self, db, pathologist_client, admin_user
@@ -141,7 +159,10 @@ class TestOutlabPdfFooterBarcode:
             f"/molecular-cases/{mcase['id']}/outlab-pdf", params={"with_barcode": True}
         )
         without_bc = pathologist_client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
-        assert with_bc.content == without_bc.content
+        # No caption, so the accession appears once either way — asking for the
+        # barcode changed nothing.
+        assert _accession_hits(with_bc.content, mcase["accession_no"]) == 1
+        assert _accession_hits(without_bc.content, mcase["accession_no"]) == 1
 
     def test_appended_outlab_pdf_is_passed_through_untouched(
         self, db, pathologist_client, admin_user
@@ -164,6 +185,9 @@ class TestOutlabPdfFooterBarcode:
         source = PdfReader(io.BytesIO(uploaded))
         # 2 cover pages (one per source page) + the 2 original pages.
         assert len(merged.pages) == len(source.pages) + 2
+        assert _accession_hits(resp.content, mcase["accession_no"], page=1) == 2, (
+            "the cover repeats the barcode on every page"
+        )
         for offset, original in enumerate(source.pages):
             appended = merged.pages[2 + offset]
             assert appended.mediabox == original.mediabox
@@ -183,7 +207,8 @@ class TestOutlabPdfFooterBarcode:
         )
         without_bc = pathologist_client.get(f"/molecular-cases/{mcase['id']}/result-pdf")
         assert with_bc.status_code == 200
-        assert len(with_bc.content) > len(without_bc.content)
+        assert _accession_hits(with_bc.content, mcase["accession_no"]) == 2
+        assert _accession_hits(without_bc.content, mcase["accession_no"]) == 1
 
 
 class TestMolecularPrintQueue:
