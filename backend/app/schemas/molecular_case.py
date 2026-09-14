@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 
@@ -76,6 +76,8 @@ class MolecularCaseResponse(BaseModel):
     parent_case_accession_no: Optional[str] = None
     patient_name: Optional[str] = None
     hn: Optional[str] = None
+    patient_gender: Optional[str] = None
+    patient_age_display: Optional[str] = None
     stain_id: Optional[int] = None
     ap_test_id: int
     test_name: Optional[str] = None
@@ -91,6 +93,7 @@ class MolecularCaseResponse(BaseModel):
     reported_by_name: Optional[str] = None
     assist_pathologist_id: Optional[int] = None
     assist_pathologist_name: Optional[str] = None
+    is_print: bool = False
     is_cancelled: bool
     cancelled_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
@@ -110,3 +113,20 @@ class MolecularCaseResponse(BaseModel):
     collect_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MolecularPrintStatusUpdate(BaseModel):
+    """Body of PATCH /molecular-cases/{id}/print-status — mirrors the
+    {"is_print": bool} shape the Surgical/Gyne/Non-Gyne report routers take."""
+
+    is_print: bool
+
+
+class MolecularPrintQueuePagination(BaseModel):
+    """Envelope the print queue reads, matching SurgicalReportPagination's
+    shape so PrintReportQueue can treat all four tabs the same way."""
+
+    items: List[MolecularCaseResponse]
+    total: int
+    page: int
+    size: int
