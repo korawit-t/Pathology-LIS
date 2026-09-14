@@ -398,3 +398,84 @@ class TestMolecularBarcodeTypeCodeSetting:
 
         value, _ = build_molecular_barcode_value({"vn": "123"}, "M26-00001", setting)
         assert value == "277123"
+
+
+class TestOutlabCoverSigner:
+    """The out-lab cover names whoever signed the case out.
+
+    Molecular has no separate approval step for an uploaded file the way Gyne
+    does (outlab_result_approved_by_id) — finalizing the case is the sign-out —
+    so reported_by is the signer, and it reaches the same "Digitally Signed by"
+    slot the Surgical and Gyne covers already use.
+    """
+
+    def _uploaded_case(self, db, pathologist_client, admin_user):
+        _, mcase = _order_molecular(db, pathologist_client, admin_user)
+        upload = pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/outlab-pdf",
+            files={"file": ("result.pdf", _valid_pdf_bytes(), "application/pdf")},
+        )
+        assert upload.status_code == 200, upload.text
+        return mcase
+
+    def _cover_text(self, pathologist_client, case_id: int) -> str:
+        resp = pathologist_client.get(f"/molecular-cases/{case_id}/outlab-pdf")
+        assert resp.status_code == 200, resp.text
+        return PdfReader(io.BytesIO(resp.content)).pages[0].extract_text() or ""
+
+    def test_signed_out_case_names_the_pathologist_who_reported_it(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = self._uploaded_case(db, pathologist_client, admin_user)
+        pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "<p>Seen.</p>"}
+        )
+
+        row = db.query(MolecularCase).filter(MolecularCase.id == mcase["id"]).first()
+        db.refresh(row)
+        signer = row.reported_by
+        expected = signer.report_name or signer.full_name
+
+        text = self._cover_text(pathologist_client, mcase["id"])
+        assert "Signed by" in text
+        assert expected in text
+
+    def test_pending_case_claims_no_signer(self, db, pathologist_client, admin_user):
+        """A cover printed before sign-out must not imply anyone vouched for it."""
+        mcase = self._uploaded_case(db, pathologist_client, admin_user)
+        assert "Signed by" not in self._cover_text(pathologist_client, mcase["id"])
+
+    def test_the_signature_line_never_falls_back_to_a_username(
+        self, db, pathologist_client, admin_user
+    ):
+        """report_name/full_name only — a login name on a clinical document is
+        wrong, so an unnamed user yields no signature line at all."""
+        mcase = self._uploaded_case(db, pathologist_client, admin_user)
+        pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "<p>Seen.</p>"}
+        )
+        row = db.query(MolecularCase).filter(MolecularCase.id == mcase["id"]).first()
+        signer = row.reported_by
+        username = signer.username
+        signer.report_name = None
+        signer.full_name = None
+        db.commit()
+
+        text = self._cover_text(pathologist_client, mcase["id"])
+        assert username not in text
+        assert "Signed by" not in text
+
+    def test_report_name_wins_over_full_name(self, db, pathologist_client, admin_user):
+        mcase = self._uploaded_case(db, pathologist_client, admin_user)
+        pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/finalize", json={"result_text": "<p>Seen.</p>"}
+        )
+        row = db.query(MolecularCase).filter(MolecularCase.id == mcase["id"]).first()
+        signer = row.reported_by
+        signer.full_name = "Fallback Fullname"
+        signer.report_name = "Dr. Report Name"
+        db.commit()
+
+        text = self._cover_text(pathologist_client, mcase["id"])
+        assert "Dr. Report Name" in text
+        assert "Fallback Fullname" not in text
