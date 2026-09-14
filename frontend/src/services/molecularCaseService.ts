@@ -17,6 +17,8 @@ export interface MolecularCaseResponse {
   parent_case_accession_no?: string | null;
   patient_name?: string | null;
   hn?: string | null;
+  patient_gender?: string | null;
+  patient_age_display?: string | null;
   stain_id?: number | null;
   ap_test_id: number;
   test_name?: string | null;
@@ -32,6 +34,7 @@ export interface MolecularCaseResponse {
   reported_by_name?: string | null;
   assist_pathologist_id?: number | null;
   assist_pathologist_name?: string | null;
+  is_print: boolean;
   is_cancelled: boolean;
   cancelled_at?: string | null;
   cancel_reason?: string | null;
@@ -108,6 +111,21 @@ export interface MolecularCaseListParams {
   clinician?: string;
 }
 
+export interface MolecularPrintQueueParams {
+  page?: number;
+  size?: number;
+  search?: string;
+  is_print?: boolean;
+  unprinted_first?: boolean;
+}
+
+export interface MolecularPrintQueuePage {
+  items: MolecularCaseResponse[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export const MolecularCaseService = {
   createStandalone: (payload: MolecularCaseCreate): Promise<MolecularCaseResponse> =>
     api.post("/molecular-cases", payload).then((r) => r.data),
@@ -147,9 +165,32 @@ export const MolecularCaseService = {
   deleteOutlabPdf: (caseId: number): Promise<MolecularCaseResponse> =>
     api.delete(`/molecular-cases/${caseId}/outlab-pdf`).then((r) => r.data),
 
-  getOutlabPdfBlob: (caseId: number): Promise<Blob> =>
-    api.get(`/molecular-cases/${caseId}/outlab-pdf`, { responseType: "blob" }).then((r) => r.data),
+  // withBarcode is opt-in, same as the other three report services: the
+  // archive preview leaves it off, the print queue turns it on.
+  getOutlabPdfBlob: (caseId: number, withBarcode = false): Promise<Blob> =>
+    api
+      .get(`/molecular-cases/${caseId}/outlab-pdf`, {
+        params: { with_barcode: withBarcode },
+        responseType: "blob",
+      })
+      .then((r) => r.data),
 
-  getResultPdfBlob: (caseId: number): Promise<Blob> =>
-    api.get(`/molecular-cases/${caseId}/result-pdf`, { responseType: "blob" }).then((r) => r.data),
+  getResultPdfBlob: (caseId: number, withBarcode = false): Promise<Blob> =>
+    api
+      .get(`/molecular-cases/${caseId}/result-pdf`, {
+        params: { with_barcode: withBarcode },
+        responseType: "blob",
+      })
+      .then((r) => r.data),
+
+  getPrintQueue: (params?: MolecularPrintQueueParams): Promise<MolecularPrintQueuePage> =>
+    api.get("/molecular-cases/print-queue", { params }).then((r) => r.data),
+
+  updatePrintStatus: (caseId: number, isPrint: boolean): Promise<MolecularCaseResponse> =>
+    api.patch(`/molecular-cases/${caseId}/print-status`, { is_print: isPrint }).then((r) => r.data),
+
+  getBarcodePdf: (caseIds: number[]): Promise<Blob> =>
+    api
+      .post("/molecular-cases/barcode-pdf", { case_ids: caseIds }, { responseType: "blob" })
+      .then((r) => r.data),
 };

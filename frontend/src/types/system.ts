@@ -118,6 +118,7 @@ export interface SystemSetting {
   barcode_surgical_type_code?: string;
   barcode_gyne_type_code?: string;
   barcode_nongyne_type_code?: string;
+  barcode_molecular_type_code?: string;
 
   // --- Report Template Selection ---
   surgical_report_template?: string | null;

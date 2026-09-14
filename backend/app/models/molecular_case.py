@@ -46,6 +46,10 @@ class MolecularCase(Base):
     # picked explicitly on standalone/"from Surgical case" registration forms.
     assist_pathologist_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # Print-queue state, same flag Surgical/Gyne/Non-Gyne reports carry. Lives
+    # on the case because Molecular has no separate report row to hang it off.
+    is_print = Column(Boolean, default=False, nullable=False, server_default="false")
+
     is_cancelled = Column(Boolean, default=False, index=True)
     cancelled_at = Column(DateTime, nullable=True)
     cancelled_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)

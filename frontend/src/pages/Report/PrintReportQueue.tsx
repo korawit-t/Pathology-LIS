@@ -23,6 +23,7 @@ import JSZip from "jszip";
 import SurgicalReportService from "../../services/surgicalReportService";
 import GyneReportService from "../../services/gyneReportService";
 import NongyneReportService from "../../services/nongyneReportService";
+import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 import { SurgicalReport } from "../../types/surgicalReport";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
 import dayjs from "dayjs";
@@ -30,7 +31,7 @@ import logger from "../../utils/logger";
 
 const { Text, Title } = Typography;
 
-type ReportSource = "surgical" | "gyne" | "nongyne";
+type ReportSource = "surgical" | "gyne" | "nongyne" | "molecular";
 
 interface PrintQueueItem {
   id: number;
@@ -47,18 +48,22 @@ interface PrintQueueItem {
   report_type?: string;
   // surgical-only
   patient_age_display?: string;
+  // molecular-only — decides which of the two PDF endpoints the row uses
+  has_outlab_pdf?: boolean;
 }
 
 const SOURCE_LABEL: Record<ReportSource, string> = {
   surgical: "Surgical",
   gyne: "Gyne Cyto",
   nongyne: "NonGyne Cyto",
+  molecular: "Molecular",
 };
 
 const SOURCE_COLOR: Record<ReportSource, string> = {
   surgical: "blue",
   gyne: "purple",
   nongyne: "cyan",
+  molecular: "magenta",
 };
 
 const PrintReportQueue: React.FC = () => {
@@ -123,7 +128,7 @@ const PrintReportQueue: React.FC = () => {
           );
           items = (data.items || []).map((r) => ({ ...r, _source: "gyne" as ReportSource }));
           tot = data.total || 0;
-        } else {
+        } else if (source === "nongyne") {
           const data = await NongyneReportService.getAllReports(
             page,
             size,
@@ -133,6 +138,30 @@ const PrintReportQueue: React.FC = () => {
             true,
           );
           items = (data.items || []).map((r) => ({ ...r, _source: "nongyne" as ReportSource }));
+          tot = data.total || 0;
+        } else {
+          // Molecular has no report table — the queue lists the reported CASES,
+          // so the id here is a case id and the fields are remapped onto the
+          // shared row shape (reported_at -> published_at, hn -> patient_hn).
+          const data = await MolecularCaseService.getPrintQueue({
+            page,
+            size,
+            search: search || undefined,
+            unprinted_first: true,
+          });
+          items = (data.items || []).map((c: MolecularCaseResponse) => ({
+            id: c.id,
+            _source: "molecular" as ReportSource,
+            accession_no: c.accession_no,
+            patient_name: c.patient_name ?? undefined,
+            patient_hn: c.hn ?? undefined,
+            patient_gender: c.patient_gender ?? undefined,
+            patient_age_display: c.patient_age_display ?? undefined,
+            is_print: c.is_print,
+            published_at: c.reported_at ?? undefined,
+            report_type: c.test_name ?? undefined,
+            has_outlab_pdf: !!c.outlab_pdf_path,
+          }));
           tot = data.total || 0;
         }
 
@@ -164,15 +193,21 @@ const PrintReportQueue: React.FC = () => {
     fetchReports(activeTab, 1, pageSize, value);
   };
 
-  // Everything handed out from the print queue is going to paper, so all three
+  // Everything handed out from the print queue is going to paper, so all four
   // types ask for the report with its footer barcode.
   const getPdfBlob = async (item: PrintQueueItem): Promise<Blob> => {
     if (item._source === "surgical") {
       return SurgicalReportService.getReportPdf(item.id, true);
     } else if (item._source === "gyne") {
       return GyneReportService.getReportPdf(item.id, true);
-    } else {
+    } else if (item._source === "nongyne") {
       return NongyneReportService.getReportPdf(item.id, true);
+    } else {
+      // Same split the report archive makes: an uploaded out-lab PDF is the
+      // primary artifact when there is one, otherwise the in-house result.
+      return item.has_outlab_pdf
+        ? MolecularCaseService.getOutlabPdfBlob(item.id, true)
+        : MolecularCaseService.getResultPdfBlob(item.id, true);
     }
   };
 
@@ -213,8 +248,10 @@ const PrintReportQueue: React.FC = () => {
       await SurgicalReportService.updatePrintStatus(item.id, isPrint);
     } else if (item._source === "gyne") {
       await GyneReportService.updatePrintStatus(item.id, isPrint);
-    } else {
+    } else if (item._source === "nongyne") {
       await NongyneReportService.updatePrintStatus(item.id, isPrint);
+    } else {
+      await MolecularCaseService.updatePrintStatus(item.id, isPrint);
     }
   };
 
@@ -337,23 +374,22 @@ const PrintReportQueue: React.FC = () => {
   const handleBulkPrintBarcode = async () => {
     try {
       message.loading({ content: "กำลังสร้าง Barcode PDF...", key: "bulkBarcode" });
-      const surgicalIds = selectedRowKeys
-        .map((k) => reports.find((r) => rowKey(r) === k))
-        .filter((r) => r?._source === "surgical")
-        .map((r) => r!.id);
-      const gyneIds = selectedRowKeys
-        .map((k) => reports.find((r) => rowKey(r) === k))
-        .filter((r) => r?._source === "gyne")
-        .map((r) => r!.id);
-      const nongyneIds = selectedRowKeys
-        .map((k) => reports.find((r) => rowKey(r) === k))
-        .filter((r) => r?._source === "nongyne")
-        .map((r) => r!.id);
+      const idsFor = (source: ReportSource) =>
+        selectedRowKeys
+          .map((k) => reports.find((r) => rowKey(r) === k))
+          .filter((r) => r?._source === source)
+          .map((r) => r!.id);
+
+      const surgicalIds = idsFor("surgical");
+      const gyneIds = idsFor("gyne");
+      const nongyneIds = idsFor("nongyne");
+      const molecularIds = idsFor("molecular");
 
       const blobs: Blob[] = [];
       if (surgicalIds.length > 0) blobs.push(await SurgicalReportService.getBarcodePdf(surgicalIds));
       if (gyneIds.length > 0) blobs.push(await GyneReportService.getBarcodePdf(gyneIds));
       if (nongyneIds.length > 0) blobs.push(await NongyneReportService.getBarcodePdf(nongyneIds));
+      if (molecularIds.length > 0) blobs.push(await MolecularCaseService.getBarcodePdf(molecularIds));
 
       for (const blob of blobs) {
         const url = URL.createObjectURL(blob);
@@ -485,6 +521,7 @@ const PrintReportQueue: React.FC = () => {
       { key: "surgical", label: "Surgical" },
       { key: "gyne", label: "Gyne Cyto" },
       { key: "nongyne", label: "NonGyne Cyto" },
+      { key: "molecular", label: "Molecular" },
     ] as { key: ReportSource; label: string }[]
   ).map((tab) => ({
     key: tab.key,
