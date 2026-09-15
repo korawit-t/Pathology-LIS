@@ -111,9 +111,9 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
         // client-side, so status priority has to live here, not just in the
         // backend's prioritize_status ordering (which only affects which rows
         // land on a given page, not their on-page display order). Shares
-        // ALL_TAB_PRIORITY_STATUSES with the query in useCaseWorklist.ts, and
-        // both statuses sit in one bucket: a case back from special stains/IHC
-        // ranks alongside the freshly dispatched ones, ordered by accession.
+        // ALL_TAB_PRIORITY_STATUSES with the query in useCaseWorklist.ts — see
+        // there for which statuses count as "still on the pathologist's plate".
+        // They sit in one bucket, ordered by accession between themselves.
         const priority = (row: WorklistRow) =>
           row.status && PRIORITY_STATUSES.has(row.status) ? 0 : 1;
         const diff = priority(a) - priority(b);
