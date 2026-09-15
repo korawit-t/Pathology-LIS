@@ -134,3 +134,42 @@ class TestSurgicalPrioritizeStatus:
             for c in sorted([slide_sent, pending_diagnosis], key=lambda c: c.accession_no)
         ]
         assert ids[:2] == expected_bucket
+
+
+class TestSurgicalPendingUnion:
+    """The pathologist worklist's "Pending" tab sends status="pending diagnosis"
+    together with is_pending=True and relies on get_cases ORing the two: a case
+    is pending either because nobody has read it yet, or because the report that
+    went out was preliminary. Turning that OR into an AND would silently empty
+    half the tab."""
+
+    def test_status_and_is_pending_are_ored(self, db, admin_user):
+        registrar, _ = admin_user
+        pathologist_id = registrar.id
+
+        # Not read yet — came back from special stains/IHC.
+        not_read = make_bare_case(db, registrar_id=registrar.id)
+        not_read.pathologist_id = pathologist_id
+        not_read.status = "pending diagnosis"
+
+        # Read and signed out, but the report was preliminary.
+        preliminary = make_bare_case(db, registrar_id=registrar.id)
+        preliminary.pathologist_id = pathologist_id
+        preliminary.status = "signed out"
+        preliminary.is_pending = True
+
+        # Neither — must stay out.
+        untouched = make_bare_case(db, registrar_id=registrar.id)
+        untouched.pathologist_id = pathologist_id
+        assert untouched.status == "registered"
+        db.commit()
+
+        results = get_cases(
+            db,
+            pathologist_id=pathologist_id,
+            status="pending diagnosis",
+            is_pending=True,
+        )
+        ids = {c.id for c in results["items"]}
+        assert ids == {not_read.id, preliminary.id}
+        assert untouched.id not in ids

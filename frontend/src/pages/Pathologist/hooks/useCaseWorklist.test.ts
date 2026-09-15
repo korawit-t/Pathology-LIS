@@ -1,5 +1,6 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useSurgicalCaseWorklist } from "./useCaseWorklist";
+import { CASE_STATUS } from "../../../constants/lab.constants";
 import PathologistService from "../../../services/pathologistService";
 import SystemSettingService from "../../../services/systemSettingService";
 import SurgicalReportService from "../../../services/surgicalReportService";
@@ -125,6 +126,48 @@ describe("useSurgicalCaseWorklist", () => {
     const { result } = renderHook(() => useSurgicalCaseWorklist(USER_ID));
 
     await waitFor(() => expect(result.current.filteredData.gyneTotal).toBe(2));
+  });
+
+  // The Pending tab used to send only is_pending=true — the preliminary-report
+  // flag — so cases sitting at status "pending diagnosis" (where a case lands
+  // once its special stains/IHC come back) never appeared under the label that
+  // named them. Both are sent now; get_cases ORs them into one list.
+  it("sends both the pending diagnosis status and the is_pending flag for the Pending tab", async () => {
+    const { result } = renderHook(() => useSurgicalCaseWorklist(USER_ID));
+
+    await waitFor(() => expect(mockGetMyWorklist).toHaveBeenCalled());
+    mockGetMyWorklist.mockClear();
+
+    act(() => result.current.setCurrentStatus(CASE_STATUS.PENDING_DIAGNOSIS));
+
+    await waitFor(() =>
+      expect(mockGetMyWorklist).toHaveBeenCalledWith(
+        USER_ID,
+        0,
+        20,
+        "",
+        CASE_STATUS.PENDING_DIAGNOSIS,
+        true,
+        undefined,
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
+  it("counts the Pending badge over the same union the tab lists", async () => {
+    renderHook(() => useSurgicalCaseWorklist(USER_ID));
+
+    await waitFor(() =>
+      expect(mockGetMyWorklist).toHaveBeenCalledWith(
+        USER_ID,
+        0,
+        1,
+        "",
+        CASE_STATUS.PENDING_DIAGNOSIS,
+        true,
+      ),
+    );
   });
 
   it("does not fetch anything when userId is undefined", async () => {

@@ -57,7 +57,16 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
     try {
       const [slideSentRes, pendingRes, coSignRes, expressRes] = await Promise.all([
         PathologistService.getMyWorklist(userId, 0, 1, "", CASE_STATUS.SLIDE_SENT),
-        PathologistService.getMyWorklist(userId, 0, 1, "", undefined, true),
+        // status + is_pending together: get_cases ORs them, so this counts
+        // the same union the Pending tab lists.
+        PathologistService.getMyWorklist(
+          userId,
+          0,
+          1,
+          "",
+          CASE_STATUS.PENDING_DIAGNOSIS,
+          true,
+        ),
         SurgicalReportService.getPendingCosignWorklist(1, 1, ""),
         PathologistService.getMyWorklist(userId, 0, 1, "", undefined, undefined, true, true),
       ]);
@@ -118,15 +127,16 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           searchText,
         );
       } else {
-        let statusParam: string | string[] | undefined = currentStatus;
-
-        if (currentStatus === CASE_STATUS.SLIDE_SENT) {
-          statusParam = CASE_STATUS.SLIDE_SENT;
-        } else if (currentStatus === CASE_STATUS.PENDING_DIAGNOSIS) {
-          statusParam = undefined;
-        } else if (currentStatus === "ALL" || currentStatus === "EXPRESS") {
-          statusParam = undefined;
-        }
+        // "ALL" and "EXPRESS" aren't statuses — they select rows by other
+        // params — so they send none. Every other tab value is the status to
+        // filter on, the Pending tab included: it sends "pending diagnosis"
+        // *and* is_pending=true, which get_cases ORs together, so the tab
+        // covers both "not read yet" and "preliminary report still open"
+        // rather than only the latter (which is what the label used to hide).
+        const statusParam: string | string[] | undefined =
+          currentStatus === "ALL" || currentStatus === "EXPRESS"
+            ? undefined
+            : currentStatus;
 
         surgicalResponse = await PathologistService.getMyWorklist(
           userId,
