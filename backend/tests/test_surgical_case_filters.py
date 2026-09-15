@@ -98,3 +98,39 @@ class TestSurgicalPrioritizeStatus:
             [slide_sent, registered], key=lambda c: c.accession_no
         )
         assert ids == [c.id for c in expected]
+
+    def test_multiple_prioritized_statuses_share_one_bucket(self, db, admin_user):
+        """The pathologist's "All" tab floats both "slide sent" and "pending
+        diagnosis" — a case coming back from special stains/IHC resolves to the
+        latter and must not sink below already-signed-out cases."""
+        registrar, _ = admin_user
+        pathologist_id = registrar.id
+
+        signed_out = make_bare_case(db, registrar_id=registrar.id)
+        signed_out.pathologist_id = pathologist_id
+        signed_out.status = "signed out"
+
+        slide_sent = make_bare_case(db, registrar_id=registrar.id)
+        slide_sent.pathologist_id = pathologist_id
+        slide_sent.status = "slide sent"
+
+        pending_diagnosis = make_bare_case(db, registrar_id=registrar.id)
+        pending_diagnosis.pathologist_id = pathologist_id
+        pending_diagnosis.status = "pending diagnosis"
+        db.commit()
+
+        results = get_cases(
+            db,
+            pathologist_id=pathologist_id,
+            prioritize_status=["slide sent", "pending diagnosis"],
+        )
+        ids = [c.id for c in results["items"]]
+        # Both float above the signed-out case; between themselves they keep
+        # accession order rather than ranking by status.
+        assert set(ids[:2]) == {slide_sent.id, pending_diagnosis.id}
+        assert ids[2] == signed_out.id
+        expected_bucket = [
+            c.id
+            for c in sorted([slide_sent, pending_diagnosis], key=lambda c: c.accession_no)
+        ]
+        assert ids[:2] == expected_bucket

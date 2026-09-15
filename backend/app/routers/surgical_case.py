@@ -332,7 +332,7 @@ def read_cases(
     is_pending: Optional[bool] = Query(None),
     is_express: Optional[bool] = Query(None),
     exclude_signed: Optional[bool] = Query(None),
-    prioritize_status: Optional[str] = Query(None),
+    prioritize_status: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

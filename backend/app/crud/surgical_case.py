@@ -117,7 +117,7 @@ def get_cases(
     is_pending: bool = None,
     is_express: bool = None,
     exclude_signed: bool = None,
-    prioritize_status: str = None,
+    prioritize_status: any = None,
 ):
     query = db.query(SurgicalCase).join(Patient)
 
@@ -196,8 +196,25 @@ def get_cases(
 
     order_by_clauses = []
     if prioritize_status:
+        # Accepts one status or several — the pathologist's "All" tab floats both
+        # "slide sent" and "pending diagnosis" (a case coming back from special
+        # stains/IHC resolves to the latter, see _update_case_status_from_block_stains),
+        # and they share one priority bucket rather than ranking against each other.
+        wanted = (
+            [prioritize_status]
+            if isinstance(prioritize_status, str)
+            else list(prioritize_status)
+        )
         order_by_clauses.append(
-            case((SurgicalCase.status.ilike(prioritize_status), 0), else_=1)
+            case(
+                (
+                    func.lower(SurgicalCase.status).in_(
+                        [s.lower() for s in wanted]
+                    ),
+                    0,
+                ),
+                else_=1,
+            )
         )
     order_by_clauses.append(SurgicalCase.accession_no.asc())
 

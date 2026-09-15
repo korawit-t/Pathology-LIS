@@ -20,7 +20,10 @@ import {
   LockOutlined,
   CheckCircleFilled,
 } from "@ant-design/icons";
-import { CASE_STATUS } from "../../../constants/lab.constants";
+import {
+  CASE_STATUS,
+  ALL_TAB_PRIORITY_STATUSES,
+} from "../../../constants/lab.constants";
 import { calculateTATProgress } from "../../../utils/tatUtils";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { renderConsultBadge } from "../../../utils/consultBadge";
@@ -28,6 +31,8 @@ import type { SystemSetting } from "../../../types/system";
 
 dayjs.extend(relativeTime);
 const { Text } = Typography;
+
+const PRIORITY_STATUSES = new Set<string>(ALL_TAB_PRIORITY_STATUSES);
 
 export interface WorklistRow {
   id: number;
@@ -101,14 +106,18 @@ const SurgicalCaseWorklist: React.FC<SurgicalCaseWorklistProps> = ({
       width: 210,
       fixed: "left",
       sorter: (a, b) => {
-        // Keep Slide Sent cases pinned to the top of the "All" view — the
-        // Table applies this comparator to the whole page client-side, so
-        // status priority has to live here, not just in the backend's
-        // prioritize_status ordering (which only affects which rows land
-        // on a given page, not their on-page display order).
-        const aPriority = a.status === CASE_STATUS.SLIDE_SENT ? 0 : 1;
-        const bPriority = b.status === CASE_STATUS.SLIDE_SENT ? 0 : 1;
-        if (aPriority !== bPriority) return aPriority - bPriority;
+        // Keep the cases waiting to be read pinned to the top of the "All"
+        // view — the Table applies this comparator to the whole page
+        // client-side, so status priority has to live here, not just in the
+        // backend's prioritize_status ordering (which only affects which rows
+        // land on a given page, not their on-page display order). Shares
+        // ALL_TAB_PRIORITY_STATUSES with the query in useCaseWorklist.ts, and
+        // both statuses sit in one bucket: a case back from special stains/IHC
+        // ranks alongside the freshly dispatched ones, ordered by accession.
+        const priority = (row: WorklistRow) =>
+          row.status && PRIORITY_STATUSES.has(row.status) ? 0 : 1;
+        const diff = priority(a) - priority(b);
+        if (diff !== 0) return diff;
         return (a.accession_no || "").localeCompare(b.accession_no || "");
       },
       defaultSortOrder: "ascend" as const,

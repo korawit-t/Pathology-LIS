@@ -28,6 +28,24 @@ export const CASE_STATUS = {
   CANCELLED: "cancelled",
 } as const;
 
+/**
+ * สถานะที่ถูกดันขึ้นบนสุดของ tab "All" ในหน้า My Diagnosis Worklist (Surgical)
+ *
+ * "pending diagnosis" มาคู่กับ "slide sent" เพราะเคสที่ส่งไปย้อม special stain/IHC
+ * พอย้อมเสร็จจะ resolve กลับมาเป็น "pending diagnosis" (ดู
+ * _update_case_status_from_block_stains ใน backend/app/crud/surgical_block_stain.py)
+ * — เคสพร้อมอ่านแล้ว จึงต้องไม่จมลงไปใต้เคสที่ปิดงานไปแล้ว ทั้งสองสถานะอยู่กลุ่ม
+ * priority เดียวกัน แล้วเรียงกันเองตาม accession
+ *
+ * ใช้ทั้งฝั่ง query (prioritize_status ใน useCaseWorklist) และ sorter ของคอลัมน์
+ * Accession ใน SurgicalCaseWorklist — backend คุมว่าเคสไหนได้ขึ้นหน้าแรก ส่วน sorter
+ * คุมลำดับภายในหน้านั้น จึงต้องใช้ลิสต์เดียวกัน
+ */
+export const ALL_TAB_PRIORITY_STATUSES: string[] = [
+  CASE_STATUS.SLIDE_SENT,
+  CASE_STATUS.PENDING_DIAGNOSIS,
+];
+
 /** ค่าใน CASE_STATUS ที่จงใจไม่มีใน STATUS_OPTIONS เพราะไม่มีเคสไหนไปถึงได้จริง */
 export const STATUS_WITHOUT_OPTION: readonly string[] = [
   CASE_STATUS.PENDING_ADDENDUM,
