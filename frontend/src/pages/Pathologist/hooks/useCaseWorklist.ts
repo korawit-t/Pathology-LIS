@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { message } from "antd";
 import PathologistService from "../../../services/pathologistService";
-import { CASE_STATUS } from "../../../constants/lab.constants";
+import {
+  CASE_STATUS,
+  ALL_TAB_PRIORITY_STATUSES,
+} from "../../../constants/lab.constants";
 import SystemSettingService from "../../../services/systemSettingService";
 import SurgicalReportService from "../../../services/surgicalReportService";
 import HolidayService from "../../../services/holidayService";
@@ -134,7 +137,7 @@ export const useSurgicalCaseWorklist = (userId: number | undefined) => {
           currentStatus === CASE_STATUS.PENDING_DIAGNOSIS ? true : undefined,
           currentStatus === "EXPRESS" ? true : undefined,
           currentStatus === "EXPRESS" ? true : undefined,
-          currentStatus === "ALL" ? CASE_STATUS.SLIDE_SENT : undefined,
+          currentStatus === "ALL" ? ALL_TAB_PRIORITY_STATUSES : undefined,
         );
       }
 
