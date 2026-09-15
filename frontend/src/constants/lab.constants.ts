@@ -31,11 +31,17 @@ export const CASE_STATUS = {
 /**
  * สถานะที่ถูกดันขึ้นบนสุดของ tab "All" ในหน้า My Diagnosis Worklist (Surgical)
  *
- * "pending diagnosis" มาคู่กับ "slide sent" เพราะเคสที่ส่งไปย้อม special stain/IHC
- * พอย้อมเสร็จจะ resolve กลับมาเป็น "pending diagnosis" (ดู
- * _update_case_status_from_block_stains ใน backend/app/crud/surgical_block_stain.py)
- * — เคสพร้อมอ่านแล้ว จึงต้องไม่จมลงไปใต้เคสที่ปิดงานไปแล้ว ทั้งสองสถานะอยู่กลุ่ม
- * priority เดียวกัน แล้วเรียงกันเองตาม accession
+ * ทั้งหมดอยู่กลุ่ม priority เดียวกัน (ไม่จัดอันดับกันเอง) แล้วเรียงกันตาม accession
+ * — คือ "เคสที่พยาธิแพทย์ต้องตามอยู่" ไม่ให้จมลงไปใต้เคสที่ปิดงานไปแล้ว
+ *
+ * - "slide sent" — สไลด์ส่งถึงมือแล้ว รออ่าน
+ * - "pending diagnosis" — เคสที่ส่งไปย้อม special stain/IHC แล้วย้อมเสร็จ จะ resolve
+ *   กลับมาเป็นสถานะนี้ (ดู _update_case_status_from_block_stains ใน
+ *   backend/app/crud/surgical_block_stain.py) พร้อมอ่านแล้ว
+ * - "pending immuno" — ยังรอผล IHC อยู่ (ยังอ่านไม่ได้) แต่ดันขึ้นมาให้เห็นเพราะเป็นงาน
+ *   ที่ต้องตามต่อ ไม่ใช่งานที่ปิดไปแล้ว
+ *
+ * หมายเหตุ: "pending special stains" จงใจไม่รวม — ถ้าจะเปลี่ยนใจให้เพิ่มที่นี่ที่เดียว
  *
  * ใช้ทั้งฝั่ง query (prioritize_status ใน useCaseWorklist) และ sorter ของคอลัมน์
  * Accession ใน SurgicalCaseWorklist — backend คุมว่าเคสไหนได้ขึ้นหน้าแรก ส่วน sorter
@@ -44,6 +50,7 @@ export const CASE_STATUS = {
 export const ALL_TAB_PRIORITY_STATUSES: string[] = [
   CASE_STATUS.SLIDE_SENT,
   CASE_STATUS.PENDING_DIAGNOSIS,
+  CASE_STATUS.PENDING_IHC,
 ];
 
 /** ค่าใน CASE_STATUS ที่จงใจไม่มีใน STATUS_OPTIONS เพราะไม่มีเคสไหนไปถึงได้จริง */

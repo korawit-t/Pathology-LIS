@@ -196,10 +196,10 @@ def get_cases(
 
     order_by_clauses = []
     if prioritize_status:
-        # Accepts one status or several — the pathologist's "All" tab floats both
-        # "slide sent" and "pending diagnosis" (a case coming back from special
-        # stains/IHC resolves to the latter, see _update_case_status_from_block_stains),
-        # and they share one priority bucket rather than ranking against each other.
+        # Accepts one status or several — the pathologist's "All" tab floats the
+        # statuses that are still on their plate (ALL_TAB_PRIORITY_STATUSES in
+        # frontend/src/constants/lab.constants.ts names them and says why). They
+        # share one priority bucket rather than ranking against each other.
         wanted = (
             [prioritize_status]
             if isinstance(prioritize_status, str)
