@@ -25,7 +25,7 @@ Jinja2==3.1.6
 Mako==1.4.1
 MarkupSafe==3.0.3
 numpy==2.5.1
-packaging==26.0
+packaging==26.3
 pandas==2.3.3
 passlib==1.7.4
 openslide-python==1.4.6
