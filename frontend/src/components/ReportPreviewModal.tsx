@@ -7,9 +7,16 @@ interface Props {
   pdfUrl: string | null;
   onCancel: () => void;
   filename?: string;
+  /** Actions to take on what's being previewed (e.g. Approve), so a
+   *  review-then-act flow doesn't need close-the-preview-then-click. */
+  footer?: React.ReactNode;
 }
 
-const ReportPreviewModal: React.FC<Props> = ({ open, pdfUrl, onCancel, filename }) => {
+// Roughly the footer's height (button + antd's margin-top), taken off the body
+// so the footer stays on screen instead of pushing the modal past the viewport.
+const FOOTER_HEIGHT = 44;
+
+const ReportPreviewModal: React.FC<Props> = ({ open, pdfUrl, onCancel, filename, footer }) => {
   const titleBar = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 40 }}>
       <span>Report Preview</span>
@@ -31,10 +38,10 @@ const ReportPreviewModal: React.FC<Props> = ({ open, pdfUrl, onCancel, filename 
     <Modal
       open={open}
       onCancel={onCancel}
-      footer={null}
+      footer={footer ?? null}
       width="90vw"
       style={{ top: 24, maxWidth: 1400 }}
-      styles={{ body: { padding: 0, height: "85vh" } }}
+      styles={{ body: { padding: 0, height: footer ? `calc(85vh - ${FOOTER_HEIGHT}px)` : "85vh" } }}
       title={titleBar}
       destroyOnClose
     >

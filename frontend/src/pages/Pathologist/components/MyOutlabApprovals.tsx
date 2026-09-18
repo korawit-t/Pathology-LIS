@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Table, Tag, Input, Space, Button, Typography, message, Popconfirm,
+  Table, Tag, Input, Space, Button, Typography, message,
 } from "antd";
 import {
   SearchOutlined, ReloadOutlined, CheckCircleOutlined, FilePdfOutlined,
@@ -39,11 +39,15 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [approving, setApproving] = useState(false);
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
+  // The case whose PDF is open for review — approving happens from inside
+  // the preview, so the pathologist reads the result before signing it off.
+  // Kept after close (only `previewOpen` flips) so the footer doesn't vanish
+  // mid-fade-out.
+  const [reviewCase, setReviewCase] = useState<GyneCytologyCase | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [previewFilename, setPreviewFilename] = useState<string | undefined>();
   const pdfUrlRef = useRef<string | null>(null);
   const PAGE_SIZE = 20;
 
@@ -79,7 +83,7 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     setPage(1);
   }, [search]);
 
-  const handleViewPdf = async (c: GyneCytologyCase) => {
+  const handleReview = async (c: GyneCytologyCase) => {
     setViewLoadingId(c.id);
     try {
       const blob = await GyneCytologyCaseService.downloadOutlabTestResult(c.id);
@@ -87,7 +91,7 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       const url = URL.createObjectURL(blob);
       pdfUrlRef.current = url;
       setPdfUrl(url);
-      setPreviewFilename(`${c.accession_no}_outlab_test.pdf`);
+      setReviewCase(c);
       setPreviewOpen(true);
     } catch (err) {
       logger.error("Failed to load outlab test result PDF", err);
@@ -97,16 +101,19 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     }
   };
 
-  const handleApprove = async (c: GyneCytologyCase) => {
-    setApprovingId(c.id);
+  const handleApprove = async () => {
+    if (!reviewCase) return;
+    setApproving(true);
     try {
-      await GyneCytologyCaseService.approveOutlabTestResult(c.id);
+      await GyneCytologyCaseService.approveOutlabTestResult(reviewCase.id);
       message.success("Result approved — now visible to the clinician");
+      setPreviewOpen(false);
       fetchCases();
     } catch {
+      // Stay open so they can retry without re-finding the case.
       message.error("Failed to approve result");
     } finally {
-      setApprovingId(null);
+      setApproving(false);
     }
   };
 
@@ -143,38 +150,44 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     {
       title: "Action",
       key: "action",
-      width: 220,
+      width: 170,
       // Row click navigates to the case (onRow below) — stop clicks here
-      // from bubbling into that, or "View PDF"/"Approve" would immediately
-      // navigate away instead of doing their own thing.
+      // from bubbling into that, or "Review & Approve" would immediately
+      // navigate away instead of opening the PDF.
       onCell: () => ({ onClick: (e: React.MouseEvent) => e.stopPropagation() }),
       render: (_, c) => (
-        <Space>
-          <Button
-            type="primary"
-            ghost
-            size="small"
-            icon={<FilePdfOutlined />}
-            loading={viewLoadingId === c.id}
-            onClick={() => handleViewPdf(c)}
-          >
-            View PDF
-          </Button>
-          <Popconfirm
-            title="Approve this outlab result?"
-            description="The result becomes visible to the clinician once approved."
-            onConfirm={() => handleApprove(c)}
-            okText="Approve"
-            cancelText="Cancel"
-          >
-            <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={approvingId === c.id}>
-              Approve
-            </Button>
-          </Popconfirm>
-        </Space>
+        <Button
+          type="primary"
+          size="small"
+          icon={<FilePdfOutlined />}
+          loading={viewLoadingId === c.id}
+          onClick={() => handleReview(c)}
+        >
+          Review & Approve
+        </Button>
       ),
     },
   ];
+
+  const reviewFooter = reviewCase && (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <Text type="secondary" style={{ textAlign: "left" }}>
+        <Text strong>{reviewCase.accession_no}</Text>
+        {" · "}
+        {[reviewCase.patient?.title?.title, reviewCase.patient?.name, reviewCase.patient?.ln].filter(Boolean).join(" ") || "—"}
+        {" — "}
+        the result becomes visible to the clinician once approved.
+      </Text>
+      <Space>
+        <Button onClick={() => setPreviewOpen(false)} disabled={approving}>
+          Cancel
+        </Button>
+        <Button type="primary" icon={<CheckCircleOutlined />} loading={approving} onClick={handleApprove}>
+          Approve
+        </Button>
+      </Space>
+    </div>
+  );
 
   return (
     <>
@@ -220,8 +233,9 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       <ReportPreviewModal
         open={previewOpen}
         pdfUrl={pdfUrl}
-        onCancel={() => setPreviewOpen(false)}
-        filename={previewFilename}
+        onCancel={() => { if (!approving) setPreviewOpen(false); }}
+        filename={reviewCase ? `${reviewCase.accession_no}_outlab_test.pdf` : undefined}
+        footer={reviewFooter}
       />
     </>
   );
