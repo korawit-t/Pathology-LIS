@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Table, Tag, Input, Space, Button, Typography, message, Popconfirm,
+  Table, Tag, Input, Space, Button, Typography, message,
 } from "antd";
 import {
-  SearchOutlined, ReloadOutlined, CheckCircleOutlined, FilePdfOutlined,
+  SearchOutlined, ReloadOutlined, CheckCircleOutlined, FilePdfOutlined, StepForwardOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -39,18 +39,25 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [approvingId, setApprovingId] = useState<number | null>(null);
+  // Which footer button is in flight, so only that one spins.
+  const [approving, setApproving] = useState<"approve" | "next" | null>(null);
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
+  // The case whose PDF is open for review — approving happens from inside
+  // the preview, so the pathologist reads the result before signing it off.
+  // Kept after close (only `previewOpen` flips) so the footer doesn't vanish
+  // mid-fade-out.
+  const [reviewCase, setReviewCase] = useState<GyneCytologyCase | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [previewFilename, setPreviewFilename] = useState<string | undefined>();
   const pdfUrlRef = useRef<string | null>(null);
   const PAGE_SIZE = 20;
 
   useEffect(() => () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current); }, []);
 
-  const fetchCases = useCallback(async () => {
-    if (!pathologistId) return;
+  /** Returns the page's rows (null on failure) so "Approve & Next" can pick
+   *  its next case from the refreshed list. */
+  const fetchCases = useCallback(async (): Promise<GyneCytologyCase[] | null> => {
+    if (!pathologistId) return null;
     setLoading(true);
     try {
       const res = await GyneCytologyCaseService.getAll({
@@ -59,13 +66,21 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
         limit: PAGE_SIZE,
         search: search || undefined,
       });
-      setCases(res.items || []);
+      const items = res.items || [];
+      setCases(items);
       const t = res.total || 0;
       setTotal(t);
       // A searched total is not what the badge means — see MyConsultCases.tsx.
       if (!search) onCountChange?.(t);
+      // Approving the only row on a later page leaves this page past the end.
+      // antd's pager quietly shows the last page number anyway, over an empty
+      // table — step back to the last page that still has rows.
+      const lastPage = Math.max(1, Math.ceil(t / PAGE_SIZE));
+      if (page > lastPage) setPage(lastPage);
+      return items;
     } catch {
       message.error("Failed to load outlab approval worklist");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -79,34 +94,57 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     setPage(1);
   }, [search]);
 
-  const handleViewPdf = async (c: GyneCytologyCase) => {
-    setViewLoadingId(c.id);
+  /** Puts the case's result PDF in the preview; false (already reported to
+   *  the user) if it couldn't be downloaded. */
+  const loadReview = async (c: GyneCytologyCase): Promise<boolean> => {
     try {
       const blob = await GyneCytologyCaseService.downloadOutlabTestResult(c.id);
       if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
       const url = URL.createObjectURL(blob);
       pdfUrlRef.current = url;
       setPdfUrl(url);
-      setPreviewFilename(`${c.accession_no}_outlab_test.pdf`);
-      setPreviewOpen(true);
+      setReviewCase(c);
+      return true;
     } catch (err) {
       logger.error("Failed to load outlab test result PDF", err);
       message.error("Failed to load PDF");
-    } finally {
-      setViewLoadingId(null);
+      return false;
     }
   };
 
-  const handleApprove = async (c: GyneCytologyCase) => {
-    setApprovingId(c.id);
+  const handleReview = async (c: GyneCytologyCase) => {
+    setViewLoadingId(c.id);
+    if (await loadReview(c)) setPreviewOpen(true);
+    setViewLoadingId(null);
+  };
+
+  const reviewIndex = reviewCase ? cases.findIndex((c) => c.id === reviewCase.id) : -1;
+  // A next case exists if one follows on this page, or the next page has rows
+  // that will slide up once this one drops out of the list.
+  const hasNext = reviewIndex >= 0 && (reviewIndex < cases.length - 1 || page * PAGE_SIZE < total);
+
+  const handleApprove = async (andNext: boolean) => {
+    if (!reviewCase) return;
+    setApproving(andNext ? "next" : "approve");
     try {
-      await GyneCytologyCaseService.approveOutlabTestResult(c.id);
+      try {
+        await GyneCytologyCaseService.approveOutlabTestResult(reviewCase.id);
+      } catch {
+        // Stay open so they can retry without re-finding the case.
+        message.error("Failed to approve result");
+        return;
+      }
       message.success("Result approved — now visible to the clinician");
-      fetchCases();
-    } catch {
-      message.error("Failed to approve result");
+      const fresh = await fetchCases();
+      // The approved case is gone from the refreshed list, so whatever now
+      // sits at its old index is the one that followed it — including the
+      // first row of the next page when it was the last row on this one.
+      const next = andNext && reviewIndex >= 0 ? fresh?.[reviewIndex] : undefined;
+      // Close rather than leave the just-approved PDF up behind a live
+      // Approve button when there's no next case or its PDF won't load.
+      if (!next || !(await loadReview(next))) setPreviewOpen(false);
     } finally {
-      setApprovingId(null);
+      setApproving(null);
     }
   };
 
@@ -143,38 +181,61 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     {
       title: "Action",
       key: "action",
-      width: 220,
+      width: 170,
       // Row click navigates to the case (onRow below) — stop clicks here
-      // from bubbling into that, or "View PDF"/"Approve" would immediately
-      // navigate away instead of doing their own thing.
+      // from bubbling into that, or "Review & Approve" would immediately
+      // navigate away instead of opening the PDF.
       onCell: () => ({ onClick: (e: React.MouseEvent) => e.stopPropagation() }),
       render: (_, c) => (
-        <Space>
-          <Button
-            type="primary"
-            ghost
-            size="small"
-            icon={<FilePdfOutlined />}
-            loading={viewLoadingId === c.id}
-            onClick={() => handleViewPdf(c)}
-          >
-            View PDF
-          </Button>
-          <Popconfirm
-            title="Approve this outlab result?"
-            description="The result becomes visible to the clinician once approved."
-            onConfirm={() => handleApprove(c)}
-            okText="Approve"
-            cancelText="Cancel"
-          >
-            <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={approvingId === c.id}>
-              Approve
-            </Button>
-          </Popconfirm>
-        </Space>
+        <Button
+          type="primary"
+          size="small"
+          icon={<FilePdfOutlined />}
+          loading={viewLoadingId === c.id}
+          onClick={() => handleReview(c)}
+        >
+          Review & Approve
+        </Button>
       ),
     },
   ];
+
+  const reviewFooter = reviewCase && (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <Text type="secondary" style={{ textAlign: "left" }}>
+        <Text strong>{reviewCase.accession_no}</Text>
+        {" · "}
+        {[reviewCase.patient?.title?.title, reviewCase.patient?.name, reviewCase.patient?.ln].filter(Boolean).join(" ") || "—"}
+        {" — "}
+        the result becomes visible to the clinician once approved.
+      </Text>
+      <Space>
+        <Button onClick={() => setPreviewOpen(false)} disabled={!!approving}>
+          Cancel
+        </Button>
+        <Button
+          icon={<CheckCircleOutlined />}
+          loading={approving === "approve"}
+          disabled={approving === "next"}
+          onClick={() => handleApprove(false)}
+        >
+          Approve
+        </Button>
+        {/* Disabled rather than hidden on the last case, so the buttons don't
+            shift under a cursor that's been clicking this one. */}
+        <Button
+          type="primary"
+          icon={<StepForwardOutlined />}
+          loading={approving === "next"}
+          disabled={!hasNext || approving === "approve"}
+          title={hasNext ? undefined : "No more results after this one"}
+          onClick={() => handleApprove(true)}
+        >
+          Approve & Next
+        </Button>
+      </Space>
+    </div>
+  );
 
   return (
     <>
@@ -220,8 +281,9 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       <ReportPreviewModal
         open={previewOpen}
         pdfUrl={pdfUrl}
-        onCancel={() => setPreviewOpen(false)}
-        filename={previewFilename}
+        onCancel={() => { if (!approving) setPreviewOpen(false); }}
+        filename={reviewCase ? `${reviewCase.accession_no}_outlab_test.pdf` : undefined}
+        footer={reviewFooter}
       />
     </>
   );
