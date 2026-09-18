@@ -72,6 +72,11 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       setTotal(t);
       // A searched total is not what the badge means — see MyConsultCases.tsx.
       if (!search) onCountChange?.(t);
+      // Approving the only row on a later page leaves this page past the end.
+      // antd's pager quietly shows the last page number anyway, over an empty
+      // table — step back to the last page that still has rows.
+      const lastPage = Math.max(1, Math.ceil(t / PAGE_SIZE));
+      if (page > lastPage) setPage(lastPage);
       return items;
     } catch {
       message.error("Failed to load outlab approval worklist");

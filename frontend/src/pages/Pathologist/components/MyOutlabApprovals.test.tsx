@@ -144,6 +144,27 @@ describe("MyOutlabApprovals", () => {
     });
   });
 
+  it("steps back a page instead of showing an empty one after approving a later page's only row", async () => {
+    // 21 cases: page 1 = cases 1–20, page 2 = case 21. After case 21 is
+    // approved there are 20, so page 2 no longer exists.
+    let approved = false;
+    mockGetAll.mockImplementation(async ({ skip }: { skip: number }) => {
+      const all = approved ? makeCases(20) : makeCases(21);
+      return { items: all.slice(skip, skip + 20), total: all.length };
+    });
+    mockApprove.mockImplementation(async () => { approved = true; return {}; });
+    render(<MyOutlabApprovals pathologistId={7} />);
+    await screen.findByText("C26-00001");
+
+    fireEvent.click(screen.getByTitle("2"));
+    const dialog = await openReview(0);
+    expect(within(dialog).getByText("C26-00021")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText("Approve").closest("button")!);
+
+    await waitFor(() => expect(mockGetAll).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 0 })));
+    expect(await screen.findByText("C26-00001")).toBeInTheDocument();
+  });
+
   it("does not navigate to the case when the action button is clicked", async () => {
     const onSelectCase = vi.fn();
     render(<MyOutlabApprovals pathologistId={7} onSelectCase={onSelectCase} />);
