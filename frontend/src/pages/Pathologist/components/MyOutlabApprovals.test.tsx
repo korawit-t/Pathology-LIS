@@ -24,10 +24,19 @@ const makeCase = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const openReview = async () => {
-  fireEvent.click((await screen.findByText("Review & Approve")).closest("button")!);
+const openReview = async (row = 0) => {
+  await screen.findAllByText("Review & Approve");
+  fireEvent.click(screen.getAllByText("Review & Approve")[row].closest("button")!);
   return screen.findByRole("dialog");
 };
+
+const approveAndNextButton = (dialog: HTMLElement) =>
+  within(dialog).getByText("Approve & Next").closest("button")!;
+
+// Cases 1..n, accession C26-0000<id>.
+const makeCases = (n: number, from = 1) =>
+  Array.from({ length: n }, (_, i) =>
+    makeCase({ id: from + i, accession_no: `C26-${String(from + i).padStart(5, "0")}` }));
 
 describe("MyOutlabApprovals", () => {
   beforeEach(() => {
@@ -75,6 +84,64 @@ describe("MyOutlabApprovals", () => {
     expect(await screen.findByText("Failed to approve result")).toBeInTheDocument();
     expect(dialog.className).not.toContain("-leave");
     expect(mockGetAll).toHaveBeenCalledTimes(1);
+  });
+
+  describe("Approve & Next", () => {
+    it("approves, then loads the following case into the same preview", async () => {
+      mockGetAll.mockResolvedValue({ items: makeCases(3), total: 3 });
+      render(<MyOutlabApprovals pathologistId={7} />);
+      const dialog = await openReview(0);
+
+      mockGetAll.mockResolvedValue({ items: makeCases(2, 2), total: 2 });
+      fireEvent.click(approveAndNextButton(dialog));
+
+      await waitFor(() => expect(within(dialog).getByText("C26-00002")).toBeInTheDocument());
+      expect(mockApprove).toHaveBeenCalledWith(1);
+      expect(mockDownload).toHaveBeenLastCalledWith(2);
+      expect(dialog.className).not.toContain("-leave");
+    });
+
+    it("pulls the next case up from the following page when approving the page's last row", async () => {
+      mockGetAll.mockResolvedValue({ items: makeCases(20), total: 21 });
+      render(<MyOutlabApprovals pathologistId={7} />);
+      const dialog = await openReview(19);
+      expect(within(dialog).getByText("C26-00020")).toBeInTheDocument();
+
+      // Case 20 approved: page 1 is now cases 1–19 plus case 21 slid up.
+      mockGetAll.mockResolvedValue({ items: [...makeCases(19), ...makeCases(1, 21)], total: 20 });
+      fireEvent.click(approveAndNextButton(dialog));
+
+      await waitFor(() => expect(within(dialog).getByText("C26-00021")).toBeInTheDocument());
+      expect(mockApprove).toHaveBeenCalledWith(20);
+      expect(mockDownload).toHaveBeenLastCalledWith(21);
+    });
+
+    it("is disabled on the last case awaiting sign-off", async () => {
+      mockGetAll.mockResolvedValue({ items: makeCases(2), total: 2 });
+      render(<MyOutlabApprovals pathologistId={7} />);
+
+      const first = await openReview(0);
+      expect(approveAndNextButton(first)).toBeEnabled();
+
+      fireEvent.click(within(first).getByText("Cancel").closest("button")!);
+      const last = await openReview(1);
+      expect(within(last).getByText("C26-00002")).toBeInTheDocument();
+      expect(approveAndNextButton(last)).toBeDisabled();
+    });
+
+    it("closes instead of leaving the approved case up when the next PDF won't load", async () => {
+      mockGetAll.mockResolvedValue({ items: makeCases(2), total: 2 });
+      render(<MyOutlabApprovals pathologistId={7} />);
+      const dialog = await openReview(0);
+
+      mockGetAll.mockResolvedValue({ items: makeCases(1, 2), total: 1 });
+      mockDownload.mockRejectedValueOnce(new Error("404"));
+      fireEvent.click(approveAndNextButton(dialog));
+
+      expect(await screen.findByText("Failed to load PDF")).toBeInTheDocument();
+      expect(mockApprove).toHaveBeenCalledWith(1);
+      await waitFor(() => expect(dialog.className).toContain("-leave"));
+    });
   });
 
   it("does not navigate to the case when the action button is clicked", async () => {

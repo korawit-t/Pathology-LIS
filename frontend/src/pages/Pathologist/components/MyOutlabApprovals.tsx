@@ -3,7 +3,7 @@ import {
   Table, Tag, Input, Space, Button, Typography, message,
 } from "antd";
 import {
-  SearchOutlined, ReloadOutlined, CheckCircleOutlined, FilePdfOutlined,
+  SearchOutlined, ReloadOutlined, CheckCircleOutlined, FilePdfOutlined, StepForwardOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -39,7 +39,8 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [approving, setApproving] = useState(false);
+  // Which footer button is in flight, so only that one spins.
+  const [approving, setApproving] = useState<"approve" | "next" | null>(null);
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null);
   // The case whose PDF is open for review — approving happens from inside
   // the preview, so the pathologist reads the result before signing it off.
@@ -53,8 +54,10 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
 
   useEffect(() => () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current); }, []);
 
-  const fetchCases = useCallback(async () => {
-    if (!pathologistId) return;
+  /** Returns the page's rows (null on failure) so "Approve & Next" can pick
+   *  its next case from the refreshed list. */
+  const fetchCases = useCallback(async (): Promise<GyneCytologyCase[] | null> => {
+    if (!pathologistId) return null;
     setLoading(true);
     try {
       const res = await GyneCytologyCaseService.getAll({
@@ -63,13 +66,16 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
         limit: PAGE_SIZE,
         search: search || undefined,
       });
-      setCases(res.items || []);
+      const items = res.items || [];
+      setCases(items);
       const t = res.total || 0;
       setTotal(t);
       // A searched total is not what the badge means — see MyConsultCases.tsx.
       if (!search) onCountChange?.(t);
+      return items;
     } catch {
       message.error("Failed to load outlab approval worklist");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -83,8 +89,9 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
     setPage(1);
   }, [search]);
 
-  const handleReview = async (c: GyneCytologyCase) => {
-    setViewLoadingId(c.id);
+  /** Puts the case's result PDF in the preview; false (already reported to
+   *  the user) if it couldn't be downloaded. */
+  const loadReview = async (c: GyneCytologyCase): Promise<boolean> => {
     try {
       const blob = await GyneCytologyCaseService.downloadOutlabTestResult(c.id);
       if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
@@ -92,28 +99,47 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
       pdfUrlRef.current = url;
       setPdfUrl(url);
       setReviewCase(c);
-      setPreviewOpen(true);
+      return true;
     } catch (err) {
       logger.error("Failed to load outlab test result PDF", err);
       message.error("Failed to load PDF");
-    } finally {
-      setViewLoadingId(null);
+      return false;
     }
   };
 
-  const handleApprove = async () => {
+  const handleReview = async (c: GyneCytologyCase) => {
+    setViewLoadingId(c.id);
+    if (await loadReview(c)) setPreviewOpen(true);
+    setViewLoadingId(null);
+  };
+
+  const reviewIndex = reviewCase ? cases.findIndex((c) => c.id === reviewCase.id) : -1;
+  // A next case exists if one follows on this page, or the next page has rows
+  // that will slide up once this one drops out of the list.
+  const hasNext = reviewIndex >= 0 && (reviewIndex < cases.length - 1 || page * PAGE_SIZE < total);
+
+  const handleApprove = async (andNext: boolean) => {
     if (!reviewCase) return;
-    setApproving(true);
+    setApproving(andNext ? "next" : "approve");
     try {
-      await GyneCytologyCaseService.approveOutlabTestResult(reviewCase.id);
+      try {
+        await GyneCytologyCaseService.approveOutlabTestResult(reviewCase.id);
+      } catch {
+        // Stay open so they can retry without re-finding the case.
+        message.error("Failed to approve result");
+        return;
+      }
       message.success("Result approved — now visible to the clinician");
-      setPreviewOpen(false);
-      fetchCases();
-    } catch {
-      // Stay open so they can retry without re-finding the case.
-      message.error("Failed to approve result");
+      const fresh = await fetchCases();
+      // The approved case is gone from the refreshed list, so whatever now
+      // sits at its old index is the one that followed it — including the
+      // first row of the next page when it was the last row on this one.
+      const next = andNext && reviewIndex >= 0 ? fresh?.[reviewIndex] : undefined;
+      // Close rather than leave the just-approved PDF up behind a live
+      // Approve button when there's no next case or its PDF won't load.
+      if (!next || !(await loadReview(next))) setPreviewOpen(false);
     } finally {
-      setApproving(false);
+      setApproving(null);
     }
   };
 
@@ -179,11 +205,28 @@ const MyOutlabApprovals: React.FC<Props> = ({ pathologistId, onSelectCase, onCou
         the result becomes visible to the clinician once approved.
       </Text>
       <Space>
-        <Button onClick={() => setPreviewOpen(false)} disabled={approving}>
+        <Button onClick={() => setPreviewOpen(false)} disabled={!!approving}>
           Cancel
         </Button>
-        <Button type="primary" icon={<CheckCircleOutlined />} loading={approving} onClick={handleApprove}>
+        <Button
+          icon={<CheckCircleOutlined />}
+          loading={approving === "approve"}
+          disabled={approving === "next"}
+          onClick={() => handleApprove(false)}
+        >
           Approve
+        </Button>
+        {/* Disabled rather than hidden on the last case, so the buttons don't
+            shift under a cursor that's been clicking this one. */}
+        <Button
+          type="primary"
+          icon={<StepForwardOutlined />}
+          loading={approving === "next"}
+          disabled={!hasNext || approving === "approve"}
+          title={hasNext ? undefined : "No more results after this one"}
+          onClick={() => handleApprove(true)}
+        >
+          Approve & Next
         </Button>
       </Space>
     </div>
