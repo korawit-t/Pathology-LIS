@@ -17,6 +17,18 @@
       @page {
         size: A4;
         margin: 15mm 14mm 18mm 14mm;
+        @top-right {
+          /* ลายเซ็นเต็มมีแค่หน้าสุดท้าย หน้าอื่นจึงให้ผู้ทิ้งกับผู้ตรวจสอบลงชื่อย่อกำกับ
+             กันการสลับหน้าจากชุดอื่นเข้ามา — เลขที่ใบกับเลขหน้าท้ายหน้าช่วยรู้ได้แค่ว่าหน้าหาย
+             วางมุมขวาบนเพราะท้ายหน้ามีเลขคุมเอกสารอยู่แล้ว ถ้ามาแชร์ที่กัน เลขคุมจะถูกบีบจนขึ้นบรรทัดใหม่ */
+          content: "ลงชื่อย่อ   ผู้ทิ้ง ....................   ผู้ตรวจสอบ ....................";
+          font-family: "Sarabun", sans-serif;
+          font-size: 8.5pt;
+          color: #333;
+          white-space: nowrap;
+          vertical-align: bottom;
+          padding-bottom: 2mm;
+        }
         @bottom-left {
           /* เลขคุมเอกสารตามระบบคุณภาพ ตามด้วยเลขที่ใบ เพื่อให้หน้าที่หลุดจากชุด
              ยังรู้ว่ามาจากใบไหน */
@@ -119,6 +131,23 @@
         color: #555;
       }
 
+      table {
+        margin-top: 10px;
+      }
+      tr.keep-next {
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+      td.closing-cell {
+        border: none;
+        padding: 0;
+      }
+      th.group-head {
+        text-align: left;
+        background-color: #eeeeee;
+        font-size: 10pt;
+      }
+
       .summary {
         margin-top: 14px;
         border: 1px solid #000;
@@ -193,43 +222,20 @@
       </div>
     </div>
 
-    <!-- ═══ รายการแยกตามกล่อง ═══ -->
-    {% for g in groups %}
-    <div class="group-head">กล่อง {{ g.container }} &nbsp;·&nbsp; {{ g.count }} รายการ</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 22px">✓</th>
-          <th style="width: 26px">ที่</th>
-          <th style="width: 78px">Accession No.</th>
-          <th style="width: 58px">HN</th>
-          <th>ชื่อ-สกุลผู้ป่วย</th>
-          <th style="width: 58px">วันที่จัดเก็บ</th>
-          <th style="width: 58px">วันรายงาน</th>
-          <th style="width: 34px">อายุ<br />(วัน)</th>
-          <th style="width: 66px">หมายเหตุ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in g.rows %}
-        <tr>
-          <td class="c tick">☐</td>
-          <td class="c">{{ loop.index }}</td>
-          <td class="c">{{ row.accession_no }}</td>
-          <td class="c">{{ row.hn }}</td>
-          <td>{{ row.patient_name }}</td>
-          <td class="c">{{ row.storage_date }}</td>
-          <td class="c">{{ row.report_date }}</td>
-          <td class="c">{{ row.age_days }}</td>
-          <td></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="group-head">ไม่มีรายการในใบนี้</div>
-    {% endfor %}
+    {#
+      ─── ลายเซ็นต้องไม่หลุดไปอยู่หน้าที่ไม่มีรายการเคส ───
+      หน้าที่มีแต่ลายเซ็น เอาไปเย็บกับรายการชุดไหนก็ได้ ลายเซ็นจึงไม่ได้ยืนยันเคสที่ทิ้งจริง
 
+      - สรุปผล + ลายเซ็น + ข้อความท้ายใบ อยู่ใน <tr> เดียว จึงไม่ถูกตัดแยกกัน
+      - เคส TAIL แถวสุดท้ายมี break-after: avoid ตัดหน้าได้แค่ "ก่อน" ก้อนนี้
+        ถ้าที่เหลือไม่พอ เคสท้าย + ลายเซ็นย้ายไปหน้าใหม่ด้วยกัน และหัวตารางตามไปเอง
+      - ไม่ใช้ break-inside: avoid บน <tbody> เพราะ WeasyPrint ไม่ทำตาม
+
+      ทดสอบทุกขนาดที่ tests/test_disposal_checklist_layout.py
+    #}
+    {% set TAIL = 3 %}
+
+    {% macro closing() %}
     <!-- ═══ สรุปผลการตรวจสอบหน้างาน ═══ -->
     <div class="summary">
       <div>
@@ -272,7 +278,77 @@
     <div class="notice">
       ตรวจสอบชิ้นเนื้อทีละรายการตามกล่อง ติ๊ก ✓ เมื่อพบและนำออกทำลายแล้ว
       รายการที่ไม่พบหรือยังไม่ทำลายให้ระบุเหตุผลในช่องหมายเหตุ
+      ผู้ทิ้งและผู้ตรวจสอบลงชื่อย่อกำกับท้ายทุกหน้า
       แล้วนำใบนี้กลับมาบันทึกยืนยันในระบบ
     </div>
+    {% endmacro %}
+
+    <!-- ═══ รายการ ═══ -->
+    {% for g in groups %}
+    {% if loop.last %}
+      {% set head_rows = g.rows[:-TAIL] %}
+      {% set tail_rows = g.rows[-TAIL:] %}
+    {% else %}
+      {% set head_rows = g.rows %}
+      {% set tail_rows = [] %}
+    {% endif %}
+    <table>
+      <thead>
+        <tr>
+          <!-- อยู่ใน thead จึงพิมพ์ซ้ำทุกหน้าที่กลุ่มนี้ต่อไป รวมถึงหน้าลายเซ็น -->
+          <th class="group-head" colspan="9">กล่อง {{ g.container }} &nbsp;·&nbsp; {{ g.count }} รายการ</th>
+        </tr>
+        <tr>
+          <th style="width: 22px">✓</th>
+          <th style="width: 26px">ที่</th>
+          <th style="width: 78px">Accession No.</th>
+          <th style="width: 58px">HN</th>
+          <th>ชื่อ-สกุลผู้ป่วย</th>
+          <th style="width: 58px">วันที่จัดเก็บ</th>
+          <th style="width: 58px">วันรายงาน</th>
+          <th style="width: 34px">อายุ<br />(วัน)</th>
+          <th style="width: 66px">หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in head_rows %}
+        <tr>
+          <td class="c tick">☐</td>
+          <td class="c">{{ loop.index }}</td>
+          <td class="c">{{ row.accession_no }}</td>
+          <td class="c">{{ row.hn }}</td>
+          <td>{{ row.patient_name }}</td>
+          <td class="c">{{ row.storage_date }}</td>
+          <td class="c">{{ row.report_date }}</td>
+          <td class="c">{{ row.age_days }}</td>
+          <td></td>
+        </tr>
+        {% endfor %}
+        {% if loop.last %}
+        {% for row in tail_rows %}
+        <tr class="keep-next">
+          <td class="c tick">☐</td>
+          <td class="c">{{ head_rows|length + loop.index }}</td>
+          <td class="c">{{ row.accession_no }}</td>
+          <td class="c">{{ row.hn }}</td>
+          <td>{{ row.patient_name }}</td>
+          <td class="c">{{ row.storage_date }}</td>
+          <td class="c">{{ row.report_date }}</td>
+          <td class="c">{{ row.age_days }}</td>
+          <td></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td class="closing-cell" colspan="9">
+{{ closing() }}
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="group-head">ไม่มีรายการในใบนี้</div>
+{{ closing() }}
+    {% endfor %}
   </body>
 </html>
