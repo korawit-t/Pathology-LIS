@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import type { Editor } from "@tiptap/core";
 import { Fragment, Slice } from "prosemirror-model";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -95,31 +96,31 @@ const BLANK_TEXT = /^[\s\u200b]*$/;
 // 0, while an untouched edge (no blank paragraph, e.g. copying just a run of
 // inline text) keeps whatever openStart/openEnd ProseMirror computed, so
 // verbatim inline pastes still merge into the destination text correctly.
+function isEmptyParagraph(node: ProseMirrorNode): boolean {
+  if (node.type.name !== "paragraph") return false;
+  if (node.content.size === 0) return true;
+  // A blank line copied out of any non-ProseMirror HTML source (Word, a web
+  // page, a rendered report) arrives as <p>&nbsp;</p> rather than an empty
+  // <p></p>, so a size check alone lets those through and the paste lands
+  // with the source's leading/trailing blank lines intact. Treat a paragraph
+  // holding nothing but blank text and/or line breaks as empty too. Anything
+  // else (an image, an inline node) counts as real content and stops the trim.
+  let blank = true;
+  node.forEach((child) => {
+    if (child.isText) {
+      if (!BLANK_TEXT.test(child.text ?? "")) blank = false;
+    } else if (child.type.name !== "hardBreak") {
+      blank = false;
+    }
+  });
+  return blank;
+}
+
 function trimEdgeEmptySliceParagraphs(slice: Slice): Slice {
   const nodes = slice.content.content.slice();
   let openStart = slice.openStart;
   let openEnd = slice.openEnd;
   let changed = false;
-
-  const isEmptyParagraph = (node: (typeof nodes)[number]) => {
-    if (node.type.name !== "paragraph") return false;
-    if (node.content.size === 0) return true;
-    // A blank line copied out of any non-ProseMirror HTML source (Word, a web
-    // page, a rendered report) arrives as <p>&nbsp;</p> rather than an empty
-    // <p></p>, so a size check alone lets those through and the paste lands
-    // with the source's leading/trailing blank lines intact. Treat a paragraph
-    // holding nothing but blank text and/or line breaks as empty too. Anything
-    // else (an image, an inline node) counts as real content and stops the trim.
-    let blank = true;
-    node.forEach((child) => {
-      if (child.isText) {
-        if (!BLANK_TEXT.test(child.text ?? "")) blank = false;
-      } else if (child.type.name !== "hardBreak") {
-        blank = false;
-      }
-    });
-    return blank;
-  };
 
   while (nodes.length > 1 && isEmptyParagraph(nodes[0])) {
     nodes.shift();
@@ -133,6 +134,38 @@ function trimEdgeEmptySliceParagraphs(slice: Slice): Slice {
   }
 
   return changed ? new Slice(Fragment.fromArray(nodes), openStart, openEnd) : slice;
+}
+
+// Blur-time cleanup of the live document. This used to be
+// setContent(trimEdgeEmptyParagraphs(html)), but setContent replaces the whole
+// document, which throws the caret to the end. Clicking a toolbar button blurs
+// the editor first, so with a blank line at either edge, "click line 1 → Bullet
+// List" bulleted the *last* line: the blur moved the caret, and the button's
+// focus() put it back at the end. Deleting only the edge paragraphs keeps
+// everything else in place, so the selection maps through untouched.
+function trimEdgeEmptyDocParagraphs(editor: Editor): void {
+  const { doc } = editor.state;
+  let first = 0;
+  let last = doc.childCount - 1;
+  // Always leave one node: the schema needs a block, and an all-blank
+  // document collapses to a single empty paragraph.
+  while (first < last && isEmptyParagraph(doc.child(first))) first++;
+  while (last > first && isEmptyParagraph(doc.child(last))) last--;
+  if (first === 0 && last === doc.childCount - 1) return;
+
+  let leadingEnd = 0;
+  for (let i = 0; i < first; i++) leadingEnd += doc.child(i).nodeSize;
+  let trailingStart = doc.content.size;
+  for (let i = doc.childCount - 1; i > last; i--) trailingStart -= doc.child(i).nodeSize;
+
+  const tr = editor.state.tr;
+  // Trailing first, so the leading range's positions are still valid.
+  if (trailingStart < doc.content.size) tr.delete(trailingStart, doc.content.size);
+  if (leadingEnd > 0) tr.delete(0, leadingEnd);
+  // Housekeeping, not an edit: keep it out of undo, and onBlur emits onChange
+  // itself.
+  tr.setMeta("addToHistory", false).setMeta("preventUpdate", true);
+  editor.view.dispatch(tr);
 }
 
 /* =======================
@@ -270,9 +303,12 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
       },
       onBlur: ({ editor }: { editor: Editor }) => {
         const html = editor.getHTML();
-        const trimmed = trimEdgeEmptyParagraphs(html);
+        trimEdgeEmptyDocParagraphs(editor);
+        // Still run the string trim on what we emit: a fully blank editor
+        // keeps one empty paragraph ("<p></p>"), but the form has always
+        // received "" for it.
+        const trimmed = trimEdgeEmptyParagraphs(editor.getHTML());
         if (trimmed !== html) {
-          editor.commands.setContent(trimmed, { emitUpdate: false });
           lastEmittedHtml.current = trimmed;
           onChange?.(trimmed);
         }
@@ -321,6 +357,11 @@ const SimpleTiptapEditor = forwardRef<TiptapEditorRef, SimpleTiptapEditorProps>(
       >
         {!disabled && (
           <div
+            // Keep focus (and the caret) in the editor when a toolbar button
+            // is pressed. Without this the button takes focus on mousedown,
+            // blurring the editor mid-edit and running the blur-time trim:
+            // press Enter at the end, then Bold, and the new line is gone.
+            onMouseDown={(e) => e.preventDefault()}
             style={{
               padding: "8px 12px",
               borderBottom: `1px solid ${themeColors.border}`,
