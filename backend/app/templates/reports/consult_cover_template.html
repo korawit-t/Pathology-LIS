@@ -80,16 +80,57 @@
         color: #002766;
         line-height: 1.4;
       }
-      .report-container {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-      }
-      thead {
-        display: table-header-group;
+      .consult-page {
+        /* One sheet per consult page. 268mm is the @page content height
+           (297 - 8 - 20mm) less 1mm, so rounding can never spill the box onto
+           a blank extra sheet. Change it together with the @page margins. */
+        height: 268mm;
+        display: flex;
+        flex-direction: column;
       }
       .consult-page-break {
-        page-break-before: always;
+        break-before: page;
+      }
+      .consult-page-header,
+      .consult-title,
+      .consult-signed {
+        flex: none;
+      }
+      .consult-title {
+        text-align: center;
+        margin-bottom: 12px;
+        font-weight: 800;
+        font-size: 13px;
+        color: #1a202c;
+        letter-spacing: 1px;
+      }
+      .consult-image {
+        /* Takes whatever height the header and title leave. */
+        flex: 1 1 0;
+        min-height: 0;
+        position: relative;
+      }
+      .consult-image-fit {
+        /* Absolutely positioned so its height is definite, which is what lets
+           the image's max-height: 100% resolve against the space left. */
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+      .consult-image-fit img {
+        max-width: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+        border: 1px solid #e8e8e8;
+      }
+      .consult-signed {
+        font-size: 11px;
+        color: #475569;
+        margin-top: 10px;
+        text-align: center;
       }
 
       .footer-barcode {
@@ -136,204 +177,188 @@
     </div>
     {% endif %}
 
-    <table class="report-container">
-      <thead>
+    {#- The header is written out on every page instead of repeating a
+        <thead>. WeasyPrint only repeats a table header on a page where the
+        header plus some of the body still fits, and a consult page's image
+        can't be split: once the header grew tall enough (a long hospital
+        name, a multi-line address) the image no longer fitted under it, so
+        WeasyPrint dropped the header from every image page and left page 1
+        holding only the title. Each page below is instead a fixed-height box
+        whose image shrinks into whatever the header leaves, so no header
+        height can push the image off its page. -#}
+    {% macro page_header() %}
+      <table class="header-table">
         <tr>
-          <td>
-            <table class="header-table">
-              <tr>
-                <td style="width: 50px; vertical-align: middle">
-                  {% if report_logo_url_snapshot %}
-                  <img
-                    src="{{ report_logo_url_snapshot | safe }}"
-                    style="max-height: 48px; max-width: 120px; display: block"
-                  />
-                  {% else %}
-                  <div
-                    style="
-                      width: 42px;
-                      height: 42px;
-                      background: var(--primary);
-                      color: white;
-                      border-radius: 4px;
-                      line-height: 42px;
-                      text-align: center;
-                      font-weight: bold;
-                    "
-                  >
-                    LAB
-                  </div>
-                  {% endif %}
-                </td>
-                <td style="padding-left: 15px; vertical-align: middle">
-                  <div
-                    style="
-                      font-size: 20px;
-                      font-weight: 800;
-                      color: var(--primary);
-                      line-height: 1;
-                    "
-                  >
-                    {{ lab_name_en_snapshot | safe }}
-                  </div>
-                </td>
-                <td
-                  style="
-                    text-align: right;
-                    vertical-align: middle;
-                    font-size: 9px;
-                    color: #1a202c;
-                    line-height: 1.2;
-                  "
-                >
-                  {{ lab_address_snapshot | safe }}
-                </td>
-              </tr>
-            </table>
-
-            <div style="height: 10px"></div>
-
-            <table class="info-bar">
-              <tr>
-                <td style="width: 35%">
-                  <div class="label">Patient Name</div>
-                  <div class="patient-name">
-                    {{ patient_title or '' }}{{ patient_name or '' }}{% if
-                    patient_ln %} {{ patient_ln }}{% endif %}
-                  </div>
-                  <div style="font-size: 11px; margin-top: 2px">
-                    HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age:
-                    {{ patient_age_display }}
-                  </div>
-                </td>
-                <td style="width: 40%">
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Accession:</span
-                    ><span class="value" style="color: var(--primary)"
-                      >{{ accession_no }}</span
-                    >
-                  </div>
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Physician:</span
-                    ><span class="value" style="font-size: 10px"
-                      >{{ clinician_name or '-' }}</span
-                    >
-                  </div>
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Hospital:</span
-                    ><span class="value" style="font-size: 10px"
-                      >{{ hospital_name or '-' }}</span
-                    >
-                  </div>
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Dept:</span
-                    ><span class="value" style="font-size: 10px"
-                      >{{ department_name or '-' }}</span
-                    >
-                  </div>
-                </td>
-                <td style="width: 25%">
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Collected:</span
-                    ><span class="value"
-                      >{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at
-                      else '-' }}</span
-                    >
-                  </div>
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Received:</span
-                    ><span class="value"
-                      >{{ registered_at.strftime('%d/%m/%Y %H:%M') if
-                      registered_at else '-' }}</span
-                    >
-                  </div>
-                  <div>
-                    <span
-                      class="label"
-                      style="width: 55px; display: inline-block"
-                      >Reported:</span
-                    ><span class="value"
-                      >{{ reported_at.strftime('%d/%m/%Y %H:%M') if
-                      reported_at else '-' }}</span
-                    >
-                  </div>
-                </td>
-              </tr>
-            </table>
-
-            <div style="height: 10px"></div>
-          </td>
-        </tr>
-      </thead>
-
-      <tbody>
-        <tr>
-          <td>
+          <td style="width: 50px; vertical-align: middle">
+            {% if report_logo_url_snapshot %}
+            <img
+              src="{{ report_logo_url_snapshot | safe }}"
+              style="max-height: 48px; max-width: 120px; display: block"
+            />
+            {% else %}
             <div
               style="
+                width: 42px;
+                height: 42px;
+                background: var(--primary);
+                color: white;
+                border-radius: 4px;
+                line-height: 42px;
                 text-align: center;
-                margin-bottom: 12px;
-                font-weight: 800;
-                font-size: 13px;
-                color: #1a202c;
-                letter-spacing: 1px;
+                font-weight: bold;
               "
             >
-              EXTERNAL CONSULT REPORT
-              {% if consult_pdf_thumbnails|length > 1 %}
-              ({{ consult_pdf_thumbnails|length }} pages)
-              {% endif %}
+              LAB
             </div>
-
-            {% for thumb in consult_pdf_thumbnails %}
+            {% endif %}
+          </td>
+          <td style="padding-left: 15px; vertical-align: middle">
             <div
-              class="{% if not loop.first %}consult-page-break{% endif %}"
-              style="text-align: center"
+              style="
+                font-size: 20px;
+                font-weight: 800;
+                color: var(--primary);
+                line-height: 1;
+              "
             >
-              <img
-                src="{{ thumb | safe }}"
-                style="max-width: 100%; max-height: 800px; width: auto; height: auto; display: inline-block; border: 1px solid #e8e8e8"
-              />
-              {% if consult_pdf_approved_by_snapshot %}
-              <div
-                style="
-                  font-size: 11px;
-                  color: #475569;
-                  margin-top: 10px;
-                  text-align: center;
-                "
-              >
-                <i
-                  >Digitally Signed by: {{ consult_pdf_approved_by_snapshot }}
-                  {% if consult_pdf_approved_at_snapshot %} on {{
-                  consult_pdf_approved_at_snapshot.strftime('%d/%m/%Y %H:%M')
-                  }}{% endif %}</i
-                >
-              </div>
-              {% endif %}
+              {{ lab_name_en_snapshot | safe }}
             </div>
-            {% endfor %}
+          </td>
+          <td
+            style="
+              text-align: right;
+              vertical-align: middle;
+              font-size: 9px;
+              color: #1a202c;
+              line-height: 1.2;
+            "
+          >
+            {{ lab_address_snapshot | safe }}
           </td>
         </tr>
-      </tbody>
-    </table>
+      </table>
+
+      <div style="height: 10px"></div>
+
+      <table class="info-bar">
+        <tr>
+          <td style="width: 35%">
+            <div class="label">Patient Name</div>
+            <div class="patient-name">
+              {{ patient_title or '' }}{{ patient_name or '' }}{% if
+              patient_ln %} {{ patient_ln }}{% endif %}
+            </div>
+            <div style="font-size: 11px; margin-top: 2px">
+              HN: <b>{{ patient_hn }}</b> | {{ patient_gender }} | Age:
+              {{ patient_age_display }}
+            </div>
+          </td>
+          <td style="width: 40%">
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Accession:</span
+              ><span class="value" style="color: var(--primary)"
+                >{{ accession_no }}</span
+              >
+            </div>
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Physician:</span
+              ><span class="value" style="font-size: 10px"
+                >{{ clinician_name or '-' }}</span
+              >
+            </div>
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Hospital:</span
+              ><span class="value" style="font-size: 10px"
+                >{{ hospital_name or '-' }}</span
+              >
+            </div>
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Dept:</span
+              ><span class="value" style="font-size: 10px"
+                >{{ department_name or '-' }}</span
+              >
+            </div>
+          </td>
+          <td style="width: 25%">
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Collected:</span
+              ><span class="value"
+                >{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at
+                else '-' }}</span
+              >
+            </div>
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Received:</span
+              ><span class="value"
+                >{{ registered_at.strftime('%d/%m/%Y %H:%M') if
+                registered_at else '-' }}</span
+              >
+            </div>
+            <div>
+              <span
+                class="label"
+                style="width: 55px; display: inline-block"
+                >Reported:</span
+              ><span class="value"
+                >{{ reported_at.strftime('%d/%m/%Y %H:%M') if
+                reported_at else '-' }}</span
+              >
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <div style="height: 10px"></div>
+    {% endmacro %}
+
+    {% for thumb in consult_pdf_thumbnails %}
+    <div class="consult-page{% if not loop.first %} consult-page-break{% endif %}">
+      <div class="consult-page-header">{{ page_header() }}</div>
+
+      {% if loop.first %}
+      <div class="consult-title">
+        EXTERNAL CONSULT REPORT
+        {% if consult_pdf_thumbnails|length > 1 %}
+        ({{ consult_pdf_thumbnails|length }} pages)
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="consult-image">
+        <div class="consult-image-fit">
+          <img src="{{ thumb | safe }}" />
+        </div>
+      </div>
+
+      {% if consult_pdf_approved_by_snapshot %}
+      <div class="consult-signed">
+        <i
+          >Digitally Signed by: {{ consult_pdf_approved_by_snapshot }}
+          {% if consult_pdf_approved_at_snapshot %} on {{
+          consult_pdf_approved_at_snapshot.strftime('%d/%m/%Y %H:%M')
+          }}{% endif %}</i
+        >
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </body>
 </html>
