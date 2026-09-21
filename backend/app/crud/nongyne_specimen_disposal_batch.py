@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.crud.nongyne_cyto_case import slides_only_specimen_types
 from app.crud.slide_block_release import _full_patient_name
 
 # กติกาว่าใครลงนามได้เหมือนกันเป๊ะกับใบของ surgical (กัน clinician/hospital)
@@ -112,6 +113,14 @@ def create_batch(
         raise HTTPException(
             status_code=400,
             detail=f"สิ่งส่งตรวจถูกทำลายไปแล้ว: {', '.join(already_discarded)}",
+        )
+
+    slides_only = set(db.scalars(slides_only_specimen_types()).all())
+    no_specimen = [c.accession_no for c in cases if c.specimen_type in slides_only]
+    if no_specimen:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เคสเป็นสไลด์อย่างเดียว ไม่มีสิ่งส่งตรวจให้ทำลาย: {', '.join(no_specimen)}",
         )
 
     not_reported = [

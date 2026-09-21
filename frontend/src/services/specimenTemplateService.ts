@@ -9,6 +9,7 @@ export interface SpecimenTemplate {
   default_slide_count: number;
   requires_slide_count: boolean;
   requires_volume: boolean;
+  slides_only: boolean;
   sort_order: number;
 }
 
@@ -18,6 +19,7 @@ export interface SpecimenTemplatePayload {
   default_slide_count?: number;
   requires_slide_count?: boolean;
   requires_volume?: boolean;
+  slides_only?: boolean;
 }
 
 const SpecimenTemplateService = {

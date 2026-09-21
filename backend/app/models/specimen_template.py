@@ -18,6 +18,13 @@ class SpecimenTemplate(Base):
     # Same idea as requires_slide_count, but for Received Volume (ml) —
     # nongyne_cyto only, currently.
     requires_volume = Column(Boolean, default=False, nullable=False, server_default="false")
+    # The specimen arrives as slides and nothing else (e.g. FNA smeared at the
+    # bedside), so no leftover specimen sits in the fridge: these cases are
+    # left out of Specimen Storage and Specimen Disposal altogether. Separate
+    # from requires_slide_count on purpose — that one only nags for a slide
+    # count at registration, and a fluid type may well want the nag too.
+    # nongyne_cyto only, currently.
+    slides_only = Column(Boolean, default=False, nullable=False, server_default="false")
     # Display order within a category (admin drag-and-drop in Cytology
     # Specimen Type Manager) — lower sorts first.
     sort_order = Column(Integer, default=0, nullable=False, server_default="0")

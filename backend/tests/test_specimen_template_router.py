@@ -17,6 +17,15 @@ class TestCreate:
         body = r.json()
         assert body["category"] == "surgical"
         assert body["default_slide_count"] == 1
+        assert body["slides_only"] is False
+
+    def test_saves_slides_only(self, clinician_client):
+        r = clinician_client.post(
+            "/specimen-templates",
+            json={"name": _name(), "category": "nongyne_cyto", "slides_only": True},
+        )
+        assert r.status_code == 200
+        assert r.json()["slides_only"] is True
 
     def test_rejects_duplicate_name_within_the_same_category(self, clinician_client):
         name = _name()
@@ -61,6 +70,22 @@ class TestUpdate:
         r = clinician_client.patch(f"/specimen-templates/{target['id']}", json={"name": existing_name})
 
         assert r.status_code == 400
+
+    def test_toggles_slides_only_and_leaves_it_alone_when_omitted(self, clinician_client):
+        name = _name()
+        item = clinician_client.post(
+            "/specimen-templates", json={"name": name, "category": "nongyne_cyto"}
+        ).json()
+
+        r = clinician_client.patch(
+            f"/specimen-templates/{item['id']}", json={"name": name, "slides_only": True}
+        )
+        assert r.json()["slides_only"] is True
+
+        # The edit form always sends every field, but a partial PATCH must not
+        # silently clear the flag and put the cases back into storage.
+        r = clinician_client.patch(f"/specimen-templates/{item['id']}", json={"name": name})
+        assert r.json()["slides_only"] is True
 
     def test_missing_id_returns_404(self, clinician_client):
         assert clinician_client.patch("/specimen-templates/999999", json={"name": _name()}).status_code == 404

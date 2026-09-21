@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Date, case as sql_case, func, or_, cast, and_, literal
+from sqlalchemy import Date, case as sql_case, func, or_, cast, and_, literal, select
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
@@ -9,6 +9,7 @@ from app.models.nongyne_diagnosis import NongyneDiagnosis
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.patient import Patient
 from app.models.nongyne_cyto_report import NongyneCytoReport
+from app.models.specimen_template import SpecimenTemplate
 from app.schemas.nongyne_cyto_case import NongyneCytologyCaseCreate, NongyneCytologyCaseUpdate
 from app.crud import cyto_path_correlation as cyto_path_qc
 
@@ -586,10 +587,38 @@ def _days_since_report_expr():
     return cast(literal(local_now()), Date) - cast(NongyneCytologyCase.report_at, Date)
 
 
+def slides_only_specimen_types():
+    """ชื่อ specimen type ที่ติ๊ก slides_only ไว้ใน master data"""
+    return select(SpecimenTemplate.name).where(
+        SpecimenTemplate.category == "nongyne_cyto",
+        SpecimenTemplate.slides_only.is_(True),
+    )
+
+
+def _has_leftover_specimen():
+    """เคสที่มีสิ่งส่งตรวจเหลืออยู่ในตู้เย็นจริง
+
+    เคสสไลด์อย่างเดียว (เช่น FNA ที่ป้ายสไลด์มาจากข้างเตียง) ไม่มีของให้จัดเก็บ
+    และไม่มีของให้ทำลาย จึงตัดออกจากทุกหน้าของทั้งสองขั้น — ถ้าตัดแค่ฝั่งจัดเก็บ
+    เคสจะไปค้างถัง "ติดเงื่อนไข" ของหน้าทำลายตลอดไป เพราะการทำลายบังคับว่าต้อง
+    จัดเก็บก่อน
+
+    เคสเก็บ specimen_type เป็นชื่อ ไม่ใช่ FK จึงเทียบด้วยชื่อ ถ้า template ถูก
+    เปลี่ยนชื่อหรือลบ เคสจะกลับมาโผล่ในหน้าจัดเก็บ ซึ่งปลอดภัยกว่าหายไปเงียบๆ
+    ส่วน specimen_type ที่เป็น NULL ต้องเช็คแยก เพราะ NULL NOT IN (...) ได้ NULL
+    ไม่ใช่ true เคสนั้นจะหลุดหายไปด้วย
+    """
+    return or_(
+        NongyneCytologyCase.specimen_type.is_(None),
+        NongyneCytologyCase.specimen_type.not_in(slides_only_specimen_types()),
+    )
+
+
 def _disposal_base_query(db: Session, search: str = None):
     query = db.query(NongyneCytologyCase).filter(
         NongyneCytologyCase.is_cancelled.is_(False),
         NongyneCytologyCase.discard_status.is_(False),
+        _has_leftover_specimen(),
     )
     if search:
         s = f"%{search}%"
@@ -754,6 +783,7 @@ def get_unstored_nongyne_cases(db: Session, search: str = None):
 
     mirror get_unstored_cases ฝั่ง surgical — ตัดเคสที่ยกเลิก และเคสที่ส่งออกไป
     แลปนอก เพราะของไม่ได้อยู่ในตู้เย็นของเรา จึงไม่มีอะไรให้ระบุที่เก็บ
+    เคสสไลด์อย่างเดียวก็ตัดด้วยเหตุผลเดียวกัน (ดู _has_leftover_specimen)
     """
     query = (
         db.query(NongyneCytologyCase)
@@ -764,6 +794,7 @@ def get_unstored_nongyne_cases(db: Session, search: str = None):
             NongyneCytologyCase.discard_status.is_(False),
             NongyneCytologyCase.is_out_lab.is_(False),
             NongyneCytologyCase.is_out_lab_consult.is_(False),
+            _has_leftover_specimen(),
         )
     )
     if search:
@@ -784,11 +815,16 @@ def get_unstored_nongyne_cases(db: Session, search: str = None):
 def get_stored_nongyne_cases(
     db: Session, skip: int = 0, limit: int = 20, search: str = None
 ) -> dict:
-    """เคสที่ระบุที่เก็บแล้วและยังไม่ถูกทำลาย — คือของที่ยังอยู่ในตู้เย็นจริง"""
+    """เคสที่ระบุที่เก็บแล้วและยังไม่ถูกทำลาย — คือของที่ยังอยู่ในตู้เย็นจริง
+
+    เคสสไลด์อย่างเดียวที่มีสถานะ Stored ค้างอยู่ (migration ของขั้นจัดเก็บ backfill
+    ให้ทุกเคสที่ออกผลแล้ว) ก็ตัดออก เพราะในตู้เย็นไม่มีของของเคสนั้น
+    """
     query = db.query(NongyneCytologyCase).filter(
         NongyneCytologyCase.is_cancelled.is_(False),
         NongyneCytologyCase.specimen_storage_status.is_not(None),
         NongyneCytologyCase.discard_status.is_(False),
+        _has_leftover_specimen(),
     )
     if search:
         s = f"%{search}%"
