@@ -18,6 +18,7 @@ import {
   Modal,
   Input,
   Button,
+  Badge,
   message,
 } from "antd";
 import {
@@ -65,25 +66,39 @@ interface SpecimenIntegratedWorkblockProps {
   wsiSlides?: WsiFile[];
 }
 
-const SpecimenGrossImagesTab: React.FC<{ specimenId: number }> = ({ specimenId }) => {
+// Fetched by the workblock rather than the tab itself: antd Tabs doesn't mount
+// an inactive pane until it's first opened, and the tab label's count badge has
+// to be right before that.
+const useSpecimenGrossImages = (specimenId: number) => {
   const [images, setImages] = useState<GrossImage[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (!specimenId) return;
+    let cancelled = false;
     const fetchImages = async () => {
       setLoading(true);
       try {
         const data = await GrossImageService.getImagesBySpecimenId(specimenId);
-        setImages(data || []);
+        if (!cancelled) setImages(data || []);
       } catch (err) {
         logger.error(err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    if (specimenId) fetchImages();
+    fetchImages();
+    return () => { cancelled = true; };
   }, [specimenId]);
 
+  return { images, setImages, loading };
+};
+
+const SpecimenGrossImagesTab: React.FC<{
+  images: GrossImage[];
+  loading: boolean;
+  setImages: React.Dispatch<React.SetStateAction<GrossImage[]>>;
+}> = ({ images, loading, setImages }) => {
   if (loading) return <div style={{ textAlign: "center", padding: 20 }}><Spin /></div>;
   if (!images.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No gross images" style={{ margin: "20px 0" }} />;
 
@@ -103,6 +118,8 @@ const SpecimenGrossImagesTab: React.FC<{ specimenId: number }> = ({ specimenId }
               height={80}
               style={{ objectFit: "cover", borderRadius: "4px", border: "1px solid #f0f0f0" }}
               src={`${API_BASE_URL}${img.image_url}`}
+              alt={img.description || img.original_filename || "Gross image"}
+              preview
             />
             <div style={{ textAlign: "center" }}>
               <Switch
@@ -157,6 +174,11 @@ const SpecimenIntegratedWorkblock: React.FC<
   const [addlSectionsNote, setAddlSectionsNote] = useState("");
   const [addlSectionsLoading, setAddlSectionsLoading] = useState(false);
   const [specimenLocal, setSpecimenLocal] = useState(specimen);
+  const {
+    images: grossImages,
+    setImages: setGrossImages,
+    loading: grossImagesLoading,
+  } = useSpecimenGrossImages(specimen.id);
 
   useEffect(() => { setSpecimenLocal(specimen); }, [specimen]);
 
@@ -401,10 +423,15 @@ const SpecimenIntegratedWorkblock: React.FC<
                                 <Text strong style={{ color: "#262626", textTransform: "uppercase" }}>
                                   GROSS IMAGES
                                 </Text>
+                                <Badge count={grossImages.length} size="small" color="blue" />
                               </Space>
                             ),
                             children: (
-                              <SpecimenGrossImagesTab specimenId={specimen.id} />
+                              <SpecimenGrossImagesTab
+                                images={grossImages}
+                                loading={grossImagesLoading}
+                                setImages={setGrossImages}
+                              />
                             ),
                           },
                         ]}
