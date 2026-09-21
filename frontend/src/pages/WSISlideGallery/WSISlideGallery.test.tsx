@@ -130,7 +130,15 @@ describe("WSISlideGallery", () => {
     renderGallery();
     await screen.findByText("S26-00001_A1.svs");
 
-    fireEvent.click(screen.getByText("Refresh").closest("button") as Element);
+    // antd's Button ignores clicks while its own loading state is set, and
+    // under NODE_ENV=test that state follows the `loading` prop one passive
+    // effect late (@rc-component/util's useLayoutEffect falls back to
+    // useEffect). The list can already be on screen with the button still
+    // "loading", so a click straight after findByText was intermittently
+    // swallowed in CI.
+    const refresh = screen.getByText("Refresh").closest("button") as HTMLElement;
+    await waitFor(() => expect(refresh).not.toHaveClass("ant-btn-loading"));
+    fireEvent.click(refresh);
     await waitFor(() =>
       expect(mocked(WsiSettingService.listWsiFiles).mock.calls.length).toBe(2),
     );

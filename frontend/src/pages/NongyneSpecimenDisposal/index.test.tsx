@@ -84,10 +84,10 @@ const renderPage = () =>
     </AntdApp>,
   );
 
-/** Storage is now the landing tab — the disposal queue sits behind "รอทำลาย". */
+/** Storage is now the landing tab — the disposal queue sits behind "ครบกำหนด". */
 const openDisposalQueue = async () => {
   renderPage();
-  fireEvent.click(await screen.findByRole("tab", { name: /รอทำลาย/ }));
+  fireEvent.click(await screen.findByRole("tab", { name: /ครบกำหนด/ }));
   await waitFor(() => expect(svc.getCandidates).toHaveBeenCalled());
 };
 
