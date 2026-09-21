@@ -1,0 +1,8 @@
+# Intentionally empty. Backend dependencies live in backend/requirements.txt.
+#
+# A stray pip-freeze dump used to sit here (removed in 28aeac9). GitHub's
+# dependency graph never dropped it after the deletion, so every new advisory
+# against that old freeze kept raising Dependabot alerts for packages this
+# project doesn't use (~100 so far). Keeping an empty file here lets the graph
+# re-read it as having no dependencies. Don't delete it, or the stale copy may
+# come back.
