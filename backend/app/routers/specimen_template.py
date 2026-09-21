@@ -22,6 +22,7 @@ class SpecimenTemplateSchema(BaseModel):
     default_slide_count: int
     requires_slide_count: bool
     requires_volume: bool
+    slides_only: bool
     sort_order: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -39,6 +40,7 @@ class SpecimenTemplateCreate(BaseModel):
     default_slide_count: int = Field(default=1, ge=1)
     requires_slide_count: bool = False
     requires_volume: bool = False
+    slides_only: bool = False
 
 
 class SpecimenTemplateUpdate(BaseModel):
@@ -47,6 +49,7 @@ class SpecimenTemplateUpdate(BaseModel):
     default_slide_count: Optional[int] = Field(default=None, ge=1)
     requires_slide_count: Optional[bool] = None
     requires_volume: Optional[bool] = None
+    slides_only: Optional[bool] = None
 
 
 # --- Routes ---
@@ -87,6 +90,7 @@ def add_template(payload: SpecimenTemplateCreate, db: Session = Depends(get_db))
         default_slide_count=payload.default_slide_count,
         requires_slide_count=payload.requires_slide_count,
         requires_volume=payload.requires_volume,
+        slides_only=payload.slides_only,
         sort_order=next_order,
     )
     db.add(new_item)
@@ -150,6 +154,8 @@ def update_template(
         item.requires_slide_count = payload.requires_slide_count
     if payload.requires_volume is not None:
         item.requires_volume = payload.requires_volume
+    if payload.slides_only is not None:
+        item.slides_only = payload.slides_only
     db.commit()
     db.refresh(item)
     return item

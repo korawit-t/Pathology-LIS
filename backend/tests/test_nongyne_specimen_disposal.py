@@ -16,6 +16,7 @@ from passlib.context import CryptContext
 
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.specimen_disposal_batch import SpecimenDisposalBatch
+from app.models.specimen_template import SpecimenTemplate
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.utils.time import local_now
@@ -152,6 +153,17 @@ def _case(
     return case
 
 
+def _slides_only_type(db) -> str:
+    """A uniquely named slides-only type — rows persist across tests in the
+    same run, so a shared name would leak into other tests' cases."""
+    template = SpecimenTemplate(
+        name=f"Slides {uuid.uuid4().hex[:8]}", category="nongyne_cyto", slides_only=True
+    )
+    db.add(template)
+    db.commit()
+    return template.name
+
+
 def _payload(cases, signers) -> dict:
     disposer, verifier, approver = signers
     return {
@@ -246,6 +258,15 @@ class TestEligibilityGate:
         r = cyto_client.post(BATCHES, json=_payload([case], signers))
         assert r.status_code == 400
         assert "ยังไม่ได้จัดเก็บ" in r.json()["detail"]
+        assert case.accession_no in r.json()["detail"]
+
+    def test_slides_only_case_rejected(self, cyto_client, cyto_user, db, signers):
+        """Even one carrying a "Stored" status from the storage backfill —
+        there is no jar to throw away, so a sheet listing it would be false."""
+        case = _case(db, cyto_user[0].id, specimen_type=_slides_only_type(db))
+        r = cyto_client.post(BATCHES, json=_payload([case], signers))
+        assert r.status_code == 400
+        assert "สไลด์อย่างเดียว" in r.json()["detail"]
         assert case.accession_no in r.json()["detail"]
 
     def test_one_bad_case_blocks_the_whole_sheet(self, cyto_client, cyto_user, db, signers):
@@ -434,6 +455,21 @@ class TestCandidateBuckets:
         cyto_client.post(BATCHES, json=_payload([case], signers))
         after = cyto_client.get(f"{CANDIDATES}?bucket=due&limit=200")
         assert case.accession_no not in self._accessions(after)
+
+    def test_slides_only_case_appears_in_no_bucket(self, cyto_client, cyto_user, db):
+        """Left out of storage, so it must be left out here too — otherwise every
+        one past its retention date would sit in "blocked" as unstored forever."""
+        slides = _slides_only_type(db)
+        cases = [
+            _case(db, cyto_user[0].id, specimen_type=slides, days_ago=RETENTION + 5, stored=False),
+            _case(db, cyto_user[0].id, specimen_type=slides, days_ago=RETENTION + 5),
+            _case(db, cyto_user[0].id, specimen_type=slides, days_ago=2),
+            _case(db, cyto_user[0].id, specimen_type=slides, days_ago=RETENTION + 5, is_pending=True),
+        ]
+        for case in cases:
+            for bucket in ("due", "not_due", "blocked"):
+                r = cyto_client.get(f"{CANDIDATES}?bucket={bucket}&search={case.accession_no}")
+                assert case.accession_no not in self._accessions(r), bucket
 
     def test_retention_days_returned_to_caller(self, cyto_client):
         assert cyto_client.get(CANDIDATES).json()["retention_days"] == RETENTION

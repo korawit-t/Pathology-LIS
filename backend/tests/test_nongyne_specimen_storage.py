@@ -13,6 +13,7 @@ import pytest
 from passlib.context import CryptContext
 
 from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.models.specimen_template import SpecimenTemplate
 from app.models.user import User
 from app.utils.time import local_now
 from tests.factories import make_hospital, make_patient
@@ -64,6 +65,7 @@ def _case(
     is_out_lab_consult: bool = False,
     discard_status: bool = False,
     days_ago: int | None = None,
+    specimen_type: str = "Fluid",
 ) -> NongyneCytologyCase:
     case = NongyneCytologyCase(
         accession_no=f"N26-{uuid.uuid4().hex[:12]}",
@@ -71,7 +73,7 @@ def _case(
         hospital_id=make_hospital(db).id,
         registrar_id=registrar_id,
         status="published" if days_ago is not None else "registered",
-        specimen_type="Fluid",
+        specimen_type=specimen_type,
         collection_site="Pleural fluid",
         is_cancelled=is_cancelled,
         is_out_lab=is_out_lab,
@@ -85,6 +87,17 @@ def _case(
     db.commit()
     db.refresh(case)
     return case
+
+
+def _specimen_type(db, category: str = "nongyne_cyto", **flags) -> SpecimenTemplate:
+    """A uniquely named type — rows persist across tests in the same run, so a
+    shared name like "FNA" would leak one test's flags into another's cases."""
+    template = SpecimenTemplate(
+        name=f"Type {uuid.uuid4().hex[:8]}", category=category, **flags
+    )
+    db.add(template)
+    db.commit()
+    return template
 
 
 def _accessions(resp):
@@ -235,3 +248,59 @@ class TestStorageUnblocksDisposal:
             f"/nongyne-cytology/disposal/candidates?bucket=due&search={case.accession_no}"
         )
         assert _accessions(due) == {case.accession_no}
+
+
+class TestSlidesOnlySpecimenTypes:
+    """A type ticked "slides only" leaves nothing in the fridge, so its cases
+    have no place in storage (or disposal — see test_nongyne_specimen_disposal)."""
+
+    def test_left_out_of_the_unstored_queue(self, cyto_client, cyto_user, db):
+        slides = _specimen_type(db, slides_only=True)
+        fluid = _specimen_type(db)
+        hidden = _case(db, cyto_user[0].id, specimen_type=slides.name)
+        shown = _case(db, cyto_user[0].id, specimen_type=fluid.name)
+
+        accs = _accessions(cyto_client.get(UNSTORED))
+        assert hidden.accession_no not in accs
+        assert shown.accession_no in accs
+
+    def test_left_out_of_the_stored_list(self, cyto_client, cyto_user, db):
+        """The storage migration backfilled "Stored" onto every reported case,
+        slide-only ones included — they are not actually on the shelf."""
+        slides = _specimen_type(db, slides_only=True)
+        case = _case(db, cyto_user[0].id, specimen_type=slides.name, stored=True)
+        assert case.accession_no not in _accessions(
+            cyto_client.get(f"{STORED}?search={case.accession_no}")
+        )
+
+    def test_the_slide_count_warning_alone_hides_nothing(self, cyto_client, cyto_user, db):
+        """requires_slide_count only nags at registration; a fluid type can
+        carry it and still have a jar in the fridge."""
+        nag_only = _specimen_type(db, requires_slide_count=True)
+        case = _case(db, cyto_user[0].id, specimen_type=nag_only.name)
+        assert case.accession_no in _accessions(cyto_client.get(UNSTORED))
+
+    def test_same_name_in_another_category_hides_nothing(self, cyto_client, cyto_user, db):
+        gyne = _specimen_type(db, category="gyne_cyto", slides_only=True)
+        case = _case(db, cyto_user[0].id, specimen_type=gyne.name)
+        assert case.accession_no in _accessions(cyto_client.get(UNSTORED))
+
+    def test_case_with_no_specimen_type_still_listed(self, cyto_client, cyto_user, db):
+        """NULL NOT IN (...) is NULL, not true — without the explicit check a
+        case with no type would silently drop out of the queue."""
+        _specimen_type(db, slides_only=True)  # the subquery must be non-empty
+        case = _case(db, cyto_user[0].id)
+        # Set after the INSERT: passing None to the constructor gets the ORM's
+        # "Fluid" default instead. Rows written outside the ORM can be NULL.
+        case.specimen_type = None
+        db.commit()
+        assert case.accession_no in _accessions(cyto_client.get(UNSTORED))
+
+    def test_unticking_the_type_brings_its_cases_back(self, cyto_client, cyto_user, db):
+        slides = _specimen_type(db, slides_only=True)
+        case = _case(db, cyto_user[0].id, specimen_type=slides.name)
+        assert case.accession_no not in _accessions(cyto_client.get(UNSTORED))
+
+        slides.slides_only = False
+        db.commit()
+        assert case.accession_no in _accessions(cyto_client.get(UNSTORED))

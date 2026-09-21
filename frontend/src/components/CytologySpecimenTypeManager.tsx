@@ -102,6 +102,7 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
     default_slide_count?: number;
     requires_slide_count?: boolean;
     requires_volume?: boolean;
+    slides_only?: boolean;
   }>();
 
   const sensors = useSensors(
@@ -135,6 +136,7 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
       default_slide_count: item.default_slide_count,
       requires_slide_count: item.requires_slide_count,
       requires_volume: item.requires_volume,
+      slides_only: item.slides_only,
     });
     setIsModalOpen(true);
   };
@@ -144,6 +146,7 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
     default_slide_count?: number;
     requires_slide_count?: boolean;
     requires_volume?: boolean;
+    slides_only?: boolean;
   }) => {
     try {
       if (editingId) {
@@ -212,6 +215,14 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
               </Space>
             ),
           },
+          {
+            title: "Specimen Storage",
+            key: "slides_only",
+            width: 160,
+            align: "center" as const,
+            render: (_: unknown, record: SpecimenTemplate) =>
+              record.slides_only ? <Tag>Not stored</Tag> : null,
+          },
         ]
       : []),
     {
@@ -277,6 +288,7 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
             default_slide_count: 1,
             requires_slide_count: false,
             requires_volume: false,
+            slides_only: false,
           }}
         >
           <Form.Item
@@ -304,6 +316,15 @@ const CategoryPanel: React.FC<PanelProps> = ({ category }) => {
               <Form.Item name="requires_volume" valuePropName="checked">
                 <Checkbox>
                   Warn staff to enter Received Volume (ml) at registration
+                </Checkbox>
+              </Form.Item>
+              <Form.Item
+                name="slides_only"
+                valuePropName="checked"
+                extra="These cases are left out of Specimen Storage and Specimen Disposal."
+              >
+                <Checkbox>
+                  Slides only — no leftover specimen to store or dispose of
                 </Checkbox>
               </Form.Item>
             </>

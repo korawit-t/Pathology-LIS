@@ -72,6 +72,7 @@ const DEFAULT_SPECIMEN_TYPES: SpecimenTemplate[] = [
   default_slide_count: 1,
   requires_slide_count: false,
   requires_volume: false,
+  slides_only: false,
   sort_order: index,
 }));
 
