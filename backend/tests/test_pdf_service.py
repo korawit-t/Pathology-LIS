@@ -6,7 +6,14 @@ invocation) without coupling the test to any real report template's full
 field contract, and without ever touching real hospital template overrides
 under app/templates/reports/local/."""
 
+import base64
+import io
+import json
+from pathlib import Path
+
 from jinja2 import Environment, DictLoader
+from PIL import Image
+from pypdf import PdfReader
 
 import app.services.pdf_service as pdf_service
 
@@ -98,3 +105,45 @@ class TestGeneratePdfBlob:
         result = pdf_service.generate_pdf_blob({}, template_name="test_report.html")
 
         assert result[:4] == b"%PDF"
+
+
+class TestGenerateConsultCoverPdf:
+    """Renders the real consult_cover_template.html — the bug being pinned is
+    a layout one, so only the real template can show it."""
+
+    @staticmethod
+    def _page_image(width=1000, height=1414):
+        # The shape get_consult_pdf_thumbnails_base64 produces for an A4 page.
+        buf = io.BytesIO()
+        Image.new("RGB", (width, height), (200, 220, 240)).save(buf, format="JPEG")
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    def test_every_cover_page_keeps_the_header_when_the_header_is_tall(self, monkeypatch):
+        # A tall header (here a long multi-line address) used to leave no room
+        # under it for an unsplittable page image. WeasyPrint then stopped
+        # repeating the <thead> header: page 1 held only the title and every
+        # image page printed with no lab or patient header at all.
+        monkeypatch.setattr(pdf_service, "_resolve_template", lambda name: name)
+        font_path = Path(pdf_service.BASE_DIR).parent / "assets" / "fonts"
+        report_data = {
+            "font_path": font_path.as_uri(),
+            "lab_name_en_snapshot": "PROBE LAB",
+            "lab_address_snapshot": "<br/>".join(f"Address line {i}" for i in range(12)),
+            "patient_name": "Somchai",
+            "patient_ln": "Jaidee",
+            "patient_hn": "HN001",
+            "accession_no": "S26-00001",
+            "hospital_name": "A Hospital Name Long Enough To Wrap Onto A Second Line",
+            "consult_pdf_approved_by_snapshot": "Dr. Approver",
+            "consult_pdf_thumbnail_snapshot": json.dumps([self._page_image(), self._page_image()]),
+        }
+
+        pages = PdfReader(io.BytesIO(pdf_service.generate_consult_cover_pdf(report_data))).pages
+
+        assert len(pages) == 2  # still one cover sheet per consult page
+        for page in pages:
+            text = page.extract_text()
+            assert "PROBE LAB" in text
+            assert "S26-00001" in text
+            assert "Dr. Approver" in text
+            assert len(page.images) == 1  # that page's consult image
