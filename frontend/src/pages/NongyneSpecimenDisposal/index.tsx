@@ -47,7 +47,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
   const [storageSearch, setStorageSearch] = useState("");
   const [storageRefreshKey, setStorageRefreshKey] = useState(0);
 
-  // ==== Tab 1: รอทำลาย ====
+  // ==== Tab 3: ครบกำหนด ====
   const [bucket, setBucket] = useState<NongyneDisposalBucket>("due");
   const [candidates, setCandidates] = useState<NongyneDisposalCandidate[]>([]);
   const [candidateTotal, setCandidateTotal] = useState(0);
@@ -396,7 +396,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
             label: (
               <span>
                 <DeleteOutlined style={{ marginRight: 6 }} />
-                รอทำลาย
+                ครบกำหนด
               </span>
             ),
             children: (
