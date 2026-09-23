@@ -164,15 +164,21 @@ class TestOutlabPdfFooterBarcode:
         assert _accession_hits(with_bc.content, mcase["accession_no"]) == 1
         assert _accession_hits(without_bc.content, mcase["accession_no"]) == 1
 
-    def test_appended_outlab_pdf_is_passed_through_untouched(
+    def test_output_is_cover_pages_only_one_per_source_page(
         self, db, pathologist_client, admin_user
     ):
-        """We stamp our own cover, never the external lab's document."""
+        """The lab's own file is NOT appended after the cover.
+
+        Every source page is already reproduced full-size on a cover page, so
+        appending the original only added a second, header-less copy of the
+        same content — pages with no barcode, which cannot be scanned into the
+        HIS and have to be pulled out of a printed stack by hand.
+        """
         case, mcase = _order_molecular(db, pathologist_client, admin_user)
         case.vn = "690807084156"
         db.commit()
 
-        uploaded = _valid_pdf_bytes(pages=2)
+        uploaded = _valid_pdf_bytes(pages=3)
         pathologist_client.post(
             f"/molecular-cases/{mcase['id']}/outlab-pdf",
             files={"file": ("result.pdf", uploaded, "application/pdf")},
@@ -181,17 +187,48 @@ class TestOutlabPdfFooterBarcode:
         resp = pathologist_client.get(
             f"/molecular-cases/{mcase['id']}/outlab-pdf", params={"with_barcode": True}
         )
-        merged = PdfReader(io.BytesIO(resp.content))
-        source = PdfReader(io.BytesIO(uploaded))
-        # 2 cover pages (one per source page) + the 2 original pages.
-        assert len(merged.pages) == len(source.pages) + 2
-        assert _accession_hits(resp.content, mcase["accession_no"], page=1) == 2, (
-            "the cover repeats the barcode on every page"
+        out = PdfReader(io.BytesIO(resp.content))
+        assert len(out.pages) == 3, "one cover page per source page, nothing appended"
+
+    def test_every_page_carries_the_barcode(self, db, pathologist_client, admin_user):
+        """The point of dropping the appended copy: no page is left unscannable."""
+        case, mcase = _order_molecular(db, pathologist_client, admin_user)
+        case.vn = "690807084156"
+        db.commit()
+
+        pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/outlab-pdf",
+            files={"file": ("result.pdf", _valid_pdf_bytes(pages=3), "application/pdf")},
         )
-        for offset, original in enumerate(source.pages):
-            appended = merged.pages[2 + offset]
-            assert appended.mediabox == original.mediabox
-            assert (appended.extract_text() or "") == (original.extract_text() or "")
+        resp = pathologist_client.get(
+            f"/molecular-cases/{mcase['id']}/outlab-pdf", params={"with_barcode": True}
+        )
+
+        for page in range(3):
+            assert _accession_hits(resp.content, mcase["accession_no"], page=page) == 2, (
+                f"page {page + 1} is missing its header or its barcode caption"
+            )
+
+    def test_unrasterizable_upload_falls_back_to_the_lab_file(
+        self, db, pathologist_client, admin_user
+    ):
+        """If the pages cannot be rendered there is no cover to hand out, so the
+        lab's own file goes out instead — a report with no header still beats no
+        report at all."""
+        _, mcase = _order_molecular(db, pathologist_client, admin_user)
+        pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/outlab-pdf",
+            files={"file": ("result.pdf", _valid_pdf_bytes(), "application/pdf")},
+        )
+
+        row = db.query(MolecularCase).filter(MolecularCase.id == mcase["id"]).first()
+        with open(row.outlab_pdf_path, "wb") as f:
+            f.write(b"%PDF-1.4\nnot actually a parseable pdf\n%%EOF\n")
+
+        resp = pathologist_client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
+        assert resp.status_code == 200
+        assert resp.content.startswith(b"%PDF")
+        assert b"not actually a parseable pdf" in resp.content
 
     def test_in_house_result_pdf_also_takes_the_barcode(
         self, db, pathologist_client, admin_user

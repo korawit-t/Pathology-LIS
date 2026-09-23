@@ -1,4 +1,3 @@
-import io
 import json
 import os
 import re
@@ -26,12 +25,6 @@ from app.crud.surgical_report_builder import (
     _calculate_patient_age,
 )
 from app.services.pdf_service import generate_consult_cover_pdf, generate_pdf_blob
-
-try:
-    from pypdf import PdfWriter
-    PYPDF_AVAILABLE = True
-except ImportError:
-    PYPDF_AVAILABLE = False
 
 UPLOAD_MOLECULAR_DIR = os.path.join(os.getcwd(), "uploads", "molecular")
 os.makedirs(UPLOAD_MOLECULAR_DIR, exist_ok=True)
@@ -660,11 +653,16 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
     no cache, no snapshot table (Molecular has no separate "report" row to
     freeze thumbnails against).
 
-    with_barcode adds the footer barcode to the cover pages only — the pages
-    we render. The out-lab PDF appended after them is the external lab's own
-    document, passed through byte-for-byte; we do not stamp it. The cover has
-    one page per page of that PDF, so every source page still has a scannable
-    facing page."""
+    Returns the cover ALONE — the external lab's file is not appended after it.
+    Every page of that file is already reproduced on a cover page as a
+    full-size image, so appending the original only added a second copy of the
+    same content with no lab header and no footer barcode. Those extra pages
+    could not be scanned into the HIS, which in a printed stack makes them
+    pages staff have to identify and set aside by hand. The uploaded file
+    itself is untouched on disk at outlab_pdf_path; this is about what the
+    combined report hands out, not about discarding the source.
+
+    with_barcode therefore covers the whole document, not just its front."""
     case = (
         db.query(MolecularCase)
         .options(
@@ -682,15 +680,24 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
     if not case or not case.outlab_pdf_path or not os.path.exists(case.outlab_pdf_path):
         return None
 
-    with open(case.outlab_pdf_path, "rb") as f:
-        main_bytes = f.read()
-
-    if not PYPDF_AVAILABLE:
-        return main_bytes
-
-    thumbnails = get_consult_pdf_thumbnails_base64(case.outlab_pdf_path)
+    # Rendered sharper than the shared default (1000px/150dpi): with nothing
+    # appended, this image IS the lab's report rather than a preview sitting in
+    # front of it. The cover fits an A4 source page at about 74% — header and
+    # page have to share the sheet — so fine print lands smaller than the lab
+    # set it, and the pixels have to hold up to a magnifier or an on-screen
+    # zoom. 1600px across the ~156mm it is drawn at is roughly 260 DPI on
+    # paper, against 163 before. Passed here rather than changed in
+    # get_consult_pdf_thumbnails_base64, whose default still serves the
+    # Surgical and Gyne covers, where the full-size original does follow.
+    thumbnails = get_consult_pdf_thumbnails_base64(
+        case.outlab_pdf_path, max_width=1600, dpi=200
+    )
     if not thumbnails:
-        return main_bytes
+        # Rasterizing failed (unreadable/corrupt upload, or PyMuPDF missing).
+        # Hand back the lab's own file rather than nothing: a report with no
+        # header still beats no report, and this is the only path that has it.
+        with open(case.outlab_pdf_path, "rb") as f:
+            return f.read()
 
     fields = _resolve_display_fields(case)
     patient = fields["patient"]
@@ -747,14 +754,7 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
     if with_barcode:
         report_data.update(_build_footer_barcode(fields, case.accession_no, settings))
 
-    cover_bytes = generate_consult_cover_pdf(report_data)
-
-    writer = PdfWriter()
-    writer.append(io.BytesIO(cover_bytes))
-    writer.append(io.BytesIO(main_bytes))
-    merged_io = io.BytesIO()
-    writer.write(merged_io)
-    return merged_io.getvalue()
+    return generate_consult_cover_pdf(report_data)
 
 
 def _build_molecular_report_data(db: Session, case: MolecularCase, with_barcode: bool = False) -> dict:
