@@ -170,7 +170,7 @@ def _make_valid_pdf_bytes() -> bytes:
 
 
 class TestMolecularCaseOutlabPdfCoverSheet:
-    def test_download_prepends_cover_sheet_with_case_info(self, db, pathologist_client, admin_user):
+    def test_download_renders_cover_pages_with_case_info(self, db, pathologist_client, admin_user):
         import io as _io
         from pypdf import PdfReader
 
@@ -186,12 +186,14 @@ class TestMolecularCaseOutlabPdfCoverSheet:
         resp = pathologist_client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/pdf"
-        merged_bytes = resp.content
-        assert merged_bytes.startswith(b"%PDF")
+        cover_pdf = resp.content
+        assert cover_pdf.startswith(b"%PDF")
 
-        reader = PdfReader(_io.BytesIO(merged_bytes))
-        # Cover sheet is prepended as its own page(s) in front of the 1-page upload.
-        assert len(reader.pages) >= 2
+        reader = PdfReader(_io.BytesIO(cover_pdf))
+        # One cover page per page of the upload, and nothing appended after
+        # them — see get_outlab_pdf_with_cover for why the lab's own file is
+        # no longer merged in behind the cover.
+        assert len(reader.pages) == 1
         cover_text = reader.pages[0].extract_text() or ""
         # The cover shows the Molecular case's OWN accession (M26-...), not the
         # parent Surgical case's — but patient/hospital resolve through the parent
