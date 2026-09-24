@@ -1,8 +1,9 @@
 import React from "react";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { Form, Input } from "antd";
 import SurgicalReportForm from "./index";
 import UserService from "../../../services/userService";
+import SurgicalCaseService from "../../../services/surgicalCaseService";
 import SurgicalReportService from "../../../services/surgicalReportService";
 import type { User } from "../../../types/user";
 import type { SurgicalCase, SurgicalSpecimen } from "../../../types/surgical";
@@ -79,7 +80,12 @@ vi.mock("./components/SurgicalReportToolbar", () => ({ default: trivialMock("moc
 vi.mock("./components/ReportHistorySection", () => ({ default: trivialMock("mock-report-history") }));
 vi.mock("./components/PathologistDiagnosisManager", () => ({ default: trivialMock("mock-pathologist-manager") }));
 vi.mock("./components/ReportMasterControl", () => ({ default: trivialMock("mock-report-master-control") }));
-vi.mock("./components/FinalizeReportPage", () => ({ default: trivialMock("mock-finalize-report") }));
+// Gated on `open` (unlike the trivial mocks) so a test can tell whether the
+// sign-off page actually opened.
+vi.mock("./components/FinalizeReportPage", () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="mock-finalize-report" /> : null,
+}));
 vi.mock("./components/CaseFlagManager", () => ({ default: trivialMock("mock-case-flag-manager") }));
 vi.mock("./components/CytoHistoCorrelationCard", () => ({ default: trivialMock("mock-cyto-histo") }));
 vi.mock("./components/SurgicalReportNavigator", () => ({ default: trivialMock("mock-navigator") }));
@@ -185,6 +191,40 @@ describe("SurgicalDiagnosisReportForm/index", () => {
     });
     expect(screen.getByText("Out-Lab Consult")).toBeInTheDocument();
     expect(screen.getByText("Click or drag PDF to upload")).toBeInTheDocument();
+  });
+
+  it("opens sign-off from a resolved consult round without demanding a diagnosis", async () => {
+    // The whole point of the out-lab round: the diagnosis arrives as the
+    // uploaded consult PDF and the editor stays read-only, so an
+    // empty-diagnosis prompt here would be unanswerable — it used to leave the
+    // case permanently unsignable.
+    const getBlob = SurgicalCaseService.getConsultPdfBlob as ReturnType<typeof vi.fn>;
+    const approve = SurgicalCaseService.approveConsultPdf as ReturnType<typeof vi.fn>;
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:consult-pdf");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    getBlob.mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+    approve.mockResolvedValue({});
+
+    mockUseSurgicalReport.mockReturnValue(
+      makeHookReturn({
+        surgicalCase: makeSurgicalCase({
+          is_out_lab_consult: true,
+          consult_status: "processing",
+          consult_pdf_path: "/files/consult.pdf",
+        }),
+      }),
+    );
+    await act(async () => {
+      render(<SurgicalReportForm {...baseProps} />);
+    });
+
+    // The popup auto-opens straight into its sign-off view.
+    fireEvent.click(await screen.findByText("Sign Off"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mock-finalize-report")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Diagnosis is incomplete")).not.toBeInTheDocument();
   });
 
   it("auto-opens the completed-case popup and loads report history for a signed-out case", async () => {

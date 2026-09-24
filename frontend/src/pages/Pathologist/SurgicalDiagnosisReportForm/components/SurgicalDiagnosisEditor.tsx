@@ -223,7 +223,15 @@ const SurgicalDiagnosisEditor: React.FC<SurgicalDiagnosisEditorProps> = ({
                     <Form.Item
                       name={getFieldName("diagnosis")}
                       rules={[
-                        { required: !hideDiagnosisOnly, message: "Please enter the diagnosis" },
+                        // Never require a field the pathologist cannot type into. While an
+                        // out-lab consult round is open the editor is disabled and the
+                        // diagnosis lives in the uploaded consult PDF, so a `required` rule
+                        // here deadlocked sign-off: validateFields() in handleCompleteWorkflow
+                        // rejected the form with no way left to satisfy it.
+                        {
+                          required: !hideDiagnosisOnly && !isLocked,
+                          message: "Please enter the diagnosis",
+                        },
                       ]}
                       style={{ marginBottom: 0 }}
                     >

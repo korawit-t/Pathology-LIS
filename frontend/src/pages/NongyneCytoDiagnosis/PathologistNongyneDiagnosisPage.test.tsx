@@ -280,6 +280,35 @@ describe("PathologistNongyneDiagnosisPage", () => {
       expect(saveDraft).not.toHaveBeenCalled();
       expect(screen.queryByTestId("mock-sign-off")).not.toBeInTheDocument();
     });
+
+    it("does not demand a diagnosis the consult-locked editor cannot take", async () => {
+      // The whole point of an out-lab round: the diagnosis arrives as the
+      // uploaded consult PDF and the editor stays read-only, so requiring the
+      // typed fields here used to leave the case permanently unsignable.
+      const saveDraft = vi.fn().mockResolvedValue({ isCreate: false });
+      mockUseNongyneDiagnosisData.mockReturnValue(
+        withDiagnosis({
+          saveDraft,
+          fetchDiagnosis: vi.fn().mockResolvedValue(undefined),
+          caseData: makeCaseData({
+            is_out_lab_consult: true,
+            consult_status: "processing",
+            consult_pdf_path: "/files/consult.pdf",
+          }),
+        }),
+      );
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /Sign-off/i }));
+
+      // saveDraft running at all is the assertion: the required-field gate
+      // rejects before it when the rule still fires. (Not asserting the
+      // absence of the toast — antd's static message root outlives the test
+      // that raised it, so the previous test's copy is still in the DOM.)
+      await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
+      expect(saveDraft.mock.calls[0][0]).toMatchObject({ diagnosis: undefined });
+      expect(await screen.findByTestId("mock-sign-off")).toBeInTheDocument();
+    });
   });
 
   it("revokes the previous preview PDF when Preview PDF is clicked twice without closing the modal", async () => {
