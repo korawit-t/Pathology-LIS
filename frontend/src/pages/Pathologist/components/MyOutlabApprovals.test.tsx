@@ -157,6 +157,12 @@ describe("MyOutlabApprovals", () => {
     await screen.findByText("C26-00001");
 
     fireEvent.click(screen.getByTitle("2"));
+    // Wait for page 2's row to actually render before opening the dialog.
+    // openReview only waits for *a* "Review & Approve" button, and page 1's 20
+    // of them are still mounted while the skip:20 fetch is in flight — so
+    // without this it could open page 1's first row instead (flaky under CI's
+    // slower scheduling; it passed locally because the fetch resolved first).
+    await screen.findByText("C26-00021");
     const dialog = await openReview(0);
     expect(within(dialog).getByText("C26-00021")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByText("Approve").closest("button")!);
