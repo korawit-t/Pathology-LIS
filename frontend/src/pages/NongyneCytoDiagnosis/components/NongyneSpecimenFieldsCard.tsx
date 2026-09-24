@@ -28,7 +28,10 @@ const NongyneSpecimenFieldsCard: React.FC<NongyneSpecimenFieldsCardProps> = ({
         <Form.Item
           name="specimen_type"
           label="Specimen Type"
-          rules={[{ required: true }]}
+          // Same reason as the diagnosis field: the Select is disabled while an
+          // out-lab consult round is open, so requiring it there would block
+          // sign-off with nothing the pathologist could do about it.
+          rules={[{ required: !isEditorLocked }]}
           style={{ marginBottom: 0 }}
         >
           <Select disabled={isEditorLocked}>

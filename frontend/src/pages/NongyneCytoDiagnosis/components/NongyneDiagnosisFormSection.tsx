@@ -65,7 +65,14 @@ const NongyneDiagnosisFormSection: React.FC<NongyneDiagnosisFormSectionProps> = 
             <Form.Item
               name="diagnosis"
               noStyle
-              rules={[{ required: true, message: "Diagnosis is required." }]}
+              // Never require a field the pathologist cannot type into. While an
+              // out-lab consult round is open the editor is disabled and the
+              // diagnosis lives in the uploaded consult PDF, so a `required` rule
+              // here deadlocked sign-off: handleFinalizeClick's validateFields()
+              // rejected the form with no way left to satisfy it.
+              rules={[
+                { required: !isEditorLocked, message: "Diagnosis is required." },
+              ]}
             >
               <SimpleTiptapEditor
                 placeholder="Enter diagnosis..."

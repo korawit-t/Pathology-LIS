@@ -123,6 +123,15 @@ const SurgicalReportForm: React.FC<Props> = ({
 const handleOpenFinalizeModal = async () => {
     await handleSave();
 
+    // An out-lab consult round carries its diagnosis in the uploaded consult PDF,
+    // and the editor is read-only for the whole round — so the empty-diagnosis
+    // prompts below have nothing the pathologist could act on. Warning here left
+    // the case unsignable: the editor is locked, so the warning can never clear.
+    if (isConsultEditorLocked) {
+      setIsFinalizeModalOpen(true);
+      return;
+    }
+
     // Check for empty diagnoses before opening finalize modal
     const isCombined = diagnosisMode === "integrated" || diagnosisMode === "clean";
     if (isCombined) {
