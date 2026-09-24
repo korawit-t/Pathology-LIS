@@ -24,7 +24,7 @@
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@types/dompurify": "^3.2.0",
-    "antd": "^6.0.1",
+    "antd": "^6.6.5",
     "axios": "^1.19.0",
     "bwip-js": "^4.11.2",
     "dompurify": "^3.4.13",
