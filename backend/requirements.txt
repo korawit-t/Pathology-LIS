@@ -45,7 +45,7 @@ pypdf==6.16.2
 pymupdf==1.28.2
 pyphen==0.18.1
 pytest==9.1.1
-pythainlp==5.3.4
+pythainlp==5.3.7
 python-barcode==0.16.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
