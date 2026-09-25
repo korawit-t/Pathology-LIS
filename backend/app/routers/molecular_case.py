@@ -13,8 +13,10 @@ from app.core.roles import (
 from app.db.database import get_db
 from app.dependencies.auth import (
     CLINICIAN_FACING_ROLES,
+    assert_hospital_scoped_access,
     check_password_status,
     get_current_user,
+    get_scoped_hospital_ids,
 )
 from app.models.user import User
 from app.schemas.molecular_case import (
@@ -33,6 +35,31 @@ router = APIRouter(
     tags=["Molecular Cases"],
     dependencies=[Depends(check_password_status)],
 )
+
+
+def _hospital_scope(current_user: User) -> Optional[List[int]]:
+    """Hospital ids this account's collection queries may return, or None for
+    unrestricted internal lab staff.
+
+    CAN_READ_REPORT — the gate on every read endpoint below — admits the
+    external "hospital" and "clinician" roles, so without this a referring
+    account searching its own patients also gets back every other hospital's
+    Molecular cases. Mirrors what read_surgical_archive and the Gyne/Non-Gyne
+    case lists already do; the per-case endpoints use
+    assert_hospital_scoped_access instead.
+    """
+    allowed = get_scoped_hospital_ids(current_user)
+    return None if allowed is None else list(allowed)
+
+
+def _assert_case_in_scope(case: dict, current_user: User) -> None:
+    """403 unless this account may see the hospital the case belongs to.
+
+    Reads effective_hospital_id, not hospital_id: the latter is standalone-only
+    and is None for a case ordered on a Surgical block, which would deny every
+    parent-linked case to an external account. See crud._effective_hospital_id.
+    """
+    assert_hospital_scoped_access(current_user, case.get("effective_hospital_id"))
 
 
 @router.post("", response_model=MolecularCaseResponse, status_code=201, dependencies=[Depends(CAN_ACCESS_PATIENT)])
@@ -58,11 +85,12 @@ def list_molecular_cases(
     search: Optional[str] = None,
     clinician: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return molecular_crud.get_molecular_cases(
         db, skip=skip, limit=limit, status=status, is_outlab=is_outlab,
         parent_case_id=parent_case_id, stain_id=stain_id, search=search,
-        clinician=clinician,
+        clinician=clinician, hospital_ids=_hospital_scope(current_user),
     )
 
 
@@ -71,6 +99,7 @@ def count_molecular_cases(
     status: Optional[str] = None,
     is_outlab: Optional[bool] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Count matching cases without fetching them — for the dashboard tiles.
 
@@ -80,7 +109,8 @@ def count_molecular_cases(
     """
     return {
         "count": molecular_crud.count_molecular_cases(
-            db, status=status, is_outlab=is_outlab
+            db, status=status, is_outlab=is_outlab,
+            hospital_ids=_hospital_scope(current_user),
         )
     }
 
@@ -93,6 +123,7 @@ def read_molecular_print_queue(
     is_print: Optional[bool] = None,
     unprinted_first: bool = False,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Reported Molecular cases for the Print Report Queue screen.
 
@@ -102,11 +133,16 @@ def read_molecular_print_queue(
     return molecular_crud.get_molecular_print_queue(
         db, page=page, size=size, search=search,
         is_print=is_print, unprinted_first=unprinted_first,
+        hospital_ids=_hospital_scope(current_user),
     )
 
 
 @router.post("/barcode-pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def generate_molecular_barcode_label_pdf(payload: dict, db: Session = Depends(get_db)):
+def generate_molecular_barcode_label_pdf(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Code 39 label sheet for the selected Molecular cases.
     payload: {"case_ids": [1, 2, 3]}
 
@@ -120,7 +156,9 @@ def generate_molecular_barcode_label_pdf(payload: dict, db: Session = Depends(ge
     if not case_ids:
         raise HTTPException(status_code=400, detail="case_ids is required")
 
-    labels = molecular_crud.build_molecular_barcode_labels(db, case_ids)
+    labels = molecular_crud.build_molecular_barcode_labels(
+        db, case_ids, hospital_ids=_hospital_scope(current_user)
+    )
     if not labels:
         raise HTTPException(status_code=404, detail="No valid Molecular cases found")
 
@@ -136,10 +174,15 @@ def generate_molecular_barcode_label_pdf(payload: dict, db: Session = Depends(ge
 
 
 @router.get("/{case_id}", response_model=MolecularCaseResponse, dependencies=[Depends(CAN_READ_REPORT)])
-def get_molecular_case(case_id: int, db: Session = Depends(get_db)):
+def get_molecular_case(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     case = molecular_crud.get_molecular_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")
+    _assert_case_in_scope(case, current_user)
     return case
 
 
@@ -262,6 +305,7 @@ def download_outlab_pdf(
     case = molecular_crud.get_molecular_case(db, case_id)
     if not case or not case.get("outlab_pdf_path"):
         raise HTTPException(status_code=404, detail="No out-lab PDF uploaded for this case")
+    _assert_case_in_scope(case, current_user)
     _assert_result_released(case, current_user)
     if not os.path.exists(case["outlab_pdf_path"]):
         raise HTTPException(status_code=404, detail="Out-lab PDF file missing on disk")
@@ -302,6 +346,7 @@ def download_result_pdf(
     case = molecular_crud.get_molecular_case(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")
+    _assert_case_in_scope(case, current_user)
     _assert_result_released(case, current_user)
 
     pdf_bytes = molecular_crud.get_molecular_result_pdf(db, case_id, with_barcode=with_barcode)
@@ -319,8 +364,20 @@ def update_molecular_print_status(
     case_id: int,
     payload: MolecularPrintStatusUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Mark a Molecular case printed / un-printed from the print queue."""
+    """Mark a Molecular case printed / un-printed from the print queue.
+
+    Scope-checked before the write: this is the one state change sitting behind
+    CAN_READ_REPORT (as the Surgical/Gyne/Non-Gyne print-status endpoints also
+    do), so the read gate alone would let a referring account flip the flag on
+    another hospital's case.
+    """
+    existing = molecular_crud.get_molecular_case(db, case_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Molecular case not found")
+    _assert_case_in_scope(existing, current_user)
+
     case = molecular_crud.set_molecular_print_status(db, case_id, payload.is_print)
     if not case:
         raise HTTPException(status_code=404, detail="Molecular case not found")

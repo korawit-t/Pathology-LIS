@@ -161,6 +161,30 @@ def _base_query(db: Session):
     )
 
 
+def _effective_hospital_id(case: MolecularCase) -> int | None:
+    """The hospital a case actually belongs to, for access scoping.
+
+    A parent-linked case carries no hospital_id of its own — its hospital
+    lives on the originating Surgical case, exactly like HN/VN/AN (see
+    _resolve_display_fields). Scoping on the raw column alone would deny an
+    external account every parent-linked case, since
+    assert_hospital_scoped_access treats a None hospital as out of scope.
+    """
+    parent = case.parent_case
+    return parent.hospital_id if parent else case.hospital_id
+
+
+def _effective_hospital_col():
+    """SQL form of _effective_hospital_id, for filtering in a query.
+
+    Only valid once SurgicalCase has been outer-joined on parent_case_id; the
+    join leaves SurgicalCase.hospital_id NULL for standalone cases, so the
+    coalesce falls through to the case's own column. Parent first, mirroring
+    _effective_hospital_id.
+    """
+    return func.coalesce(SurgicalCase.hospital_id, MolecularCase.hospital_id)
+
+
 def _to_response_dict(case: MolecularCase) -> dict:
     parent = case.parent_case
     # Standalone cases carry their own patient/hn; parent-linked cases resolve
@@ -237,6 +261,12 @@ def _to_response_dict(case: MolecularCase) -> dict:
         "clinical_diagnosis": case.clinical_diagnosis,
         "clinician_name": case.clinician_name,
         "collect_at": case.collect_at,
+        # Hospital this case is scoped by — resolved through the parent, unlike
+        # the raw `hospital_id` above, which stays standalone-only because the
+        # edit form seeds its hospital picker from it. Deliberately absent from
+        # MolecularCaseResponse (so it is dropped on serialisation): it exists
+        # for the router's assert_hospital_scoped_access call, not for clients.
+        "effective_hospital_id": _effective_hospital_id(case),
     }
 
 
@@ -250,6 +280,7 @@ def get_molecular_cases(
     stain_id: int | None = None,
     search: str | None = None,
     clinician: str | None = None,
+    hospital_ids: list[int] | None = None,
 ) -> list[dict]:
     query = _base_query(db).filter(MolecularCase.is_cancelled == False)  # noqa: E712
     if status:
@@ -260,7 +291,7 @@ def get_molecular_cases(
         query = query.filter(MolecularCase.parent_case_id == parent_case_id)
     if stain_id is not None:
         query = query.filter(MolecularCase.stain_id == stain_id)
-    query = _apply_case_search(query, search, clinician)
+    query = _apply_case_filters(query, search, clinician, hospital_ids)
 
     cases = (
         query.order_by(MolecularCase.registered_at.desc())
@@ -271,12 +302,28 @@ def get_molecular_cases(
     return [_to_response_dict(c) for c in cases]
 
 
-def _apply_case_search(query, search: str | None, clinician: str | None):
-    """Shared search/clinician filtering for the list and print-queue queries —
-    both have to reach through parent_case_id for the parent-linked cases,
-    whose HN/accession/patient all live on the Surgical case."""
-    if search or clinician:
+def _apply_case_filters(
+    query,
+    search: str | None,
+    clinician: str | None,
+    hospital_ids: list[int] | None = None,
+):
+    """Shared search/clinician/hospital filtering for the list and print-queue
+    queries — all three have to reach through parent_case_id for the
+    parent-linked cases, whose HN/accession/patient/hospital all live on the
+    Surgical case.
+
+    The parent join is made once, here, for whichever of the three needs it:
+    joining SurgicalCase a second time would raise an ambiguous-alias error.
+
+    `hospital_ids=None` means unrestricted (internal lab staff). An empty list
+    matches nothing, and so does a case whose effective hospital is NULL —
+    scoping fails closed, same as assert_hospital_scoped_access.
+    """
+    if search or clinician or hospital_ids is not None:
         query = query.outerjoin(SurgicalCase, MolecularCase.parent_case_id == SurgicalCase.id)
+    if hospital_ids is not None:
+        query = query.filter(_effective_hospital_col().in_(hospital_ids))
     if search:
         s = f"%{search.strip()}%"
         query = (
@@ -313,6 +360,7 @@ def get_molecular_print_queue(
     search: str | None = None,
     is_print: bool | None = None,
     unprinted_first: bool = False,
+    hospital_ids: list[int] | None = None,
 ) -> dict:
     """Reported Molecular cases for the print queue, in the same
     {items, total, page, size} envelope the Surgical/Gyne/Non-Gyne report
@@ -329,7 +377,7 @@ def get_molecular_print_queue(
     )
     if is_print is not None:
         query = query.filter(MolecularCase.is_print == is_print)
-    query = _apply_case_search(query, search, clinician=None)
+    query = _apply_case_filters(query, search, clinician=None, hospital_ids=hospital_ids)
 
     total = query.count()
 
@@ -361,6 +409,7 @@ def count_molecular_cases(
     db: Session,
     status: str | None = None,
     is_outlab: bool | None = None,
+    hospital_ids: list[int] | None = None,
 ) -> int:
     """Row count only, for the dashboard tiles.
 
@@ -370,13 +419,19 @@ def count_molecular_cases(
     needlessly expensive. Applies the same is_cancelled / status / is_outlab
     filters so the count always agrees with the list it summarises.
     """
-    query = db.query(func.count(MolecularCase.id)).filter(
-        MolecularCase.is_cancelled == False  # noqa: E712
+    query = (
+        db.query(func.count(MolecularCase.id))
+        .select_from(MolecularCase)
+        .filter(MolecularCase.is_cancelled == False)  # noqa: E712
     )
     if status:
         query = query.filter(MolecularCase.status == status)
     if is_outlab is not None:
         query = query.filter(MolecularCase.is_outlab == is_outlab)
+    if hospital_ids is not None:
+        query = query.outerjoin(
+            SurgicalCase, MolecularCase.parent_case_id == SurgicalCase.id
+        ).filter(_effective_hospital_col().in_(hospital_ids))
     return query.scalar() or 0
 
 
@@ -574,12 +629,19 @@ def build_molecular_barcode_value(fields: dict, accession_no: str, setting) -> t
     return (accession_no or ""), "Accession No."
 
 
-def build_molecular_barcode_labels(db: Session, case_ids: list[int]) -> list[dict]:
+def build_molecular_barcode_labels(
+    db: Session, case_ids: list[int], hospital_ids: list[int] | None = None
+) -> list[dict]:
     """Label-sheet rows for barcode_label_template.html, one per Molecular case.
 
     Unlike the report footer this is NOT gated on the case having a VN/AN:
     build_molecular_barcode_value's accession-number fallback is scanned for
     in-lab tracking, not by the HIS — same rule the other label sheets follow.
+
+    `hospital_ids` scopes an external account to its own hospitals: the caller
+    hands in arbitrary ids, and a label carries the patient's name and HN.
+    Out-of-scope ids are skipped rather than raising, so one stray id in a
+    selection does not fail the whole sheet.
     """
     from app.services.barcode_service import generate_code39_base64_img
 
@@ -588,6 +650,8 @@ def build_molecular_barcode_labels(db: Session, case_ids: list[int]) -> list[dic
     for cid in case_ids:
         case = _base_query(db).filter(MolecularCase.id == cid).first()
         if not case:
+            continue
+        if hospital_ids is not None and _effective_hospital_id(case) not in hospital_ids:
             continue
         fields = _resolve_display_fields(case)
         patient = fields["patient"]
