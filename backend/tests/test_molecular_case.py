@@ -754,3 +754,86 @@ class TestMolecularCaseCount:
         )
         assert resp.status_code == 200, resp.text
         assert self._count(pathologist_client, status="pending") == before - 1
+
+
+class TestMolecularResultReleaseGate:
+    """A Molecular result is released to the referring side only once a
+    pathologist has signed the case out.
+
+    Molecular keeps its result on the case row — there is no published-report
+    snapshot to gate on the way Surgical/Gyne/Non-Gyne do — so both PDF
+    endpoints sat behind CAN_READ_REPORT alone, which says who may read a
+    finished report but nothing about when. A clinician could pull the
+    external lab's PDF the moment the desk attached it, and /result-pdf
+    rendered whatever draft sat in result_text. Same rule, and the same
+    exemption for lab staff, as gyne_cyto_case.get_outlab_test_result."""
+
+    def _clinician(self, db, client):
+        clinician, pwd = _make_user(
+            db, f"clin_{uuid.uuid4().hex[:12]}", "ClinPass1!", ["clinician"]
+        )
+        _login(client, clinician.username, pwd)
+
+    def test_referring_side_cannot_read_an_outlab_pdf_before_sign_out(
+        self, db, client, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+        self._clinician(db, client)
+
+        r = client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
+
+        assert r.status_code == 403
+        assert "awaiting pathologist sign-off" in r.json()["detail"]
+
+    def test_referring_side_reads_it_once_the_case_is_reported(
+        self, db, client, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+        assert (
+            pathologist_client.post(
+                f"/molecular-cases/{mcase['id']}/finalize", json={}
+            ).status_code
+            == 200
+        )
+        self._clinician(db, client)
+
+        r = client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
+
+        assert r.status_code == 200
+        assert r.content.startswith(b"%PDF")
+
+    def test_lab_staff_still_preview_the_pdf_before_sign_out(
+        self, db, pathologist_client, admin_user
+    ):
+        """Reviewing the file is what sign-out is based on — gating the lab
+        out of it would make the case unsignable."""
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        r = pathologist_client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
+
+        assert r.status_code == 200
+
+    def test_referring_side_cannot_read_an_unsigned_result_pdf(
+        self, db, client, pathologist_client
+    ):
+        patient = make_patient(db, name="Unreleased Result Patient")
+        ap_test = make_anatomical_pathology_test(
+            db, category="Molecular", system_code=None, name="BRAF Sequencing"
+        )
+        created = pathologist_client.post(
+            "/molecular-cases", json={"patient_id": patient.id, "ap_test_id": ap_test.id}
+        ).json()
+        self._clinician(db, client)
+
+        r = client.get(f"/molecular-cases/{created['id']}/result-pdf")
+
+        assert r.status_code == 403
+
+    def test_a_missing_case_still_404s_for_the_referring_side(self, db, client):
+        self._clinician(db, client)
+
+        assert client.get("/molecular-cases/999999999/result-pdf").status_code == 404
+

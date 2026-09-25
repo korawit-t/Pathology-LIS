@@ -99,6 +99,15 @@ class RoleChecker:
 # can't silently drift out of sync between call sites.
 EXTERNAL_ROLES = {"clinician", "hospital"}
 
+# Accounts that only ever get to see a result once a pathologist has signed it
+# out — the referring side plus the front desk that hands the paper over. Lab
+# staff are deliberately absent: previewing an unsigned result is how they
+# review it.
+#
+# Used by the out-lab PDF endpoints in gyne_cyto_case.py and molecular_case.py.
+# Import this rather than redefining it, for the same reason as EXTERNAL_ROLES.
+CLINICIAN_FACING_ROLES = EXTERNAL_ROLES | {"register"}
+
 
 def get_scoped_hospital_ids(current_user: User) -> Optional[Set[int]]:
     """None => unrestricted (internal staff). Otherwise the exact set of

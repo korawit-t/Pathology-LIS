@@ -316,11 +316,17 @@ const ResultPage: React.FC = () => {
       width: 150,
       fixed: "right" as const,
       render: (_: unknown, r: SearchRow) => {
+        // is_outlab บอกแค่ว่าเคสนี้ส่งออกแล็บนอก ไม่ได้แปลว่ามีผลกลับมาแล้ว
+        // — มันถูก seed มาจาก ap_test.is_external ตั้งแต่ตอนลงทะเบียน เคส
+        // molecular แบบส่งออกทุกเคสจึงขึ้นปุ่ม "ดูผล" ให้หมอผู้ส่งตรวจทันที
+        // ทั้งที่ยังไม่มีอะไรให้ดู (กดแล้วได้ 404 จาก /outlab-pdf)
+        // ตัวชี้ว่าผลออกแล้วของ molecular คือ status == "reported" อย่างเดียว
+        // ส่วน is_outlab ยังใช้ต่อใน fetchBlob เพื่อเลือกว่าจะยิง endpoint ไหน
         const canView =
           r.source === "legacy" ||
           r.status?.toLowerCase() === "published" ||
           isOutlabOnly(r) ||
-          (r._type === "molecular" && (!!r.is_outlab || r.status?.toLowerCase() === "reported"));
+          (r._type === "molecular" && r.status?.toLowerCase() === "reported");
         if (!canView)
           return (
             <Text type="secondary" style={{ fontSize: 12 }}>

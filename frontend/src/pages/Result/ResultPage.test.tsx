@@ -258,3 +258,64 @@ describe("ResultPage gyne out-lab results", () => {
     expect(GyneDiagnosisService.getReportPdf).not.toHaveBeenCalled();
   });
 });
+
+describe("ResultPage molecular results", () => {
+  const molecularRow = (over: Record<string, unknown> = {}) => ({
+    id: 5,
+    accession_no: "M26-00005",
+    hn: "0022222",
+    patient_name: "สมศรี ใจงาม",
+    test_name: "EGFR mutation",
+    status: "pending",
+    is_outlab: true,
+    registered_at: "2026-09-01",
+    reported_at: null,
+    ...over,
+  });
+
+  const searchMolecular = async (row: Record<string, unknown>) => {
+    mocked(MolecularCaseService.getAll).mockResolvedValue([row]);
+    renderPage();
+    searchPatient("สมศรี");
+    await screen.findByText("M26-00005");
+  };
+
+  it("offers no PDF for an out-lab case that has not been reported yet", async () => {
+    // is_outlab มาจาก ap_test.is_external ตอนลงทะเบียน ไม่ใช่หลักฐานว่ามีผลแล้ว
+    // — ของเดิมหมอผู้ส่งตรวจเห็นปุ่ม "ดูผล" ตั้งแต่วันแรก กดแล้วได้ 404
+    await searchMolecular(molecularRow());
+
+    expect(screen.getByText("รอผล")).toBeInTheDocument();
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
+    expect(screen.queryByText("ดูผล")).toBeNull();
+  });
+
+  it("offers no PDF for an in-house case that has not been reported yet", async () => {
+    await searchMolecular(molecularRow({ is_outlab: false }));
+
+    expect(screen.queryByText("ดูผล")).toBeNull();
+  });
+
+  it("fetches the out-lab file once the case is reported", async () => {
+    mocked(MolecularCaseService.getOutlabPdfBlob).mockResolvedValue(new Blob(["%PDF"]));
+    await searchMolecular(molecularRow({ status: "reported", reported_at: "2026-09-05" }));
+
+    expect(screen.getByText("รายงานแล้ว")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("ดูผล").closest("button") as Element);
+
+    await waitFor(() => expect(MolecularCaseService.getOutlabPdfBlob).toHaveBeenCalledWith(5));
+    expect(MolecularCaseService.getResultPdfBlob).not.toHaveBeenCalled();
+  });
+
+  it("fetches the in-house result PDF once the case is reported", async () => {
+    mocked(MolecularCaseService.getResultPdfBlob).mockResolvedValue(new Blob(["%PDF"]));
+    await searchMolecular(
+      molecularRow({ status: "reported", is_outlab: false, reported_at: "2026-09-05" }),
+    );
+
+    fireEvent.click(screen.getByText("ดูผล").closest("button") as Element);
+
+    await waitFor(() => expect(MolecularCaseService.getResultPdfBlob).toHaveBeenCalledWith(5));
+    expect(MolecularCaseService.getOutlabPdfBlob).not.toHaveBeenCalled();
+  });
+});

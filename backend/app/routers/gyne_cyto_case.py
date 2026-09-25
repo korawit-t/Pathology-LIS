@@ -18,7 +18,12 @@ from app.schemas.gyne_cyto_case import (
 )
 from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
-from app.dependencies.auth import get_current_user, assert_hospital_scoped_access, get_scoped_hospital_ids
+from app.dependencies.auth import (
+    CLINICIAN_FACING_ROLES,
+    get_current_user,
+    assert_hospital_scoped_access,
+    get_scoped_hospital_ids,
+)
 from app.core.roles import CAN_APPROVE_OUTLAB_RESULT
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
@@ -475,11 +480,6 @@ def approve_outlab_test_result_endpoint(
         "outlab_result_approved_by": display_name,
         "outlab_result_approved_at": case.outlab_result_approved_at.isoformat(),
     }
-
-
-# Clinicians only ever get to see a signed-off result — staff/pathologists
-# can still preview the file pre-approval (that's how they review it).
-CLINICIAN_FACING_ROLES = {"register", "hospital", "clinician"}
 
 
 @router.get("/{case_id}/outlab-test-result")
