@@ -4,11 +4,13 @@ special stains" depending on category, and removing one recalculates the
 case status from whatever AP tests remain across the whole case (falling
 back to "pending diagnosis" once none are IHC/Histochem) — never touching a
 case that's already in a terminal status (SURGICAL_TERMINAL, i.e. "signed
-out"/"cancelled")."""
+out"/"cancelled"), and never touching a case that hasn't reached "stained"
+yet — before slides exist the order is filled by the routine run, so the
+flag would only erase the stage the case is really at."""
 
 import pytest
 
-from app.enums.case_states import SURGICAL_TERMINAL
+from app.enums.case_states import SURGICAL_SPINE, SURGICAL_TERMINAL, surgical_at_or_past
 from app.crud.surgical_specimen_ap_test_service import (
     create_specimen_test,
     get_specimen_tests,
@@ -19,11 +21,16 @@ from app.models.surgical_specimen_ap_test import SurgicalSpecimenAPTest
 
 from tests.factories import make_signable_case, make_anatomical_pathology_test
 
+# ทุกขั้นก่อนสไลด์ย้อมเสร็จ — ช่วงที่ธง "รอผลย้อม" ยังไม่มีความหมาย
+PRE_STAIN_STAGES = [s for s in SURGICAL_SPINE if not surgical_at_or_past(s, "stained")]
+
 
 class TestCreateSpecimenTest:
     def test_ihc_test_promotes_case_to_pending_immuno(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         ihc_test = make_anatomical_pathology_test(db, category="IHC", name="Ki67")
 
         create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
@@ -34,6 +41,8 @@ class TestCreateSpecimenTest:
     def test_histochem_test_promotes_case_to_pending_special_stains(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         histochem_test = make_anatomical_pathology_test(db, category="Histochem", name="PAS")
 
         create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=histochem_test.id))
@@ -51,6 +60,28 @@ class TestCreateSpecimenTest:
 
         db.refresh(case)
         assert case.status == original_status
+
+    @pytest.mark.parametrize("pre_stain_status", PRE_STAIN_STAGES)
+    def test_case_before_staining_keeps_its_stage(self, db, admin_user, pre_stain_status):
+        """Ordering a stain during grossing must not evict the case from its stage.
+
+        The status column holds the pipeline stage and the waiting-on-stains
+        flag at once, so flagging a case that has no slides yet overwrites
+        where it actually is — and nothing records where to put it back.
+        The flag buys nothing there either: the order rides along with the
+        routine H&E run, and stain_run._sync_case_status_from_he_stains
+        stamps "stained" over it anyway once that run finishes.
+        """
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = pre_stain_status
+        db.commit()
+        ihc_test = make_anatomical_pathology_test(db, category="IHC", name="CD20")
+
+        create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
+
+        db.refresh(case)
+        assert case.status == pre_stain_status
 
     @pytest.mark.parametrize("terminal_status", sorted(SURGICAL_TERMINAL))
     def test_terminal_status_case_not_overwritten(self, db, admin_user, terminal_status):
@@ -92,6 +123,8 @@ class TestDeleteSpecimenTest:
     def test_falls_back_to_pending_diagnosis_when_no_ihc_or_histochem_remain(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         ihc_test = make_anatomical_pathology_test(db, category="IHC", name="ER")
         item = create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
         db.refresh(case)
@@ -105,6 +138,8 @@ class TestDeleteSpecimenTest:
     def test_reverts_to_histochem_when_ihc_removed_but_histochem_remains(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         ihc_test = make_anatomical_pathology_test(db, category="IHC", name="CK20")
         histochem_test = make_anatomical_pathology_test(db, category="Histochem", name="Congo Red")
         ihc_item = create_specimen_test(db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=ihc_test.id))
@@ -114,6 +149,38 @@ class TestDeleteSpecimenTest:
 
         db.refresh(case)
         assert case.status == "pending special stains"
+
+    @pytest.mark.parametrize("pre_stain_status", PRE_STAIN_STAGES)
+    def test_case_not_waiting_on_stains_keeps_its_stage(
+        self, db, admin_user, pre_stain_status
+    ):
+        """Removing a billing-only AP test must not fast-forward the case.
+
+        Regression: the fallback was a bare `else`, so deleting any AP test
+        — including a "Surgical Pathology" fee item, which ordering does not
+        touch the status for at all — stamped "pending diagnosis" over
+        whatever stage the case was really at. Closing the tag on a specimen
+        row while grossing (SpecimenTestInline) therefore dropped the case
+        out of the Gross Examination "In Progress" tab and into "All",
+        reported as already awaiting diagnosis.
+        """
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = pre_stain_status
+        db.commit()
+        fee_test = make_anatomical_pathology_test(
+            db, category="Surgical Pathology", name="Surgical fee"
+        )
+        item = create_specimen_test(
+            db, SpecimenAPTestCreate(surgical_specimen_id=specimen.id, ap_test_id=fee_test.id)
+        )
+        db.refresh(case)
+        assert case.status == pre_stain_status
+
+        delete_specimen_test(db, item.id)
+
+        db.refresh(case)
+        assert case.status == pre_stain_status
 
     @pytest.mark.parametrize("terminal_status", sorted(SURGICAL_TERMINAL))
     def test_terminal_status_case_not_recalculated(self, db, admin_user, terminal_status):

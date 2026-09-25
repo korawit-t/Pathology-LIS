@@ -1,6 +1,8 @@
 """Tests for app/crud/surgical_block_stain.py — case-status derivation from
-pending IHC/Histochem stains, the terminal-status guard, and the outlab-run
-receive/status-recompute lifecycle (mirrors app/crud/outlab_consult.py's
+pending IHC/Histochem stains (only once the case has reached "stained" —
+before that the order rides along with the routine run and the flag would
+just erase the stage the case is really at), the terminal-status guard, and
+the outlab-run receive/status-recompute lifecycle (mirrors app/crud/outlab_consult.py's
 already-tested pattern for the case-level consult flow)."""
 
 import uuid
@@ -30,6 +32,8 @@ class TestCreateStainCaseStatusUpdate:
     def test_ihc_test_sets_case_pending_immuno(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         block = make_block(db, specimen.id)
         ihc_test = make_anatomical_pathology_test(db, category="IHC")
 
@@ -41,6 +45,8 @@ class TestCreateStainCaseStatusUpdate:
     def test_histochem_test_sets_case_pending_special_stains(self, db, admin_user):
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         block = make_block(db, specimen.id)
         histo_test = make_anatomical_pathology_test(db, category="Histochem")
 
@@ -61,6 +67,23 @@ class TestCreateStainCaseStatusUpdate:
 
         db.refresh(case)
         assert case.status == "signed out"
+
+    def test_case_before_staining_keeps_its_stage(self, db, admin_user):
+        """A stain ordered while the case is still being grossed must leave
+        the stage alone — it gets stained in the routine run, so the case is
+        not "waiting on stains", and the gross worklist's In Progress tab
+        (which filters on status == "in progress") must keep showing it."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "in progress"
+        db.commit()
+        block = make_block(db, specimen.id)
+        ihc_test = make_anatomical_pathology_test(db, category="IHC")
+
+        create_stain(db, StainCreate(block_id=block.id, test_id=ihc_test.id))
+
+        db.refresh(case)
+        assert case.status == "in progress"
 
     def test_recut_order_does_not_change_case_status(self, db, admin_user):
         registrar, _ = admin_user
@@ -99,6 +122,8 @@ class TestDeleteStain:
         Fixed to revert to "stained" once no pending IHC/Histochem remain."""
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "slide sent"
+        db.commit()
         block = make_block(db, specimen.id)
         ihc_test = make_anatomical_pathology_test(db, category="IHC")
         stain = create_stain(db, StainCreate(block_id=block.id, test_id=ihc_test.id))

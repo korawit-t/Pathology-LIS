@@ -10,6 +10,12 @@ interface SpecimenAPTestItem {
   ap_test?: { name?: string; price_tier_3?: number };
 }
 
+/**
+ * ต้องลอยเหนือ Modal "Manage Specimen List" (zIndex 2000) ของ
+ * SpecimenManagerSection ซึ่งเป็นเจ้าของตารางที่ฝังคอมโพเนนต์นี้อยู่
+ */
+const CONFIRM_Z_INDEX = 2100;
+
 const { Text } = Typography;
 
 interface Props {
@@ -21,7 +27,7 @@ const SpecimenTestInline: React.FC<Props> = ({
   specimenId,
   disabled = false,
 }) => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [apTests, setAPTests] = useState<AnatomicalPathologyTest[]>([]);
   const [orderedItems, setOrderedItems] = useState<SpecimenAPTestItem[]>([]);
   const [selected, setSelected] = useState<number | undefined>(undefined);
@@ -73,6 +79,22 @@ const SpecimenTestInline: React.FC<Props> = ({
     }
   };
 
+  /**
+   * ถามก่อนลบ — เดิมกดกากบาทครั้งเดียวรายการหายทันที ทั้งที่มันผูกกับค่าใช้จ่าย
+   * ที่ต้องคีย์เข้า HOSxP และ (ก่อนแก้ที่ crud) ยังไปเขย่าสถานะเคสด้วย
+   */
+  const confirmDelete = (item: SpecimenAPTestItem) => {
+    modal.confirm({
+      title: "ลบค่าตรวจนี้?",
+      content: item.ap_test?.name,
+      okText: "ลบ",
+      okButtonProps: { danger: true },
+      cancelText: "ยกเลิก",
+      zIndex: CONFIRM_Z_INDEX,
+      onOk: () => handleDelete(item.id),
+    });
+  };
+
   const totalPrice = orderedItems.reduce(
     (sum, i) => sum + (i.ap_test?.price_tier_3 || 0),
     0,
@@ -122,8 +144,9 @@ const SpecimenTestInline: React.FC<Props> = ({
                 // 🚩 ถ้า disabled จะกดปิด (ลบ) ไม่ได้
                 closable={!disabled}
                 onClose={(e) => {
+                  // กัน Tag หายไปก่อน — ลบจริงหลังผู้ใช้ยืนยันเท่านั้น
                   e.preventDefault();
-                  handleDelete(item.id);
+                  confirmDelete(item);
                 }}
                 style={{ borderRadius: "4px", margin: 0, fontSize: "12px" }}
               >
