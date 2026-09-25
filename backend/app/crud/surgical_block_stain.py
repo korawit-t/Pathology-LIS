@@ -18,7 +18,11 @@ from app.models.surgical_block_stain import (
 )
 from app.utils.block_workflow import stage_filter
 from app.utils.stain_filters import is_keyable_stain
-from app.enums.case_states import SURGICAL_TERMINAL
+from app.enums.case_states import (
+    SURGICAL_STAIN_HOLDS,
+    SURGICAL_TERMINAL,
+    surgical_at_or_past,
+)
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
@@ -57,11 +61,13 @@ def _update_case_status_from_block_stains(db: Session, case_id: int) -> None:
         .all()
     )
     categories = {r.category for r in rows}
-    if "IHC" in categories:
+    # ติดธงได้เฉพาะเคสที่เลยขั้น "stained" มาแล้ว — เหตุผลเดียวกับใน create_stain
+    can_flag = surgical_at_or_past(case.status, "stained")
+    if can_flag and "IHC" in categories:
         case.status = "pending immuno"
-    elif "Histochem" in categories:
+    elif can_flag and "Histochem" in categories:
         case.status = "pending special stains"
-    elif case.status in ("pending immuno", "pending special stains"):
+    elif case.status in SURGICAL_STAIN_HOLDS:
         # No pending IHC/Histochem stains remain — clear the flag. Without
         # this, deleting the last one left the case stuck showing a pending
         # state forever (this function otherwise only ever sets the flag,
@@ -92,7 +98,14 @@ def create_stain(db: Session, obj_in: StainCreate, registrar_id: int | None = No
                 specimen = db.get(SurgicalSpecimen, block.specimen_id)
                 if specimen:
                     case = db.get(SurgicalCase, specimen.case_id)
-                    if case and case.status not in SURGICAL_TERMINAL:
+                    # สั่งย้อมก่อนสไลด์ออก = ย้อมไปในรอบปกติ ไม่ใช่ "เคสค้างรอ
+                    # ผลย้อม" — ติดธงตอนนั้นมีแต่จะลบขั้นจริงของเคสทิ้ง
+                    # (ดู surgical_specimen_ap_test_service.create_specimen_test)
+                    if (
+                        case
+                        and case.status not in SURGICAL_TERMINAL
+                        and surgical_at_or_past(case.status, "stained")
+                    ):
                         if ap_test.category == "IHC":
                             case.status = "pending immuno"
                         elif ap_test.category == "Histochem" and case.status != "pending immuno":
