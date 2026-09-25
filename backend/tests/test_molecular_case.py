@@ -768,10 +768,30 @@ class TestMolecularResultReleaseGate:
     rendered whatever draft sat in result_text. Same rule, and the same
     exemption for lab staff, as gyne_cyto_case.get_outlab_test_result."""
 
-    def _clinician(self, db, client):
+    def _clinician(self, db, client, mcase=None):
+        """A referring account, assigned to the case's own hospital.
+
+        The assignment matters: hospital scoping is a separate, earlier gate
+        (see test_hospital_scoping_router.py), so an account with no hospitals
+        is turned away before the release rule under test is ever reached —
+        the test would then pass on the wrong 403. Left unassigned only where
+        the case is irrelevant, as in the missing-case 404.
+        """
+        from app.crud.molecular_case import _effective_hospital_id
+        from app.models.molecular_case import MolecularCase
+        from app.models.organization import Hospital
+
         clinician, pwd = _make_user(
             db, f"clin_{uuid.uuid4().hex[:12]}", "ClinPass1!", ["clinician"]
         )
+        if mcase is not None:
+            case = db.query(MolecularCase).filter(MolecularCase.id == mcase["id"]).first()
+            hospital_id = _effective_hospital_id(case)
+            assert hospital_id is not None, "case needs a hospital to scope the clinician to"
+            clinician.hospitals = (
+                db.query(Hospital).filter(Hospital.id == hospital_id).all()
+            )
+            db.commit()
         _login(client, clinician.username, pwd)
 
     def test_referring_side_cannot_read_an_outlab_pdf_before_sign_out(
@@ -779,7 +799,7 @@ class TestMolecularResultReleaseGate:
     ):
         mcase = _outlab_case(db, pathologist_client, admin_user)
         assert _upload(pathologist_client, mcase["id"]).status_code == 200
-        self._clinician(db, client)
+        self._clinician(db, client, mcase)
 
         r = client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
 
@@ -797,7 +817,7 @@ class TestMolecularResultReleaseGate:
             ).status_code
             == 200
         )
-        self._clinician(db, client)
+        self._clinician(db, client, mcase)
 
         r = client.get(f"/molecular-cases/{mcase['id']}/outlab-pdf")
 
@@ -824,9 +844,14 @@ class TestMolecularResultReleaseGate:
             db, category="Molecular", system_code=None, name="BRAF Sequencing"
         )
         created = pathologist_client.post(
-            "/molecular-cases", json={"patient_id": patient.id, "ap_test_id": ap_test.id}
+            "/molecular-cases",
+            json={
+                "patient_id": patient.id,
+                "ap_test_id": ap_test.id,
+                "hospital_id": make_hospital(db).id,
+            },
         ).json()
-        self._clinician(db, client)
+        self._clinician(db, client, created)
 
         r = client.get(f"/molecular-cases/{created['id']}/result-pdf")
 

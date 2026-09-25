@@ -22,6 +22,8 @@ from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.models.legacy_surgical_report import LegacySurgicalReport
 from app.models.legacy_gyne_cyto_report import LegacyGyneCytoReport
 from app.models.legacy_nongyne_cyto_report import LegacyNongyneCytoReport
+from app.models.molecular_case import MolecularCase
+from app.utils.time import local_now
 from tests.conftest import _make_user
 from tests.factories import (
     make_hospital,
@@ -30,6 +32,7 @@ from tests.factories import (
     make_bare_gyne_case,
     make_bare_nongyne_case,
     make_signable_case,
+    make_anatomical_pathology_test,
 )
 
 
@@ -716,3 +719,338 @@ class TestSurgicalDiagnosisHospitalScoping:
         assert r.status_code == 200
         ids = {d["id"] for d in r.json()}
         assert {diag_a.id, diag_b.id} <= ids
+
+
+# --- Molecular ---------------------------------------------------------------
+#
+# Molecular landed after the pass above and never got the same treatment: its
+# router had no scoping at all, while clinician/hospital accounts reach every
+# read endpoint on it through CAN_READ_REPORT. The Result page searches
+# Molecular alongside the three archives, so a referring account searching by
+# patient or by another hospital's clinician name got that hospital's cases
+# back, results included.
+#
+# Both origins are covered in each direction, because the hospital lives in a
+# different place for each: on the row for a standalone case, on the parent
+# Surgical case for one ordered from a block.
+
+
+def _make_molecular_case(
+    db,
+    registrar_id: int,
+    hospital=None,
+    parent_case=None,
+    status: str = "reported",
+    clinician_name: str = None,
+    outlab_pdf_path: str = None,
+) -> MolecularCase:
+    ap_test = make_anatomical_pathology_test(
+        db, category="Molecular", system_code=None, name="EGFR Mutation Analysis"
+    )
+    standalone = parent_case is None
+    case = MolecularCase(
+        accession_no=f"M{uuid.uuid4().hex[:10]}",
+        ap_test_id=ap_test.id,
+        registrar_id=registrar_id,
+        parent_case_id=None if standalone else parent_case.id,
+        patient_id=make_patient(db).id if standalone else None,
+        hospital_id=hospital.id if (standalone and hospital) else None,
+        hn=f"HN{uuid.uuid4().hex[:6]}" if standalone else None,
+        clinician_name=clinician_name if standalone else None,
+        status=status,
+        result_text="<p>No mutation detected.</p>",
+        outlab_pdf_path=outlab_pdf_path,
+        is_outlab=outlab_pdf_path is not None,
+        registered_at=local_now(),
+        reported_at=local_now() if status == "reported" else None,
+        reported_by_id=registrar_id if status == "reported" else None,
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    return case
+
+
+class TestMolecularCaseDetailHospitalScoping:
+    def test_clinician_cannot_read_other_hospital_standalone_case(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_b.id}").status_code == 403
+
+    def test_clinician_can_read_own_hospital_standalone_case(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_a.id}").status_code == 200
+
+    def test_clinician_cannot_read_other_hospital_parent_linked_case(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        parent_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        case_b = _make_molecular_case(db, registrar.id, parent_case=parent_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_b.id}").status_code == 403
+
+    def test_clinician_can_read_own_hospital_parent_linked_case(self, client, db, admin_user):
+        """A parent-linked case has hospital_id NULL on its own row — scoping
+        on that column instead of the parent's would deny every such case."""
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        parent_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
+        case_a = _make_molecular_case(db, registrar.id, parent_case=parent_a)
+
+        assert case_a.hospital_id is None
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_a.id}").status_code == 200
+
+    def test_pathologist_can_read_any_hospital_case(self, client, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path_user, path_pwd = pathologist_user
+        hosp_b = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        _login(client, path_user.username, path_pwd)
+
+        assert client.get(f"/molecular-cases/{case_b.id}").status_code == 200
+
+
+class TestMolecularListHospitalScoping:
+    def test_clinician_list_excludes_other_hospital_cases(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        own = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+        other = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+        parent_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        other_linked = _make_molecular_case(db, registrar.id, parent_case=parent_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases", params={"limit": 500})
+
+        assert r.status_code == 200
+        ids = {c["id"] for c in r.json()}
+        assert own.id in ids
+        assert other.id not in ids
+        assert other_linked.id not in ids
+
+    def test_clinician_searching_another_hospitals_clinician_finds_nothing(
+        self, client, db, admin_user
+    ):
+        """The Result page's "search by ผู้ส่งตรวจ" path — the one that made
+        this reachable without knowing a case id."""
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        referrer = f"Dr Somchai {uuid.uuid4().hex[:8]}"
+        case_b = _make_molecular_case(
+            db, registrar.id, hospital=hosp_b, clinician_name=referrer
+        )
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases", params={"clinician": referrer, "limit": 500})
+
+        assert r.status_code == 200
+        assert case_b.id not in {c["id"] for c in r.json()}
+
+    def test_clinician_search_by_patient_excludes_other_hospital(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_b = make_hospital(db)
+        hosp_a = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases", params={"search": case_b.hn, "limit": 500})
+
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_clinician_with_two_hospitals_sees_both_but_not_a_third(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        hosp_c = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+        parent_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
+        case_b = _make_molecular_case(db, registrar.id, parent_case=parent_b)
+        case_c = _make_molecular_case(db, registrar.id, hospital=hosp_c)
+
+        clinician, pwd = _make_clinician_at_hospitals(db, [hosp_a.id, hosp_b.id])
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases", params={"limit": 500})
+
+        ids = {c["id"] for c in r.json()}
+        assert {case_a.id, case_b.id} <= ids
+        assert case_c.id not in ids
+
+    def test_clinician_with_no_hospitals_sees_nothing(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_b = make_hospital(db)
+        _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospitals(db, [])
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases", params={"limit": 500})
+
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_pathologist_list_sees_every_hospital(self, client, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path_user, path_pwd = pathologist_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        _login(client, path_user.username, path_pwd)
+
+        r = client.get("/molecular-cases", params={"limit": 500})
+
+        ids = {c["id"] for c in r.json()}
+        assert {case_a.id, case_b.id} <= ids
+
+    def test_count_is_scoped_to_own_hospitals(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+        before = client.get("/molecular-cases/count").json()["count"]
+
+        _make_molecular_case(db, registrar.id, hospital=hosp_b)
+        assert client.get("/molecular-cases/count").json()["count"] == before
+
+        _make_molecular_case(db, registrar.id, hospital=hosp_a)
+        assert client.get("/molecular-cases/count").json()["count"] == before + 1
+
+    def test_print_queue_is_scoped_to_own_hospitals(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.get("/molecular-cases/print-queue", params={"size": 200})
+
+        assert r.status_code == 200
+        ids = {c["id"] for c in r.json()["items"]}
+        assert case_a.id in ids
+        assert case_b.id not in ids
+
+
+class TestMolecularResultHospitalScoping:
+    def test_clinician_cannot_download_other_hospital_result_pdf(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_b.id}/result-pdf").status_code == 403
+
+    def test_clinician_can_download_own_hospital_result_pdf(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_a.id}/result-pdf").status_code == 200
+
+    def test_clinician_cannot_download_other_hospital_outlab_pdf(
+        self, client, db, admin_user, tmp_path
+    ):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        pdf = tmp_path / "outlab.pdf"
+        pdf.write_bytes(b"%PDF-1.4 test")
+        case_b = _make_molecular_case(
+            db, registrar.id, hospital=hosp_b, outlab_pdf_path=str(pdf)
+        )
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        assert client.get(f"/molecular-cases/{case_b.id}/outlab-pdf").status_code == 403
+
+    def test_clinician_cannot_flip_print_status_on_other_hospital_case(
+        self, client, db, admin_user
+    ):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.patch(
+            f"/molecular-cases/{case_b.id}/print-status", json={"is_print": True}
+        )
+
+        assert r.status_code == 403
+        db.refresh(case_b)
+        assert case_b.is_print is False
+
+    def test_clinician_can_flip_print_status_on_own_hospital_case(self, client, db, admin_user):
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.patch(
+            f"/molecular-cases/{case_a.id}/print-status", json={"is_print": True}
+        )
+
+        assert r.status_code == 200
+        assert r.json()["is_print"] is True
+
+    def test_barcode_sheet_skips_other_hospital_cases(self, client, db, admin_user):
+        """Labels carry the patient's name and HN, and the endpoint takes
+        arbitrary ids — out-of-scope ones are dropped, so a request for only
+        those has nothing left to render."""
+        registrar, _ = admin_user
+        hosp_a = make_hospital(db)
+        hosp_b = make_hospital(db)
+        case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
+
+        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        _login(client, clinician.username, pwd)
+
+        r = client.post("/molecular-cases/barcode-pdf", json={"case_ids": [case_b.id]})
+
+        assert r.status_code == 404
