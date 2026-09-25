@@ -11,7 +11,11 @@ from app.core.roles import (
     CAN_WRITE_REPORT,
 )
 from app.db.database import get_db
-from app.dependencies.auth import check_password_status, get_current_user
+from app.dependencies.auth import (
+    CLINICIAN_FACING_ROLES,
+    check_password_status,
+    get_current_user,
+)
 from app.models.user import User
 from app.schemas.molecular_case import (
     MolecularCaseCancel,
@@ -212,6 +216,27 @@ def _guard_finalized(db: Session, case_id: int, user: User) -> None:
         )
 
 
+def _assert_result_released(case: dict, current_user: User) -> None:
+    """The referring side only ever sees a result a pathologist has signed out.
+
+    CAN_READ_REPORT covers everyone who may read a finished report, which is
+    why both PDF endpoints sit behind it — but it says nothing about *when*.
+    A Molecular case holds its result on the case row itself (no snapshot
+    report table to gate on), so without this an out-lab PDF was readable the
+    moment the envelope was opened, and /result-pdf rendered whatever draft
+    text was in result_text.
+
+    Mirrors gyne_cyto_case.get_outlab_test_result. Lab staff are not gated —
+    previewing before sign-out is how the result gets reviewed.
+    """
+    if case.get("status") == "reported":
+        return
+    if CLINICIAN_FACING_ROLES.intersection(current_user.roles or []):
+        raise HTTPException(
+            status_code=403, detail="This result is awaiting pathologist sign-off."
+        )
+
+
 @router.post("/{case_id}/outlab-pdf", dependencies=[Depends(CAN_UPLOAD_OUTLAB_RESULT)])
 def upload_outlab_pdf(
     case_id: int,
@@ -232,10 +257,12 @@ def download_outlab_pdf(
     case_id: int,
     with_barcode: bool = Query(False),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = molecular_crud.get_molecular_case(db, case_id)
     if not case or not case.get("outlab_pdf_path"):
         raise HTTPException(status_code=404, detail="No out-lab PDF uploaded for this case")
+    _assert_result_released(case, current_user)
     if not os.path.exists(case["outlab_pdf_path"]):
         raise HTTPException(status_code=404, detail="Out-lab PDF file missing on disk")
     # Same lab-header + patient/accession cover sheet as the Surgical/Non-Gyne
@@ -270,7 +297,13 @@ def download_result_pdf(
     case_id: int,
     with_barcode: bool = Query(False),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    case = molecular_crud.get_molecular_case(db, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Molecular case not found")
+    _assert_result_released(case, current_user)
+
     pdf_bytes = molecular_crud.get_molecular_result_pdf(db, case_id, with_barcode=with_barcode)
     if pdf_bytes is None:
         raise HTTPException(status_code=404, detail="Molecular case not found")
