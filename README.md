@@ -430,6 +430,11 @@ backups untouched.
 > refuses to run past 2 GB without it rather than writing an archive that only
 > proves unreadable at restore time.
 
+> A storage archive that finishes without being able to read every file — one
+> the backend held a write lock on, typically — is logged and alerted as a
+> success carrying a warning, not as a failure. The archive is complete apart
+> from that file, and discarding it would leave the night with nothing.
+
 ### Verifying a backup
 
 A backup nobody has restored is not yet a backup. To prove one end to end,
