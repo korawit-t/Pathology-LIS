@@ -24,10 +24,34 @@ const makeCase = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** Opens the row's result PDF and waits until the preview is actually showing
+ *  that row's case, not just until *a* dialog exists.
+ *
+ *  Two things make the bare findByRole("dialog") a race. The modal's content
+ *  only arrives once the PDF download promise resolves, and jsdom never
+ *  finishes antd's leave animation — so a preview that was cancelled stays
+ *  mounted with role="dialog" and the *previous* case still in its footer.
+ *  Either way role="dialog" resolves before the clicked case is on screen, and
+ *  whether the render lands first is down to event-loop scheduling (React
+ *  flushes on setImmediate, which comes after the macrotask RTL's findBy
+ *  drains on) — it passed locally and went red on CI. Pinning the wait to the
+ *  clicked row's accession removes the guesswork. */
 const openReview = async (row = 0) => {
-  await screen.findAllByText("Review & Approve");
-  fireEvent.click(screen.getAllByText("Review & Approve")[row].closest("button")!);
-  return screen.findByRole("dialog");
+  const buttons = await screen.findAllByText("Review & Approve");
+  // First column is Accession No., so this is the case the click will open.
+  const accession = buttons[row].closest("tr")!.querySelector("td")!.textContent!;
+  fireEvent.click(buttons[row].closest("button")!);
+  let dialog!: HTMLElement;
+  await waitFor(() => {
+    dialog = screen.getByRole("dialog");
+    // A cancelled preview keeps its leave class for good here, so an absent one
+    // is what "this is the reopened dialog, not the old one" looks like — and
+    // it is the only tell when the same row is reopened, since the accession
+    // the old footer is showing is then the one being waited for.
+    expect(dialog.className).not.toContain("-leave");
+    expect(within(dialog).getByText(accession)).toBeInTheDocument();
+  });
+  return dialog;
 };
 
 const approveAndNextButton = (dialog: HTMLElement) =>
