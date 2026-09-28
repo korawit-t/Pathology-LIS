@@ -150,7 +150,15 @@ if (Test-Path $STORAGE_DIR) {
 
     if ($sevenZip) {
         & $sevenZip a -tzip -mx5 $STORAGE_TMP "$STORAGE_DIR\*" | Out-Null
-        if ($LASTEXITCODE -ne 0) { Fail "7-Zip failed (exit $LASTEXITCODE)" }
+        # 7-Zip exit 1 is a warning, not a failure: the archive is complete and
+        # valid, but some files could not be opened - typically one the backend
+        # held a write lock on. Failing the whole run on that would throw away a
+        # usable backup. Anything above 1 is fatal.
+        if ($LASTEXITCODE -eq 1) {
+            $DETAIL = "7-Zip could not read some files (locked); archive is otherwise complete"
+            Write-Log "    [WARN] $DETAIL"
+        }
+        elseif ($LASTEXITCODE -ne 0) { Fail "7-Zip failed (exit $LASTEXITCODE)" }
     }
     elseif ($rawBytes -ge 2GB) {
         Fail ("storage is $rawGB GB, past the 2 GB limit of Compress-Archive. " +
@@ -160,8 +168,15 @@ if (Test-Path $STORAGE_DIR) {
         if ($rawBytes -ge 1.5GB) {
             Write-Log "    [WARN] storage is $rawGB GB and approaching the 2 GB Compress-Archive limit - install 7-Zip before it is reached"
         }
-        Compress-Archive -Path "$STORAGE_DIR\*" -DestinationPath $STORAGE_TMP -CompressionLevel Optimal
-        if (-not $?) { Fail "Compress-Archive failed" }
+        # -ErrorAction Stop so the real reason reaches the catch: "Compress-Archive
+        # failed" on its own sends whoever is on call hunting through a console
+        # nobody captured.
+        try {
+            Compress-Archive -Path "$STORAGE_DIR\*" -DestinationPath $STORAGE_TMP `
+                -CompressionLevel Optimal -Force -ErrorAction Stop
+        } catch {
+            Fail "Compress-Archive failed: $($_.Exception.Message)"
+        }
     }
 
     Move-Item -Path $STORAGE_TMP -Destination $STORAGE_ARCHIVE -Force
@@ -187,5 +202,9 @@ foreach ($pattern in @("db_*.dump", "storage_*.zip")) {
 
 # 4. Log + Slack
 Log-Result
-Notify-Slack ":white_check_mark: *Pathology LIS Backup OK* - $DATE_LABEL`n- DB: $DB_SIZE MB`n- Storage: $FILES_SIZE MB"
+# A run that succeeded with a warning - a skipped locked file, a missing
+# storage dir - is not the same as a clean one, and the CSV alone is read
+# by nobody until something has already gone wrong.
+$warnLine = if ($DETAIL) { "`n- :warning: $DETAIL" } else { "" }
+Notify-Slack ":white_check_mark: *Pathology LIS Backup OK* - $DATE_LABEL`n- DB: $DB_SIZE MB`n- Storage: $FILES_SIZE MB$warnLine"
 Write-Log "=== Done. Log: $LOG_CSV ==="
