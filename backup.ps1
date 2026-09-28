@@ -54,11 +54,18 @@ $LOG_CSV         = Join-Path $BACKUP_ROOT "backup_log.csv"
 # used to leave no usable backup at all, and the failure alert would say "this
 # run failed" without mentioning that yesterday's copy went with it.
 #
-# Each run writes to .part, is verified, and only then takes its final name.
+# Each run writes to a staging name, is verified, and only then takes its final one.
 $DB_DUMP_FILE    = Join-Path $BACKUP_ROOT "db_$STAMP.dump"
 $STORAGE_ARCHIVE = Join-Path $BACKUP_ROOT "storage_$STAMP.zip"
 $DB_DUMP_TMP     = "$DB_DUMP_FILE.part"
-$STORAGE_TMP     = "$STORAGE_ARCHIVE.part"
+# The storage archive cannot stage as "<final>.part" the way the dump does:
+# Compress-Archive rejects every destination extension but .zip outright
+# (NotSupportedArchiveFileExtension), so that name disabled the entire
+# Compress-Archive branch from the day staging was introduced. Keep the .zip
+# extension and mark the staging file with a prefix instead - one the prune
+# glob (storage_*.zip) cannot match, so an orphan left by a killed run is
+# never counted as one of the kept backups.
+$STORAGE_TMP     = Join-Path $BACKUP_ROOT "tmp_storage_$STAMP.zip"
 $KEEP            = if ($cfg["BACKUP_KEEP"]) { [int]$cfg["BACKUP_KEEP"] } else { 14 }
 $STATUS          = "SUCCESS"
 $DETAIL          = ""
@@ -199,6 +206,15 @@ foreach ($pattern in @("db_*.dump", "storage_*.zip")) {
             Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
         }
 }
+
+# A run killed outright - reboot, power loss - leaves its staging archive
+# behind, and the glob above deliberately cannot match it. Sweep the stale ones.
+Get-ChildItem -Path $BACKUP_ROOT -Filter "tmp_storage_*.zip" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+    ForEach-Object {
+        Write-Log "    removing orphaned staging file $($_.Name)"
+        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+    }
 
 # 4. Log + Slack
 Log-Result
