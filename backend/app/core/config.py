@@ -8,6 +8,23 @@ ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production").lower()
 IS_PRODUCTION: bool = ENVIRONMENT == "production"
 
 
+# C5: whether Swagger UI, ReDoc and the raw OpenAPI schema are served.
+#
+# Deliberately NOT derived from IS_PRODUCTION, even though it used to be.
+# The two answer different questions — IS_PRODUCTION is a cookie/TLS posture,
+# this is an exposure decision — and tying them together quietly undid the
+# fix. A hospital LAN serves plain HTTP, so it has to keep
+# ENVIRONMENT=development (backend/.env.example says exactly that, and
+# production fail-closes on http:// origins anyway); that in turn handed it
+# /docs, /redoc and /openapi.json, readable by every host on the subnet.
+# Split out, the schema can be closed without claiming an HTTPS posture the
+# deployment doesn't have.
+#
+# Fail-closed like ENVIRONMENT above: off unless an operator opts in with the
+# literal "true". Staging that wants a browsable schema sets EXPOSE_DOCS=true.
+EXPOSE_DOCS: bool = os.getenv("EXPOSE_DOCS", "false").lower().strip() == "true"
+
+
 # Optional: shares the auth cookie across subdomains of one custom domain
 # (e.g. ".mylis.example.com" so app.mylis.example.com and
 # api.mylis.example.com are same-site to the browser, which Safari
@@ -62,5 +79,6 @@ class Settings:
     VERSION: str = "2.0.0"
     ENVIRONMENT: str = ENVIRONMENT
     IS_PRODUCTION: bool = IS_PRODUCTION
+    EXPOSE_DOCS: bool = EXPOSE_DOCS
 
 settings = Settings()

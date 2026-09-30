@@ -104,17 +104,36 @@ async def app_lifespan(app: FastAPI):
                 _lifespan_logger.exception("Background worker raised during shutdown")
 
 
-# C5: disable Swagger / ReDoc / OpenAPI schema in production so the full
-# endpoint map is not publicly reachable (SECURITY_AUDIT.md §C5).
+# C5: Swagger / ReDoc / the OpenAPI schema are served only when an operator
+# opts in with EXPOSE_DOCS=true (SECURITY_AUDIT.md §C5). This used to hang off
+# IS_PRODUCTION, which made it unreachable for the deployment that needed it:
+# a hospital LAN runs plain HTTP and therefore has to stay
+# ENVIRONMENT=development, so it got the full endpoint map published to every
+# host on the subnet. The flags are independent now — see app/core/config.py.
 app = FastAPI(
     title="Pathology LIS API",
     version=settings.VERSION,
-    docs_url=None if IS_PRODUCTION else "/docs",
-    redoc_url=None if IS_PRODUCTION else "/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    docs_url="/docs" if settings.EXPOSE_DOCS else None,
+    redoc_url="/redoc" if settings.EXPOSE_DOCS else None,
+    openapi_url="/openapi.json" if settings.EXPOSE_DOCS else None,
     redirect_slashes=True,
     lifespan=app_lifespan,
 )
+
+# Warn rather than refuse, unlike the C4 CORS guard below: a staging box
+# serving its own schema is a legitimate setup, whereas a credentialed
+# wildcard origin has no correct use. The point is that an operator who
+# switched this on once to debug something sees it in the boot log every
+# time after, instead of it going quiet and staying on for a year.
+if settings.EXPOSE_DOCS:
+    _logging.getLogger(__name__).warning(
+        "EXPOSE_DOCS=true — the API schema is served without authentication at "
+        "%s, %s and %s. Anyone who can reach this server can read the full "
+        "endpoint map. Unset EXPOSE_DOCS to close them.",
+        app.docs_url,
+        app.redoc_url,
+        app.openapi_url,
+    )
 
 register_audit_listeners()
 

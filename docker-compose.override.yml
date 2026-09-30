@@ -16,6 +16,7 @@
 #   - re-runs seed_data.py on every backend start so the dev admin user,
 #     templates, and reference data exist (idempotent — see seed_data.py)
 #   - drops `restart: unless-stopped` so dev failures are visible
+#   - sets EXPOSE_DOCS=true so /docs and /redoc are available in dev
 #
 # 🔒 NEVER copy these defaults into a production environment. The seeded
 # admin uses `admin/admin1234` (marked as a temporary password — first
@@ -29,6 +30,11 @@ services:
       # Dev DB connection — matches the `db` service below.
       - DATABASE_URL=postgresql+psycopg2://pathology_dev:dev_password_change_me@db:5432/pathology_lis
       - ENVIRONMENT=development
+      # Swagger UI / ReDoc / the OpenAPI schema. Off by default everywhere
+      # (fail-closed, see backend/.env.example); switched on here because a
+      # browsable schema is the point of a dev stack. Production skips this
+      # file, so it stays off there unless backend/.env asks for it.
+      - EXPOSE_DOCS=true
     # Override the production CMD to also run the seed on first start.
     # `seed_data.py` is idempotent: it skips records that already exist.
     command: >
