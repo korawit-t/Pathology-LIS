@@ -33,6 +33,17 @@ const DiagnosisSearchService = {
     });
     return res.data;
   },
+
+  /** Built server-side rather than from the rows already in the browser: an HN
+   *  like "0012345" only survives in a format that can mark the cell as text,
+   *  which CSV cannot do — Excel re-parses it as 12345 on open. */
+  downloadXlsx: async (params: DiagnosisSearchParams): Promise<Blob> => {
+    const res = await api.get("/diagnosis-search/xlsx", {
+      params: toQuery(params),
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
 };
 
 export default DiagnosisSearchService;

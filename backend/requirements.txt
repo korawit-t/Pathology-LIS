@@ -28,6 +28,7 @@ numpy==2.5.1
 packaging==26.0
 pandas==2.3.3
 passlib==1.7.4
+openpyxl==3.1.5
 openslide-python==1.4.6
 openslide-bin==4.0.1.2
 pillow==12.3.0

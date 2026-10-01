@@ -124,3 +124,129 @@ class TestResponseWiring:
 
         assert body["total"] == 2
         assert len(body["items"]) == 1
+
+
+class TestXlsxExport:
+    """The export exists in .xlsx rather than CSV for one reason: an HN like
+    "0012345" is written to CSV correctly and then wrecked by Excel on open,
+    which parses the column as numeric and drops the leading zeros — silently
+    turning one patient's identifier into another's. These tests read the
+    workbook back and assert the cell is text."""
+
+    def _workbook(self, client, tag, **extra_params):
+        import io
+
+        from openpyxl import load_workbook
+
+        params = {"specimen_terms": [f"colon{tag}"], **extra_params}
+        r = client.get("/diagnosis-search/xlsx", params=params)
+        assert r.status_code == 200, r.text
+        assert "spreadsheetml.sheet" in r.headers["content-type"]
+        assert ".xlsx" in r.headers["content-disposition"]
+        return load_workbook(io.BytesIO(r.content))
+
+    def _header_row(self, ws):
+        for row in ws.iter_rows():
+            if row[0].value == "ลำดับ":
+                return row[0].row
+        raise AssertionError("header row not found")
+
+    def _cell(self, ws, header_row, header_text, offset=1):
+        col = next(
+            c.column for c in ws[header_row] if c.value == header_text
+        )
+        return ws.cell(row=header_row + offset, column=col)
+
+    def test_hn_keeps_its_leading_zeros_as_a_text_cell(
+        self, pathologist_client, db, admin_user
+    ):
+        registrar, _ = admin_user
+        tag = uuid.uuid4().hex[:10]
+        case = _reported_case(db, registrar.id, tag)
+        case.hn = "0012345"
+        db.commit()
+
+        ws = self._workbook(pathologist_client, tag).active
+        header_row = self._header_row(ws)
+        hn = self._cell(ws, header_row, "HN")
+
+        assert hn.value == "0012345"
+        assert isinstance(hn.value, str)
+        # "@" is Excel's text format — without it Excel re-parses on open.
+        assert hn.number_format == "@"
+
+    def test_accession_no_is_also_text(self, pathologist_client, db, admin_user):
+        registrar, _ = admin_user
+        tag = uuid.uuid4().hex[:10]
+        case = _reported_case(db, registrar.id, tag)
+
+        ws = self._workbook(pathologist_client, tag).active
+        header_row = self._header_row(ws)
+        acc = self._cell(ws, header_row, "Accession No.")
+
+        assert acc.value == case.accession_no
+        assert acc.number_format == "@"
+
+    def test_carries_the_criteria_and_totals(self, pathologist_client, db, admin_user):
+        registrar, _ = admin_user
+        tag = uuid.uuid4().hex[:10]
+        _reported_case(db, registrar.id, tag)
+
+        ws = self._workbook(
+            pathologist_client, tag, diagnosis_terms=[f"adenocarcinoma{tag}"]
+        ).active
+        labels = {
+            row[0].value: row[1].value
+            for row in ws.iter_rows(min_row=1, max_col=2)
+            if row[0].value
+        }
+
+        assert labels["Specimen มีคำว่า"] == f"colon{tag}"
+        assert labels["Diagnosis มีคำว่า"] == f"adenocarcinoma{tag}"
+        assert labels["เงื่อนไขคำค้น"] == "ครบทุกคำ (AND)"
+        assert labels["เคสที่เข้าเงื่อนไข"] == "1"
+
+    def test_header_is_frozen_so_a_long_list_stays_readable(
+        self, pathologist_client, db, admin_user
+    ):
+        registrar, _ = admin_user
+        tag = uuid.uuid4().hex[:10]
+        _reported_case(db, registrar.id, tag)
+
+        ws = self._workbook(pathologist_client, tag).active
+
+        assert ws.freeze_panes == f"A{self._header_row(ws) + 1}"
+
+    def test_matched_specimen_and_diagnosis_collapse_into_one_cell_each(
+        self, pathologist_client, db, admin_user
+    ):
+        registrar, _ = admin_user
+        tag = uuid.uuid4().hex[:10]
+        case = _reported_case(db, registrar.id, tag)
+        db.add(
+            SurgicalSpecimen(
+                case_id=case.id, specimen_label="B", specimen_name=f"Colon{tag}, resection"
+            )
+        )
+        db.commit()
+
+        ws = self._workbook(pathologist_client, tag).active
+        header_row = self._header_row(ws)
+        specimens = self._cell(ws, header_row, "ชิ้นเนื้อที่ตรงเงื่อนไข").value
+
+        assert f"A: Colon{tag}, biopsy{tag}" in specimens
+        assert f"B: Colon{tag}, resection" in specimens
+        assert "; " in specimens
+
+    def test_rejects_a_query_with_no_terms(self, pathologist_client):
+        assert pathologist_client.get("/diagnosis-search/xlsx").status_code == 400
+
+    def test_clinician_is_rejected(self, clinician_client):
+        r = clinician_client.get(
+            "/diagnosis-search/xlsx", params={"specimen_terms": ["colon"]}
+        )
+        assert r.status_code == 403
+
+    def test_requires_authentication(self, client):
+        r = client.get("/diagnosis-search/xlsx", params={"specimen_terms": ["colon"]})
+        assert r.status_code == 401

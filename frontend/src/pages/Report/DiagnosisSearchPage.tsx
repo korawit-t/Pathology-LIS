@@ -30,13 +30,11 @@ import DiagnosisSearchService from "../../services/diagnosisSearchService";
 import HospitalService from "../../services/hospitalService";
 import type { Hospital } from "../../types/hospital";
 import type {
-  DiagnosisSearchCriteria,
   DiagnosisSearchDateField,
   DiagnosisSearchMatchMode,
   DiagnosisSearchParams,
   DiagnosisSearchRow,
 } from "../../types/diagnosisSearch";
-import { exportToCsv } from "../../utils/exportCsv";
 import logger from "../../utils/logger";
 
 const { RangePicker } = DatePicker;
@@ -52,48 +50,6 @@ const malignancyTag = (v: boolean | null) => {
   return <Tag>-</Tag>;
 };
 
-/** Criteria + totals stamped above the header row, so the exported file still
- *  says what was asked once it is sitting in someone else's inbox. */
-const criteriaPreamble = (
-  criteria: DiagnosisSearchCriteria,
-  total: number,
-  malignantCount: number,
-  listed: number,
-): (string | number)[][] => {
-  const joiner = criteria.match_mode === "all" ? " และ " : " หรือ ";
-  const extras = [
-    criteria.include_gross ? "รวม gross description" : null,
-    criteria.include_microscopic ? "รวม microscopic description" : null,
-    criteria.only_reported ? "เฉพาะเคสที่ออกรายงานแล้ว" : null,
-  ].filter(Boolean);
-
-  const rows: (string | number)[][] = [
-    ["รายงานค้นหาเคสตามชิ้นเนื้อและการวินิจฉัย (Diagnosis Search Report)"],
-    ["Specimen มีคำว่า", criteria.specimen_terms.join(joiner) || "-"],
-    ["Diagnosis มีคำว่า", criteria.diagnosis_terms.join(joiner) || "-"],
-    ["เงื่อนไขคำค้น", criteria.match_mode === "all" ? "ครบทุกคำ (AND)" : "คำใดคำหนึ่ง (OR)"],
-    [
-      "ช่วงวันที่",
-      `${criteria.date_from ?? "-"} ถึง ${criteria.date_to ?? "-"} (${
-        criteria.date_field === "reported" ? "วันที่ออกรายงาน" : "วันที่รับสิ่งส่งตรวจ"
-      })`,
-    ],
-    ["โรงพยาบาล", criteria.hospital_name ?? "ทั้งหมด"],
-    ["ตัวเลือกเพิ่มเติม", extras.join(" · ") || "-"],
-    ["เคสที่เข้าเงื่อนไข", total],
-    ["ติดธง Malignancy", malignantCount],
-    ["ออกไฟล์เมื่อ", dayjs().format("DD/MM/YYYY HH:mm")],
-  ];
-  if (total > listed) {
-    rows.push([
-      "หมายเหตุ",
-      `ไฟล์นี้มี ${listed} เคสแรกจากทั้งหมด ${total} เคส — แบ่งช่วงวันที่ให้แคบลงเพื่อออกให้ครบ`,
-    ]);
-  }
-  rows.push([]);
-  return rows;
-};
-
 const DiagnosisSearchPage: React.FC = () => {
   const [specimenTerms, setSpecimenTerms] = useState<string[]>([]);
   const [diagnosisTerms, setDiagnosisTerms] = useState<string[]>([]);
@@ -107,12 +63,15 @@ const DiagnosisSearchPage: React.FC = () => {
 
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [loading, setLoading] = useState(false);
+  const [xlsxLoading, setXlsxLoading] = useState(false);
   const [rows, setRows] = useState<DiagnosisSearchRow[]>([]);
   const [total, setTotal] = useState(0);
   const [malignantCount, setMalignantCount] = useState(0);
-  // The criteria the *displayed* rows came from — editing the form afterwards
-  // must not relabel an export that still holds the previous result set.
-  const [resultCriteria, setResultCriteria] = useState<DiagnosisSearchCriteria | null>(null);
+  // The params that produced the rows currently on screen. The export endpoint
+  // re-runs the query server-side, so it has to be handed these and not the
+  // live form — otherwise editing a field after searching would silently hand
+  // back a file that does not match the table it was exported from.
+  const [appliedParams, setAppliedParams] = useState<DiagnosisSearchParams | null>(null);
 
   useEffect(() => {
     HospitalService.getHospitals()
@@ -161,7 +120,7 @@ const DiagnosisSearchPage: React.FC = () => {
       setRows(res.items);
       setTotal(res.total);
       setMalignantCount(res.malignant_count);
-      setResultCriteria(res.criteria);
+      setAppliedParams(params);
     } catch (err) {
       logger.error("Diagnosis search failed:", err);
       message.error("ค้นหาไม่สำเร็จ");
@@ -183,47 +142,28 @@ const DiagnosisSearchPage: React.FC = () => {
     setRows([]);
     setTotal(0);
     setMalignantCount(0);
-    setResultCriteria(null);
+    setAppliedParams(null);
   };
 
-  const exportFile = () => {
-    if (!resultCriteria) return;
-    // Flattened up front: the matched specimen/diagnosis lists have to collapse
-    // to one cell each, and a spreadsheet wants Yes/No rather than a tri-state.
-    const flat = rows.map((r, i) => ({
-      no: i + 1,
-      accession_no: r.accession_no,
-      hn: r.hn ?? "",
-      patient_name: r.patient_name,
-      gender: r.gender ?? "",
-      hospital_name: r.hospital_name ?? "",
-      matched_specimens: r.matched_specimens.join("; "),
-      registered_at: fmtDate(r.registered_at),
-      report_at: fmtDate(r.report_at),
-      pathologist_name: r.pathologist_name ?? "",
-      has_malignancy: r.has_malignancy === true ? "Yes" : r.has_malignancy === false ? "No" : "",
-      matched_diagnoses: r.matched_diagnoses.join(" | "),
-    }));
-
-    exportToCsv(
-      `diagnosis_search_${dayjs().format("YYYYMMDD_HHmm")}.csv`,
-      flat,
-      [
-        { header: "ลำดับ", key: "no" },
-        { header: "Accession No.", key: "accession_no" },
-        { header: "HN", key: "hn" },
-        { header: "ชื่อผู้ป่วย", key: "patient_name" },
-        { header: "เพศ", key: "gender" },
-        { header: "โรงพยาบาล", key: "hospital_name" },
-        { header: "ชิ้นเนื้อที่ตรงเงื่อนไข", key: "matched_specimens" },
-        { header: "วันที่รับ", key: "registered_at" },
-        { header: "วันที่รายงาน", key: "report_at" },
-        { header: "พยาธิแพทย์", key: "pathologist_name" },
-        { header: "Malignancy", key: "has_malignancy" },
-        { header: "ข้อความวินิจฉัยที่ตรงเงื่อนไข", key: "matched_diagnoses" },
-      ],
-      { preamble: criteriaPreamble(resultCriteria, total, malignantCount, rows.length) },
-    );
+  const exportFile = async () => {
+    if (!appliedParams) return;
+    setXlsxLoading(true);
+    try {
+      const blob = await DiagnosisSearchService.downloadXlsx(appliedParams);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `diagnosis_search_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      logger.error("Diagnosis search xlsx export failed:", err);
+      message.error("สร้างไฟล์ Excel ไม่สำเร็จ");
+    } finally {
+      setXlsxLoading(false);
+    }
   };
 
   const columns: ColumnsType<DiagnosisSearchRow> = [
@@ -298,7 +238,12 @@ const DiagnosisSearchPage: React.FC = () => {
               value={specimenTerms}
               onChange={setSpecimenTerms}
               tokenSeparators={[","]}
-              open={false}
+              // No `open={false}` here: it pins rc-select's triggerOpen to
+              // false, and the placeholder is rendered whenever
+              // `!searchValue || !triggerOpen` — so it stayed visible on top
+              // of the term being typed. notFoundContent={null} keeps the
+              // popup empty instead, since there is no preset list to offer.
+              notFoundContent={null}
               suffixIcon={null}
               placeholder="เช่น colon, biopsy — คั่นด้วย comma หรือกด Enter"
               style={{ width: "100%", marginTop: 4 }}
@@ -311,7 +256,12 @@ const DiagnosisSearchPage: React.FC = () => {
               value={diagnosisTerms}
               onChange={setDiagnosisTerms}
               tokenSeparators={[","]}
-              open={false}
+              // No `open={false}` here: it pins rc-select's triggerOpen to
+              // false, and the placeholder is rendered whenever
+              // `!searchValue || !triggerOpen` — so it stayed visible on top
+              // of the term being typed. notFoundContent={null} keeps the
+              // popup empty instead, since there is no preset list to offer.
+              notFoundContent={null}
               suffixIcon={null}
               placeholder="เช่น adenocarcinoma — คั่นด้วย comma หรือกด Enter"
               style={{ width: "100%", marginTop: 4 }}
@@ -410,13 +360,14 @@ const DiagnosisSearchPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={reset}>
             ล้างเงื่อนไข
           </Button>
-          <Tooltip title="ไฟล์ CSV (UTF-8 BOM) เปิดใน Excel ได้ตรง ๆ โดยภาษาไทยไม่เพี้ยน และมีหัวรายงานบอกเงื่อนไขที่ใช้ค้น">
+          <Tooltip title="ไฟล์ .xlsx จริง — HN เก็บเป็น text เลข 0 นำหน้าไม่หาย และมีหัวรายงานบอกเงื่อนไขที่ใช้ค้นอยู่ในไฟล์">
             <Button
               icon={<FileExcelOutlined />}
+              loading={xlsxLoading}
               disabled={rows.length === 0}
               onClick={exportFile}
             >
-              Export Excel / CSV
+              Export Excel
             </Button>
           </Tooltip>
         </Space>
@@ -429,7 +380,7 @@ const DiagnosisSearchPage: React.FC = () => {
         </Paragraph>
       </Card>
 
-      {resultCriteria && (
+      {appliedParams && (
         <>
           <Row gutter={16} style={{ marginTop: 16 }}>
             <Col xs={12} lg={6}>

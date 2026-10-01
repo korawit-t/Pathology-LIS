@@ -6,9 +6,11 @@
  * cap allows, so the tile must never fall back to `rows.length` and quietly
  * under-report a large query.
  *
- * The export must describe the result it actually contains. The criteria block
- * written above the rows comes from the response, not from the form — editing
- * the form after a search must not relabel a file built from the old result.
+ * The export must describe the result it is exported from. It is built
+ * server-side (CSV cannot mark HN as a text cell, so Excel eats the leading
+ * zeros), which means the endpoint re-runs the query — so it has to be handed
+ * the params that produced the rows on screen, not whatever the form says by
+ * the time the button is clicked.
  */
 
 import React from "react";
@@ -18,7 +20,6 @@ import { App as AntdApp } from "antd";
 import DiagnosisSearchPage from "./DiagnosisSearchPage";
 import DiagnosisSearchService from "../../services/diagnosisSearchService";
 import HospitalService from "../../services/hospitalService";
-import { exportToCsv } from "../../utils/exportCsv";
 import type {
   DiagnosisSearchResponse,
   DiagnosisSearchRow,
@@ -28,12 +29,11 @@ vi.mock("../../contexts/ThemeContext", () => ({
   useTheme: () => ({ isDarkMode: false }),
 }));
 vi.mock("../../services/diagnosisSearchService", () => ({
-  default: { search: vi.fn() },
+  default: { search: vi.fn(), downloadXlsx: vi.fn() },
 }));
 vi.mock("../../services/hospitalService", () => ({
   default: { getHospitals: vi.fn() },
 }));
-vi.mock("../../utils/exportCsv", () => ({ exportToCsv: vi.fn() }));
 
 const row = (over: Partial<DiagnosisSearchRow> = {}): DiagnosisSearchRow => ({
   case_id: 1,
@@ -97,6 +97,12 @@ const searchFor = async (specimen: string, diagnosis?: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(HospitalService.getHospitals).mockResolvedValue([]);
+  vi.mocked(DiagnosisSearchService.downloadXlsx).mockResolvedValue(
+    new Blob(["x"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+  );
+  // jsdom has no object-URL plumbing; the component revokes what it creates.
+  URL.createObjectURL = vi.fn(() => "blob:mock");
+  URL.revokeObjectURL = vi.fn();
 });
 
 describe("searching", () => {
@@ -184,68 +190,79 @@ describe("searching", () => {
   });
 });
 
-describe("exporting", () => {
-  it("stays disabled until there are rows", async () => {
-    renderPage();
-
-    expect(screen.getByRole("button", { name: /Export Excel \/ CSV/ })).toBeDisabled();
-  });
-
-  it("writes the matched specimen and diagnosis into flattened cells", async () => {
-    vi.mocked(DiagnosisSearchService.search).mockResolvedValue(
-      response({
-        items: [
-          row({
-            matched_specimens: ["A: Colon, biopsy", "B: Rectum, biopsy"],
-            matched_diagnoses: ["Adenocarcinoma", "Invasive to submucosa"],
-          }),
-        ],
-      }),
+describe("the term inputs", () => {
+  // rc-select renders the placeholder while `!searchValue || !triggerOpen`.
+  // Forcing open={false} pinned triggerOpen false, so the placeholder sat on
+  // top of the term being typed until the first chip existed.
+  const placeholders = () =>
+    Array.from(document.querySelectorAll("[class*=placeholder]")).filter(
+      (el) => getComputedStyle(el as HTMLElement).visibility !== "hidden",
     );
+
+  it("shows the placeholder before anything is typed", () => {
     renderPage();
-    await searchFor("colon");
-    await screen.findByText("S26-00001");
 
-    fireEvent.click(screen.getByRole("button", { name: /Export Excel \/ CSV/ }));
-
-    const [, rows] = vi.mocked(exportToCsv).mock.calls[0];
-    expect(rows[0]).toMatchObject({
-      no: 1,
-      accession_no: "S26-00001",
-      matched_specimens: "A: Colon, biopsy; B: Rectum, biopsy",
-      matched_diagnoses: "Adenocarcinoma | Invasive to submucosa",
-      has_malignancy: "Yes",
-    });
+    expect(placeholders().length).toBeGreaterThan(0);
   });
 
-  it("labels the file with the criteria the rows came from, not the edited form", async () => {
+  it("hides the placeholder as soon as a term is being typed", () => {
+    renderPage();
+    const before = placeholders().length;
+
+    const inputs = screen.getAllByRole("combobox");
+    fireEvent.change(inputs[0], { target: { value: "colon" } });
+
+    expect(placeholders().length).toBe(before - 1);
+  });
+
+  it("keeps the placeholder hidden once a chip exists", () => {
+    renderPage();
+    const before = placeholders().length;
+
+    addTerm(0, "colon");
+
+    expect(placeholders().length).toBe(before - 1);
+  });
+});
+
+describe("exporting", () => {
+  it("stays disabled until there are rows", () => {
+    renderPage();
+
+    expect(screen.getByRole("button", { name: /Export Excel/ })).toBeDisabled();
+  });
+
+  it("requests the xlsx for the params that produced the rows on screen", async () => {
     vi.mocked(DiagnosisSearchService.search).mockResolvedValue(response());
     renderPage();
     await searchFor("colon", "adenocarcinoma");
     await screen.findByText("S26-00001");
 
-    // Change the form *after* the search; the rows on screen are still the old ones.
+    // Change the form *after* the search. The rows on screen are still the old
+    // ones, so the file must be the old query — not this edited one.
     fireEvent.click(screen.getByText("คำใดคำหนึ่ง (OR)"));
-    fireEvent.click(screen.getByRole("button", { name: /Export Excel \/ CSV/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Export Excel/ }));
 
-    const [, , , options] = vi.mocked(exportToCsv).mock.calls[0];
-    const preamble = (options?.preamble ?? []).map((cells) => cells.join(" | "));
-    expect(preamble.join("\n")).toContain("colon และ biopsy");
-    expect(preamble.join("\n")).toContain("ครบทุกคำ (AND)");
+    await waitFor(() =>
+      expect(DiagnosisSearchService.downloadXlsx).toHaveBeenCalledWith(
+        expect.objectContaining({
+          specimen_terms: ["colon"],
+          diagnosis_terms: ["adenocarcinoma"],
+          match_mode: "all",
+        }),
+      ),
+    );
   });
 
-  it("flags a truncated export inside the file", async () => {
-    vi.mocked(DiagnosisSearchService.search).mockResolvedValue(
-      response({ total: 2500, items: [row()] }),
-    );
+  it("surfaces a failed export instead of failing silently", async () => {
+    vi.mocked(DiagnosisSearchService.search).mockResolvedValue(response());
+    vi.mocked(DiagnosisSearchService.downloadXlsx).mockRejectedValue(new Error("boom"));
     renderPage();
     await searchFor("colon");
     await screen.findByText("S26-00001");
 
-    fireEvent.click(screen.getByRole("button", { name: /Export Excel \/ CSV/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Export Excel/ }));
 
-    const [, , , options] = vi.mocked(exportToCsv).mock.calls[0];
-    const preamble = (options?.preamble ?? []).map((cells) => cells.join(" | ")).join("\n");
-    expect(preamble).toContain("1 เคสแรกจากทั้งหมด 2500 เคส");
+    expect(await screen.findByText(/สร้างไฟล์ Excel ไม่สำเร็จ/)).toBeInTheDocument();
   });
 });
