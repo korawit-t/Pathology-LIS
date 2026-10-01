@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Tabs } from "antd";
 import SystemSettingService from "../../services/systemSettingService";
+import { useAuth } from "../../hooks/useAuth";
+import { hasAnyRole } from "../../utils/hasRole";
 import type { SystemSetting } from "../../types/system";
 import {
   BarChartOutlined,
@@ -16,6 +18,7 @@ import {
   FormOutlined,
   InboxOutlined,
   SendOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import PageContainer from "../../components/Layout/PageContainer";
 import WorkloadDashboard from "./WorkloadDashboard";
@@ -36,11 +39,25 @@ import StaffGrossPage from "./StaffGrossPage";
 import HistoPage from "./HistoPage";
 import StorageWorkloadPage from "./StorageWorkloadPage";
 import OutlabWorkloadPage from "./OutlabWorkloadPage";
+import DiagnosisSearchPage from "./DiagnosisSearchPage";
 
 const INNER_STYLE = { paddingTop: 16 };
 
+// Mirrors CAN_READ_DIAGNOSIS_SEARCH in backend app/core/roles.py — the hub page
+// itself is open to histo/gross/register, who would only get a 403 from the
+// endpoint behind this tab.
+const DIAGNOSIS_SEARCH_ROLES = [
+  "admin",
+  "lab_manager",
+  "pathologist",
+  "senior_pathologist",
+  "cytotechnologist",
+] as const;
+
 const ReportAnalyticsHub: React.FC = () => {
   const [settings, setSettings] = useState<SystemSetting | null>(null);
+  const { user } = useAuth();
+  const canSearchDiagnoses = hasAnyRole(user, [...DIAGNOSIS_SEARCH_ROLES]);
 
   useEffect(() => {
     SystemSettingService.getSettings().then(setSettings).catch(() => {});
@@ -81,6 +98,11 @@ const ReportAnalyticsHub: React.FC = () => {
                     label: <span><BgColorsOutlined style={{ marginRight: 6 }} />IHC Stats</span>,
                     children: <IHCStatPage />,
                   },
+                  ...(canSearchDiagnoses ? [{
+                    key: "diagnosis-search",
+                    label: <span><FileSearchOutlined style={{ marginRight: 6 }} />Diagnosis Search</span>,
+                    children: <DiagnosisSearchPage />,
+                  }] : []),
                 ]}
               />
             ),

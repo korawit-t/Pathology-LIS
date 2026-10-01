@@ -66,6 +66,7 @@ from app.routers import (
     cyto_path_correlation,
     surgical_case_correlation,
     tumor_registry,
+    diagnosis_search,
     llm_profile,
     report_generation,
     grossing_assist,
@@ -319,6 +320,7 @@ app.include_router(cyto_histo_correlation.router)
 app.include_router(cyto_path_correlation.router)
 app.include_router(surgical_case_correlation.router)
 app.include_router(tumor_registry.router)
+app.include_router(diagnosis_search.router)
 app.include_router(llm_profile.router)
 app.include_router(report_generation.router)
 app.include_router(grossing_assist.router)

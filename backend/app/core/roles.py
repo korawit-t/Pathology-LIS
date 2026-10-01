@@ -100,3 +100,13 @@ CAN_APPROVE_SPECIMEN_DISPOSAL = RoleChecker(["admin", "lab_manager", "senior_pat
 CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE = RoleChecker(
     ["admin", "lab_manager", "cytotechnologist"]
 )
+
+
+# --- Diagnosis Search (free-text case finder report) ---
+# Reads specimen + diagnosis text across every surgical case, so it is kept to
+# the internal staff who compile registry/statistics submissions. External
+# roles (hospital/clinician) are deliberately absent: they get their own
+# cases through the public-search endpoints, not a department-wide text query.
+CAN_READ_DIAGNOSIS_SEARCH = RoleChecker(
+    ["admin", "lab_manager", "pathologist", "senior_pathologist", "cytotechnologist"]
+)
