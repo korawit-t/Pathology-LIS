@@ -9,7 +9,9 @@ vi.mock("../../../../services/slideStorageService", () => ({
 
 const mocked = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 
-/** One case, one block, two stains cut from it — so both share a QR payload. */
+/** One case, one block, two stains cut from it. Each stain now has its own
+ * id-based payload; they share only the legacy accession+block composite,
+ * which is exactly the ambiguity the id removes. */
 const PENDING_TREE = [
   {
     key: "case-1",
@@ -22,14 +24,14 @@ const PENDING_TREE = [
         id: 11,
         code: "S26-00123 A1 (H&E #1)",
         isCase: false,
-        barcodes: ["S26-00123A01", "S26-00123A1"],
+        barcodes: ["BKK01-SBS-11", "SBS-11", "S26-00123A01", "S26-00123A1"],
       },
       {
         key: 12,
         id: 12,
         code: "S26-00123 A1 (CK7 #2)",
         isCase: false,
-        barcodes: ["S26-00123A01", "S26-00123A1"],
+        barcodes: ["BKK01-SBS-12", "SBS-12", "S26-00123A01", "S26-00123A1"],
       },
     ],
   },
@@ -60,6 +62,23 @@ const scan = async (value: string) => {
 };
 
 describe("CreateSlideStorageBatch scanning", () => {
+  it("picks out one slide of a block by its own id", async () => {
+    // The id is what the block-level composite could never express: two
+    // stains off one block, and the scan lands on the one in your hand.
+    renderBatch();
+    await scan("BKK01-SBS-12");
+
+    expect(await screen.findByText("S26-00123 A1 (CK7 #2)")).toBeInTheDocument();
+    expect(screen.queryByText("S26-00123 A1 (H&E #1)")).not.toBeInTheDocument();
+  });
+
+  it("accepts the bare id, so renaming the lab orphans nothing", async () => {
+    renderBatch();
+    await scan("SBS-12");
+
+    expect(await screen.findByText("S26-00123 A1 (CK7 #2)")).toBeInTheDocument();
+  });
+
   it("finds the slide from the payload its sticker prints", async () => {
     // The QR holds accession + padded block code run together, which never
     // appears inside the readable row label — the bug this guards.
@@ -128,7 +147,7 @@ describe("CreateSlideStorageBatch scanning", () => {
             id: 21,
             code: "S26-00124 A1 (H&E #1)",
             isCase: false,
-            barcodes: ["S26-00124A01", "S26-00124A1"],
+            barcodes: ["BKK01-SBS-21", "SBS-21", "S26-00124A01", "S26-00124A1"],
           },
         ],
       },

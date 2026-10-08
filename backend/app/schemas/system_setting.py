@@ -7,6 +7,7 @@ class SystemSettingBase(BaseModel):
     lab_name_th: Optional[str] = "ชื่อห้องปฏิบัติการ"
     lab_name_en: Optional[str] = "Laboratory Name"
     lab_short_name_en: Optional[str] = "LAB-SHORT"
+    lab_code: Optional[str] = None
     lab_address: Optional[str] = None
     report_logo_url: Optional[str] = None
     login_logo_url: Optional[str] = None
@@ -113,6 +114,7 @@ class SystemSettingUpdate(SystemSettingBase):
     lab_name_th: Optional[str] = None
     lab_name_en: Optional[str] = None
     lab_short_name_en: Optional[str] = None  # 🚩
+    lab_code: Optional[str] = None
     is_cumulative_report: Optional[bool] = None
     show_specimen_name: Optional[bool] = None
     specimen_disposal_doc_no: Optional[str] = None

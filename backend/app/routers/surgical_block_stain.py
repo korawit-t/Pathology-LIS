@@ -30,7 +30,7 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_block_stain import SurgicalBlockStain
 from app.utils.slide_sticker_pdf_generator import generate_slide_sticker_pdf
-from app.utils.slide_barcode import pad_block_code
+from app.utils.slide_barcode import KIND_SURGICAL, pad_block_code, slide_label_code
 from app.crud.organization import resolve_lab_short_name
 from app.core.roles import CAN_ACCESS_SURGICAL_BLOCK
 
@@ -302,6 +302,9 @@ def print_stain_run_stickers(
             {
                 "accession_no": detail.accession_no or "N/A",
                 "block_code": pad_block_code(detail.block_code) or "N/A",
+                "scan_code": slide_label_code(
+                    KIND_SURGICAL, order.id, master.lab_code if master else None
+                ),
                 "stain_display": stain_display,
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
@@ -452,6 +455,9 @@ def print_quick_stickers(
             {
                 "accession_no": case.accession_no if case else "N/A",
                 "block_code": pad_block_code(block.block_code) if block else "N/A",
+                "scan_code": slide_label_code(
+                    KIND_SURGICAL, order.id, master.lab_code if master else None
+                ),
                 "stain_display": order.test.name if order.test else "Unknown",
                 "reg_date": reg_date,
                 "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),
