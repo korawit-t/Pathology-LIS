@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.dependencies.auth import get_current_user
 from app.schemas.he_control_slide import HEControlSlideResponse
 from app.utils.slide_sticker_pdf_generator import generate_slide_sticker_pdf
+from app.utils.slide_barcode import KIND_HE_CONTROL, slide_label_code
 
 router = APIRouter(
     prefix="/he-control-slides",
@@ -74,6 +75,9 @@ def print_control_slide_sticker(
         {
             "accession_no": slide.control_no,
             "block_code": "CTRL",
+            "scan_code": slide_label_code(
+                KIND_HE_CONTROL, slide.id, master.lab_code if master else None
+            ),
             "stain_display": "H&E Control",
             "reg_date": str(slide.control_date),
             "hospital_code": resolve_lab_short_name(None, master),

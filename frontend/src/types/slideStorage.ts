@@ -58,9 +58,11 @@ export interface PendingStorageSlideNode {
   /** Human-readable label, e.g. `S26-00123 A1 (H&E #1)`. Not what a scanner
    * reads — the sticker's QR holds `barcodes` instead. */
   code: string;
-  /** Every QR payload a sticker for this slide could carry (the backend keeps
-   * the padded and unpadded block code, since filed slides outlive a sticker
-   * layout change). Absent on case nodes. */
+  /** Every QR payload a sticker for this slide could carry, newest form
+   * first: the slide's namespaced id (`BKK01-SBS-48215`), the bare id, and
+   * the accession+block composite older stickers were printed with. Filed
+   * slides outlive a change to the sticker layout, so all of them resolve.
+   * Absent on case nodes. */
   barcodes?: string[];
   isCase: boolean;
   children?: PendingStorageSlideNode[];

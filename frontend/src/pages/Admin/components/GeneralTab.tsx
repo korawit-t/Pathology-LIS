@@ -284,6 +284,22 @@ const GeneralTab = () => {
           </Form.Item>
 
           {editingSetting?.hospital_slug === "master" && (
+            <Form.Item
+              name="lab_code"
+              label="Lab Code (slide barcode namespace)"
+              tooltip="Goes into every slide sticker's QR, e.g. BKK01-SBS-48215. Set it once per installation so two deployments cannot mint the same slide id. Leave empty and stickers carry the bare id. Changing it later does not stop slides already printed from scanning."
+              rules={[
+                {
+                  pattern: /^[A-Za-z0-9]{1,12}$/,
+                  message: "Letters and digits only, up to 12 characters",
+                },
+              ]}
+            >
+              <Input placeholder="e.g. BKK01" />
+            </Form.Item>
+          )}
+
+          {editingSetting?.hospital_slug === "master" && (
             <Form.Item name="lab_address" label="Laboratory Address">
               <TextArea rows={3} placeholder="Laboratory address..." />
             </Form.Item>

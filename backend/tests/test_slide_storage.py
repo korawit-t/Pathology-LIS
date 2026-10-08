@@ -11,7 +11,13 @@ from app.crud.slide_storage import (
     delete_slide_storage_run,
 )
 from app.schemas.slide_storage import SlideStorageRunCreateBatch, SlideStorageDetailCreate
-from app.utils.slide_barcode import slide_qr_payload, pad_block_code
+from app.utils.slide_barcode import (
+    KIND_GYNE,
+    KIND_SURGICAL,
+    legacy_slide_qr_payload,
+    pad_block_code,
+    slide_label_code,
+)
 from app.models.slide_storage import SlideStorageDetail, SlideStorageRun
 from app.crud.gyne_cyto_stain import create_stain as create_gyne_stain
 from app.schemas.gyne_cyto_stain import GyneStainCreate
@@ -75,9 +81,7 @@ class TestPendingStorageSlidesTree:
 
     def test_slide_carries_the_barcode_its_sticker_prints(self, db, admin_user):
         """The scan box matches on `barcodes`, so it has to hold the exact QR
-        payload generate_slide_sticker_pdf draws — scanning a slide used to
-        report "not found" because the readable `code` label ("S26-1 A1 (H&E
-        #1)") never contains the printed payload ("S26-1A01")."""
+        payload generate_slide_sticker_pdf draws — the slide's own id."""
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         block = make_block(db, specimen.id)
@@ -87,15 +91,66 @@ class TestPendingStorageSlidesTree:
         case_node = next(c for c in tree if c["id"] == case.id)
         node = next(child for child in case_node["children"] if child["id"] == stain.id)
 
-        printed = slide_qr_payload(case.accession_no, pad_block_code(block.block_code))
-        assert printed in node["barcodes"]
-        # the unpadded code older stickers went out with still scans
-        assert slide_qr_payload(case.accession_no, block.block_code) in node["barcodes"]
-        assert printed not in node["code"]  # why matching on the label failed
+        assert slide_label_code(KIND_SURGICAL, stain.id) in node["barcodes"]
 
-    def test_cytology_slide_barcode_uses_the_slide_number(self, db, admin_user):
-        """A cytology slide has no block, so its sticker prints `#<slide_no>`
-        where a surgical one prints the block code."""
+    def test_slide_still_accepts_the_accession_block_stickers_in_the_drawers(
+        self, db, admin_user
+    ):
+        """Slides filed before they carried ids have an accession+block QR on
+        them. Scanning one used to report "not found" because the readable
+        `code` label ("S26-1 A1 (H&E #1)") never contains the printed payload
+        ("S26-1A01"), and it still has to resolve."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        stain = make_block_stain(db, block.id, status="stained")
+
+        tree = get_pending_storage_slides_tree(db)
+        case_node = next(c for c in tree if c["id"] == case.id)
+        node = next(child for child in case_node["children"] if child["id"] == stain.id)
+
+        padded = legacy_slide_qr_payload(
+            case.accession_no, pad_block_code(block.block_code)
+        )
+        assert padded in node["barcodes"]
+        # the unpadded code older stickers went out with still scans
+        assert legacy_slide_qr_payload(case.accession_no, block.block_code) in node["barcodes"]
+        assert padded not in node["code"]  # why matching on the label failed
+
+    def test_barcodes_carry_the_lab_namespace_when_one_is_set(self, db, admin_user):
+        """A sticker printed by an installation with a lab_code is namespaced,
+        and the bare id keeps working so renaming the lab never orphans one."""
+        from app.models.system_setting import SystemSetting
+
+        master = (
+            db.query(SystemSetting)
+            .filter(SystemSetting.hospital_slug == "master")
+            .first()
+        )
+        if master is None:
+            master = SystemSetting(hospital_slug="master")
+            db.add(master)
+        master.lab_code = "BKK01"
+        db.commit()
+        try:
+            registrar, _ = admin_user
+            case, specimen = make_signable_case(db, registrar_id=registrar.id)
+            block = make_block(db, specimen.id)
+            stain = make_block_stain(db, block.id, status="stained")
+
+            tree = get_pending_storage_slides_tree(db)
+            case_node = next(c for c in tree if c["id"] == case.id)
+            node = next(c for c in case_node["children"] if c["id"] == stain.id)
+
+            assert f"BKK01-SBS-{stain.id}" in node["barcodes"]
+            assert f"SBS-{stain.id}" in node["barcodes"]
+        finally:
+            master.lab_code = None
+            db.commit()
+
+    def test_cytology_slide_barcode_is_its_own_id(self, db, admin_user):
+        """A cytology slide has no block, so the composite payload could only
+        ever name the case — its id is what identifies the slide."""
         registrar, _ = admin_user
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
         ap_test = make_anatomical_pathology_test(db)
@@ -107,7 +162,8 @@ class TestPendingStorageSlidesTree:
         case_node = next(c for c in tree if c["id"] == case.id)
         node = next(child for child in case_node["children"] if child["id"] == stain.id)
 
-        assert slide_qr_payload(case.accession_no, f"#{stain.slide_no}") in node["barcodes"]
+        assert slide_label_code(KIND_GYNE, stain.id) in node["barcodes"]
+        assert legacy_slide_qr_payload(case.accession_no, f"#{stain.slide_no}") in node["barcodes"]
 
     def test_gyne_tree_only_stained_and_not_stored(self, db, admin_user):
         registrar, _ = admin_user

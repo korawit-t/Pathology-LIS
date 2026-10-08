@@ -15,6 +15,12 @@ class SystemSetting(Base):
     lab_name_en = Column(String, default="Laboratory Name")
     # 🚩 เพิ่มชื่อย่อภาษาอังกฤษ (เช่น "PATH-LAB", "MLT")
     lab_short_name_en = Column(String, nullable=True)
+    # Namespace stamped into slide-sticker QR payloads, e.g. "BKK01" in
+    # BKK01-SBS-48215. Unlike lab_short_name_en this is an identifier, not a
+    # display name — changing it is not meant to be routine, and stickers
+    # already printed stay scannable either way (see utils/slide_barcode.py).
+    # Left unset, stickers carry the bare id, which is still unique in this DB.
+    lab_code = Column(String, nullable=True)
     lab_address = Column(Text, nullable=True)
     report_logo_url = Column(String, nullable=True)  # สำหรับหัวรายงาน
     login_logo_url = Column(String, nullable=True)  # 🚩 สำหรับหน้า Login

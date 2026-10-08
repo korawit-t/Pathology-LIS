@@ -287,11 +287,17 @@ def sticker_test_print(db: Session = Depends(get_db)):
     from fastapi.responses import Response as FastAPIResponse
     from datetime import date
     from app.utils.slide_sticker_pdf_generator import generate_slide_sticker_pdf
+    from app.utils.slide_barcode import KIND_SURGICAL, slide_label_code
 
     settings = crud.get_settings(db)
     dummy = [{
         "accession_no": "S26-00001",
         "block_code": "A1",
+        # Representative of a real sticker, so the test print shows the QR at
+        # the density staff will actually be scanning.
+        "scan_code": slide_label_code(
+            KIND_SURGICAL, 1, settings.lab_code if settings else None
+        ),
         "stain_display": "H&E",
         "hospital_code": (settings.lab_short_name_en or "LAB") if settings else "LAB",
         "reg_date": str(date.today()),

@@ -10,7 +10,7 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.graphics import renderPDF
 from typing import List, Dict, Any
 
-from app.utils.slide_barcode import slide_qr_payload
+from app.utils.slide_barcode import legacy_slide_qr_payload
 
 _FONT_DIR = Path(__file__).parent.parent.parent / "assets" / "fonts"
 pdfmetrics.registerFont(TTFont("Sarabun", str(_FONT_DIR / "Sarabun-Regular.ttf")))
@@ -96,7 +96,13 @@ def generate_slide_sticker_pdf(
         hn = item.get("hn", "")
         reg_date = _fmt_date(item.get("reg_date"))
 
-        qr_data = slide_qr_payload(accession_no, block_code)
+        # The slide's own identifier — see utils/slide_barcode.py for why the
+        # QR names the slide and not the block it came from. Callers that have
+        # not been moved over yet fall back to the old accession+block
+        # composite so their stickers keep printing something scannable.
+        qr_data = item.get("scan_code") or legacy_slide_qr_payload(
+            accession_no, block_code
+        )
 
         # Row 1: Accession No
         c.setFont("Sarabun-Bold", max(4, round(font_accession * size_scale)))

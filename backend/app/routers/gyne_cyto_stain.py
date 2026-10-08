@@ -9,6 +9,7 @@ def _nk(s: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
 from app.db.database import get_db
 from app.utils.slide_sticker_pdf_generator import generate_slide_sticker_pdf
+from app.utils.slide_barcode import KIND_GYNE, slide_label_code
 from app.crud import gyne_cyto_stain as crud
 from app.schemas.gyne_cyto_stain import (
     GyneStainResponse,
@@ -154,6 +155,9 @@ def print_gyne_run_stickers(
         print_data.append({
             "accession_no": (case.accession_no if case else None) or "N/A",
             "block_code": f"#{order.slide_no}" if order.slide_no else "",
+            "scan_code": slide_label_code(
+                KIND_GYNE, order.id, master.lab_code if master else None
+            ),
             "stain_display": order.test.name if order.test else "",
             "reg_date": str(case.registered_at) if case and case.registered_at else None,
             "hospital_code": resolve_lab_short_name(case.hospital if case else None, master),

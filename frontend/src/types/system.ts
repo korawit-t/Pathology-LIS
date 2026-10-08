@@ -10,6 +10,10 @@ export interface SystemSetting {
   lab_name_th: string;
   lab_name_en: string;
   lab_short_name_en?: string;
+  /** Namespace stamped into slide-sticker QR payloads (BKK01-SBS-48215).
+   * An identifier, not a display name — unset means stickers carry the
+   * bare id, which is still unique within this database. */
+  lab_code?: string;
   lab_address?: string;
 
   // Path หรือ URL ของไฟล์รูปภาพ

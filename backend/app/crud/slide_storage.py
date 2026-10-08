@@ -8,8 +8,14 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_stain import GyneCytologyStain
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
+from app.models.system_setting import SystemSetting
 from app.utils.time import local_now
-from app.utils.slide_barcode import slide_scan_codes
+from app.utils.slide_barcode import (
+    KIND_GYNE,
+    KIND_NONGYNE,
+    KIND_SURGICAL,
+    slide_scan_codes,
+)
 from typing import Optional
 
 def generate_slide_storage_run_number(db: Session):
@@ -32,6 +38,16 @@ def generate_slide_storage_run_number(db: Session):
         return f"{prefix}-{new_seq:03d}"
     except (ValueError, IndexError):
         return f"{prefix}-001"
+
+def _lab_code(db: Session) -> Optional[str]:
+    """The namespace the sticker printer stamps into a slide's QR. Read per
+    tree build rather than cached — it is a settings value, and a scan has to
+    be matched against whatever is current."""
+    master = (
+        db.query(SystemSetting).filter(SystemSetting.hospital_slug == "master").first()
+    )
+    return master.lab_code if master else None
+
 
 def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] = None):
     if stain_category == "Gyne":
@@ -87,6 +103,7 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
         )
 
     all_stains = query.all()
+    lab_code = _lab_code(db)
 
     case_map = {}
     for stain in all_stains:
@@ -120,10 +137,15 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
                 "id": stain.id,
                 "code": slide_label,
                 "isCase": False,
-                # What the sticker's QR actually holds. `code` above is for
-                # people to read and does not match a scan.
+                # What the sticker's QR actually holds — the slide's own
+                # id. `code` above is for people to read and never matches a
+                # scan.
                 "barcodes": slide_scan_codes(
-                    case_obj.accession_no, block_obj.block_code
+                    KIND_SURGICAL,
+                    stain.id,
+                    lab_code=lab_code,
+                    legacy_accession_no=case_obj.accession_no,
+                    legacy_block_code=block_obj.block_code,
                 ),
             }
         )
@@ -144,6 +166,7 @@ def get_pending_gyne_slides_tree(db: Session):
         )
         .all()
     )
+    lab_code = _lab_code(db)
     case_map: dict = {}
     for stain in stains:
         if not stain.case:
@@ -163,11 +186,15 @@ def get_pending_gyne_slides_tree(db: Session):
             "id": stain.id,
             "code": f"{stain.case.accession_no} ({test_name} #{stain.slide_no})",
             "isCase": False,
-            # A cytology slide has no block, so its sticker prints the slide
-            # number where a surgical one prints the block code.
+            # A cytology slide has no block, so the sticker it was printed
+            # with before slides carried ids put the slide number where a
+            # surgical one puts the block code.
             "barcodes": slide_scan_codes(
-                stain.case.accession_no,
-                f"#{stain.slide_no}" if stain.slide_no else "",
+                KIND_GYNE,
+                stain.id,
+                lab_code=lab_code,
+                legacy_accession_no=stain.case.accession_no,
+                legacy_block_code=f"#{stain.slide_no}" if stain.slide_no else "",
             ),
         })
     result = sorted(case_map.values(), key=lambda x: x["code"])
@@ -185,6 +212,7 @@ def get_pending_nongyne_slides_tree(db: Session):
         )
         .all()
     )
+    lab_code = _lab_code(db)
     case_map: dict = {}
     for stain in stains:
         if not stain.case:
@@ -204,11 +232,15 @@ def get_pending_nongyne_slides_tree(db: Session):
             "id": stain.id,
             "code": f"{stain.case.accession_no} ({test_name} #{stain.slide_no})",
             "isCase": False,
-            # A cytology slide has no block, so its sticker prints the slide
-            # number where a surgical one prints the block code.
+            # A cytology slide has no block, so the sticker it was printed
+            # with before slides carried ids put the slide number where a
+            # surgical one puts the block code.
             "barcodes": slide_scan_codes(
-                stain.case.accession_no,
-                f"#{stain.slide_no}" if stain.slide_no else "",
+                KIND_NONGYNE,
+                stain.id,
+                lab_code=lab_code,
+                legacy_accession_no=stain.case.accession_no,
+                legacy_block_code=f"#{stain.slide_no}" if stain.slide_no else "",
             ),
         })
     result = sorted(case_map.values(), key=lambda x: x["code"])

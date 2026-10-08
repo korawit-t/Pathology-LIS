@@ -59,6 +59,34 @@ describe("GeneralTab", () => {
     expect(within(modal).getByText("Login Page Logo")).toBeInTheDocument();
   });
 
+  it("offers Lab Code only on the master row", async () => {
+    // It namespaces every slide sticker's QR for the whole installation, so a
+    // per-referrer row has no business setting it.
+    mockedGetAllSettings.mockResolvedValue([
+      makeSetting({ id: 1, hospital_slug: "master" }),
+      makeSetting({ id: 2, hospital_slug: "clinic-b", lab_name_en: "Clinic B" }),
+    ]);
+
+    render(<GeneralTab />);
+
+    const [masterEdit, clinicEdit] = await screen.findAllByRole("button", {
+      name: /edit/i,
+    });
+
+    fireEvent.click(masterEdit);
+    let modal = await screen.findByRole("dialog");
+    expect(
+      within(modal).getByText(/Lab Code \(slide barcode namespace\)/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(modal).getByRole("button", { name: /cancel/i }));
+    fireEvent.click(clinicEdit);
+    modal = await screen.findByRole("dialog");
+    expect(
+      within(modal).queryByText(/Lab Code \(slide barcode namespace\)/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides both fields when creating a brand new login page", async () => {
     mockedGetAllSettings.mockResolvedValue([]);
 

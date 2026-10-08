@@ -6,6 +6,7 @@ import io
 
 from pypdf import PdfReader
 
+from app.utils import slide_sticker_pdf_generator as gen
 from app.utils.slide_sticker_pdf_generator import _fmt_date, generate_slide_sticker_pdf
 
 
@@ -58,3 +59,39 @@ class TestGenerateSlideStickerPdf:
         result = generate_slide_sticker_pdf([_item(stain_display="")])
 
         assert result[:4] == b"%PDF"
+
+
+class TestQrPayload:
+    """What lands in the QR is the contract Slide Storage's scan box matches
+    against; the two deriving it separately is what broke scanning before."""
+
+    @staticmethod
+    def _drawn(monkeypatch, items):
+        seen = []
+        monkeypatch.setattr(
+            gen, "_draw_qr", lambda c, data, x, y, size: seen.append(data)
+        )
+        generate_slide_sticker_pdf(items)
+        return seen
+
+    def test_prints_the_slide_id_the_caller_supplies(self, monkeypatch):
+        assert self._drawn(monkeypatch, [_item(scan_code="BKK01-SBS-48215")]) == [
+            "BKK01-SBS-48215"
+        ]
+
+    def test_falls_back_to_accession_and_block_without_a_scan_code(self, monkeypatch):
+        # Keeps a caller that has not been moved over printing something
+        # scannable rather than an empty QR.
+        assert self._drawn(monkeypatch, [_item()]) == ["S26-00001A1"]
+
+    def test_an_empty_scan_code_falls_back_rather_than_printing_nothing(
+        self, monkeypatch
+    ):
+        assert self._drawn(monkeypatch, [_item(scan_code="")]) == ["S26-00001A1"]
+
+    def test_each_item_gets_its_own_payload(self, monkeypatch):
+        drawn = self._drawn(
+            monkeypatch,
+            [_item(scan_code="SBS-1"), _item(scan_code="SBS-2")],
+        )
+        assert drawn == ["SBS-1", "SBS-2"]
