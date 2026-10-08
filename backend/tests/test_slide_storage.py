@@ -11,6 +11,7 @@ from app.crud.slide_storage import (
     delete_slide_storage_run,
 )
 from app.schemas.slide_storage import SlideStorageRunCreateBatch, SlideStorageDetailCreate
+from app.utils.slide_barcode import slide_qr_payload, pad_block_code
 from app.models.slide_storage import SlideStorageDetail, SlideStorageRun
 from app.crud.gyne_cyto_stain import create_stain as create_gyne_stain
 from app.schemas.gyne_cyto_stain import GyneStainCreate
@@ -71,6 +72,42 @@ class TestPendingStorageSlidesTree:
 
         assert he_stain.id in ids_in_tree
         assert ihc_stain.id not in ids_in_tree
+
+    def test_slide_carries_the_barcode_its_sticker_prints(self, db, admin_user):
+        """The scan box matches on `barcodes`, so it has to hold the exact QR
+        payload generate_slide_sticker_pdf draws — scanning a slide used to
+        report "not found" because the readable `code` label ("S26-1 A1 (H&E
+        #1)") never contains the printed payload ("S26-1A01")."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        stain = make_block_stain(db, block.id, status="stained")
+
+        tree = get_pending_storage_slides_tree(db)
+        case_node = next(c for c in tree if c["id"] == case.id)
+        node = next(child for child in case_node["children"] if child["id"] == stain.id)
+
+        printed = slide_qr_payload(case.accession_no, pad_block_code(block.block_code))
+        assert printed in node["barcodes"]
+        # the unpadded code older stickers went out with still scans
+        assert slide_qr_payload(case.accession_no, block.block_code) in node["barcodes"]
+        assert printed not in node["code"]  # why matching on the label failed
+
+    def test_cytology_slide_barcode_uses_the_slide_number(self, db, admin_user):
+        """A cytology slide has no block, so its sticker prints `#<slide_no>`
+        where a surgical one prints the block code."""
+        registrar, _ = admin_user
+        case = make_bare_gyne_case(db, registrar_id=registrar.id)
+        ap_test = make_anatomical_pathology_test(db)
+        stain = create_gyne_stain(
+            db, GyneStainCreate(case_id=case.id, test_id=ap_test.id, status="stained")
+        )
+
+        tree = get_pending_gyne_slides_tree(db)
+        case_node = next(c for c in tree if c["id"] == case.id)
+        node = next(child for child in case_node["children"] if child["id"] == stain.id)
+
+        assert slide_qr_payload(case.accession_no, f"#{stain.slide_no}") in node["barcodes"]
 
     def test_gyne_tree_only_stained_and_not_stored(self, db, admin_user):
         registrar, _ = admin_user

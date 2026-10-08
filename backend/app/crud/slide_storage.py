@@ -9,6 +9,7 @@ from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_stain import GyneCytologyStain
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.utils.time import local_now
+from app.utils.slide_barcode import slide_scan_codes
 from typing import Optional
 
 def generate_slide_storage_run_number(db: Session):
@@ -119,6 +120,11 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
                 "id": stain.id,
                 "code": slide_label,
                 "isCase": False,
+                # What the sticker's QR actually holds. `code` above is for
+                # people to read and does not match a scan.
+                "barcodes": slide_scan_codes(
+                    case_obj.accession_no, block_obj.block_code
+                ),
             }
         )
 
@@ -157,6 +163,12 @@ def get_pending_gyne_slides_tree(db: Session):
             "id": stain.id,
             "code": f"{stain.case.accession_no} ({test_name} #{stain.slide_no})",
             "isCase": False,
+            # A cytology slide has no block, so its sticker prints the slide
+            # number where a surgical one prints the block code.
+            "barcodes": slide_scan_codes(
+                stain.case.accession_no,
+                f"#{stain.slide_no}" if stain.slide_no else "",
+            ),
         })
     result = sorted(case_map.values(), key=lambda x: x["code"])
     return result
@@ -192,6 +204,12 @@ def get_pending_nongyne_slides_tree(db: Session):
             "id": stain.id,
             "code": f"{stain.case.accession_no} ({test_name} #{stain.slide_no})",
             "isCase": False,
+            # A cytology slide has no block, so its sticker prints the slide
+            # number where a surgical one prints the block code.
+            "barcodes": slide_scan_codes(
+                stain.case.accession_no,
+                f"#{stain.slide_no}" if stain.slide_no else "",
+            ),
         })
     result = sorted(case_map.values(), key=lambda x: x["code"])
     return result

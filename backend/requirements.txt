@@ -42,7 +42,7 @@ pydyf==0.12.1
 Pygments==2.21.0
 PyMySQL==1.2.0
 pyotp==2.10.0
-pypdf==6.16.2
+pypdf==6.19.0
 pymupdf==1.28.2
 pyphen==0.18.1
 pytest==9.1.1

@@ -55,7 +55,13 @@ export interface SlideStorageDetailResponse {
 export interface PendingStorageSlideNode {
   key: string | number;
   id: number;
+  /** Human-readable label, e.g. `S26-00123 A1 (H&E #1)`. Not what a scanner
+   * reads — the sticker's QR holds `barcodes` instead. */
   code: string;
+  /** Every QR payload a sticker for this slide could carry (the backend keeps
+   * the padded and unpadded block code, since filed slides outlive a sticker
+   * layout change). Absent on case nodes. */
+  barcodes?: string[];
   isCase: boolean;
   children?: PendingStorageSlideNode[];
 }

@@ -37,6 +37,16 @@ import {
 
 const { Text } = Typography;
 
+/** Scanners vary on case and on the separators they emit, and a hand-typed
+ * accession no has its own spacing, so compare on letters and digits only. */
+const normalizeCode = (value: string): string =>
+  value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+interface Candidate {
+  slide: PendingStorageSlideNode;
+  parentAcc: string;
+}
+
 const CATEGORY_LABEL: Record<StainCategory, string> = {
   HE: "H&E",
   Special: "Special Stain",
@@ -88,38 +98,62 @@ const CreateSlideStorageBatch: React.FC<CreateSlideStorageBatchProps> = ({
 
   const handleScan = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barcodeInput) return;
+    const scanned = normalizeCode(barcodeInput);
+    if (!scanned) return;
 
-    let foundNode: PendingStorageSlideNode | null = null;
-    let parentAcc = "";
+    // A sticker's QR holds accession + block code run together, so it never
+    // appears inside the readable `code` label — match it against `barcodes`.
+    // Falling back to a prefix also lets staff type just an accession no.
+    const exact: Candidate[] = [];
+    const prefix: Candidate[] = [];
 
     pendingData.forEach((specimen) => {
-      const slide = specimen.children?.find((s) =>
-        s.code.includes(barcodeInput),
-      );
-      if (slide) {
-        foundNode = slide;
-        parentAcc = specimen.code;
-      }
+      specimen.children?.forEach((slide) => {
+        const codes = (slide.barcodes ?? [slide.code]).map(normalizeCode);
+        if (codes.some((c) => c === scanned)) {
+          exact.push({ slide, parentAcc: specimen.code });
+        } else if (codes.some((c) => c.startsWith(scanned))) {
+          prefix.push({ slide, parentAcc: specimen.code });
+        }
+      });
     });
 
-    if (!foundNode) {
+    const candidates = exact.length > 0 ? exact : prefix;
+
+    if (candidates.length === 0) {
       message.error("Slide not found in pending storage queue");
       setBarcodeInput("");
       return;
     }
 
-    const isExist = scannedSlides.find((s) => s.id === foundNode!.id);
-    if (isExist) {
+    // A full barcode is unique to one case; a short or partial one need not be,
+    // and filing a slide under the wrong case is worse than making staff pick.
+    const matchedCases = new Set(candidates.map((c) => c.parentAcc));
+    if (matchedCases.size > 1) {
+      message.warning(
+        `"${barcodeInput.trim()}" matches ${matchedCases.size} cases — scan the full barcode or use Manual Select`,
+      );
+      setBarcodeInput("");
+      return;
+    }
+
+    // One QR covers every slide cut from the same block, so a tech filing two
+    // stains of one block scans the same code twice — take the next one not on
+    // the list rather than refusing the second slide as a duplicate.
+    const next = candidates.find(
+      (c) => !scannedSlides.some((s) => s.id === c.slide.id),
+    );
+
+    if (!next) {
       message.warning("This slide is already in the scan list");
       setBarcodeInput("");
       return;
     }
 
     const newEntry: ScannedStorageSlide = {
-      id: foundNode.id,
-      code: foundNode.code,
-      accession_no: parentAcc,
+      id: next.slide.id,
+      code: next.slide.code,
+      accession_no: next.parentAcc,
       scannedAt: dayjs().format("HH:mm:ss"),
       storage_location: batchLocation || undefined,
     };
