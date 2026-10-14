@@ -9,6 +9,7 @@ from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_stain import GyneCytologyStain
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.system_setting import SystemSetting
+from app.utils.stain_filters import SPECIAL_STAIN_CATEGORIES
 from app.utils.time import local_now
 from app.utils.slide_barcode import (
     KIND_GYNE,
@@ -54,7 +55,13 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
         return get_pending_gyne_slides_tree(db)
     if stain_category == "NonGyne":
         return get_pending_nongyne_slides_tree(db)
-    stored_subquery = select(SlideStorageDetail.stain_id)
+    # Must exclude NULLs: a cytology storage row leaves stain_id NULL (only one
+    # of the three FKs is used), and `id NOT IN (…, NULL)` is NULL, not TRUE —
+    # one stored gyne slide would otherwise empty every surgical category.
+    # The gyne/nongyne trees below already guard the same way.
+    stored_subquery = select(SlideStorageDetail.stain_id).where(
+        SlideStorageDetail.stain_id.isnot(None)
+    )
 
     block_chain = (
         joinedload(SurgicalBlockStain.block)
@@ -63,7 +70,7 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
     )
 
     base_filter = [
-        SurgicalBlockStain.status.in_(["stained", "completed", "slide_dispatched"]),
+        SurgicalBlockStain.status.in_(["stained", "completed"]),
         not_(SurgicalBlockStain.id.in_(stored_subquery)),
     ]
 
@@ -79,7 +86,10 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
             db.query(SurgicalBlockStain)
             .join(AnatomicalPathologyTest, SurgicalBlockStain.test_id == AnatomicalPathologyTest.id)
             .options(block_chain, contains_eager(SurgicalBlockStain.test))
-            .filter(*base_filter, AnatomicalPathologyTest.category == "IHC")
+            .filter(
+                *base_filter,
+                func.lower(AnatomicalPathologyTest.category) == "ihc",
+            )
         )
     elif stain_category == "Special":
         query = (
@@ -88,7 +98,12 @@ def get_pending_storage_slides_tree(db: Session, stain_category: Optional[str] =
             .options(block_chain, contains_eager(SurgicalBlockStain.test))
             .filter(
                 *base_filter,
-                AnatomicalPathologyTest.category.in_(["Histochem", "Special stain"]),
+                # Lower-cased against the shared constant: the seeded tests are
+                # "Histochem" but anything created from Admin → master data is
+                # saved as "Special Stain", which a case-sensitive IN missed.
+                func.lower(AnatomicalPathologyTest.category).in_(
+                    SPECIAL_STAIN_CATEGORIES
+                ),
                 or_(
                     AnatomicalPathologyTest.system_code != "HE_ROUTINE",
                     AnatomicalPathologyTest.system_code.is_(None),

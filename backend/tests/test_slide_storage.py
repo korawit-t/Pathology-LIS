@@ -176,6 +176,88 @@ class TestPendingStorageSlidesTree:
         assert case_node is not None
         assert any(child["id"] == stained.id for child in case_node["children"])
 
+    def test_special_category_matches_the_casing_admin_saves(self, db, admin_user):
+        """Admin → master data saves the category as "Special Stain", while the
+        seeded tests say "Histochem". A case-sensitive IN matched neither the
+        former nor anything else, so the Special tab was permanently empty."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        admin_made = make_anatomical_pathology_test(
+            db, category="Special Stain", name="AFB"
+        )
+        seeded = make_anatomical_pathology_test(db, category="Histochem", name="GMS")
+        admin_stain = make_block_stain(
+            db, block.id, test_id=admin_made.id, status="stained"
+        )
+        seeded_stain = make_block_stain(
+            db, block.id, test_id=seeded.id, slide_no=2, status="stained"
+        )
+
+        tree = get_pending_storage_slides_tree(db, stain_category="Special")
+        case_node = next((c for c in tree if c["id"] == case.id), None)
+        assert case_node is not None
+        ids_in_tree = {child["id"] for child in case_node["children"]}
+
+        assert admin_stain.id in ids_in_tree
+        assert seeded_stain.id in ids_in_tree
+
+    def test_ihc_category_match_is_case_insensitive(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        ihc_test = make_anatomical_pathology_test(db, category="ihc", name="CK7")
+        ihc_stain = make_block_stain(
+            db, block.id, test_id=ihc_test.id, status="stained"
+        )
+
+        tree = get_pending_storage_slides_tree(db, stain_category="IHC")
+        case_node = next((c for c in tree if c["id"] == case.id), None)
+        assert case_node is not None
+        assert ihc_stain.id in {child["id"] for child in case_node["children"]}
+
+    def test_a_stored_cytology_slide_does_not_empty_the_surgical_tree(
+        self, db, admin_user
+    ):
+        """A cytology storage row leaves stain_id NULL, and `id NOT IN (…, NULL)`
+        is NULL rather than TRUE — so one stored gyne slide used to blank out
+        every surgical category at once."""
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        surgical_stain = make_block_stain(db, block.id, status="stained")
+
+        gyne_case = make_bare_gyne_case(db, registrar_id=registrar.id)
+        ap_test = make_anatomical_pathology_test(db)
+        gyne_stain = create_gyne_stain(
+            db,
+            GyneStainCreate(
+                case_id=gyne_case.id, test_id=ap_test.id, status="stained"
+            ),
+        )
+        # A "Gyne" batch routes stain_id into gyne_stain_id, leaving the
+        # surgical stain_id column NULL on that row.
+        create_slide_storage_run_batch(
+            db,
+            SlideStorageRunCreateBatch(
+                user_id=registrar.id,
+                stain_category="Gyne",
+                items=[SlideStorageDetailCreate(stain_id=gyne_stain.id)],
+            ),
+        )
+        assert (
+            db.query(SlideStorageDetail)
+            .filter(SlideStorageDetail.gyne_stain_id == gyne_stain.id)
+            .one()
+            .stain_id
+            is None
+        )
+
+        tree = get_pending_storage_slides_tree(db)
+        case_node = next((c for c in tree if c["id"] == case.id), None)
+        assert case_node is not None
+        assert surgical_stain.id in {child["id"] for child in case_node["children"]}
+
 
 class TestCreateSlideStorageRunBatch:
     def test_surgical_batch_creates_stain_detail(self, db, admin_user):
