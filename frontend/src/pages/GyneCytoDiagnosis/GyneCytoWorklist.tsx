@@ -87,6 +87,15 @@ const STATUS_CONFIG: Record<
   cancelled: { color: "red", label: "Cancelled" },
 };
 
+// The QC Review tab is two disjoint piles — cases where I'm the pathologist,
+// and cases registered with no pathologist at all, which otherwise reach
+// nobody's worklist. The tab's badge is their sum.
+type QcReviewScope = "mine" | "unassigned";
+const QC_REVIEW_SUB_TABS: Record<QcReviewScope, string> = {
+  mine: "qc_review_mine",
+  unassigned: "qc_review_unassigned",
+};
+
 const CYTO_TABS = [
   { label: "All", value: "all" },
   { label: "Pending Report", value: "stained" },
@@ -99,6 +108,7 @@ const CYTO_TABS = [
 const PATHO_TABS = [
   { label: "All", value: "all" },
   { label: "Pending Report", value: "stained" },
+  { label: "QC Review", value: "qc_review" },
   { label: "Sign Required", value: "co_sign" },
   { label: "Awaiting Co-sign", value: "awaiting_cosign" },
   { label: "Express", value: "express" },
@@ -118,6 +128,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   const [guideOpen, setGuideOpen] = useState(false);
   const [settings, setSettings] = useState<SystemSetting | null>(null);
   const [qcSlideCount, setQcSlideCount] = useState(0);
+  const [qcReviewScope, setQcReviewScope] = useState<QcReviewScope>("mine");
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [holidays, setHolidays] = useState<string[]>([]);
   // Case ids that belong to the "Pending Report" bucket (stained + co_sign +
@@ -279,6 +290,12 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     if (tab === "qc_slide_queue") {
       return { status: "pending_review", assigned_user_id: userId };
     }
+    if (tab === QC_REVIEW_SUB_TABS.mine) {
+      return { status: "pending_review", pathologist_id: userId };
+    }
+    if (tab === QC_REVIEW_SUB_TABS.unassigned) {
+      return { status: "pending_review", pathologist_unassigned: true };
+    }
     if (tab === "co_sign") {
       return { signer_id: userId, exclude_status: "published" };
     }
@@ -308,7 +325,26 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
   const loadAllTabCounts = async (userId: number, tabs: typeof tabOptions) => {
     try {
       const entries = await Promise.all(
-        tabs.map(async (t) => {
+        tabs.map(async (t): Promise<[string, number][]> => {
+          if (t.value === "qc_review") {
+            // The two piles never overlap (pathologist_id is either me or
+            // NULL), so their sum is exact. Each pile's own count is kept
+            // too, for the sub-filter inside the tab.
+            const [mine, unassigned] = await Promise.all(
+              [QC_REVIEW_SUB_TABS.mine, QC_REVIEW_SUB_TABS.unassigned].map(
+                (sub) =>
+                  GyneCytologyCaseService.getAll({
+                    ...buildTabParams(sub, userId),
+                    limit: 1,
+                  }),
+              ),
+            );
+            return [
+              [t.value, mine.total + unassigned.total],
+              [QC_REVIEW_SUB_TABS.mine, mine.total],
+              [QC_REVIEW_SUB_TABS.unassigned, unassigned.total],
+            ];
+          }
           if (t.value === "stained") {
             const subTotals = await Promise.all(
               PENDING_REPORT_SUB_TABS.map((sub) =>
@@ -318,16 +354,16 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
                 }),
               ),
             );
-            return [t.value, subTotals.reduce((sum, d) => sum + d.total, 0)] as const;
+            return [[t.value, subTotals.reduce((sum, d) => sum + d.total, 0)]];
           }
           const data = await GyneCytologyCaseService.getAll({
             ...buildTabParams(t.value, userId),
             limit: 1,
           });
-          return [t.value, data.total] as const;
+          return [[t.value, data.total]];
         }),
       );
-      setTabCounts(Object.fromEntries(entries));
+      setTabCounts(Object.fromEntries(entries.flat()));
     } catch {
       // non-critical
     }
@@ -368,7 +404,7 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       loadCases();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, activeTab, searchText]);
+  }, [currentUser, activeTab, searchText, qcReviewScope]);
 
   useEffect(() => {
     if (refreshTrigger && currentUser && activeTab !== null) {
@@ -382,9 +418,19 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
 
   // Keep the active tab's badge in sync with the exact total once loaded
   useEffect(() => {
-    if (activeTab) {
+    if (activeTab === "qc_review") {
+      // The table only holds one pile, so update that pile and re-sum
+      setTabCounts((prev) => {
+        const next = { ...prev, [QC_REVIEW_SUB_TABS[qcReviewScope]]: total };
+        next.qc_review =
+          (next[QC_REVIEW_SUB_TABS.mine] ?? 0) +
+          (next[QC_REVIEW_SUB_TABS.unassigned] ?? 0);
+        return next;
+      });
+    } else if (activeTab) {
       setTabCounts((prev) => ({ ...prev, [activeTab]: total }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, total]);
 
   const loadCases = async () => {
@@ -414,9 +460,11 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
         return;
       }
 
+      const tabKey =
+        activeTab === "qc_review" ? QC_REVIEW_SUB_TABS[qcReviewScope] : activeTab;
       const params: Record<string, unknown> = {
         limit: 50,
-        ...buildTabParams(activeTab, currentUser.id),
+        ...buildTabParams(tabKey, currentUser.id),
         ...searchParam,
       };
 
@@ -690,10 +738,99 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     },
   ];
 
+  const QC_REASON_TAG: Record<string, { color: string; label: string }> = {
+    abnormal: { color: "red", label: "Abnormal" },
+    random_10pct: { color: "blue", label: `Random NILM ${nilmN}%` },
+    manual: { color: "purple", label: "Manual" },
+  };
+
+  const qcReviewColumns = [
+    // The accession column's own sorter pins Pending Report cases for the
+    // "All" tab; here the queue order comes from the Sent for Review column.
+    { ...commonColumns[0], sorter: undefined, defaultSortOrder: undefined },
+    ...commonColumns.slice(1),
+    pathoColumn,
+    {
+      title: "Review Reason",
+      key: "review_reason",
+      width: 160,
+      render: (_: unknown, record: GyneCytologyCase) => {
+        const cfg = record.review_reason
+          ? QC_REASON_TAG[record.review_reason] ?? {
+              color: "default",
+              label: record.review_reason,
+            }
+          : null;
+        return cfg ? (
+          <Tag color={cfg.color} style={{ borderRadius: 20 }}>
+            {cfg.label}
+          </Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        );
+      },
+    },
+    {
+      title: "Sent for Review",
+      dataIndex: "report_at",
+      key: "report_at",
+      width: 160,
+      // Abnormal first (a missed HSIL matters more than a random NILM
+      // re-read), then whoever has waited longest.
+      sorter: (a: GyneCytologyCase, b: GyneCytologyCase) => {
+        const aPriority = a.review_reason === "abnormal" ? 0 : 1;
+        const bPriority = b.review_reason === "abnormal" ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.report_at || "").localeCompare(b.report_at || "");
+      },
+      defaultSortOrder: "ascend" as const,
+      render: (value: string | null) => {
+        if (!value) return <Text type="secondary">—</Text>;
+        const days = dayjs().startOf("day").diff(dayjs(value).startOf("day"), "day");
+        return (
+          <div>
+            <div style={{ fontSize: 13 }}>{dayjs(value).format("DD/MM/YYYY HH:mm")}</div>
+            <Text type={days > 0 ? "warning" : "secondary"} style={{ fontSize: 11 }}>
+              {days > 0 ? `Waiting ${days} day${days > 1 ? "s" : ""}` : "Today"}
+            </Text>
+          </div>
+        );
+      },
+    },
+    dateColumn,
+  ];
+
+  const qcReviewScopeOptions = (
+    [
+      { label: "Mine", value: "mine" },
+      { label: "Unassigned", value: "unassigned" },
+    ] as const
+  ).map((o) => {
+    const count = tabCounts[QC_REVIEW_SUB_TABS[o.value]] ?? 0;
+    return {
+      label: (
+        <span>
+          {o.label}
+          {count > 0 && (
+            <Badge
+              count={count}
+              size="small"
+              color="#722ed1"
+              style={{ marginLeft: 6 }}
+            />
+          )}
+        </span>
+      ),
+      value: o.value,
+    };
+  });
+
   const columns =
     activeTab === "qc_slide_queue"
       ? qcSlideQueueColumns
-      : [
+      : activeTab === "qc_review"
+        ? qcReviewColumns
+        : [
           ...commonColumns,
           isPathologist ? pathoColumn : ctColumn,
           dateColumn,
@@ -720,6 +857,25 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
       };
     }
     const count = tabCounts[t.value] ?? 0;
+    // QC Review stands out the same way QC Slide Queue does for the CT —
+    // these cases are held back from the patient until a pathologist acts.
+    if (t.value === "qc_review" && count > 0) {
+      return {
+        label: (
+          <span>
+            <AuditOutlined style={{ marginRight: 4, color: "#722ed1" }} />
+            {t.label}{" "}
+            <Badge
+              count={count}
+              size="small"
+              color="#722ed1"
+              style={{ marginLeft: 4 }}
+            />
+          </span>
+        ),
+        value: t.value,
+      };
+    }
     return {
       label:
         count > 0 ? (
@@ -745,6 +901,8 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
     co_sign: "Cases someone else has already signed, awaiting your signature to complete",
     awaiting_cosign: "Cases you have already signed, but awaiting another person's signature to complete",
     qc_slide_queue: "Slides randomly selected for QC or with abnormal results, awaiting collection for the Pathologist",
+    qc_review:
+      "Cases a cytotechnologist sent for QC (abnormal, or a random NILM) — not released until a pathologist agrees or disagrees. Unassigned = registered with no pathologist, shared by every pathologist",
     express: "Urgent (Express/Urgent) cases assigned to you",
     all: "All cases assigned to you",
   };
@@ -792,7 +950,21 @@ const GyneCytoWorklist: React.FC<GyneCytoWorklistProps> = ({
         </div>
       )}
 
+      {activeTab === "qc_review" && (
+        <div style={{ marginBottom: 12 }}>
+          <Segmented
+            options={qcReviewScopeOptions}
+            value={qcReviewScope}
+            onChange={(value) => setQcReviewScope(value as QcReviewScope)}
+          />
+        </div>
+      )}
+
       <Table
+        // antd keeps its sort state across column changes, so the accession
+        // sort from the other tabs would override QC Review's
+        // defaultSortOrder. Remounting starts that tab from its own sort.
+        key={activeTab === "qc_review" ? "qc_review" : "worklist"}
         columns={columns}
         dataSource={cases}
         rowKey="id"

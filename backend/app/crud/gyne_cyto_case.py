@@ -156,6 +156,8 @@ def get_gyne_cases(
     review_reason: str = None,
     is_reviewed: bool = None,
     is_express: bool = None,
+    pathologist_id: int = None,
+    pathologist_unassigned: bool = None,
 ):
     query = db.query(GyneCytologyCase).join(Patient)
 
@@ -170,6 +172,18 @@ def get_gyne_cases(
                 GyneCytologyCase.cytotechnologist_id == assigned_user_id
             )
         )
+
+    # Pathologist only — unlike assigned_user_id, which also matches the
+    # cytotechnologist. A user holding both roles would otherwise see the
+    # cases they screened themselves in their own QC review queue.
+    if pathologist_id:
+        query = query.filter(GyneCytologyCase.pathologist_id == pathologist_id)
+
+    # Cases registered without a pathologist. In pending_review these reach no
+    # pathologist's worklist through signers, so the QC tab shows them as a
+    # shared pile instead.
+    if pathologist_unassigned:
+        query = query.filter(GyneCytologyCase.pathologist_id.is_(None))
 
     # 🚩 New: Filter by Co-Signer
     if signer_id:

@@ -14,15 +14,18 @@ import logger from "../../../utils/logger";
 import type { SystemSetting } from "../../../types/system";
 
 // Same bucket definitions as GyneCytoWorklist.tsx's buildTabParams for
-// "stained" (Pending Report), "co_sign" (Sign Required) and "express".
-// Fetched as a union of case ids (not summed) so a case appearing in more
-// than one bucket — e.g. an express case awaiting the pathologist's
-// signature — is only counted once.
+// "stained" (Pending Report), "co_sign" (Sign Required), "express" and both
+// QC Review piles (mine + unassigned). Fetched as a union of case ids (not
+// summed) so a case appearing in more than one bucket — e.g. an express case
+// awaiting the pathologist's signature, or a QC case that also lists me as an
+// unsigned signer — is only counted once.
 const fetchGyneBadgeTotal = async (userId: number): Promise<number> => {
   const paramSets = [
     { status: "stained", assigned_user_id: userId, exclude_signed_by: userId },
     { signer_id: userId, exclude_status: "published" },
     { assigned_user_id: userId, is_express: true },
+    { status: "pending_review", pathologist_id: userId },
+    { status: "pending_review", pathologist_unassigned: true },
   ];
   const results = await Promise.all(
     paramSets.map((params) =>
