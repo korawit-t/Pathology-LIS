@@ -77,6 +77,10 @@ def _strip_exif(image_bytes: bytes, fmt: str) -> bytes:
     # JPEG requires RGB; PNG/WebP/TIFF can stay in their native mode
     if pil_fmt == "JPEG" and img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
+    # PNG holds at most 16 bits per channel. Pillow 12 clipped 32-bit "I"
+    # images to fit; Pillow 13 raises instead, so clip explicitly.
+    if pil_fmt == "PNG" and img.mode == "I":
+        img = img.convert("I;16")
 
     img.save(out, format=pil_fmt)
     return out.getvalue()

@@ -5,7 +5,7 @@ anyio==4.14.2
 argon2-cffi==25.1.0
 argon2-cffi-bindings==26.1.0
 brotli==1.2.0
-certifi==2026.7.22
+certifi==2026.10.19
 cffi==2.1.0
 charset-normalizer==3.5.1
 click==8.4.2
@@ -31,7 +31,7 @@ passlib==1.7.4
 openpyxl==3.1.5
 openslide-python==1.4.6
 openslide-bin==4.0.1.2
-pillow==12.3.0
+pillow==13.0.0
 pluggy==1.6.0
 psycopg2-binary==2.9.12
 pyasn1==0.6.4

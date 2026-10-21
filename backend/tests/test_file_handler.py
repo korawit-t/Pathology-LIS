@@ -98,6 +98,21 @@ class TestStripExif:
 
         assert cleaned[:8] == b"\x89PNG\r\n\x1a\n"
 
+    def test_32_bit_integer_tiff_is_re_encoded_as_16_bit_png(self):
+        # Pillow 13 refuses to write mode "I" as PNG; 12.x clipped it to
+        # 16 bits silently. The upload must keep working with that clipping.
+        img = Image.new("I", (2, 1))
+        img.putpixel((0, 0), 70000)
+        img.putpixel((1, 0), 300)
+        buf = io.BytesIO()
+        img.save(buf, format="TIFF")
+
+        cleaned = Image.open(io.BytesIO(_strip_exif(buf.getvalue(), "tif")))
+
+        assert cleaned.format == "PNG"
+        assert cleaned.mode == "I;16"
+        assert [cleaned.getpixel((0, 0)), cleaned.getpixel((1, 0))] == [65535, 300]
+
     def test_corrupted_image_raises_400(self):
         with pytest.raises(HTTPException) as exc_info:
             _strip_exif(b"garbage, not an image", "jpg")
