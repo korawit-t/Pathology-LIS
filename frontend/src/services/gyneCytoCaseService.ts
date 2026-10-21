@@ -41,6 +41,8 @@ const GyneCytologyCaseService = {
     date_to?: string;
     review_reason?: string;
     is_express?: boolean;
+    pathologist_id?: number;
+    pathologist_unassigned?: boolean;
   }): Promise<GyneCytologyListResponse> => {
     // 🚩 2. ปรับ Generic type ใน api.get ให้ตรงกัน
     const res = await api.get<GyneCytologyListResponse>("/gyne-cytology", {

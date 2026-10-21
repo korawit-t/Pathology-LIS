@@ -90,3 +90,78 @@ class TestGyneSignerId:
         result_ids = [c.id for c in get_gyne_cases(db, signer_id=path1.id)["items"]]
         assert case.id in result_ids
         assert other_case.id not in result_ids
+
+
+class TestGynePathologistFilters:
+    """The pathologist's QC Review tab: pathologist_id (mine) and
+    pathologist_unassigned (shared pile) — unlike assigned_user_id, neither
+    may match on the cytotechnologist column."""
+
+    def test_pathologist_id_matches_only_the_pathologist_column(
+        self, db, admin_user, two_pathologists
+    ):
+        registrar, _ = admin_user
+        path1, path2 = two_pathologists
+        mine = make_bare_gyne_case(db, registrar_id=registrar.id)
+        mine.pathologist_id = path1.id
+        # path1 screened this one as the cytotech (a dual-role account) — it
+        # belongs in path2's review queue, not path1's.
+        screened_by_me = make_bare_gyne_case(db, registrar_id=registrar.id)
+        screened_by_me.pathologist_id = path2.id
+        screened_by_me.cytotechnologist_id = path1.id
+        for c in (mine, screened_by_me):
+            c.status = "pending_review"
+        db.commit()
+
+        result_ids = [
+            c.id
+            for c in get_gyne_cases(
+                db, status="pending_review", pathologist_id=path1.id, limit=500
+            )["items"]
+        ]
+        assert mine.id in result_ids
+        assert screened_by_me.id not in result_ids
+
+    def test_pathologist_unassigned_matches_only_cases_with_no_pathologist(
+        self, db, admin_user, two_pathologists
+    ):
+        registrar, _ = admin_user
+        path1, _ = two_pathologists
+        unassigned = make_bare_gyne_case(db, registrar_id=registrar.id)
+        assigned = make_bare_gyne_case(db, registrar_id=registrar.id)
+        assigned.pathologist_id = path1.id
+        for c in (unassigned, assigned):
+            c.status = "pending_review"
+        db.commit()
+
+        result_ids = [
+            c.id
+            for c in get_gyne_cases(
+                db, status="pending_review", pathologist_unassigned=True, limit=500
+            )["items"]
+        ]
+        assert unassigned.id in result_ids
+        assert assigned.id not in result_ids
+
+    def test_router_passes_both_params_through(self, pathologist_client, db, admin_user):
+        registrar, _ = admin_user
+        case = make_bare_gyne_case(db, registrar_id=registrar.id)
+        case.status = "pending_review"
+        db.commit()
+
+        def ids(**params):
+            res = pathologist_client.get(
+                "/gyne-cytology",
+                params={"status": "pending_review", "search": case.accession_no, **params},
+            )
+            assert res.status_code == 200
+            return [c["id"] for c in res.json()["items"]]
+
+        assert ids(pathologist_unassigned=True) == [case.id]
+
+        path, _ = _make_user(db, f"gfpath3_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
+        case.pathologist_id = path.id
+        db.commit()
+
+        assert ids(pathologist_unassigned=True) == []
+        assert ids(pathologist_id=path.id) == [case.id]

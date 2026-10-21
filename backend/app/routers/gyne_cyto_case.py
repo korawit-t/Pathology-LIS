@@ -79,6 +79,8 @@ def read_cases(
     signed_by: Optional[int] = Query(None),
     is_reviewed: Optional[bool] = Query(None),
     is_express: Optional[bool] = Query(None),
+    pathologist_id: Optional[int] = Query(None),
+    pathologist_unassigned: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
@@ -116,6 +118,8 @@ def read_cases(
         date_to=datetime.combine(date_to, time.max) if date_to else None,
         review_reason=review_reason,
         is_express=is_express,
+        pathologist_id=pathologist_id,
+        pathologist_unassigned=pathologist_unassigned,
     )
 
 

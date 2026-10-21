@@ -128,6 +128,28 @@ describe("useSurgicalCaseWorklist", () => {
     await waitFor(() => expect(result.current.filteredData.gyneTotal).toBe(2));
   });
 
+  // A QC case where I'm the pathologist also lists me as an unsigned signer,
+  // so it sits in both "co_sign" and my QC pile; the unassigned pile reaches
+  // me through nothing else. Expect 1 (deduped) + 1 (unassigned) = 2.
+  it("counts both QC Review piles in the Gyne badge, deduped against co-sign", async () => {
+    mockGyneGetAll.mockImplementation((params: Record<string, unknown>) => {
+      if (params.signer_id) {
+        return Promise.resolve({ items: [{ id: 10 }], total: 1 });
+      }
+      if (params.status === "pending_review" && params.pathologist_id === USER_ID) {
+        return Promise.resolve({ items: [{ id: 10 }], total: 1 });
+      }
+      if (params.status === "pending_review" && params.pathologist_unassigned) {
+        return Promise.resolve({ items: [{ id: 11 }], total: 1 });
+      }
+      return Promise.resolve(emptyList);
+    });
+
+    const { result } = renderHook(() => useSurgicalCaseWorklist(USER_ID));
+
+    await waitFor(() => expect(result.current.filteredData.gyneTotal).toBe(2));
+  });
+
   // The Pending tab used to send only is_pending=true — the preliminary-report
   // flag — so cases sitting at status "pending diagnosis" (where a case lands
   // once its special stains/IHC come back) never appeared under the label that
