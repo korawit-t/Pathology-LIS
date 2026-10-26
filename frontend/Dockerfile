@@ -1,5 +1,5 @@
 # Stage 1: Build React
-FROM node:20-alpine as build-stage
+FROM node:22-alpine as build-stage
 WORKDIR /app
 
 ARG VITE_API_BASE_URL

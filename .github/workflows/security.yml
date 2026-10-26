@@ -77,24 +77,17 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
       - name: Run npm audit (high/critical, minus accepted-risk advisories)
         working-directory: frontend
         run: |
-          # Advisories intentionally accepted as risk instead of fixed — see
-          # comment above each ID. Remove the entry once a real fix lands
-          # upstream so the audit picks it back up.
+          # Advisories intentionally accepted as risk instead of fixed — put a
+          # comment above each ID saying why. Remove the entry once a real fix
+          # lands upstream so the audit picks it back up. Empty is fine.
           ALLOWED_ADVISORIES=(
-            # React Router "RSC Mode" CSRF bypass. Not exploitable here —
-            # this is a client-only Vite SPA, no RSC/server actions in use.
-            # No non-breaking fix exists yet upstream: the only "fixed"
-            # version npm offers is 7.11.0, a downgrade that reintroduces 14
-            # other high-severity CVEs already patched in the version we're
-            # on. https://github.com/advisories/GHSA-qwww-vcr4-c8h2
-            "GHSA-qwww-vcr4-c8h2"
           )
 
           # `npm audit` exits non-zero whenever it finds anything, so its exit
@@ -122,7 +115,9 @@ jobs:
             exit 1
           fi
 
-          ALLOWED_JSON=$(printf '%s\n' "${ALLOWED_ADVISORIES[@]}" | jq -R . | jq -s .)
+          # $ARGS.positional, not `printf '%s\n' ... | jq -R . | jq -s .`: the
+          # printf form turns an empty array into [""] rather than [].
+          ALLOWED_JSON=$(jq -n -c '$ARGS.positional' --args "${ALLOWED_ADVISORIES[@]}")
           UNALLOWED=$(jq -r --argjson allowed "$ALLOWED_JSON" '
             [.vulnerabilities[]?
               | select(.severity == "high" or .severity == "critical")
