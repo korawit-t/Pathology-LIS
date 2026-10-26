@@ -13,7 +13,7 @@ Thank you for your interest in contributing. This is a PHI-handling medical info
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
+- Node.js 22 LTS (22.13 or newer)
 - PostgreSQL 15+
 - (Optional) Docker & Docker Compose
 
