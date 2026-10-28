@@ -66,14 +66,17 @@ class TestGyneAndNongyneApprovalRbac:
 
         assert r.status_code == 403
 
-    def test_admin_can_approve_gyne(self, db, admin_client, admin_user, pathologist_user):
+    def test_admin_cannot_approve_gyne_awaiting_qc_review(self, db, admin_client, admin_user, pathologist_user):
+        """Admin passes the role gate, but a pending gyne report always belongs to
+        a case in QC review, which only complete-review may settle."""
         registrar, _ = admin_user
         pathologist, _ = pathologist_user
         _, report = make_pending_gyne_report(db, registrar_id=registrar.id, pathologist_id=pathologist.id)
 
         r = admin_client.post(f"/approvals/gyne/{report.id}", json={"action": "APPROVE"})
 
-        assert r.status_code == 200
+        assert r.status_code == 409
+        assert "QC review" in r.json()["detail"]
 
     def test_pathologist_cannot_approve_nongyne(self, db, pathologist_client, admin_user, pathologist_user):
         registrar, _ = admin_user

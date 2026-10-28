@@ -89,6 +89,10 @@ class GyneCytologyCase(Base):
     # --- Pathologist Review (10% QC) ---
     needs_review = Column(Boolean, default=False, index=True, comment="Flagged for pathologist QC review")
     review_reason = Column(String, nullable=True, comment="random_10pct | abnormal | manual")
+    # Whoever's publish routed the case into pending_review — the sign-out the
+    # QC review is checking, so complete_gyne_review refuses them as reviewer.
+    # NULL on cases flagged before this column existed.
+    review_requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     review_result = Column(String, nullable=True, comment="agree | disagree")

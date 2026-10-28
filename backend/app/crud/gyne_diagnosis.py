@@ -4,6 +4,7 @@ from app.models.gyne_diagnosis import GyneDiagnosis, GyneSpecimenAdequacy, GyneD
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate, GyneDiagnosisUpdate
 from app.utils.consult_lock import assert_consult_not_locked
+from app.crud.gyne_qc_guard import assert_not_awaiting_qc
 from typing import Optional
 
 
@@ -64,6 +65,9 @@ def revise_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
 
         case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == old_diag.case_id).first()
         assert_consult_not_locked(case)
+        # Revising flips the case to "revised", which would drop it out of QC
+        # review before anyone gave a verdict.
+        assert_not_awaiting_qc(db, case, attempted="revise_diagnosis")
 
         # 2. ปิดสถานะของเดิม
         old_diag.is_current = False

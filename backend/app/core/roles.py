@@ -43,6 +43,14 @@ CAN_APPROVE = RoleChecker(["senior_pathologist", "admin"])
 CAN_WRITE_GYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager"])
 CAN_READ_GYNE_CYTO_REPORT = RoleChecker(["admin", "pathologist", "senior_pathologist", "cytotechnologist", "lab_manager", "register", "hospital", "clinician"])
 CAN_APPROVE_GYNE_CYTO = RoleChecker(["admin", "senior_pathologist", "cytotechnologist"])
+# Completing a gyne QC review (agree / disagree on a case in pending_review) is
+# the pathologist's verdict on someone else's screening, so it is narrower than
+# CAN_WRITE_GYNE_CYTO_REPORT and admin does NOT pass it by role alone — an admin
+# account that also holds "pathologist" still does. Checked in
+# crud.gyne_qc_guard rather than as a route Depends, so a refusal is written to
+# the audit log before the 403 goes out. Mirrored in the frontend as
+# GYNE_QC_REVIEWER_ROLES (src/constants/roles.constants.ts).
+CAN_REVIEW_GYNE_QC = RoleChecker(["pathologist", "senior_pathologist"], admin_bypass=False)
 CAN_APPROVE_OUTLAB_RESULT = RoleChecker(["pathologist", "senior_pathologist", "admin"])
 
 # --- สิทธิ์สำหรับ NonGyne Cytology ---

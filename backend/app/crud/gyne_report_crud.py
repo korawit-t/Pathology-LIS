@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneReportSigner
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.cyto_approval_log import CytoReportAuditLog
+from app.crud.gyne_qc_guard import QC_BYPASS_BLOCKED, assert_not_awaiting_qc, deny
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.report_approval import ReportApproveRequest
@@ -18,6 +19,32 @@ def process_gyne_report_approval(
 
     action = req.action.upper().strip()
     now = local_now()
+
+    # A gyne report only sits in "pending" while its case is in pending_review,
+    # so approving or rejecting it here would settle the QC review without a
+    # pathologist verdict — and CAN_APPROVE_GYNE_CYTO includes the
+    # cytotechnologist whose screening is under review. The QC review is the
+    # only way out of that state.
+    db_case = (
+        db.query(GyneCytologyCase).filter(GyneCytologyCase.id == db_report.case_id).first()
+        if db_report.case_id is not None
+        else None
+    )
+    assert_not_awaiting_qc(db, db_case, attempted=f"approval:{action}", user_id=current_user.id)
+    # Approving a report that isn't pending would publish one a reviewer sent
+    # back (a Disagree leaves it in draft) without the correction or a fresh
+    # review.
+    if action in ["APPROVE", "APPROVED"] and db_report.status != GyneReportStatus.PENDING_APPROVAL:
+        deny(
+            db,
+            status_code=409,
+            detail="Only a report pending approval can be approved.",
+            action=QC_BYPASS_BLOCKED,
+            case_id=db_report.case_id,
+            user_id=current_user.id,
+            attempted=f"approval:{action}",
+            report_status=getattr(db_report.status, "value", db_report.status),
+        )
 
     # Note: GyneCytoReport doesn't currently have a separate Log table like Surgical.
     # We could add one, but for now we'll just update the status.

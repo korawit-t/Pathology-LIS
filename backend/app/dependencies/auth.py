@@ -58,22 +58,28 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
 
 
 class RoleChecker:
-    def __init__(self, allowed_roles: List[str]):
+    def __init__(self, allowed_roles: List[str], admin_bypass: bool = True):
         self.allowed_roles = allowed_roles
+        # Admin passes every gate by default. Turn that off only for a gate
+        # whose whole point is *who* exercised a judgement (e.g. QC review),
+        # where an IT account clearing it would defeat the control.
+        self.admin_bypass = admin_bypass
+
+    def allows(self, user: User | None) -> bool:
+        """Same decision as __call__, without raising — for callers that must
+        record a refusal before reporting it."""
+        if not user:
+            return False
+        user_roles = set(user.roles if isinstance(user.roles, list) else [])
+        if self.admin_bypass and "admin" in user_roles:
+            return True
+        return bool(user_roles.intersection(self.allowed_roles))
 
     def __call__(self, user: User = Depends(get_current_active_user)):
         if not user:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-        user_roles = user.roles if isinstance(user.roles, list) else []
-
-        if "admin" in user_roles:
-            return user
-
-        user_roles_set = set(user_roles)
-        allowed_roles_set = set(self.allowed_roles)
-
-        if not user_roles_set.intersection(allowed_roles_set):
+        if not self.allows(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Insufficient permissions. Required roles: {self.allowed_roles}",

@@ -19,6 +19,7 @@ import type {
   GyneSpecimenAdequacy,
 } from "../../../types/gyne-diagnosis";
 import logger from "../../../utils/logger";
+import { getErrorDetail } from "../../../utils/errorHandler";
 import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
 
 type GyneSigner = {
@@ -382,10 +383,15 @@ export function useGyneDiagnosisData(
           if (outLab) {
             message.success("Report signed off — flagged for Out-Lab Consult");
           } else if (result.status === "published") {
+            // An abnormal / unsatisfactory case only publishes directly when a
+            // pathologist signed it out — their read-out is the review.
             notification.success({
-              title: "NILM — Report Published",
-              description:
-                "Report has been published directly. No pathologist review required.",
+              title: opts.requiresPathologistReview
+                ? "Report Published"
+                : "NILM — Report Published",
+              description: opts.requiresPathologistReview
+                ? "Signed out by a pathologist — published without a separate QC review."
+                : "Report has been published directly. No pathologist review required.",
               placement: "topRight",
             });
           } else {
@@ -447,8 +453,10 @@ export function useGyneDiagnosisData(
         const updated = await GyneCytologyCaseService.getById(Number(caseId));
         setCaseData(updated);
         return result;
-      } catch {
-        message.error("Failed to complete review.");
+      } catch (err) {
+        // The server decides who may review (role + no self-review); say why
+        // it refused rather than a generic failure.
+        message.error(getErrorDetail(err) ?? "Failed to complete review.");
         return null;
       } finally {
         setCompletingReview(false);

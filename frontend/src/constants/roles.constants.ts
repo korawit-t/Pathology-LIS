@@ -25,6 +25,19 @@ export const EXTERNAL_ROLES: readonly UserRole[] = ["clinician", "hospital"];
 export const isExternalRole = (roles?: string[] | null): boolean =>
   (roles ?? []).some((r) => (EXTERNAL_ROLES as readonly string[]).includes(r));
 
+/** ผู้ที่กด Agree / Disagree ใน gyne QC review ได้ — ตรงกับ CAN_REVIEW_GYNE_QC
+ *  ใน backend/app/core/roles.py (admin เพียงอย่างเดียวไม่นับ ต้องมี role
+ *  pathologist ด้วย) แก้ที่เดียวไม่พอ ต้องแก้ให้ตรงกันทั้งสองฝั่ง */
+export const GYNE_QC_REVIEWER_ROLES: readonly UserRole[] = [
+  "pathologist",
+  "senior_pathologist",
+];
+
+export const canReviewGyneQc = (roles?: string[] | null): boolean =>
+  (roles ?? []).some((r) =>
+    (GYNE_QC_REVIEWER_ROLES as readonly string[]).includes(r),
+  );
+
 export const ROLE_OPTIONS = Object.entries(ROLES).map(([value, meta]) => ({
   value: value as UserRole,
   label: meta.label,

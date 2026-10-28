@@ -93,11 +93,12 @@ class TestReadEndpoints:
 
 
 class TestCompleteReview:
-    def test_pathologist_can_complete_review(self, db, pathologist_client, admin_user):
+    def test_pathologist_can_complete_review(self, db, pathologist_client, admin_user, pathologist_user):
         registrar, _ = admin_user
-        case = make_bare_gyne_case(db, registrar_id=registrar.id)
-        create_initial_diagnosis(db, GyneDiagnosisCreate(case_id=case.id))
-        pathologist_client.post(f"/gyne-cyto-reports/{case.id}/publish", json={"is_abnormal": True})
+        pathologist, _ = pathologist_user
+        # A pathologist's own abnormal read-out publishes directly now, so the
+        # pending review has to come from someone else's sign-out.
+        case, _ = make_pending_gyne_report(db, registrar.id, pathologist.id)
 
         r = pathologist_client.post(
             f"/gyne-cyto-reports/cases/{case.id}/complete-review",
