@@ -5,7 +5,24 @@ from app.models.gyne_cyto_case import GyneCytologyCase
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate, GyneDiagnosisUpdate
 from app.utils.consult_lock import assert_consult_not_locked
 from app.crud.gyne_qc_guard import assert_not_awaiting_qc
+from app.models.system_setting import SystemSetting
+from app.utils.signatures import reconcile_signatures
+from app.utils.time import local_now
 from typing import Optional
+
+
+def _verify_signers_on_save(db: Session, data: dict, on_record, actor_id: Optional[int]) -> None:
+    """Under 'Require All Signatures (Gyne)' a save can add only the saver's own
+    signature — anyone else's signed_at stays as recorded (or is cleared). The
+    publish gate trusts these saved signatures, so they must be real."""
+    if data.get("signers") is None:
+        return
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_gyne_sign):
+        return
+    data["signers"] = reconcile_signatures(
+        data["signers"], on_record, actor_id, local_now().isoformat()
+    )
 
 
 # --- Master Data CRUD ---
@@ -34,11 +51,15 @@ def get_diagnosis_by_id(db: Session, diag_id: int):
     return db.query(GyneDiagnosis).filter(GyneDiagnosis.id == diag_id).first()
 
 
-def create_initial_diagnosis(db: Session, diag_in: GyneDiagnosisCreate):
+def create_initial_diagnosis(
+    db: Session, diag_in: GyneDiagnosisCreate, actor_id: Optional[int] = None
+):
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == diag_in.case_id).first()
     assert_consult_not_locked(case)
 
-    db_diag = GyneDiagnosis(**diag_in.model_dump(mode='json'))
+    data = diag_in.model_dump(mode='json')
+    _verify_signers_on_save(db, data, None, actor_id)
+    db_diag = GyneDiagnosis(**data)
     db.add(db_diag)
     db.commit()
     db.refresh(db_diag)
@@ -50,7 +71,9 @@ def create_initial_diagnosis(db: Session, diag_in: GyneDiagnosisCreate):
     return db_diag
 
 
-def revise_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
+def revise_diagnosis(
+    db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate, actor_id: Optional[int] = None
+):
     try:
         # 1. ค้นหา Record เดิมที่ยังใช้งานอยู่
         old_diag = (
@@ -75,6 +98,7 @@ def revise_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
         # 3. เตรียมข้อมูลสำหรับเวอร์ชันใหม่
         # ดึงข้อมูลเดิมมาเป็นฐาน (Base)
         update_data = diag_in.model_dump(exclude_unset=True, mode='json')
+        _verify_signers_on_save(db, update_data, old_diag.signers, actor_id)
 
         # สร้าง Object ใหม่โดยคัดลอกค่าจาก old_diag
         # เราต้อง map field ใหม่ๆ ด้วย
@@ -116,7 +140,9 @@ def revise_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
         raise e
 
 
-def update_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
+def update_diagnosis(
+    db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate, actor_id: Optional[int] = None
+):
     db_diag = db.query(GyneDiagnosis).filter(GyneDiagnosis.id == diag_id).first()
     if not db_diag:
         return None
@@ -125,6 +151,7 @@ def update_diagnosis(db: Session, diag_id: int, diag_in: GyneDiagnosisUpdate):
     assert_consult_not_locked(case)
 
     update_data = diag_in.model_dump(exclude_unset=True, mode='json')
+    _verify_signers_on_save(db, update_data, db_diag.signers, actor_id)
     for key, value in update_data.items():
         setattr(db_diag, key, value)
         

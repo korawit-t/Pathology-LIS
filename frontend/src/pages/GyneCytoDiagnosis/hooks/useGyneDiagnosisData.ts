@@ -414,7 +414,9 @@ export function useGyneDiagnosisData(
           message.info("Sign-off cancelled — identity was not confirmed.");
         } else {
           logger.error(err);
-          message.error("Failed to finalize report.");
+          // e.g. 409 naming whose signature "Require All Signatures" is still
+          // waiting on — the server is the gate, so show its reason.
+          message.error(getErrorDetail(err) ?? "Failed to finalize report.");
         }
       } finally {
         setFinalizing(false);

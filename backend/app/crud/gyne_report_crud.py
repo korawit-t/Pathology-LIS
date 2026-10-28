@@ -4,6 +4,7 @@ from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneRe
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.cyto_approval_log import CytoReportAuditLog
 from app.crud.gyne_qc_guard import QC_BYPASS_BLOCKED, assert_not_awaiting_qc, deny
+from app.crud.gyne_cyto_report import outstanding_signatures_detail
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.report_approval import ReportApproveRequest
@@ -53,19 +54,21 @@ def process_gyne_report_approval(
     if action in ["APPROVE", "APPROVED"]:
         settings = db.query(SystemSetting).first()
         if settings and settings.require_all_gyne_sign:
-            pending_count = (
+            pending = (
                 db.query(GyneReportSigner)
                 .filter(
                     GyneReportSigner.report_id == report_id,
                     GyneReportSigner.signed_at.is_(None),
                     GyneReportSigner.user_id != current_user.id,
                 )
-                .count()
+                .all()
             )
-            if pending_count > 0:
+            if pending:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot publish — {pending_count} co-signer(s) have not signed yet.",
+                    status_code=409,
+                    detail=outstanding_signatures_detail(
+                        db, [{"user_id": s.user_id, "role": s.role} for s in pending]
+                    ),
                 )
 
         db_report.status = GyneReportStatus.PUBLISHED

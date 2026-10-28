@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from app.utils.time import local_now
+from app.utils.signatures import reconcile_signatures
 from app.models.nongyne_cyto_report import NongyneCytoReport, NongyneReportStatus, NongyneReportType, NongyneReportSigner
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.nongyne_case_image import NongyneCaseImage
@@ -95,19 +96,42 @@ def _resolve_signed_at(signer: dict, current_user_id: int | None):
     return signed_at
 
 
+def _verified_signers(
+    db: Session, case_id: int, signers: List[dict] | None, current_user_id: int | None
+) -> List[dict] | None:
+    """Under 'Require All Signatures (Non-Gyne)', take each signer's signed_at
+    from the diagnosis on record rather than the request, so nobody can sign
+    for someone else (see app/utils/signatures.py). Off → the request as-is."""
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_non_gyne_sign) or not signers:
+        return signers
+    current_diag = (
+        db.query(NongyneDiagnosis)
+        .filter(NongyneDiagnosis.case_id == case_id, NongyneDiagnosis.is_current.is_(True))
+        .first()
+    )
+    return reconcile_signatures(
+        signers,
+        current_diag.signers if current_diag else None,
+        current_user_id,
+        local_now(),
+        actor_signs=True,
+    )
+
+
 def _reject_if_signatures_outstanding(
     db: Session, signers: List[dict] | None, current_user_id: int | None
 ) -> None:
     """Block a release while 'Require All Signatures (Non-Gyne)' is on and a
-    listed signer still hasn't signed. Same 400 shape the approval-path gate
-    in process_nongyne_report_approval() already raises."""
+    listed signer still hasn't signed. Same 409 the approval-path gate in
+    process_nongyne_report_approval() raises."""
     settings = db.query(SystemSetting).first()
     if not (settings and settings.require_all_non_gyne_sign):
         return
     pending = [s for s in (signers or []) if not _resolve_signed_at(s, current_user_id)]
     if not pending:
         return
-    raise HTTPException(status_code=400, detail=_outstanding_detail(db, pending))
+    raise HTTPException(status_code=409, detail=_outstanding_detail(db, pending))
 
 
 def _outstanding_detail(db: Session, pending: List[dict]) -> str:
@@ -328,6 +352,8 @@ def publish_nongyne_report(
     # the report outright. Rejecting up front (rather than parking the report
     # in pending_approval) is deliberate: nothing in the app calls the
     # /cosign endpoint, so a held report would have no way back out.
+    # Judged on the signatures on record, not the ones the request claims.
+    signers = _verified_signers(db, case_id, signers, current_user_id)
     _reject_if_signatures_outstanding(db, signers, current_user_id)
 
     existing_count = db.query(NongyneCytoReport).filter(NongyneCytoReport.case_id == case_id).count()
@@ -644,19 +670,21 @@ def process_nongyne_report_approval(
     if action in ["APPROVE", "APPROVED"]:
         settings = db.query(SystemSetting).first()
         if settings and settings.require_all_non_gyne_sign:
-            pending_count = (
+            pending = (
                 db.query(NongyneReportSigner)
                 .filter(
                     NongyneReportSigner.report_id == report_id,
                     NongyneReportSigner.signed_at.is_(None),
                     NongyneReportSigner.user_id != current_user.id,
                 )
-                .count()
+                .all()
             )
-            if pending_count > 0:
+            if pending:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot publish — {pending_count} co-signer(s) have not signed yet.",
+                    status_code=409,
+                    detail=_outstanding_detail(
+                        db, [{"user_id": s.user_id, "role": s.role} for s in pending]
+                    ),
                 )
 
         db_report.status = NongyneReportStatus.PUBLISHED

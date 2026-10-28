@@ -330,7 +330,9 @@ class TestGyneApproval:
 
         with pytest.raises(HTTPException) as exc:
             process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
+        # Names who is outstanding, not just how many.
+        assert cosigner.full_name in exc.value.detail
         db.refresh(report)
         assert report.status == GyneReportStatus.PENDING_APPROVAL
 
@@ -548,7 +550,9 @@ class TestNongyneApproval:
 
         with pytest.raises(HTTPException) as exc:
             process_nongyne_report_approval(db, report.id, path1, _req("APPROVE"))
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
+        # Names who is outstanding, not just how many.
+        assert cosigner.full_name in exc.value.detail
         db.refresh(report)
         assert report.status == NongyneReportStatus.PENDING_APPROVAL
 

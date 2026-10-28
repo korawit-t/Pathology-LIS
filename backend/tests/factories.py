@@ -218,12 +218,19 @@ def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
     so the pathologist can't be the publisher. That also leaves the case in
     pending_review, which is the only state a gyne report is ever "pending" in.
 
+    The pathologist's signature is recorded by their own diagnosis save, the
+    way the UI does it — under require_all_gyne_sign the server ignores a
+    signed_at the publishing request claims for someone else.
+
     Returns (case, report)."""
     case = make_bare_gyne_case(db, registrar_id=registrar_id)
-    create_initial_diagnosis(db, GyneDiagnosisCreate(case_id=case.id))
+    signers = [{"user_id": pathologist_id, "role": "primary", "signed_at": local_now()}]
+    create_initial_diagnosis(
+        db, GyneDiagnosisCreate(case_id=case.id, signers=signers), actor_id=pathologist_id
+    )
     report = publish_gyne_report(
         db, case.id,
-        signers=[{"user_id": pathologist_id, "role": "primary", "signed_at": local_now()}],
+        signers=signers,
         current_user_id=None,
         is_abnormal=True,
     )

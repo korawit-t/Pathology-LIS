@@ -5,6 +5,7 @@ from app.crud.system_setting import get_settings as get_system_settings
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.utils.time import local_now
+from app.utils.signatures import reconcile_signatures
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneReportType, GyneReportSigner
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_diagnosis import GyneDiagnosis
@@ -79,12 +80,35 @@ def _fmt_dt(val) -> str | None:
     return dt.strftime("%d/%m/%Y %H:%M")
 
 
+def _verified_signers(
+    db: Session, case_id: int, signers: List[dict] | None, current_user_id: int | None
+) -> List[dict] | None:
+    """Under 'Require All Signatures (Gyne)', take each signer's signed_at from
+    the diagnosis on record rather than the request, so nobody can sign for
+    someone else (see app/utils/signatures.py). Off → the request as-is."""
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_gyne_sign) or not signers:
+        return signers
+    current_diag = (
+        db.query(GyneDiagnosis)
+        .filter(GyneDiagnosis.case_id == case_id, GyneDiagnosis.is_current == True)
+        .first()
+    )
+    return reconcile_signatures(
+        signers,
+        current_diag.signers if current_diag else None,
+        current_user_id,
+        local_now(),
+        actor_signs=True,
+    )
+
+
 def _reject_if_signatures_outstanding(
     db: Session, signers: List[dict] | None, current_user_id: int | None
 ) -> None:
     """Block a release while 'Require All Signatures (Gyne)' is on and a listed
-    signer still hasn't signed. Same 400 shape the approval-path gate in
-    process_gyne_report_approval() already raises."""
+    signer still hasn't signed. Same 409 the approval-path gate in
+    process_gyne_report_approval() raises."""
     settings = db.query(SystemSetting).first()
     if not (settings and settings.require_all_gyne_sign):
         return
@@ -96,8 +120,12 @@ def _reject_if_signatures_outstanding(
     ]
     if not pending:
         return
-    # Name who is outstanding rather than counting them — a bare number leaves
-    # the person signing off with no way to tell which row is blocking them.
+    raise HTTPException(status_code=409, detail=outstanding_signatures_detail(db, pending))
+
+
+def outstanding_signatures_detail(db: Session, pending: List[dict]) -> str:
+    """Name who is outstanding rather than counting them — a bare number leaves
+    the person signing off with no way to tell which row is blocking them."""
     names = {
         u.id: (u.report_name or u.full_name)
         for u in db.query(User)
@@ -109,10 +137,7 @@ def _reject_if_signatures_outstanding(
         f" ({s.get('role') or 'primary'})"
         for s in pending
     ]
-    raise HTTPException(
-        status_code=400,
-        detail="Cannot publish — still waiting on a signature from: " + ", ".join(labels),
-    )
+    return "Cannot publish — still waiting on a signature from: " + ", ".join(labels)
 
 
 def get_report_by_id(db: Session, report_id: int):
@@ -366,7 +391,9 @@ def publish_gyne_report(
     # process_gyne_report_approval() — a NILM case that isn't sampled for QC
     # never passes through that gate, it publishes straight out of this
     # function. The frontend already refuses to call publish until everyone
-    # has signed when the setting is on; this is the server-side backstop.
+    # has signed when the setting is on; this is the server-side backstop —
+    # judged on the signatures on record, not the ones the request claims.
+    signers = _verified_signers(db, case_id, signers, current_user_id)
     _reject_if_signatures_outstanding(db, signers, current_user_id)
 
     # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
