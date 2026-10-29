@@ -210,18 +210,28 @@ def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
     Passes is_abnormal=True to publish_gyne_report — this is the only
     deterministic way to land in PENDING_APPROVAL. When is_abnormal=False,
     publish_gyne_report either random-QC-samples the report to pending review
-    (flaky) or, when the publisher is a pathologist (as here) and not
-    sampled, publishes it directly (see gyne_cyto_report.py's
-    `if not flagged_for_review: db_report.status = PUBLISHED` branch) — so
-    is_abnormal=False would NOT reliably produce a pending report here.
+    (flaky) or publishes it directly — so is_abnormal=False would NOT reliably
+    produce a pending report here.
+
+    The publish is made with no current user: a pathologist publishing their
+    own abnormal read-out goes straight to published (it needs no QC review),
+    so the pathologist can't be the publisher. That also leaves the case in
+    pending_review, which is the only state a gyne report is ever "pending" in.
+
+    The pathologist's signature is recorded by their own diagnosis save, the
+    way the UI does it — under require_all_gyne_sign the server ignores a
+    signed_at the publishing request claims for someone else.
 
     Returns (case, report)."""
     case = make_bare_gyne_case(db, registrar_id=registrar_id)
-    create_initial_diagnosis(db, GyneDiagnosisCreate(case_id=case.id))
+    signers = [{"user_id": pathologist_id, "role": "primary", "signed_at": local_now()}]
+    create_initial_diagnosis(
+        db, GyneDiagnosisCreate(case_id=case.id, signers=signers), actor_id=pathologist_id
+    )
     report = publish_gyne_report(
         db, case.id,
-        signers=[{"user_id": pathologist_id, "role": "primary"}],
-        current_user_id=pathologist_id,
+        signers=signers,
+        current_user_id=None,
         is_abnormal=True,
     )
     db.refresh(case)

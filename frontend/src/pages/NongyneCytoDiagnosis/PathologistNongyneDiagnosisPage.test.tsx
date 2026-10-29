@@ -26,6 +26,9 @@ vi.mock("../../services/nongyneCytoCaseService", () => ({
 vi.mock("../../services/notificationRuleService", () => ({
   default: { triggerEvent: vi.fn() },
 }));
+vi.mock("../../services/systemSettingService", () => ({
+  default: { getSettings: vi.fn().mockResolvedValue({ require_all_non_gyne_sign: false }) },
+}));
 vi.mock("../../services/nongyneReportService", () => ({
   default: {
     getReportsByCase: vi.fn().mockResolvedValue([]),

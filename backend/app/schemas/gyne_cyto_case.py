@@ -168,6 +168,7 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     # QC Review
     needs_review: bool = False
     review_reason: Optional[str] = None
+    review_requested_by_id: Optional[int] = None
     reviewed_by_id: Optional[int] = None
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[UserMinimalResponse] = None

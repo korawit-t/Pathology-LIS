@@ -184,11 +184,24 @@ class TestSurgicalApproval:
         assert report.status == ReportStatus.PENDING_APPROVAL
 
 
+def _pending_outside_qc(db, registrar_id, pathologist_id):
+    """A pending gyne report whose case is no longer in pending_review.
+
+    A gyne report is only ever "pending" while its case awaits QC review, and
+    /approvals/gyne refuses to act on those (see TestGyneApprovalBlockedByQc).
+    This state survives only in data from before that guard — e.g. a case
+    status PATCHed by hand — and it's the one /approvals/gyne still acts on."""
+    case, report = make_pending_gyne_report(db, registrar_id, pathologist_id)
+    case.status = "screened"
+    db.commit()
+    return case, report
+
+
 class TestGyneApproval:
     def test_approve_publishes_case_and_report(self, db, admin_user, pathologist_user):
         registrar, _ = admin_user
         path1, _ = pathologist_user
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
 
         result = process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
 
@@ -203,7 +216,7 @@ class TestGyneApproval:
         registrar, _ = admin_user
         path1, _ = pathologist_user
         path2, _ = _make_user(db, f"gpath2_{uuid.uuid4().hex[:6]}", "PathPass1!", ["pathologist"])
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
         assert db.query(GyneReportSigner).filter(
             GyneReportSigner.report_id == report.id, GyneReportSigner.user_id == path2.id
         ).count() == 0
@@ -221,7 +234,7 @@ class TestGyneApproval:
         registrar, _ = admin_user
         path1, _ = pathologist_user
         ct_user, _ = _make_user(db, f"ct_{uuid.uuid4().hex[:6]}", "CtPass1!", ["cytotechnologist"])
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
 
         process_gyne_report_approval(db, report.id, ct_user, _req("APPROVE"))
 
@@ -233,7 +246,7 @@ class TestGyneApproval:
     def test_reject_reverts_status_only(self, db, admin_user, pathologist_user):
         registrar, _ = admin_user
         path1, _ = pathologist_user
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
 
         result = process_gyne_report_approval(db, report.id, path1, _req("REJECT"))
 
@@ -250,7 +263,7 @@ class TestGyneApproval:
     def test_unknown_action_raises_400(self, db, admin_user, pathologist_user):
         registrar, _ = admin_user
         path1, _ = pathologist_user
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
 
         with pytest.raises(HTTPException) as exc:
             process_gyne_report_approval(db, report.id, path1, _req("BOGUS"))
@@ -259,7 +272,7 @@ class TestGyneApproval:
     def test_audit_log_row_written(self, db, admin_user, pathologist_user):
         registrar, _ = admin_user
         path1, _ = pathologist_user
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
 
         process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
 
@@ -311,13 +324,15 @@ class TestGyneApproval:
         registrar, _ = admin_user
         path1, _ = pathologist_user
         cosigner, _ = _make_user(db, f"gcosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
         add_gyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
         make_system_setting(db, require_all_gyne_sign=True)
 
         with pytest.raises(HTTPException) as exc:
             process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
+        # Names who is outstanding, not just how many.
+        assert cosigner.full_name in exc.value.detail
         db.refresh(report)
         assert report.status == GyneReportStatus.PENDING_APPROVAL
 
@@ -327,7 +342,7 @@ class TestGyneApproval:
         registrar, _ = admin_user
         path1, _ = pathologist_user
         cosigner, _ = _make_user(db, f"gcosign_{uuid.uuid4().hex[:6]}", "CosignPass1!", ["senior_pathologist"])
-        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        case, report = _pending_outside_qc(db, registrar.id, path1.id)
         add_gyne_signer(db, report.id, cosigner.id, "co-signer", None, current_user=path1)
         make_system_setting(db, require_all_gyne_sign=True)
         process_gyne_cosign(db, report.id, cosigner, _req("APPROVE", agreement="agree"))
@@ -335,6 +350,77 @@ class TestGyneApproval:
         result = process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
 
         assert result.status == GyneReportStatus.PUBLISHED
+
+
+class TestGyneApprovalBlockedByQc:
+    """/approvals/gyne must not settle a QC review: CAN_APPROVE_GYNE_CYTO includes
+    the cytotechnologist whose screening is under review, and approving records
+    no pathologist verdict. complete_gyne_review is the only way out."""
+
+    def _qc_denials(self, db, case_id):
+        from app.models.audit_log import AuditLog
+        return (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.action == "QC_BYPASS_BLOCKED",
+                AuditLog.resource_type == "GyneCytologyCase",
+                AuditLog.resource_id == case_id,
+            )
+            .all()
+        )
+
+    @pytest.mark.parametrize("action", ["APPROVE", "REJECT"])
+    def test_refused_while_the_case_awaits_qc_review(self, db, admin_user, pathologist_user, action):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        ct_user, _ = _make_user(db, f"ct_{uuid.uuid4().hex[:6]}", "CtPass1!", ["cytotechnologist"])
+        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        assert case.status == "pending_review"
+
+        with pytest.raises(HTTPException) as exc:
+            process_gyne_report_approval(db, report.id, ct_user, _req(action))
+
+        assert exc.value.status_code == 409
+        db.refresh(case)
+        db.refresh(report)
+        assert case.status == "pending_review"
+        assert report.status == GyneReportStatus.PENDING_APPROVAL
+        denials = self._qc_denials(db, case.id)
+        assert len(denials) == 1
+        assert denials[0].user_id == ct_user.id
+        assert denials[0].new_values["attempted"] == f"approval:{action}"
+
+    def test_refused_even_when_every_signer_has_signed(self, db, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        make_system_setting(db, require_all_gyne_sign=True)
+        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+
+        with pytest.raises(HTTPException) as exc:
+            process_gyne_report_approval(db, report.id, path1, _req("APPROVE"))
+        assert exc.value.status_code == 409
+
+    def test_cannot_approve_a_report_the_reviewer_sent_back(self, db, admin_user, pathologist_user):
+        """A Disagree leaves the report in draft for the cytotech to correct;
+        approving it would publish the rejected call with no fresh review."""
+        from app.crud.gyne_cyto_report import complete_gyne_review
+
+        registrar, _ = admin_user
+        path1, _ = pathologist_user
+        reviewer, _ = _make_user(db, f"rev_{uuid.uuid4().hex[:6]}", "RevPass1!", ["pathologist"])
+        ct_user, _ = _make_user(db, f"ct_{uuid.uuid4().hex[:6]}", "CtPass1!", ["cytotechnologist"])
+        case, report = make_pending_gyne_report(db, registrar.id, path1.id)
+        complete_gyne_review(db, case.id, reviewer_id=reviewer.id, review_result="disagree")
+        db.refresh(report)
+        assert report.status == GyneReportStatus.DRAFT
+
+        with pytest.raises(HTTPException) as exc:
+            process_gyne_report_approval(db, report.id, ct_user, _req("APPROVE"))
+
+        assert exc.value.status_code == 409
+        db.refresh(report)
+        assert report.status == GyneReportStatus.DRAFT
+        assert len(self._qc_denials(db, case.id)) == 1
 
 
 class TestNongyneApproval:
@@ -464,7 +550,9 @@ class TestNongyneApproval:
 
         with pytest.raises(HTTPException) as exc:
             process_nongyne_report_approval(db, report.id, path1, _req("APPROVE"))
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
+        # Names who is outstanding, not just how many.
+        assert cosigner.full_name in exc.value.detail
         db.refresh(report)
         assert report.status == NongyneReportStatus.PENDING_APPROVAL
 

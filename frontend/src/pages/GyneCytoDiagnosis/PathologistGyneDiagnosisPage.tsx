@@ -34,6 +34,8 @@ import GyneNotesCard from "./components/GyneNotesCard";
 import GyneReportedResult from "./components/GyneReportedResult";
 import GyneCytologyImagesSection from "./components/GyneCytologyImagesSection";
 import GyneQCReviewSection from "./components/GyneQCReviewSection";
+import { qcSelfReviewConflict } from "./qcReviewEligibility";
+import { canReviewGyneQc } from "../../constants/roles.constants";
 import GyneSignOffPage from "./components/GyneSignOffPage";
 import { getConsultLockState } from "../Pathologist/utils/consultLockState";
 import { toPathologistOptions } from "../../utils/pathologistOptions";
@@ -176,13 +178,19 @@ const PathologistGyneDiagnosisPage: React.FC<
   );
 
   const isPathologist = useMemo(
-    () =>
-      !!currentUser?.roles?.includes("pathologist") ||
-      !!currentUser?.roles?.includes("senior_pathologist"),
+    () => canReviewGyneQc(currentUser?.roles),
     [currentUser],
   );
 
   const isPendingReview = caseData?.status === "pending_review";
+
+  const qcReviewBlockedReason = useMemo(
+    () =>
+      isPendingReview
+        ? qcSelfReviewConflict(currentUser?.id, caseData, diagnosis?.signers)
+        : null,
+    [isPendingReview, currentUser?.id, caseData, diagnosis?.signers],
+  );
 
   // Set default signers when no diagnosis exists
   useEffect(() => {
@@ -568,6 +576,7 @@ const PathologistGyneDiagnosisPage: React.FC<
           caseData={caseData}
           isPendingReview={isPendingReview}
           isPathologist={isPathologist}
+          reviewBlockedReason={qcReviewBlockedReason}
           completingReview={completingReview}
           onAgree={() => handleCompleteReview("agree")}
           onDisagree={(note, level) =>

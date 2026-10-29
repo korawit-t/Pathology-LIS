@@ -11,6 +11,7 @@ from app.schemas.gyne_diagnosis import (
 )
 from app.crud import gyne_diagnosis as crud
 from app.dependencies.auth import get_current_user
+from app.models.user import User
 from app.core.roles import CAN_WRITE_GYNE_CYTO_REPORT
 
 router = APIRouter(
@@ -46,8 +47,12 @@ def get_diagnosis_categories(
     response_model=GyneDiagnosisResponse,
     dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
 )
-def create_diagnosis(diag_in: GyneDiagnosisCreate, db: Session = Depends(get_db)):
-    return crud.create_initial_diagnosis(db=db, diag_in=diag_in)
+def create_diagnosis(
+    diag_in: GyneDiagnosisCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return crud.create_initial_diagnosis(db=db, diag_in=diag_in, actor_id=current_user.id)
 
 
 @router.put(
@@ -56,9 +61,14 @@ def create_diagnosis(diag_in: GyneDiagnosisCreate, db: Session = Depends(get_db)
     dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
 )
 def update_existing_diagnosis(
-    diag_id: int, diag_in: GyneDiagnosisUpdate, db: Session = Depends(get_db)
+    diag_id: int,
+    diag_in: GyneDiagnosisUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    db_diag = crud.update_diagnosis(db=db, diag_id=diag_id, diag_in=diag_in)
+    db_diag = crud.update_diagnosis(
+        db=db, diag_id=diag_id, diag_in=diag_in, actor_id=current_user.id
+    )
     if not db_diag:
         raise HTTPException(status_code=404, detail="Diagnosis record not found")
     return db_diag
@@ -81,7 +91,10 @@ def read_diagnosis_history(case_id: int, db: Session = Depends(get_db)):
     dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)],
 )
 def revise_existing_diagnosis(
-    diag_id: int, diag_in: GyneDiagnosisUpdate, db: Session = Depends(get_db)
+    diag_id: int,
+    diag_in: GyneDiagnosisUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if not diag_in.revised_reason:
         raise HTTPException(
@@ -102,5 +115,7 @@ def revise_existing_diagnosis(
         )
 
     # 2. ทำการ Revise ผ่าน CRUD
-    db_diag = crud.revise_diagnosis(db=db, diag_id=diag_id, diag_in=diag_in)
+    db_diag = crud.revise_diagnosis(
+        db=db, diag_id=diag_id, diag_in=diag_in, actor_id=current_user.id
+    )
     return db_diag

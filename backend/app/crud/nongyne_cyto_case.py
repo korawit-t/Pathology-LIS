@@ -12,6 +12,7 @@ from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.models.specimen_template import SpecimenTemplate
 from app.schemas.nongyne_cyto_case import NongyneCytologyCaseCreate, NongyneCytologyCaseUpdate
 from app.crud import cyto_path_correlation as cyto_path_qc
+from app.crud.nongyne_diagnosis import verify_signers_on_save
 
 
 def _get_next_nongyne_accession_no(db: Session) -> str:
@@ -380,7 +381,9 @@ def send_nongyne_to_pathologist(
             .first()
         )
         if current_diag:
-            current_diag.signers = signers
+            current_diag.signers = verify_signers_on_save(
+                db, signers, current_diag.signers, current_user_id
+            )
             db.add(current_diag)
 
     db.add(db_obj)

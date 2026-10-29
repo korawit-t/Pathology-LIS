@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.crud import nongyne_diagnosis as crud
 from app.schemas import nongyne_diagnosis as schemas
 from app.dependencies.auth import get_current_user
+from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_MANAGE_SETTINGS
 
@@ -48,7 +49,8 @@ def create_nongyne_diagnosis(
 def update_nongyne_diagnosis(
     diag_id: int,
     payload: schemas.NongyneDiagnosisUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     อัปเดต Diagnosis เดิม (เช่น Save Draft หรือ Mark Signed)
@@ -57,7 +59,9 @@ def update_nongyne_diagnosis(
     if not db_obj:
         raise HTTPException(status_code=404, detail="Diagnosis not found")
 
-    return crud.update_nongyne_diagnosis(db, db_obj=db_obj, obj_in=payload)
+    return crud.update_nongyne_diagnosis(
+        db, db_obj=db_obj, obj_in=payload, actor_id=current_user.id
+    )
 
 @router.post(
     "/{diag_id}/revise",

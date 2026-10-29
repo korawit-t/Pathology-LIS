@@ -15,6 +15,7 @@ import type {
   NongyneDiagnosisUpdate,
 } from "../../../types/nongyneDiagnosis";
 import logger from "../../../utils/logger";
+import { getErrorDetail } from "../../../utils/errorHandler";
 import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
 
 /**
@@ -329,7 +330,9 @@ export function useNongyneDiagnosisData(
           message.info("Sign-off cancelled — identity was not confirmed.");
         } else {
           logger.error(err);
-          message.error("Failed to finalize report.");
+          // e.g. 409 naming whose signature "Require All Signatures" is still
+          // waiting on — the server is the gate, so show its reason.
+          message.error(getErrorDetail(err) ?? "Failed to finalize report.");
         }
         return false;
       } finally {

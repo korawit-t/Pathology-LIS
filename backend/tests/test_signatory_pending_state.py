@@ -24,7 +24,7 @@ from fastapi import HTTPException
 from app.crud.gyne_cyto_report import publish_gyne_report
 from app.crud.gyne_diagnosis import create_initial_diagnosis
 from app.crud.nongyne_cyto_report import publish_nongyne_report
-from app.crud.nongyne_cyto_case import get_nongyne_cases
+from app.crud.nongyne_cyto_case import get_nongyne_cases, send_nongyne_to_pathologist
 from app.crud.nongyne_diagnosis import create_nongyne_diagnosis
 from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.crud.surgical_report_builder import prepare_report_data
@@ -227,7 +227,7 @@ class TestRequireAllSignaturesGatesPublish:
                 current_user_id=pathologist.id,
             )
 
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
         # Names the outstanding signer — a bare count leaves the pathologist
         # unable to tell which row is blocking the sign-out.
         assert cytotech.full_name in exc.value.detail
@@ -243,6 +243,15 @@ class TestRequireAllSignaturesGatesPublish:
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         create_nongyne_diagnosis(
             db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis")
+        )
+        # The screener's signature has to be on record — recorded by their own
+        # hand-off — not merely claimed by the publishing request.
+        send_nongyne_to_pathologist(
+            db, case.id, pathologist_id=pathologist.id, current_user_id=cytotech.id,
+            signers=[
+                {"user_id": cytotech.id, "role": "cytotechnologist", "signed_at": SIGNED_AT},
+                {"user_id": pathologist.id, "role": "primary", "signed_at": None},
+            ],
         )
 
         report = publish_nongyne_report(
@@ -307,7 +316,7 @@ class TestRequireAllSignaturesGatesPublish:
                 is_abnormal=True,
             )
 
-        assert exc.value.status_code == 400
+        assert exc.value.status_code == 409
         assert cytotech.full_name in exc.value.detail
         assert pathologist.full_name not in exc.value.detail
 
@@ -318,7 +327,19 @@ class TestRequireAllSignaturesGatesPublish:
         registrar, _ = admin_user
         pathologist, _ = two_pathologists
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
-        create_initial_diagnosis(db, GyneDiagnosisCreate(case_id=case.id))
+        # The screener signs on their own diagnosis save; the publish request
+        # can't sign for them.
+        create_initial_diagnosis(
+            db,
+            GyneDiagnosisCreate(
+                case_id=case.id,
+                signers=[
+                    {"user_id": cytotech.id, "role": "cytotechnologist", "signed_at": SIGNED_AT},
+                    {"user_id": pathologist.id, "role": "primary"},
+                ],
+            ),
+            actor_id=cytotech.id,
+        )
 
         report = publish_gyne_report(
             db,

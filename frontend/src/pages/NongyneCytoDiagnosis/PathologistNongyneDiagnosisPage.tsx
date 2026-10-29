@@ -17,6 +17,7 @@ import NongyneDiagnosisService from "../../services/nongyneDiagnosisService";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
 import NotificationRuleService from "../../services/notificationRuleService";
 import NongyneReportService from "../../services/nongyneReportService";
+import SystemSettingService from "../../services/systemSettingService";
 import type { NongyneCaseImage } from "../../services/nongyneCaseImageService";
 import { NongyneDiagnosisResponse } from "../../types/nongyneDiagnosis";
 import { NongyneCytologyCase } from "../../types/nongyne";
@@ -125,6 +126,21 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
   >(null);
 
   const SIGNERS_PATH = useMemo(() => ["signers"], []);
+
+  // The Signatories badge must state the policy the server enforces on publish
+  // (require_all_non_gyne_sign) — it used to be hard-coded to "primary only".
+  // The shared manager reads the surgical setting name, so map onto it (same
+  // shim as NongyneDiagnosisEntryPage).
+  const [requireAllSign, setRequireAllSign] = useState(false);
+  useEffect(() => {
+    SystemSettingService.getSettings()
+      .then((s) => setRequireAllSign(!!s.require_all_non_gyne_sign))
+      .catch(() => {});
+  }, []);
+  const signerManagerSettings = useMemo(
+    () => ({ require_all_pathologists_sign: requireAllSign }),
+    [requireAllSign],
+  );
 
   const {
     caseData,
@@ -659,7 +675,7 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
                     defaultSigners={defaultSigners}
                     isLocked={isEditorLocked}
                     namePath={SIGNERS_PATH}
-                    settings={{ require_all_pathologists_sign: false }}
+                    settings={signerManagerSettings}
                   />
                 </StyledCard>
               </Col>

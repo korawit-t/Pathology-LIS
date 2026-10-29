@@ -5,6 +5,7 @@ from app.crud.system_setting import get_settings as get_system_settings
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.utils.time import local_now
+from app.utils.signatures import reconcile_signatures
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneReportType, GyneReportSigner
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_diagnosis import GyneDiagnosis
@@ -21,6 +22,8 @@ import base64
 from pathlib import Path
 from app.crud import his_export_log as his_export_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
+from app.crud.gyne_qc_guard import QC_REVIEW_DENIED, assert_not_awaiting_qc, deny
+from app.core.roles import CAN_REVIEW_GYNE_QC
 from app.services.notification_service import notify_event
 
 _BKK = ZoneInfo("Asia/Bangkok")
@@ -77,12 +80,35 @@ def _fmt_dt(val) -> str | None:
     return dt.strftime("%d/%m/%Y %H:%M")
 
 
+def _verified_signers(
+    db: Session, case_id: int, signers: List[dict] | None, current_user_id: int | None
+) -> List[dict] | None:
+    """Under 'Require All Signatures (Gyne)', take each signer's signed_at from
+    the diagnosis on record rather than the request, so nobody can sign for
+    someone else (see app/utils/signatures.py). Off → the request as-is."""
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_gyne_sign) or not signers:
+        return signers
+    current_diag = (
+        db.query(GyneDiagnosis)
+        .filter(GyneDiagnosis.case_id == case_id, GyneDiagnosis.is_current == True)
+        .first()
+    )
+    return reconcile_signatures(
+        signers,
+        current_diag.signers if current_diag else None,
+        current_user_id,
+        local_now(),
+        actor_signs=True,
+    )
+
+
 def _reject_if_signatures_outstanding(
     db: Session, signers: List[dict] | None, current_user_id: int | None
 ) -> None:
     """Block a release while 'Require All Signatures (Gyne)' is on and a listed
-    signer still hasn't signed. Same 400 shape the approval-path gate in
-    process_gyne_report_approval() already raises."""
+    signer still hasn't signed. Same 409 the approval-path gate in
+    process_gyne_report_approval() raises."""
     settings = db.query(SystemSetting).first()
     if not (settings and settings.require_all_gyne_sign):
         return
@@ -94,8 +120,12 @@ def _reject_if_signatures_outstanding(
     ]
     if not pending:
         return
-    # Name who is outstanding rather than counting them — a bare number leaves
-    # the person signing off with no way to tell which row is blocking them.
+    raise HTTPException(status_code=409, detail=outstanding_signatures_detail(db, pending))
+
+
+def outstanding_signatures_detail(db: Session, pending: List[dict]) -> str:
+    """Name who is outstanding rather than counting them — a bare number leaves
+    the person signing off with no way to tell which row is blocking them."""
     names = {
         u.id: (u.report_name or u.full_name)
         for u in db.query(User)
@@ -107,10 +137,7 @@ def _reject_if_signatures_outstanding(
         f" ({s.get('role') or 'primary'})"
         for s in pending
     ]
-    raise HTTPException(
-        status_code=400,
-        detail="Cannot publish — still waiting on a signature from: " + ", ".join(labels),
-    )
+    return "Cannot publish — still waiting on a signature from: " + ", ".join(labels)
 
 
 def get_report_by_id(db: Session, report_id: int):
@@ -349,11 +376,24 @@ def publish_gyne_report(
     if not report_data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
 
+    # Publishing again while the case awaits QC would re-roll the routing below
+    # — a NILM call gets a fresh ~90% chance to go straight out — so the
+    # review could be skipped just by retrying. Only complete_gyne_review may
+    # take a case out of pending_review.
+    assert_not_awaiting_qc(
+        db,
+        db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first(),
+        attempted="publish",
+        user_id=current_user_id,
+    )
+
     # "Require All Signatures (Gyne)" has to be enforced here too, not only in
     # process_gyne_report_approval() — a NILM case that isn't sampled for QC
     # never passes through that gate, it publishes straight out of this
     # function. The frontend already refuses to call publish until everyone
-    # has signed when the setting is on; this is the server-side backstop.
+    # has signed when the setting is on; this is the server-side backstop —
+    # judged on the signatures on record, not the ones the request claims.
+    signers = _verified_signers(db, case_id, signers, current_user_id)
     _reject_if_signatures_outstanding(db, signers, current_user_id)
 
     # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
@@ -429,57 +469,61 @@ def publish_gyne_report(
         settings = db.query(SystemSetting).first()
         qc_enabled = settings.enable_gyne_qc_system if settings else False
 
-        if is_abnormal:
-            # Abnormal always requires pathologist review regardless of toggle
+        # 🚩 A pathologist signing off IS the review — random NILM sampling
+        # exists to catch missed abnormalities in a cytotechnologist's
+        # unsupervised NILM call, and abnormal routing exists to put a
+        # screener's abnormal call in front of a pathologist. Neither applies
+        # when a pathologist is the one publishing: routing their own read-out
+        # to pending_review only ever had them "review" themselves.
+        #
+        # Which hat, though? Small labs routinely give one account both
+        # "pathologist" and "cytotechnologist", and that account screens
+        # some cases and reads out others. The roles array alone can't tell
+        # the two apart, so it would exempt every case they ever screen and
+        # the NILM pool would come up empty at any sampling rate. The signer
+        # row for this publish carries the hat they actually wore (the
+        # frontend stamps "cytotechnologist" whenever the signer holds that
+        # role), so a publisher who signed as the cytotech was screening,
+        # not reviewing — their calls stay subject to QC.
+        publisher = (
+            db.query(User).filter(User.id == current_user_id).first()
+            if current_user_id
+            else None
+        )
+        publisher_has_pathologist_role = bool(
+            publisher
+            and publisher.roles
+            and any(
+                r in ("pathologist", "senior_pathologist")
+                for r in publisher.roles
+            )
+        )
+        publisher_signed_as_cytotech = bool(
+            current_user_id
+            and signers
+            and any(
+                s.get("user_id") == current_user_id
+                and s.get("role") in CYTOTECH_SIGNER_ROLES
+                for s in signers
+            )
+        )
+        publisher_is_pathologist = (
+            publisher_has_pathologist_role and not publisher_signed_as_cytotech
+        )
+
+        if is_abnormal and not publisher_is_pathologist:
+            # A screener's abnormal call always requires pathologist review
+            # regardless of the QC toggle
             _clear_prior_review(db_case)
             db_case.needs_review = True
             db_case.review_reason = "abnormal"
+            db_case.review_requested_by_id = current_user_id
             db_case.status = "pending_review"
             cyto_path_qc.safe_capture_screening(
                 db, case_type="gyne", case=db_case
             )
         else:
             flagged_for_review = False
-
-            # 🚩 A pathologist signing off IS the review — random NILM sampling
-            # exists to catch missed abnormalities in a cytotechnologist's
-            # unsupervised NILM call, so it doesn't apply when a pathologist
-            # is the one publishing.
-            #
-            # Which hat, though? Small labs routinely give one account both
-            # "pathologist" and "cytotechnologist", and that account screens
-            # some cases and reads out others. The roles array alone can't tell
-            # the two apart, so it would exempt every case they ever screen and
-            # the NILM pool would come up empty at any sampling rate. The signer
-            # row for this publish carries the hat they actually wore (the
-            # frontend stamps "cytotechnologist" whenever the signer holds that
-            # role), so a publisher who signed as the cytotech was screening,
-            # not reviewing — their NILM calls stay in the pool.
-            publisher = (
-                db.query(User).filter(User.id == current_user_id).first()
-                if current_user_id
-                else None
-            )
-            publisher_has_pathologist_role = bool(
-                publisher
-                and publisher.roles
-                and any(
-                    r in ("pathologist", "senior_pathologist")
-                    for r in publisher.roles
-                )
-            )
-            publisher_signed_as_cytotech = bool(
-                current_user_id
-                and signers
-                and any(
-                    s.get("user_id") == current_user_id
-                    and s.get("role") in CYTOTECH_SIGNER_ROLES
-                    for s in signers
-                )
-            )
-            publisher_is_pathologist = (
-                publisher_has_pathologist_role and not publisher_signed_as_cytotech
-            )
 
             if qc_enabled and not publisher_is_pathologist:
                 review_every_n = settings.nilm_review_every_n if settings else 10
@@ -502,6 +546,7 @@ def publish_gyne_report(
                         _clear_prior_review(db_case)
                         db_case.needs_review = True
                         db_case.review_reason = "random_10pct"
+                        db_case.review_requested_by_id = current_user_id
                         db_case.status = "pending_review"
                         flagged_for_review = True
                         cyto_path_qc.safe_capture_screening(
@@ -522,7 +567,8 @@ def publish_gyne_report(
                         })
 
             if not flagged_for_review:
-                # NILM not sampled (or QC disabled) → publish directly
+                # NILM not sampled (or QC disabled), or a pathologist's own
+                # read-out → publish directly
                 db_case.status = "published"
                 # A case that had been sent back after a "disagree" lands here
                 # on its corrected re-publish — that corrected text is the
@@ -546,6 +592,46 @@ def publish_gyne_report(
     return db_report
 
 
+def _self_review_conflict(db: Session, db_case, reviewer_id: int) -> str | None:
+    """Why reviewer_id may not give the verdict on this case's screening, or None.
+
+    Excluded: whoever sent it into review, and its screener — the assigned
+    cytotechnologist (on the case, or as frozen on the report under review, since
+    the case's field stays editable) or anyone signed on in a cytotech role (on
+    that report or the current diagnosis). Having a signed_at is deliberately
+    NOT a disqualifier: with require_all_gyne_sign off, the screener's sign-off
+    stamps every listed signer, including the pathologist about to review it.
+    """
+    if db_case.review_requested_by_id and db_case.review_requested_by_id == reviewer_id:
+        return "you are the one who sent it for review"
+
+    latest_report = (
+        db.query(GyneCytoReport)
+        .filter(GyneCytoReport.case_id == db_case.id)
+        .order_by(GyneCytoReport.created_at.desc())
+        .first()
+    )
+    screeners = {db_case.cytotechnologist_id, latest_report.cytotechnologist_id if latest_report else None}
+    if reviewer_id in screeners - {None}:
+        return "you are its screening cytotechnologist"
+
+    current_diag = (
+        db.query(GyneDiagnosis)
+        .filter(GyneDiagnosis.case_id == db_case.id, GyneDiagnosis.is_current == True)
+        .first()
+    )
+    roles_held = [
+        s.role for s in (latest_report.signers if latest_report else [])
+        if s.user_id == reviewer_id
+    ] + [
+        s.get("role") for s in ((current_diag.signers or []) if current_diag else [])
+        if s.get("user_id") == reviewer_id
+    ]
+    if any(r in CYTOTECH_SIGNER_ROLES for r in roles_held):
+        return "you are signed on as its screener"
+    return None
+
+
 def complete_gyne_review(
     db: Session,
     case_id: int,
@@ -563,8 +649,34 @@ def complete_gyne_review(
     db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    reviewer = db.query(User).filter(User.id == reviewer_id).first()
+    if not CAN_REVIEW_GYNE_QC.allows(reviewer):
+        deny(
+            db,
+            status_code=403,
+            detail="Only a pathologist can complete a gyne QC review.",
+            action=QC_REVIEW_DENIED,
+            case_id=db_case.id,
+            user_id=reviewer_id,
+            reason="role",
+            roles=list(reviewer.roles or []) if reviewer else [],
+        )
     if db_case.status != "pending_review":
         raise HTTPException(status_code=400, detail="Case is not pending review")
+    conflict = _self_review_conflict(db, db_case, reviewer_id)
+    if conflict:
+        deny(
+            db,
+            status_code=403,
+            detail=(
+                f"You cannot review this case — {conflict}. "
+                "Another pathologist has to complete the QC review."
+            ),
+            action=QC_REVIEW_DENIED,
+            case_id=db_case.id,
+            user_id=reviewer_id,
+            reason="self_review",
+        )
 
     db_case.reviewed_by_id = reviewer_id
     db_case.reviewed_at = local_now()

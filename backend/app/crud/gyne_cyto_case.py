@@ -13,6 +13,8 @@ from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus
 from app.schemas.gyne_cyto_case import GyneCytologyCaseCreate, GyneCytologyCaseUpdate
 from app.crud.gyne_cyto_stain import auto_create_default_stain
+from app.crud.gyne_qc_guard import QC_BYPASS_BLOCKED, assert_not_awaiting_qc, deny
+from app.enums.case_states import GYNE_REVIEW
 from app.crud.organization import resolve_lab_header
 from app.crud.system_setting import get_settings as get_system_settings
 from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64, STORAGE_BASE
@@ -359,9 +361,33 @@ def get_gyne_cases(
 
 
 def update_gyne_case(
-    db: Session, db_obj: GyneCytologyCase, obj_in: GyneCytologyCaseUpdate
+    db: Session,
+    db_obj: GyneCytologyCase,
+    obj_in: GyneCytologyCaseUpdate,
+    actor_id: int | None = None,
 ):
     update_data = obj_in.model_dump(exclude_unset=True)
+
+    # pending_review and published are owned by the publish / QC-review flow
+    # (gyne_cyto_report). A raw status write could otherwise move a case out of
+    # QC review, or mark one published without ever going through the QC
+    # routing. Re-sending the current value (the edit modal does) is fine.
+    new_status = update_data.get("status")
+    if new_status is not None and new_status != db_obj.status:
+        assert_not_awaiting_qc(db, db_obj, attempted=f"patch_status:{new_status}", user_id=actor_id)
+        if new_status in GYNE_REVIEW or new_status == "published":
+            deny(
+                db,
+                status_code=409,
+                detail=(
+                    f"Status '{new_status}' can only be set by publishing the report "
+                    "or completing its QC review."
+                ),
+                action=QC_BYPASS_BLOCKED,
+                case_id=db_obj.id,
+                user_id=actor_id,
+                attempted=f"patch_status:{new_status}",
+            )
 
     readonly_fields = ["id", "accession_no", "registrar_id", "registered_at"]
 
@@ -520,6 +546,10 @@ def cancel_gyne_case(db: Session, case_id: int, user_id: int, reason: str):
 
     if not db_obj:
         return None
+
+    # A wrongly registered case under QC review gets a Disagree first (back to
+    # screened), then cancelled — so the review always ends in a verdict.
+    assert_not_awaiting_qc(db, db_obj, attempted="cancel", user_id=user_id)
 
     db_obj.is_cancelled = True
     db_obj.status = "cancelled"

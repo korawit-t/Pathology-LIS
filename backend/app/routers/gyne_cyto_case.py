@@ -325,13 +325,15 @@ def update_case_info(
     case_id: int,
     case_in: GyneCytologyCaseUpdate,
     db: Session = Depends(get_db),
-    _: Any = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    return crud.update_gyne_case(db=db, db_obj=db_case, obj_in=case_in)
+    return crud.update_gyne_case(
+        db=db, db_obj=db_case, obj_in=case_in, actor_id=current_user.id
+    )
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)

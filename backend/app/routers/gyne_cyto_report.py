@@ -239,17 +239,18 @@ class CompleteReviewRequest(BaseModel):
     consult_reason: Optional[str] = None
 
 
-@router.post(
-    "/cases/{case_id}/complete-review",
-    dependencies=[Depends(CAN_WRITE_GYNE_CYTO_REPORT)]
-)
+@router.post("/cases/{case_id}/complete-review")
 def complete_review(
     case_id: int,
     payload: CompleteReviewRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pathologist completes QC review (agree/disagree) → advances case to pending_approval"""
+    """Pathologist completes QC review: agree → published, disagree → back to screened.
+
+    Reviewer eligibility (CAN_REVIEW_GYNE_QC, no self-review) is enforced inside
+    complete_gyne_review rather than as a route Depends, so every refusal is
+    audit-logged before the 403 is returned."""
     return complete_gyne_review(
         db,
         case_id=case_id,

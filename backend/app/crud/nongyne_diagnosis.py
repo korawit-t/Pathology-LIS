@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func as sql_func
 from app.utils.time import local_now
 from app.utils.consult_lock import assert_consult_not_locked
+from app.utils.signatures import reconcile_signatures
+from app.models.system_setting import SystemSetting
 
 from app.models.nongyne_diagnosis import NongyneDiagnosis
 from app.models.nongyne_cyto_case import NongyneCytologyCase
@@ -65,11 +67,30 @@ def create_nongyne_diagnosis(db: Session, obj_in: NongyneDiagnosisCreate):
     db.refresh(db_obj)
     return db_obj
 
-def update_nongyne_diagnosis(db: Session, db_obj: NongyneDiagnosis, obj_in: NongyneDiagnosisUpdate):
+def verify_signers_on_save(db: Session, signers, on_record, actor_id):
+    """Under 'Require All Signatures (Non-Gyne)' a save can add only the saver's
+    own signature — anyone else's signed_at stays as recorded (or is cleared).
+    The publish gate trusts these saved signatures, so they must be real.
+    Returns the signers to store (unchanged when the setting is off)."""
+    if signers is None:
+        return signers
+    settings = db.query(SystemSetting).first()
+    if not (settings and settings.require_all_non_gyne_sign):
+        return signers
+    return reconcile_signatures(signers, on_record, actor_id, local_now().isoformat())
+
+
+def update_nongyne_diagnosis(
+    db: Session, db_obj: NongyneDiagnosis, obj_in: NongyneDiagnosisUpdate, actor_id: int | None = None
+):
     case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_obj.case_id).first()
     assert_consult_not_locked(case)
 
     update_data = obj_in.model_dump(exclude_unset=True)
+    if "signers" in update_data:
+        update_data["signers"] = verify_signers_on_save(
+            db, update_data["signers"], db_obj.signers, actor_id
+        )
 
     for field, value in update_data.items():
         setattr(db_obj, field, value)

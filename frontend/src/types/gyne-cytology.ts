@@ -76,6 +76,7 @@ export interface GyneCytologyCase {
   // 10% QC Review
   needs_review: boolean;
   review_reason: "random_10pct" | "abnormal" | "manual" | null;
+  review_requested_by_id?: number | null;
   reviewed_by_id: number | null;
   reviewed_at: string | null;
   reviewed_by?: { id: number; full_name: string | null } | null;

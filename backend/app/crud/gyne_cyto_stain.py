@@ -8,7 +8,7 @@ from app.models.system_setting import SystemSetting
 logger = logging.getLogger(__name__)
 from app.models.gyne_cyto_stain import GyneStainRun, GyneStainRunDetail
 from app.models.gyne_cyto_case import GyneCytologyCase
-from app.enums.case_states import GYNE_CLOSED
+from app.enums.case_states import GYNE_CLOSED, GYNE_REVIEW
 from fastapi import HTTPException
 
 
@@ -144,9 +144,11 @@ def create_stain_run(
             # เคสที่แก้ผลแล้วยังแก้ diagnosis ต่อได้ก็จริง แต่ผลออกไปแล้ว
             # ถ้าปล่อยให้ถอยกลับเป็น "stained" มันจะโผล่ใน slide dispatch
             # manual select ใหม่ทั้งที่ออกผลไปแล้ว
+            # GYNE_REVIEW ก็ห้ามถอยเช่นกัน — ย้อมซ้ำระหว่างรอ QC ได้ แต่เคส
+            # ต้องค้างอยู่ใน pending_review จนกว่าพยาธิแพทย์จะ review
             db.query(GyneCytologyCase).filter(
                 GyneCytologyCase.id == cid,
-                GyneCytologyCase.status.notin_(sorted(GYNE_CLOSED)),
+                GyneCytologyCase.status.notin_(sorted({*GYNE_CLOSED, *GYNE_REVIEW})),
             ).update({"status": "stained"}, synchronize_session=False)
 
         db.commit()

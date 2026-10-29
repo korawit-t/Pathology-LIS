@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Button, Modal, Radio, Space, Tag, Input } from "antd";
+import { Alert, Button, Modal, Radio, Space, Tag, Input, Tooltip } from "antd";
 import { ExclamationCircleOutlined } from "@ant-design/icons";
 import type { GyneCytologyCase } from "../../../types/gyne-cytology";
 
@@ -9,6 +9,9 @@ interface GyneQCReviewSectionProps {
   caseData: GyneCytologyCase | null;
   isPendingReview: boolean;
   isPathologist: boolean;
+  // Set when this pathologist screened or submitted the case — the API
+  // refuses their verdict, so the buttons are shown disabled with the reason.
+  reviewBlockedReason?: string | null;
   completingReview: boolean;
   onAgree: () => void;
   onDisagree: (
@@ -22,6 +25,7 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
   caseData,
   isPendingReview,
   isPathologist,
+  reviewBlockedReason,
   completingReview,
   onAgree,
   onDisagree,
@@ -79,41 +83,50 @@ const GyneQCReviewSection: React.FC<GyneQCReviewSectionProps> = ({
           style={{ marginBottom: 16, borderRadius: 8 }}
           action={
             isPathologist ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <Button
-                  size="small"
-                  type="primary"
-                  loading={completingReview}
-                  onClick={handleAgreeClick}
-                  style={{
-                    background:
-                      caseData?.review_reason === "random_10pct"
-                        ? "#52c41a"
-                        : "#722ed1",
-                    border: "none",
-                    width: "100%",
-                  }}
-                >
-                  Agree
-                </Button>
-                <Button
-                  size="small"
-                  danger
-                  onClick={() => setDisagreeModalOpen(true)}
-                  style={{ width: "100%" }}
-                >
-                  Disagree
-                </Button>
-                {onAgreeWithOutLab && (
+              <Tooltip title={reviewBlockedReason}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <Button
                     size="small"
-                    onClick={() => { setOutLabReason(""); setOutLabOpen(true); }}
-                    style={{ width: "100%", color: "#722ed1", borderColor: "#722ed1" }}
+                    type="primary"
+                    loading={completingReview}
+                    disabled={!!reviewBlockedReason}
+                    onClick={handleAgreeClick}
+                    style={{
+                      ...(reviewBlockedReason
+                        ? {}
+                        : {
+                            background:
+                              caseData?.review_reason === "random_10pct"
+                                ? "#52c41a"
+                                : "#722ed1",
+                            border: "none",
+                          }),
+                      width: "100%",
+                    }}
                   >
-                    Agree + Out-Lab Consult
+                    Agree
                   </Button>
-                )}
-              </div>
+                  <Button
+                    size="small"
+                    danger
+                    disabled={!!reviewBlockedReason}
+                    onClick={() => setDisagreeModalOpen(true)}
+                    style={{ width: "100%" }}
+                  >
+                    Disagree
+                  </Button>
+                  {onAgreeWithOutLab && (
+                    <Button
+                      size="small"
+                      disabled={!!reviewBlockedReason}
+                      onClick={() => { setOutLabReason(""); setOutLabOpen(true); }}
+                      style={{ width: "100%", color: "#722ed1", borderColor: "#722ed1" }}
+                    >
+                      Agree + Out-Lab Consult
+                    </Button>
+                  )}
+                </div>
+              </Tooltip>
             ) : null
           }
         />
