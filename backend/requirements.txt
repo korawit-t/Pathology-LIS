@@ -34,7 +34,7 @@ openslide-bin==4.0.1.2
 pillow==13.0.0
 pluggy==1.6.0
 psycopg2-binary==2.9.12
-pyasn1==0.6.4
+pyasn1==0.6.5
 pycparser==2.23
 pydantic==2.13.4
 pydantic_core==2.46.4
