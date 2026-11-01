@@ -264,8 +264,13 @@ def complete_review(
 
 
 @router.post("/cases/{case_id}/preview-data", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def preview_report_data(case_id: int, db: Session = Depends(get_db)):
+def preview_report_data(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ดูข้อมูลที่จะใช้ในรายงานก่อน Publish"""
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_gyne_report_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -300,9 +305,14 @@ def get_report_pdf(
 
 
 @router.get("/cases/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def preview_report_pdf(case_id: int, db: Session = Depends(get_db)):
+def preview_report_pdf(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """พรีวิวรายงาน PDF ก่อนส่งผล"""
     from app.crud.gyne_cyto_report import get_gyne_report_pdf
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     pdf_blob = get_gyne_report_pdf(db, case_id=case_id, is_preview=True)
     if not pdf_blob:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")

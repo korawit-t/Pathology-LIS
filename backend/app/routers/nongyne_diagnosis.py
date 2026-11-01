@@ -7,10 +7,11 @@ import io
 from app.db.database import get_db
 from app.crud import nongyne_diagnosis as crud
 from app.schemas import nongyne_diagnosis as schemas
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
-from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_MANAGE_SETTINGS
+from app.core.roles import CAN_READ_NONGYNE_CYTO_REPORT, CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_MANAGE_SETTINGS
+from app.models.nongyne_cyto_case import NongyneCytologyCase
 
 router = APIRouter(
     prefix="/nongyne-diagnosis",
@@ -18,13 +19,20 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-@router.get("/case/{case_id}", response_model=List[schemas.NongyneDiagnosisResponse])
+@router.get(
+    "/case/{case_id}",
+    response_model=List[schemas.NongyneDiagnosisResponse],
+    dependencies=[Depends(CAN_READ_NONGYNE_CYTO_REPORT)],
+)
 def read_diagnoses_by_case(
-    case_id: int, db: Session = Depends(get_db)
+    case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """
     ดึงรายการ Diagnosis ทั้งหมดที่ผูกกับ Case ID นี้
     """
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     return crud.get_diagnoses_by_case(db, case_id=case_id)
 
 @router.post(
@@ -97,13 +105,17 @@ def delete_nongyne_diagnosis(
         raise HTTPException(status_code=404, detail="Diagnosis not found")
     return None
 
-@router.get("/case/{case_id}/preview-pdf")
+@router.get("/case/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_NONGYNE_CYTO_REPORT)])
 def preview_report_pdf(
     case_id: int,
     db: Session = Depends(get_db),
     is_pending: bool = False,
     pending_reason: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
 ):
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     from app.crud.nongyne_cyto_report import prepare_nongyne_report_pdf_data
     report_data = prepare_nongyne_report_pdf_data(db, case_id)
     if not report_data:
@@ -127,14 +139,16 @@ def preview_report_pdf(
         headers={"Content-Disposition": "inline; filename=nongyne_preview.pdf"},
     )
 
-@router.get("/{diag_id}/pdf")
-def get_historical_report_pdf(diag_id: int, db: Session = Depends(get_db)):
+@router.get("/{diag_id}/pdf", dependencies=[Depends(CAN_READ_NONGYNE_CYTO_REPORT)])
+def get_historical_report_pdf(diag_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Generate PDF for an existing finalized/signed diagnosis.
     """
     diag = crud.get_nongyne_diagnosis_by_id(db, diag_id)
     if not diag:
         raise HTTPException(status_code=404, detail="Diagnosis not found")
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == diag.case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
 
     report_data = crud.prepare_nongyne_report_data(db, diag.case_id)
     if not report_data:

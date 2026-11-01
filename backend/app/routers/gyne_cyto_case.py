@@ -23,7 +23,12 @@ from app.dependencies.auth import (
     assert_hospital_scoped_access,
     get_scoped_hospital_ids,
 )
-from app.core.roles import CAN_APPROVE_OUTLAB_RESULT
+from app.core.roles import (
+    CAN_APPROVE_OUTLAB_RESULT,
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
+    CAN_READ_CYTO_STATISTICS,
+)
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
@@ -122,7 +127,7 @@ def read_cases(
     )
 
 
-@router.get("/statistics")
+@router.get("/statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_statistics(
     start_date: str,
     end_date: str,
@@ -136,7 +141,7 @@ def read_gyne_statistics(
     return crud.get_gyne_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/summary-table")
+@router.get("/summary-table", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_summary_table(
     start_date: str,
     end_date: str,
@@ -150,7 +155,7 @@ def read_gyne_summary_table(
     return crud.get_gyne_summary_table(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/summary-table/cases")
+@router.get("/summary-table/cases", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_summary_table_cases(
     start_date: str,
     end_date: str,
@@ -165,7 +170,7 @@ def read_gyne_summary_table_cases(
     return crud.get_gyne_summary_table_cases(db, start, end, metric, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/slide-quality-stats")
+@router.get("/slide-quality-stats", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_slide_quality_stats(
     start_date: str,
     end_date: str,
@@ -177,7 +182,7 @@ def read_gyne_slide_quality_stats(
     return crud.get_gyne_slide_quality_stats(db, start, end)
 
 
-@router.get("/qc-statistics")
+@router.get("/qc-statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_qc_statistics(
     start_date: str,
     end_date: str,
@@ -191,7 +196,7 @@ def read_gyne_qc_statistics(
     return crud.get_gyne_qc_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/qc-cases")
+@router.get("/qc-cases", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_qc_cases(
     start_date: str,
     end_date: str,
@@ -341,7 +346,7 @@ def update_case_info(
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def delete_case(case_id: int, db: Session = Depends(get_db), _: User = Depends(CAN_DELETE_CASE)):
     success = crud.delete_gyne_case(db=db, case_id=case_id)
     if not success:
         raise HTTPException(
@@ -355,7 +360,7 @@ def cancel_case(
     case_id: int,
     payload: GyneCaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     db_case = crud.cancel_gyne_case(
         db, case_id=case_id, user_id=current_user.id, reason=payload.reason

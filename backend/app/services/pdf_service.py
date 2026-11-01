@@ -3,9 +3,12 @@ import io
 import json
 import logging
 from pathlib import Path
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from weasyprint import HTML
 from weasyprint.text.fonts import FontConfiguration
+from weasyprint.urls import URLFetcher
 
 try:
     from pypdf import PdfWriter
@@ -19,6 +22,44 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 LOCAL_TEMPLATE_DIR = os.path.join(BASE_DIR, "templates", "reports", "local")
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+FONT_DIR = os.path.join(PROJECT_ROOT, "assets", "fonts")
+
+# The only places a report may load a file from: the bundled fonts, the
+# templates themselves and the uploaded lab / hospital logos. Rich-text fields
+# reach the templates unescaped ({{ var | safe }}), so with WeasyPrint's
+# default fetcher a <link rel="attachment" href="file:///…/.env"> typed into
+# clinical history embedded that file in the PDF, and an <img src="http://…">
+# made the server request any URL on its network.
+_ALLOWED_FILE_ROOTS = tuple({
+    Path(p).resolve()
+    for p in (
+        FONT_DIR,
+        TEMPLATE_DIR,
+        os.path.join(PROJECT_ROOT, "uploads", "system"),
+        os.path.join(PROJECT_ROOT, "uploads", "hospitals"),
+        # system_setting.py saves the lab logo relative to the working directory.
+        os.path.join("uploads", "system"),
+    )
+})
+
+
+class _ReportURLFetcher(URLFetcher):
+    """Loads data: URIs and local files under _ALLOWED_FILE_ROOTS, and refuses
+    everything else. WeasyPrint logs a refused URL and renders without it."""
+
+    def fetch(self, url, headers=None):
+        parts = urlsplit(url)
+        scheme = parts.scheme.lower()
+        if scheme == "file":
+            path = Path(url2pathname(parts.path)).resolve()
+            if parts.netloc not in ("", "localhost") or not any(
+                path.is_relative_to(root) for root in _ALLOWED_FILE_ROOTS
+            ):
+                raise ValueError(f"Report may not load {url}")
+        elif scheme != "data":
+            raise ValueError(f"Report may not load {url}")
+        return super().fetch(url, headers)
 
 # autoescape=True: all {{ var }} are HTML-escaped by default.
 # Rich-text fields (diagnosis, gross, microscopic, clinical history) that
@@ -76,7 +117,7 @@ def generate_pdf_blob(
     # FontConfiguration ต้องใช้เพื่อให้ @font-face ใน HTML ถูก register กับ Pango ถูกต้อง (WeasyPrint 60+)
     pdf_io = io.BytesIO()
     font_config = FontConfiguration()
-    HTML(string=html_content, base_url=TEMPLATE_DIR).write_pdf(pdf_io, font_config=font_config)
+    HTML(string=html_content, base_url=TEMPLATE_DIR, url_fetcher=_ReportURLFetcher()).write_pdf(pdf_io, font_config=font_config)
     return pdf_io.getvalue()
 
 
@@ -100,7 +141,7 @@ def generate_consult_cover_pdf(report_data: dict) -> bytes:
 
     pdf_io = io.BytesIO()
     font_config = FontConfiguration()
-    HTML(string=html_content, base_url=TEMPLATE_DIR).write_pdf(pdf_io, font_config=font_config)
+    HTML(string=html_content, base_url=TEMPLATE_DIR, url_fetcher=_ReportURLFetcher()).write_pdf(pdf_io, font_config=font_config)
     return pdf_io.getvalue()
 
 

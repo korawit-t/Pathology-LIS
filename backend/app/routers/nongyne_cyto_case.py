@@ -22,7 +22,10 @@ from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.schemas.cyto_path_correlation import SendToPathologistRequest
 from app.core.roles import (
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
     CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE,
+    CAN_READ_CYTO_STATISTICS,
     CAN_WRITE_NONGYNE_CYTO_REPORT,
 )
 from app.crud import nongyne_specimen_disposal_batch as disposal_crud
@@ -117,7 +120,7 @@ def read_cases(
     )
 
 
-@router.get("/statistics")
+@router.get("/statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_nongyne_statistics(
     start_date: str,
     end_date: str,
@@ -131,7 +134,7 @@ def read_nongyne_statistics(
     return crud.get_nongyne_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/slide-quality-stats")
+@router.get("/slide-quality-stats", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_nongyne_slide_quality_stats(
     start_date: str,
     end_date: str,
@@ -369,7 +372,7 @@ def update_case_info(
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def delete_case(case_id: int, db: Session = Depends(get_db), _: User = Depends(CAN_DELETE_CASE)):
     success = crud.delete_nongyne_case(db=db, case_id=case_id)
     if not success:
         raise HTTPException(
@@ -383,7 +386,7 @@ def cancel_case(
     case_id: int,
     payload: NongyneCaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     db_case = crud.cancel_nongyne_case(
         db, case_id=case_id, user_id=current_user.id, reason=payload.reason

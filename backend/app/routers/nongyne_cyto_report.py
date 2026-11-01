@@ -177,7 +177,12 @@ def read_report(report_id: int, db: Session = Depends(get_db), current_user: Use
 
 
 @router.post("/cases/{case_id}/preview-data")
-def preview_report_data(case_id: int, db: Session = Depends(get_db)):
+def preview_report_data(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.nongyne_cyto_case import NongyneCytologyCase
+
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_nongyne_report_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -190,7 +195,13 @@ def preview_report_pdf(
     db: Session = Depends(get_db),
     is_pending: bool = False,
     pending_reason: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
 ):
+    from app.models.nongyne_cyto_case import NongyneCytologyCase
+
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_nongyne_report_pdf_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")

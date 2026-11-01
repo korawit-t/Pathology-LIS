@@ -42,9 +42,9 @@ from app.schemas.surgical_case import (
     OutLabConsultRequest,
     OutLabConsultStateResponse,
 )
-from app.core.roles import CAN_MANAGE_SPECIMEN_STORAGE, CAN_REQUEST_CONSULT
+from app.core.roles import CAN_CANCEL_CASE, CAN_DELETE_CASE, CAN_MANAGE_SPECIMEN_STORAGE, CAN_REQUEST_CONSULT
 from app.crud import surgical_case as crud_case
-from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
+from app.dependencies.auth import get_current_user, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 
 router = APIRouter(
     prefix="/surgical-cases",
@@ -635,7 +635,7 @@ def bulk_update_storage(
 def delete_case(
     case_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(RoleChecker(["admin"])),
+    _: User = Depends(CAN_DELETE_CASE),
 ):
     """
     ลบเคสแบบ Hard Delete (เฉพาะ Admin)
@@ -865,7 +865,7 @@ def cancel_case(
     case_id: int,
     payload: CaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker(["admin", "lab_manager"])),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     # เรียกใช้ฟังก์ชัน cancel ที่เราเตรียมไว้ใน CRUD
     db_case = crud_case.cancel_surgical_case(

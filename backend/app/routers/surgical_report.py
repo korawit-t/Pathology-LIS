@@ -298,11 +298,16 @@ def read_report_history(
 
 
 @router.post("/cases/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db)):
+def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     API สำหรับดึง PDF Preview (ยังไม่บันทึกลง DB)
     payload: { "active_specimen_ids": [1, 2, 3], "is_pending": True, "pending_reason": "Waiting" }
     """
+    from app.models.surgical_case import SurgicalCase
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     # 1. ดึงข้อมูลดิบจากฟังก์ชันที่เราทำไว้
     active_ids = payload.get("active_specimen_ids")
     
@@ -342,10 +347,15 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
 
 
 @router.post("/cases/{case_id}/preview-data", dependencies=[Depends(CAN_READ_REPORT)])
-def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(get_db)):
+def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     ดึงข้อมูล JSON ที่รวมร่างแล้ว (Merge tags แล้ว) มาเช็คบน UI ก่อน Gen PDF
     """
+    from app.models.surgical_case import SurgicalCase
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     active_ids = payload.get("active_specimen_ids")
     data = prepare_report_data(db, case_id, active_specimen_ids=active_ids)
     if not data:
