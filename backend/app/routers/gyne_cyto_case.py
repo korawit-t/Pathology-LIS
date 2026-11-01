@@ -1,8 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Response
-from app.utils.file_handler import validate_and_sanitize
-from app.utils.time import local_now
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Any, Optional
@@ -330,6 +329,11 @@ def update_case_info(
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     return crud.update_gyne_case(
         db=db, db_obj=db_case, obj_in=case_in, actor_id=current_user.id
@@ -441,13 +445,15 @@ async def upload_outlab_test_result(
     case = crud.get_gyne_case(db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
     if not case.is_out_lab:
         raise HTTPException(status_code=400, detail="This case is not flagged as an outlab test.")
 
     data, ext = validate_and_sanitize(file, allowed="pdf")
 
-    if case.out_lab_result_pdf_path and os.path.exists(case.out_lab_result_pdf_path):
-        os.remove(case.out_lab_result_pdf_path)
+    old_file = resolve_stored_file(case.out_lab_result_pdf_path)
+    if old_file:
+        os.remove(old_file)
 
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(OUTLAB_REPORT_DIR, unique_filename)
@@ -457,11 +463,7 @@ async def upload_outlab_test_result(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-    from app.schemas.gyne_cyto_case import GyneCytologyCaseUpdate
-    updated = crud.update_gyne_case(db, case, GyneCytologyCaseUpdate(
-        out_lab_result_pdf_path=file_path,
-        out_lab_result_uploaded_at=local_now(),
-    ))
+    updated = crud.set_outlab_test_result_file(db, case, file_path)
     # A (re-)uploaded PDF always needs fresh pathologist sign-off.
     crud.clear_outlab_result_approval(db, updated)
     return updated
@@ -497,12 +499,13 @@ def get_outlab_test_result(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
     if not case.out_lab_result_pdf_path:
         raise HTTPException(status_code=404, detail="No outlab test result uploaded for this case.")
     user_roles = current_user.roles if isinstance(current_user.roles, list) else []
     if CLINICIAN_FACING_ROLES.intersection(user_roles) and not case.outlab_result_approved_at:
         raise HTTPException(status_code=403, detail="This result is awaiting pathologist sign-off.")
-    if not os.path.exists(case.out_lab_result_pdf_path):
+    if not resolve_stored_file(case.out_lab_result_pdf_path):
         raise HTTPException(status_code=404, detail="Result file not found on server.")
     # Same lab-header + patient/accession cover sheet as the Surgical
     # external-consult / Molecular out-lab-pdf cover sheet — regenerated
@@ -557,12 +560,15 @@ def download_consult_pdf(
     current_user: Any = Depends(get_current_user),
 ):
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
-    if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
+    if not case:
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
+        raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf",
     )

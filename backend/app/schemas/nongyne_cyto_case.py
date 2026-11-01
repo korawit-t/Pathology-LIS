@@ -116,9 +116,10 @@ class NongyneCytologyCaseUpdate(BaseModel):
     is_reported: Optional[bool] = None
     is_out_lab_consult: Optional[bool] = None
     is_out_lab: Optional[bool] = None
-    out_lab_result_pdf_path: Optional[str] = None
+    # out_lab_result_pdf_path / consult_pdf_path are deliberately not here:
+    # only the upload endpoints may set them, since the download, replace and
+    # clear endpoints open or delete whatever file they name.
     consult_status: Optional[str] = None
-    consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None

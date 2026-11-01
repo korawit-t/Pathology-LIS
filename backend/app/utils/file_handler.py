@@ -1,9 +1,12 @@
 from fastapi import UploadFile, HTTPException
+import logging
 import os
 import io
 import uuid
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 # Path ฐานสำหรับเก็บไฟล์ Static (ต้องตรงกับที่ Mount ใน main.py)
 STORAGE_ROOT = Path("uploads")
@@ -249,3 +252,28 @@ def delete_microscopic_image_local(image_url: str):
         os.remove(file_path)
         return True
     return False
+
+
+def resolve_stored_file(stored_path: str | None) -> Path | None:
+    """Resolve a file path kept on a DB row (a case's consult_pdf_path or
+    out_lab_result_pdf_path) before it is served, read or deleted.
+
+    Returns None when the path is unset, is not a file, or resolves outside
+    STORAGE_ROOT. The upload handlers store these as absolute paths, and the
+    download / replace / clear endpoints act on whatever the column holds, so
+    a value pointing anywhere else (such as one written through a case PATCH
+    before those fields were taken out of the Update schemas) must not get the
+    backend's .env served or an arbitrary file deleted.
+    """
+    if not stored_path:
+        return None
+    try:
+        resolved = Path(stored_path).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not resolved.is_relative_to(STORAGE_ROOT.resolve()):
+        logger.warning("Refusing stored file path outside %s: %r", STORAGE_ROOT, stored_path)
+        return None
+    if not resolved.is_file():
+        return None
+    return resolved

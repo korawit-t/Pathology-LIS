@@ -1,12 +1,12 @@
 import io
 import json
-import os
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import func, or_, cast, and_, literal
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
+from app.utils.file_handler import resolve_stored_file
 from app.models.gyne_cyto_case import GyneCytologyCase  # ตรวจสอบชื่อ Model ในโปรเจกต์คุณ
 from app.models.patient import Patient
 from app.models.gyne_diagnosis import GyneDiagnosis
@@ -421,6 +421,17 @@ def update_gyne_case(
         raise e
 
 
+def set_outlab_test_result_file(db: Session, case: GyneCytologyCase, file_path: str) -> GyneCytologyCase:
+    """Point the case at a freshly uploaded outlab result PDF. The upload
+    route is the only writer: out_lab_result_pdf_path is kept out of
+    GyneCytologyCaseUpdate because the download and re-upload paths read and
+    delete whatever file it names."""
+    case.out_lab_result_pdf_path = file_path
+    case.out_lab_result_uploaded_at = local_now()
+    db.commit()
+    return get_gyne_case(db, case.id)
+
+
 def approve_outlab_test_result(db: Session, case: GyneCytologyCase, approved_by_id: int) -> None:
     case.outlab_result_approved_by_id = approved_by_id
     case.outlab_result_approved_at = local_now()
@@ -453,16 +464,17 @@ def get_outlab_test_result_with_cover(db: Session, case_id: int) -> bytes | None
         .filter(GyneCytologyCase.id == case_id)
         .first()
     )
-    if not case or not case.out_lab_result_pdf_path or not os.path.exists(case.out_lab_result_pdf_path):
+    result_pdf = resolve_stored_file(case.out_lab_result_pdf_path) if case else None
+    if not result_pdf:
         return None
 
-    with open(case.out_lab_result_pdf_path, "rb") as f:
+    with open(result_pdf, "rb") as f:
         main_bytes = f.read()
 
     if not PYPDF_AVAILABLE:
         return main_bytes
 
-    thumbnails = get_consult_pdf_thumbnails_base64(case.out_lab_result_pdf_path)
+    thumbnails = get_consult_pdf_thumbnails_base64(str(result_pdf))
     if not thumbnails:
         return main_bytes
 

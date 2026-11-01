@@ -12,7 +12,9 @@ multiple hospitals -- see app.dependencies.auth.assert_hospital_scoped_access.
 """
 
 import uuid
+from pathlib import Path
 
+from app.crud.consult_pdf import UPLOAD_CONSULT_DIR
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.surgical_request_file import SurgicalRequestFile
@@ -140,10 +142,12 @@ class TestGyneConsultPdfHospitalScoping:
 
         assert response.status_code == 403
 
-    def test_clinician_can_download_own_hospital_consult_pdf(self, client, db, admin_user, tmp_path):
+    def test_clinician_can_download_own_hospital_consult_pdf(self, client, db, admin_user):
         registrar, _ = admin_user
         hosp_a = make_hospital(db)
-        file_path = tmp_path / "consult.pdf"
+        # Inside uploads/consults: the download refuses a stored path outside
+        # the uploads directory (see test_case_file_path_safety.py).
+        file_path = Path(UPLOAD_CONSULT_DIR) / f"test_scoping_{uuid.uuid4().hex}.pdf"
         file_path.write_bytes(b"%PDF-fake")
         case_a = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_a)
         case_a.consult_pdf_path = str(file_path)
@@ -152,7 +156,10 @@ class TestGyneConsultPdfHospitalScoping:
         clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
-        response = client.get(f"/gyne-cytology/{case_a.id}/consult-pdf")
+        try:
+            response = client.get(f"/gyne-cytology/{case_a.id}/consult-pdf")
+        finally:
+            file_path.unlink(missing_ok=True)
 
         assert response.status_code == 200
 

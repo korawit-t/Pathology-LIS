@@ -9,6 +9,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
+from app.utils.file_handler import resolve_stored_file
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
 from dateutil.relativedelta import relativedelta
@@ -643,9 +644,8 @@ def prepare_report_data(
     is_pending_val = overrides.get("is_pending", db_case.is_pending)
     pending_reason_val = overrides.get("pending_reason", db_case.pending_reason if db_case.is_pending else None)
 
-    consult_thumbnails = (
-        get_consult_pdf_thumbnails_base64(db_case.consult_pdf_path) if db_case.consult_pdf_path else []
-    )
+    consult_pdf = resolve_stored_file(db_case.consult_pdf_path)
+    consult_thumbnails = get_consult_pdf_thumbnails_base64(str(consult_pdf)) if consult_pdf else []
 
     return {
         "case_id": db_case.id,

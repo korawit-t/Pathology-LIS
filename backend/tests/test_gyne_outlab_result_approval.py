@@ -168,17 +168,30 @@ class TestCoverSheet:
         assert "digitally signed by" in cover_text.lower()
 
 
+def _at_case_hospital(db, user_and_password, case):
+    """Clinician-facing roles are hospital-scoped on this download too, so the
+    clinician needs the case's hospital — otherwise every request is refused on
+    scope before it reaches the sign-off gate these tests are about."""
+    from app.models.organization import Hospital
+
+    user, _ = user_and_password
+    user.hospitals = [db.get(Hospital, case.hospital_id)]
+    db.commit()
+    return user_and_password
+
+
 class TestClinicianVisibilityGate:
-    def test_clinician_cannot_download_before_approval(self, client, admin_user, clinician_user, outlab_case):
+    def test_clinician_cannot_download_before_approval(self, client, db, admin_user, clinician_user, outlab_case):
         _login_as(client, admin_user)
         _upload(client, outlab_case.id)
 
-        _login_as(client, clinician_user)
+        _login_as(client, _at_case_hospital(db, clinician_user, outlab_case))
         r = client.get(f"/gyne-cytology/{outlab_case.id}/outlab-test-result")
         assert r.status_code == 403
+        assert "sign-off" in r.json()["detail"]
 
     def test_clinician_can_download_after_approval(
-        self, client, admin_user, pathologist_user, clinician_user, outlab_case
+        self, client, db, admin_user, pathologist_user, clinician_user, outlab_case
     ):
         _login_as(client, admin_user)
         _upload(client, outlab_case.id)
@@ -187,7 +200,7 @@ class TestClinicianVisibilityGate:
         approve_r = client.post(f"/gyne-cytology/{outlab_case.id}/outlab-test-result/approve")
         assert approve_r.status_code == 200
 
-        _login_as(client, clinician_user)
+        _login_as(client, _at_case_hospital(db, clinician_user, outlab_case))
         r = client.get(f"/gyne-cytology/{outlab_case.id}/outlab-test-result")
         assert r.status_code == 200
 

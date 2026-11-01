@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime, date, time
 from app.utils.time import local_now
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf, approve_consult_pdf
 
 logger = logging.getLogger(__name__)
@@ -547,6 +547,11 @@ def update_case(
     db_case = crud_case.get_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     # 2. เรียกใช้ฟังก์ชัน Update ที่เราเขียนไว้ใน CRUD
     return crud_case.update_case(db, db_obj=db_case, obj_in=case_in)
@@ -788,12 +793,13 @@ def download_consult_pdf(
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    if not os.path.exists(case.consult_pdf_path):
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
         raise HTTPException(status_code=404, detail="Physical file missing")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf"
     )
 

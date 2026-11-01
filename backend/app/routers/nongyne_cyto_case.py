@@ -1,7 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Any, List, Optional
@@ -354,11 +354,16 @@ def update_case_info(
     case_id: int,
     case_in: NongyneCytologyCaseUpdate,
     db: Session = Depends(get_db),
-    _: Any = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     db_case = crud.get_nongyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     return crud.update_nongyne_case(db=db, db_obj=db_case, obj_in=case_in)
 
@@ -522,12 +527,15 @@ def download_consult_pdf(
     current_user: Any = Depends(get_current_user),
 ):
     case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
-    if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
+    if not case:
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
+        raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf",
     )

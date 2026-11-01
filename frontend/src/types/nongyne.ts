@@ -137,7 +137,6 @@ export interface NongyneCytologyCaseUpdate extends Partial<NongyneCytologyCaseCr
   is_out_lab_consult?: boolean;
   is_out_lab?: boolean;
   consult_status?: string;
-  consult_pdf_path?: string;
   consult_reason?: string;
   consult_report_out_at?: string;
   consult_pdf_received_at?: string;

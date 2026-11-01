@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from app.utils.time import local_now
 
 UPLOAD_CONSULT_DIR = os.path.join(os.getcwd(), "uploads", "consults")
@@ -17,8 +17,9 @@ def save_consult_pdf(db: Session, case, case_type: str, file: UploadFile, receiv
     NonGyne (both models expose the same consult_pdf_path/consult_pdf_received_at columns)."""
     data, ext = validate_and_sanitize(file, allowed="pdf")
 
-    if case.consult_pdf_path and os.path.exists(case.consult_pdf_path):
-        os.remove(case.consult_pdf_path)
+    old_file = resolve_stored_file(case.consult_pdf_path)
+    if old_file:
+        os.remove(old_file)
 
     unique_filename = f"consult_{case_type}_{case.id}_{uuid.uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_CONSULT_DIR, unique_filename)
@@ -33,8 +34,9 @@ def save_consult_pdf(db: Session, case, case_type: str, file: UploadFile, receiv
 
 
 def clear_consult_pdf(db: Session, case) -> None:
-    if case.consult_pdf_path and os.path.exists(case.consult_pdf_path):
-        os.remove(case.consult_pdf_path)
+    old_file = resolve_stored_file(case.consult_pdf_path)
+    if old_file:
+        os.remove(old_file)
     case.consult_pdf_path = None
     case.consult_pdf_approved_by_id = None
     case.consult_pdf_approved_at = None

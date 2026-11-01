@@ -89,7 +89,9 @@ class SurgicalCaseUpdate(BaseModel):
     pending_reason: Optional[str] = None
     is_out_lab_consult: Optional[bool] = None
     consult_status: Optional[str] = None
-    consult_pdf_path: Optional[str] = None
+    # consult_pdf_path is deliberately not here: only the upload endpoint may
+    # set it, since the download, replace and clear endpoints open or delete
+    # whatever file it names.
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
     consult_pdf_approved_by_id: Optional[int] = None
