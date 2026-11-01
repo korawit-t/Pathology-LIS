@@ -7,8 +7,10 @@ from tests.factories import make_bare_nongyne_case
 
 
 class TestRbac:
-    def test_clinician_can_read_summary(self, clinician_client):
-        assert clinician_client.get("/cyto-histo-correlations/summary").status_code == 200
+    def test_clinician_cannot_read_summary(self, clinician_client):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
+        assert clinician_client.get("/cyto-histo-correlations/summary").status_code == 403
 
     def test_clinician_cannot_create(self, clinician_client):
         r = clinician_client.post(

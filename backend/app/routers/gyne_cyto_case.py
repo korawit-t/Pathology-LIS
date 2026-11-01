@@ -19,6 +19,7 @@ from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.dependencies.auth import (
     CLINICIAN_FACING_ROLES,
+    InternalStaffOnly,
     get_current_user,
     assert_hospital_scoped_access,
     get_scoped_hospital_ids,
@@ -38,7 +39,17 @@ os.makedirs(GYNE_UPLOAD_DIR, exist_ok=True)
 OUTLAB_REPORT_DIR = os.path.join(os.getcwd(), "uploads", "outlab")
 os.makedirs(OUTLAB_REPORT_DIR, exist_ok=True)
 
-router = APIRouter(prefix="/gyne-cytology", tags=["Gyne Cytology"])
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
+router = APIRouter(
+    prefix="/gyne-cytology",
+    tags=["Gyne Cytology"],
+    dependencies=[
+        Depends(InternalStaffOnly(open_to_external={
+            "get_outlab_test_result",
+        })),
+    ],
+)
 
 
 @router.post(

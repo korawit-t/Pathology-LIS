@@ -8,8 +8,8 @@ class TestRbacAndAuth:
     def test_requires_authentication(self, client):
         assert client.get("/cyto-workload/stats", params={"start_date": "2026-01-01", "end_date": "2026-01-31"}).status_code == 401
 
-    def test_any_authenticated_role_can_read_stats(self, clinician_client):
-        r = clinician_client.get(
+    def test_any_lab_role_can_read_stats(self, staff_client):
+        r = staff_client.get(
             "/cyto-workload/stats", params={"start_date": "2026-01-01", "end_date": "2026-01-31"}
         )
         assert r.status_code == 200

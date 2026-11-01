@@ -91,11 +91,11 @@ class SurgicalCaseUpdate(BaseModel):
     consult_status: Optional[str] = None
     # consult_pdf_path is deliberately not here: only the upload endpoint may
     # set it, since the download, replace and clear endpoints open or delete
-    # whatever file it names.
+    # whatever file it names. Nor are consult_pdf_approved_by_id/_at: the
+    # approver is printed on the consult cover as its signature, so only
+    # POST /{id}/consult-pdf/approve records one, as the caller.
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
-    consult_pdf_approved_by_id: Optional[int] = None
-    consult_pdf_approved_at: Optional[datetime] = None
     report_at: Optional[datetime] = None
     discard_status: Optional[bool] = None
 

@@ -24,17 +24,26 @@ from app.core.roles import (
     CAN_WRITE_GYNE_CYTO_REPORT,
     CAN_READ_GYNE_CYTO_REPORT
 )
-from app.dependencies.auth import get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import InternalStaffOnly, get_scoped_hospital_ids, assert_hospital_scoped_access
 from pydantic import BaseModel
 from app.utils.time import local_now
 from app.crud.report_archive import get_gyne_archive
 from app.schemas.archive import ArchivePage
 from app.dependencies.step_up import require_step_up
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/gyne-cyto-reports",
     tags=["Gyne Cyto Reports"],
-    dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)],
+    dependencies=[
+        Depends(CAN_READ_GYNE_CYTO_REPORT),
+        Depends(InternalStaffOnly(open_to_external={
+            "read_gyne_archive",
+            "get_report_pdf",
+            "mark_gyne_report_read",
+        })),
+    ],
 )
 
 def build_gyne_barcode_value(case, report, opd_prefix: str, ipd_prefix: str, type_code: str) -> str:
@@ -396,11 +405,12 @@ def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_gyne_report_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/{report_id}/mark-read")
+def mark_gyne_report_read(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = db.query(GyneCytoReport).filter(GyneCytoReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     if not report.is_read:
         report.is_read = True
         report.read_at = local_now()

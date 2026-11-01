@@ -40,10 +40,10 @@ class TestAuth:
     def test_requires_authentication(self, client):
         assert client.get("/his/patients", params={"hn": "12345"}).status_code == 401
 
-    def test_any_authenticated_role_can_query(self, clinician_client, monkeypatch):
+    def test_any_lab_role_can_query(self, staff_client, monkeypatch):
         _force_not_configured(monkeypatch)
         # Not configured in this test -> 503, but that proves it got past auth.
-        assert clinician_client.get("/his/patients", params={"hn": "12345"}).status_code == 503
+        assert staff_client.get("/his/patients", params={"hn": "12345"}).status_code == 503
 
 
 class TestNotConfiguredGuards:

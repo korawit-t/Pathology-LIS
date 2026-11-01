@@ -194,9 +194,8 @@ export interface SurgicalCaseUpdatePayload extends Partial<SurgicalCaseCreatePay
   consult_reason?: string | null;
   consult_report_out_at?: string | null;
   consult_pdf_received_at?: string | null;
-  consult_pdf_approved_by_id?: number | null;
-  consult_pdf_approved_at?: string | null;
-  consult_pdf_approver_name?: string | null;
+  // No consult_pdf_approved_*: the server takes the approver only from
+  // SurgicalCaseService.approveConsultPdf, as whoever calls it.
   has_malignancy?: boolean;
   has_critical?: boolean;
   is_pending?: boolean;

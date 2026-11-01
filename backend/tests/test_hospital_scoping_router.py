@@ -51,6 +51,28 @@ def _make_clinician_at_hospital(db, hospital_id):
     return _make_clinician_at_hospitals(db, [hospital_id])
 
 
+def _make_scoped_staff_at_hospitals(db, hospital_ids):
+    """A clinician account that also holds an internal role (register).
+
+    InternalStaffOnly refuses a pure clinician or hospital account on every
+    route the results portal does not call, before the route's own hospital
+    check runs. On those routes the check is reached only by an account like
+    this one. Its internal role gets it past the gate, and its clinician role
+    still makes get_scoped_hospital_ids scope it. Routes the portal does call
+    are tested with the plain clinician above.
+    """
+    from app.models.organization import Hospital
+
+    user, pwd = _make_user(db, f"scoped_{uuid.uuid4().hex[:6]}", "ClinPass1!", ["clinician", "register"])
+    user.hospitals = db.query(Hospital).filter(Hospital.id.in_(hospital_ids)).all()
+    db.commit()
+    return user, pwd
+
+
+def _make_scoped_staff_at_hospital(db, hospital_id):
+    return _make_scoped_staff_at_hospitals(db, [hospital_id])
+
+
 def _login(client, username, password):
     r = client.post("/auth/login", data={"username": username, "password": password})
     assert r.status_code == 200, r.text
@@ -71,7 +93,7 @@ class TestSurgicalRequestFileHospitalScoping:
         db.commit()
         db.refresh(req_file)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         response = client.get(f"/surgical-cases/request-files/{req_file.id}")
@@ -92,7 +114,7 @@ class TestSurgicalRequestFileHospitalScoping:
         db.commit()
         db.refresh(req_file)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         response = client.get(f"/surgical-cases/request-files/{req_file.id}")
@@ -135,7 +157,7 @@ class TestGyneConsultPdfHospitalScoping:
         case_b.consult_pdf_path = str(file_path)
         db.commit()
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         response = client.get(f"/gyne-cytology/{case_b.id}/consult-pdf")
@@ -153,7 +175,7 @@ class TestGyneConsultPdfHospitalScoping:
         case_a.consult_pdf_path = str(file_path)
         db.commit()
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         try:
@@ -190,7 +212,7 @@ class TestMultiHospitalScoping:
         file_b = _add_request_file(case_b)
         file_c = _add_request_file(case_c)
 
-        clinician, pwd = _make_clinician_at_hospitals(db, [hosp_a.id, hosp_b.id])
+        clinician, pwd = _make_scoped_staff_at_hospitals(db, [hosp_a.id, hosp_b.id])
         _login(client, clinician.username, pwd)
 
         # 404 (not 403) proves the hospital check passed and it only failed
@@ -211,7 +233,7 @@ class TestMultiHospitalScoping:
         db.commit()
         db.refresh(req_file)
 
-        clinician, pwd = _make_clinician_at_hospitals(db, [])
+        clinician, pwd = _make_scoped_staff_at_hospitals(db, [])
         _login(client, clinician.username, pwd)
 
         response = client.get(f"/surgical-cases/request-files/{req_file.id}")
@@ -232,7 +254,7 @@ class TestNongyneRequestFileHospitalScoping:
         db.commit()
         db.refresh(req_file)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         response = client.delete(f"/nongyne-cytology/request-files/{req_file.id}")
@@ -278,7 +300,7 @@ class TestSurgicalReportHospitalScoping:
         case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
         report_b = _make_surgical_report(db, case_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-reports/{report_b.id}").status_code == 403
@@ -289,7 +311,7 @@ class TestSurgicalReportHospitalScoping:
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
         report_a = _make_surgical_report(db, case_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-reports/{report_a.id}").status_code == 200
@@ -312,7 +334,7 @@ class TestSurgicalReportHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-reports/cases/{case_b.id}").status_code == 403
@@ -322,7 +344,7 @@ class TestSurgicalReportHospitalScoping:
         hosp_a = make_hospital(db)
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-reports/cases/{case_a.id}").status_code == 200
@@ -336,7 +358,7 @@ class TestGyneReportHospitalScoping:
         case_b = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
         report_b = _make_gyne_report(db, case_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/gyne-cyto-reports/{report_b.id}").status_code == 403
@@ -347,7 +369,7 @@ class TestGyneReportHospitalScoping:
         case_a = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_a)
         report_a = _make_gyne_report(db, case_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/gyne-cyto-reports/{report_a.id}").status_code == 200
@@ -358,7 +380,7 @@ class TestGyneReportHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/gyne-cyto-reports/cases/{case_b.id}").status_code == 403
@@ -372,7 +394,7 @@ class TestNongyneReportHospitalScoping:
         case_b = make_bare_nongyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
         report_b = _make_nongyne_report(db, case_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/nongyne-cyto-reports/{report_b.id}").status_code == 403
@@ -383,7 +405,7 @@ class TestNongyneReportHospitalScoping:
         case_a = make_bare_nongyne_case(db, registrar_id=registrar.id, hospital=hosp_a)
         report_a = _make_nongyne_report(db, case_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/nongyne-cyto-reports/{report_a.id}").status_code == 200
@@ -394,7 +416,7 @@ class TestNongyneReportHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_nongyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/nongyne-cyto-reports/cases/{case_b.id}").status_code == 403
@@ -409,7 +431,7 @@ class TestLegacyReportsHospitalScoping:
         db.commit()
         db.refresh(report_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/legacy-reports/surgical/{report_b.id}").status_code == 403
@@ -422,7 +444,7 @@ class TestLegacyReportsHospitalScoping:
         db.commit()
         db.refresh(report_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/legacy-reports/surgical/{report_a.id}").status_code == 200
@@ -435,7 +457,7 @@ class TestLegacyReportsHospitalScoping:
         db.commit()
         db.refresh(report_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/legacy-reports/gyne/{report_b.id}").status_code == 403
@@ -448,7 +470,7 @@ class TestLegacyReportsHospitalScoping:
         db.commit()
         db.refresh(report_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/legacy-reports/nongyne/{report_b.id}").status_code == 403
@@ -461,7 +483,7 @@ class TestCaseDetailHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-cases/{case_b.id}").status_code == 403
@@ -471,7 +493,7 @@ class TestCaseDetailHospitalScoping:
         hosp_a = make_hospital(db)
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/surgical-cases/{case_a.id}").status_code == 200
@@ -482,7 +504,7 @@ class TestCaseDetailHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/gyne-cytology/{case_b.id}").status_code == 403
@@ -493,7 +515,7 @@ class TestCaseDetailHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = make_bare_nongyne_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/nongyne-cytology/{case_b.id}").status_code == 403
@@ -507,7 +529,7 @@ class TestCaseListHospitalIdFilterScoping:
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
         case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.get("/surgical-cases", params={"limit": 200})
@@ -523,7 +545,7 @@ class TestCaseListHospitalIdFilterScoping:
         hosp_b = make_hospital(db)
         make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.get("/surgical-cases", params={"hospital_id": hosp_b.id})
@@ -535,7 +557,7 @@ class TestCaseListHospitalIdFilterScoping:
         hosp_a = make_hospital(db)
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.get("/surgical-cases", params={"hospital_id": hosp_a.id})
@@ -652,7 +674,7 @@ class TestSurgicalDiagnosisHospitalScoping:
         hosp_a = make_hospital(db)
         hosp_b = make_hospital(db)
         case_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
         assert client.get(f"/surgical-diagnoses/case/{case_b.id}").status_code == 403
 
@@ -660,7 +682,7 @@ class TestSurgicalDiagnosisHospitalScoping:
         registrar, _ = admin_user
         hosp_a = make_hospital(db)
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
         assert client.get(f"/surgical-diagnoses/case/{case_a.id}").status_code == 200
 
@@ -669,7 +691,7 @@ class TestSurgicalDiagnosisHospitalScoping:
         hosp_a = make_hospital(db)
         hosp_b = make_hospital(db)
         _, specimen_b = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_b)
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
         assert client.get(f"/surgical-diagnoses/specimen/{specimen_b.id}").status_code == 403
 
@@ -677,7 +699,7 @@ class TestSurgicalDiagnosisHospitalScoping:
         registrar, _ = admin_user
         hosp_a = make_hospital(db)
         _, specimen_a = make_signable_case(db, registrar_id=registrar.id, hospital=hosp_a)
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
         assert client.get(f"/surgical-diagnoses/specimen/{specimen_a.id}").status_code == 200
 
@@ -700,7 +722,7 @@ class TestSurgicalDiagnosisHospitalScoping:
         diag_a = _add_specimen_diagnosis(db, case_a, spec_a, "hospA")
         diag_b = _add_specimen_diagnosis(db, case_b, spec_b, "hospB")
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.get(f"/surgical-diagnoses/patient/{patient.id}")
@@ -785,7 +807,7 @@ class TestMolecularCaseDetailHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/molecular-cases/{case_b.id}").status_code == 403
@@ -795,7 +817,7 @@ class TestMolecularCaseDetailHospitalScoping:
         hosp_a = make_hospital(db)
         case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/molecular-cases/{case_a.id}").status_code == 200
@@ -807,7 +829,7 @@ class TestMolecularCaseDetailHospitalScoping:
         parent_b = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_b)
         case_b = _make_molecular_case(db, registrar.id, parent_case=parent_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/molecular-cases/{case_b.id}").status_code == 403
@@ -821,7 +843,7 @@ class TestMolecularCaseDetailHospitalScoping:
         case_a = _make_molecular_case(db, registrar.id, parent_case=parent_a)
 
         assert case_a.hospital_id is None
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         assert client.get(f"/molecular-cases/{case_a.id}").status_code == 200
@@ -945,7 +967,7 @@ class TestMolecularListHospitalScoping:
         hosp_a = make_hospital(db)
         hosp_b = make_hospital(db)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
         before = client.get("/molecular-cases/count").json()["count"]
 
@@ -962,7 +984,7 @@ class TestMolecularListHospitalScoping:
         case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
         case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.get("/molecular-cases/print-queue", params={"size": 200})
@@ -1020,7 +1042,7 @@ class TestMolecularResultHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.patch(
@@ -1036,7 +1058,7 @@ class TestMolecularResultHospitalScoping:
         hosp_a = make_hospital(db)
         case_a = _make_molecular_case(db, registrar.id, hospital=hosp_a)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.patch(
@@ -1055,7 +1077,7 @@ class TestMolecularResultHospitalScoping:
         hosp_b = make_hospital(db)
         case_b = _make_molecular_case(db, registrar.id, hospital=hosp_b)
 
-        clinician, pwd = _make_clinician_at_hospital(db, hosp_a.id)
+        clinician, pwd = _make_scoped_staff_at_hospital(db, hosp_a.id)
         _login(client, clinician.username, pwd)
 
         r = client.post("/molecular-cases/barcode-pdf", json={"case_ids": [case_b.id]})

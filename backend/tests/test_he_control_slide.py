@@ -49,9 +49,9 @@ class TestAuth:
         assert client.get("/he-control-slides").status_code == 401
         assert client.get("/he-control-slides/999999/print-sticker").status_code == 401
 
-    def test_any_authenticated_role_can_reach_endpoints(self, clinician_client):
-        assert clinician_client.get("/he-control-slides").status_code == 200
-        assert clinician_client.get("/he-control-slides/999999/print-sticker").status_code == 404
+    def test_any_lab_role_can_reach_endpoints(self, staff_client):
+        assert staff_client.get("/he-control-slides").status_code == 200
+        assert staff_client.get("/he-control-slides/999999/print-sticker").status_code == 404
 
 
 class TestCreate:

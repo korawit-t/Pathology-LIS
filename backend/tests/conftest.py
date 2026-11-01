@@ -156,6 +156,15 @@ def clinician_user(db):
 
 
 @pytest.fixture
+def staff_user(db):
+    # A lab account with no role any gate singles out. Tests that mean "any
+    # logged-in user" use it. clinician_user used to stand in for that, until
+    # InternalStaffOnly closed the lab routers to clinician and hospital
+    # accounts.
+    return _make_user(db, f"staff_{uuid.uuid4().hex[:12]}", "StaffPass1!", ["histo"])
+
+
+@pytest.fixture
 def lab_manager_user(db):
     return _make_user(db, f"labmgr_{uuid.uuid4().hex[:12]}", "LabMgrPass1!", ["lab_manager"])
 
@@ -198,6 +207,12 @@ def pathologist_client(client, pathologist_user):
 @pytest.fixture
 def clinician_client(client, clinician_user):
     user, pwd = clinician_user
+    return _login(client, user.username, pwd)
+
+
+@pytest.fixture
+def staff_client(client, staff_user):
+    user, pwd = staff_user
     return _login(client, user.username, pwd)
 
 

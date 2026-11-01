@@ -10,8 +10,8 @@ class TestAuth:
     def test_requires_authentication(self, client):
         assert client.get("/block-storage/runs").status_code == 401
 
-    def test_any_authenticated_role_can_read(self, clinician_client):
-        assert clinician_client.get("/block-storage/runs").status_code == 200
+    def test_any_lab_role_can_read(self, staff_client):
+        assert staff_client.get("/block-storage/runs").status_code == 200
 
 
 class TestBatchStorageAndDispose:

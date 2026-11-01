@@ -1,5 +1,5 @@
-from typing import List, Optional, Set
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from typing import Iterable, List, Optional, Set
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -131,6 +131,39 @@ def assert_hospital_scoped_access(current_user: User, resource_hospital_id: Opti
     allowed = get_scoped_hospital_ids(current_user)
     if allowed is not None and (resource_hospital_id is None or resource_hospital_id not in allowed):
         raise HTTPException(status_code=403, detail="Access denied.")
+
+
+class InternalStaffOnly:
+    """Router-level gate that refuses accounts holding nothing but external
+    roles (EXTERNAL_ROLES), on every endpoint of the router except the ones
+    named in ``open_to_external``.
+
+    It makes "closed to the referring side" the default. Before it, any route
+    that only required a login answered every clinician and hospital account,
+    which is how the audit trail, billing summaries, HOSxP patient search and
+    other hospitals' drafts were open to them. To open an endpoint, add its
+    function name to the router's list, and make it scope what it returns
+    with assert_hospital_scoped_access or get_scoped_hospital_ids.
+
+    An account with any internal role passes. That is the same rule the
+    frontend's getHomeRoute (utils/hasRole.ts) uses to send a user to the lab
+    dashboard rather than the results portal. Wired up in main.py for
+    internal-only routers; shared routers declare their own instance.
+    """
+
+    def __init__(self, open_to_external: Iterable[str] = ()):
+        self.open_to_external = frozenset(open_to_external)
+
+    def __call__(self, request: Request, user: User = Depends(get_current_user)) -> User:
+        user_roles = set(user.roles if isinstance(user.roles, list) else [])
+        if user_roles - EXTERNAL_ROLES:
+            return user
+        # FastAPI puts the matched route (as declared on its own router) here
+        # before resolving dependencies; its name is the endpoint function's.
+        route = request.scope.get("route")
+        if getattr(route, "name", None) in self.open_to_external:
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
 
 def check_password_status(

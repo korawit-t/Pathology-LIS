@@ -8,7 +8,7 @@ from app.crud.user import get_users, get_user, create_user, update_user, delete_
 import app.crud.user as user_crud
 
 # ✅ Import RoleChecker และ get_current_user เข้ามา
-from app.dependencies.auth import get_current_user, check_password_status
+from app.dependencies.auth import InternalStaffOnly, get_current_user, check_password_status
 from app.models.user import User
 from app.core.roles import CAN_MANAGE_USERS, CAN_RESET_USER_MFA
 from app.dependencies.step_up import require_step_up
@@ -20,7 +20,19 @@ from app.core.security import verify_password
 from app.routers.auth import limiter
 
 
-router = APIRouter(prefix="/users", tags=["Users"])
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"],
+    dependencies=[
+        Depends(InternalStaffOnly(open_to_external={
+            "read_users_me",
+            "update_my_password",
+            "update_my_preferences",
+        })),
+    ],
+)
 
 
 # 1. ดูข้อมูลตัวเอง (ใคร Login มา ก็เห็นแค่คนนั้น)
@@ -240,6 +252,14 @@ def reset_user_mfa(
     target = get_user(db, user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Same line as editing or deleting a user: a lab manager does not lower an
+    # admin account's protection.
+    if "admin" in (target.roles or []) and "admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can reset an admin account's two-factor authentication.",
+        )
 
     had_factor = bool(target.mfa_enabled)
     mfa_crud.disable_mfa(db, target)

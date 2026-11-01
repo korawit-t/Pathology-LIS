@@ -3,7 +3,9 @@ already covered by test_organization.py — this covers RBAC (a real mix of
 CAN_MANAGE_SETTINGS-gated and merely-authenticated routes within the same
 file — see TestTitleCreateRbacInconsistency) and the router-only business
 logic that lives nowhere else: Google Calendar config masking/merge and
-the holiday-import parsing."""
+the holiday-import parsing. "Merely authenticated" means any lab account:
+InternalStaffOnly refuses clinician and hospital accounts on the whole
+router, which test_external_account_gate.py covers."""
 
 import uuid
 
@@ -16,15 +18,15 @@ def _name(label):
 
 
 class TestHospitals:
-    def test_any_authenticated_user_can_read(self, clinician_client):
-        assert clinician_client.get("/org/hospitals").status_code == 200
+    def test_any_lab_role_can_read(self, staff_client):
+        assert staff_client.get("/org/hospitals").status_code == 200
 
     def test_admin_can_create(self, admin_client):
         r = admin_client.post("/org/hospitals", json={"name": _name("Hosp")})
         assert r.status_code == 200
 
-    def test_clinician_cannot_create(self, clinician_client):
-        r = clinician_client.post("/org/hospitals", json={"name": _name("Hosp")})
+    def test_lab_staff_cannot_create(self, staff_client):
+        r = staff_client.post("/org/hospitals", json={"name": _name("Hosp")})
         assert r.status_code == 403
 
     def test_lab_manager_can_create(self, lab_manager_client):
@@ -40,11 +42,11 @@ class TestHospitals:
 
 
 class TestPositions:
-    def test_any_authenticated_user_can_read(self, clinician_client):
-        assert clinician_client.get("/org/positions").status_code == 200
+    def test_any_lab_role_can_read(self, staff_client):
+        assert staff_client.get("/org/positions").status_code == 200
 
-    def test_clinician_cannot_create(self, clinician_client):
-        assert clinician_client.post("/org/positions", json={"name": _name("Pos")}).status_code == 403
+    def test_lab_staff_cannot_create(self, staff_client):
+        assert staff_client.post("/org/positions", json={"name": _name("Pos")}).status_code == 403
 
     def test_admin_can_create_update_delete(self, admin_client):
         created = admin_client.post("/org/positions", json={"name": _name("Pos")}).json()
@@ -61,47 +63,47 @@ class TestTitleCreateRbacInconsistency:
     permissiveness findings from the app/routers/ batch, not assumed to be
     a bug."""
 
-    def test_clinician_can_create_a_title(self, clinician_client):
-        r = clinician_client.post("/org/titles", json={"title": _name("Dr.")})
+    def test_lab_staff_can_create_a_title(self, staff_client):
+        r = staff_client.post("/org/titles", json={"title": _name("Dr.")})
         assert r.status_code == 200
 
-    def test_clinician_cannot_update_a_title(self, db, clinician_client):
+    def test_lab_staff_cannot_update_a_title(self, db, staff_client):
         created = crud.create_title(db, TitleCreate(title=_name("Dr.")))
-        r = clinician_client.put(f"/org/titles/{created.id}", json={"title": "Renamed"})
+        r = staff_client.put(f"/org/titles/{created.id}", json={"title": "Renamed"})
         assert r.status_code == 403
 
-    def test_clinician_cannot_delete_a_title(self, db, clinician_client):
+    def test_lab_staff_cannot_delete_a_title(self, db, staff_client):
         created = crud.create_title(db, TitleCreate(title=_name("Dr.")))
-        r = clinician_client.delete(f"/org/titles/{created.id}")
+        r = staff_client.delete(f"/org/titles/{created.id}")
         assert r.status_code == 403
 
 
 class TestMedicalSchemes:
-    def test_clinician_can_read_and_create(self, clinician_client):
-        assert clinician_client.get("/org/medical-schemes").status_code == 200
-        r = clinician_client.post("/org/medical-schemes", json={"name": _name("Scheme")})
+    def test_lab_staff_can_read_and_create(self, staff_client):
+        assert staff_client.get("/org/medical-schemes").status_code == 200
+        r = staff_client.post("/org/medical-schemes", json={"name": _name("Scheme")})
         assert r.status_code == 200
 
 
 class TestDepartments:
-    def test_clinician_can_read_and_create(self, clinician_client):
-        assert clinician_client.get("/org/departments").status_code == 200
-        r = clinician_client.post("/org/departments", json={"name": _name("Dept")})
+    def test_lab_staff_can_read_and_create(self, staff_client):
+        assert staff_client.get("/org/departments").status_code == 200
+        r = staff_client.post("/org/departments", json={"name": _name("Dept")})
         assert r.status_code == 200
 
-    def test_clinician_cannot_update_or_delete(self, db, clinician_client):
+    def test_lab_staff_cannot_update_or_delete(self, db, staff_client):
         created = crud.create_department(db, DepartmentCreate(name=_name("Dept")))
-        assert clinician_client.patch(f"/org/departments/{created.id}", json={"name": "x"}).status_code == 403
-        assert clinician_client.delete(f"/org/departments/{created.id}").status_code == 403
+        assert staff_client.patch(f"/org/departments/{created.id}", json={"name": "x"}).status_code == 403
+        assert staff_client.delete(f"/org/departments/{created.id}").status_code == 403
 
-    def test_read_missing_department_returns_404(self, clinician_client):
-        assert clinician_client.get("/org/departments/999999").status_code == 404
+    def test_read_missing_department_returns_404(self, staff_client):
+        assert staff_client.get("/org/departments/999999").status_code == 404
 
 
 class TestHolidays:
-    def test_clinician_can_read_but_not_create(self, clinician_client):
-        assert clinician_client.get("/org/holidays").status_code == 200
-        r = clinician_client.post("/org/holidays", json={"holiday_date": "2026-12-25", "name": "Christmas"})
+    def test_lab_staff_can_read_but_not_create(self, staff_client):
+        assert staff_client.get("/org/holidays").status_code == 200
+        r = staff_client.post("/org/holidays", json={"holiday_date": "2026-12-25", "name": "Christmas"})
         assert r.status_code == 403
 
     def test_admin_cannot_create_a_duplicate_date(self, admin_client):
@@ -124,8 +126,8 @@ class TestGoogleCalendarConfig:
         assert r.json()["source"] == "none"
         assert r.json()["api_key"] == ""
 
-    def test_clinician_cannot_read_config(self, clinician_client):
-        assert clinician_client.get("/org/config/google-calendar").status_code == 403
+    def test_lab_staff_cannot_read_config(self, staff_client):
+        assert staff_client.get("/org/config/google-calendar").status_code == 403
 
     def test_saving_masks_the_key_on_the_next_read(self, admin_client):
         r = admin_client.put("/org/config/google-calendar", json={"api_key": "AIzaSyABCDEFGHIJKLMNOP", "calendar_id": "test@example.com"})

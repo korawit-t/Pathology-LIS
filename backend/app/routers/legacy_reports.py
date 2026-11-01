@@ -12,10 +12,25 @@ from app.models.legacy_gyne_cyto_report import LegacyGyneCytoReport
 from app.models.legacy_nongyne_cyto_report import LegacyNongyneCytoReport
 from app.models.system_setting import SystemSetting
 from app.utils.time import local_now
-from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
+from app.dependencies.auth import InternalStaffOnly, get_current_user, assert_hospital_scoped_access
 from app.core.roles import CAN_READ_REPORT, CAN_READ_GYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_REPORT
 
-router = APIRouter(prefix="/legacy-reports", tags=["Legacy Reports"])
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
+router = APIRouter(
+    prefix="/legacy-reports",
+    tags=["Legacy Reports"],
+    dependencies=[
+        Depends(InternalStaffOnly(open_to_external={
+            "get_legacy_surgical_pdf",
+            "mark_legacy_surgical_read",
+            "get_legacy_gyne_pdf",
+            "mark_legacy_gyne_read",
+            "get_legacy_nongyne_pdf",
+            "mark_legacy_nongyne_read",
+        })),
+    ],
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,11 +214,12 @@ def get_legacy_surgical_pdf(report_id: int, db: Session = Depends(get_db), curre
     )
 
 
-@router.post("/surgical/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_legacy_surgical_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/surgical/{report_id}/mark-read")
+def mark_legacy_surgical_read(report_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     report = db.query(LegacySurgicalReport).filter(LegacySurgicalReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     report.is_read = True
     report.read_at = local_now()
     db.commit()
@@ -257,11 +273,12 @@ def get_legacy_gyne_pdf(report_id: int, db: Session = Depends(get_db), current_u
     )
 
 
-@router.post("/gyne/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_legacy_gyne_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/gyne/{report_id}/mark-read")
+def mark_legacy_gyne_read(report_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     report = db.query(LegacyGyneCytoReport).filter(LegacyGyneCytoReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     report.is_read = True
     report.read_at = local_now()
     db.commit()
@@ -315,11 +332,12 @@ def get_legacy_nongyne_pdf(report_id: int, db: Session = Depends(get_db), curren
     )
 
 
-@router.post("/nongyne/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_legacy_nongyne_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/nongyne/{report_id}/mark-read")
+def mark_legacy_nongyne_read(report_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     report = db.query(LegacyNongyneCytoReport).filter(LegacyNongyneCytoReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     report.is_read = True
     report.read_at = local_now()
     db.commit()

@@ -2,7 +2,8 @@
 (app/crud/wsi_slide_link.py) already has coverage in test_wsi_slide_link.py
 — this is RBAC (a real per-route mix: CAN_VIEW_WSI for list,
 get_current_active_user for create/update, CAN_MANAGE_SYSTEM_SETTINGS for
-delete — documented as-is, not assumed to be a bug) + wiring."""
+delete — documented as-is, not assumed to be a bug) + wiring. Clinician and
+hospital accounts are refused on every route by InternalStaffOnly."""
 
 import uuid
 
@@ -26,29 +27,29 @@ class TestRbac:
     def test_pathologist_can_list(self, pathologist_client):
         assert pathologist_client.get("/wsi-links").status_code == 200
 
-    def test_clinician_can_create(self, db, clinician_client, admin_user):
+    def test_any_lab_role_can_create(self, db, staff_client, admin_user):
         # create only needs get_current_active_user, not CAN_VIEW_WSI.
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         block = make_block(db, specimen.id)
         wsi_file = _wsi_file(db)
 
-        r = clinician_client.post(
+        r = staff_client.post(
             "/wsi-links", json={"wsi_file_id": wsi_file.id, "surgical_block_id": block.id}
         )
 
         assert r.status_code == 201
 
-    def test_clinician_cannot_delete(self, db, clinician_client, admin_user):
+    def test_lab_role_without_settings_rights_cannot_delete(self, db, staff_client, admin_user):
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         block = make_block(db, specimen.id)
         wsi_file = _wsi_file(db)
-        created = clinician_client.post(
+        created = staff_client.post(
             "/wsi-links", json={"wsi_file_id": wsi_file.id, "surgical_block_id": block.id}
         ).json()
 
-        r = clinician_client.delete(f"/wsi-links/{created['id']}")
+        r = staff_client.delete(f"/wsi-links/{created['id']}")
 
         assert r.status_code == 403
 

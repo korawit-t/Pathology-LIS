@@ -10,16 +10,21 @@ pending co-sign" starting state, and builds a fresh unpublished
 case+diagnosis directly (via make_bare_gyne_case + create_initial_diagnosis)
 for tests that need to exercise the publish transition itself."""
 
+import uuid
+
 from app.crud.gyne_diagnosis import create_initial_diagnosis
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate
 
-from tests.factories import make_bare_gyne_case, make_pending_gyne_report, make_system_setting
+from tests.conftest import _make_user
+from tests.factories import make_bare_gyne_case, make_hospital, make_pending_gyne_report, make_system_setting
 from tests.pdf_probe import footer_barcode_bars
 
 
 class TestRbac:
-    def test_clinician_can_read_list(self, clinician_client):
-        assert clinician_client.get("/gyne-cyto-reports").status_code == 200
+    def test_clinician_cannot_read_the_lab_list(self, clinician_client):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
+        assert clinician_client.get("/gyne-cyto-reports").status_code == 403
 
     def test_clinician_cannot_publish(self, db, clinician_client, admin_user):
         registrar, _ = admin_user
@@ -185,20 +190,23 @@ class TestPrintStatusAndMarkRead:
     def test_update_print_status_missing_returns_404(self, pathologist_client):
         assert pathologist_client.patch("/gyne-cyto-reports/999999/print-status", json={"is_print": True}).status_code == 404
 
-    def test_mark_read_only_requires_authentication_not_a_role(self, db, clinician_client, admin_user, pathologist_user):
-        # Documents current behavior: this route only depends on
-        # get_current_user (any authenticated user), unlike its siblings
-        # which require CAN_READ_GYNE_CYTO_REPORT/CAN_WRITE_GYNE_CYTO_REPORT
-        # (clinician happens to be in both anyway, so this doesn't currently
-        # under-protect anything — noted for the consolidated RBAC report).
+    def test_mark_read_is_scoped_to_the_clinicians_hospitals(self, db, client, admin_user, pathologist_user):
+        # The results portal marks a report read when it opens it. It used to
+        # accept any report id from any account.
         registrar, _ = admin_user
         pathologist, _ = pathologist_user
         _, report = make_pending_gyne_report(db, registrar_id=registrar.id, pathologist_id=pathologist.id)
+        own, other = make_hospital(db), make_hospital(db)
+        report.hospital_id = own.id
+        db.commit()
 
-        r = clinician_client.post(f"/gyne-cyto-reports/{report.id}/mark-read")
+        for hospital, expected in ((other, 403), (own, 200)):
+            clinician, pwd = _make_user(db, f"clin_{uuid.uuid4().hex[:8]}", "ClinPass1!", ["clinician"])
+            clinician.hospitals = [hospital]
+            db.commit()
+            client.post("/auth/login", data={"username": clinician.username, "password": pwd})
 
-        assert r.status_code == 200
-        assert r.json()["success"] is True
+            assert client.post(f"/gyne-cyto-reports/{report.id}/mark-read").status_code == expected
 
     def test_mark_read_missing_returns_404(self, pathologist_client):
         assert pathologist_client.post("/gyne-cyto-reports/999999/mark-read").status_code == 404

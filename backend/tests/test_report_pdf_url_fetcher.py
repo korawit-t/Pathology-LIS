@@ -85,15 +85,16 @@ class TestReportURLFetcher:
         assert response.read() == b"hello"
 
 
-def test_clinician_cannot_pull_a_server_file_through_clinical_history(client, db, admin_user, secret_file):
+def test_registration_cannot_pull_a_server_file_through_clinical_history(client, db, admin_user, secret_file):
+    # Found with a clinician account, which could PATCH its own hospital's
+    # case. InternalStaffOnly has since closed that route to clinicians, but
+    # the front desk writes clinical history every day.
     registrar, _ = admin_user
     hospital = make_hospital(db)
     case = make_bare_nongyne_case(db, registrar_id=registrar.id, hospital=hospital)
     create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="x"))
-    clinician, pwd = _make_user(db, f"clin_{uuid.uuid4().hex[:8]}", "ClinPass1!", ["clinician"])
-    clinician.hospitals = [hospital]
-    db.commit()
-    r = client.post("/auth/login", data={"username": clinician.username, "password": pwd})
+    clerk, pwd = _make_user(db, f"reg_{uuid.uuid4().hex[:8]}", "RegPass1!", ["register"])
+    r = client.post("/auth/login", data={"username": clerk.username, "password": pwd})
     assert r.status_code == 200, r.text
 
     payload = f'<p>cough</p><link rel="attachment" href="{secret_file.as_uri()}">'

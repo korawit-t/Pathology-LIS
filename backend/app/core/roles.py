@@ -1,4 +1,4 @@
-from app.dependencies.auth import RoleChecker
+from app.dependencies.auth import InternalStaffOnly, RoleChecker
 
 # --- กลุ่มสิทธิ์สำหรับการเข้าถึงข้อมูล (Access) ---
 CAN_ACCESS_PATIENT = RoleChecker(
@@ -133,3 +133,12 @@ CAN_READ_CYTO_STATISTICS = RoleChecker(
 # already in the workflow is admin's or the lab manager's.
 CAN_DELETE_CASE = RoleChecker(["admin"])
 CAN_CANCEL_CASE = RoleChecker(["admin", "lab_manager"])
+
+# The whole audit trail, user rows included. Only the Audit Log page (admin)
+# reads it.
+CAN_READ_AUDIT_LOG = RoleChecker(["admin"])
+
+# Closes a whole router to clinician/hospital accounts; see InternalStaffOnly.
+# Applied in main.py to every router no referring-side page calls. Routers
+# those pages do call declare their own InternalStaffOnly(open_to_external=...).
+INTERNAL_STAFF_ONLY = InternalStaffOnly()

@@ -42,16 +42,31 @@ from app.schemas.surgical_case import (
     OutLabConsultRequest,
     OutLabConsultStateResponse,
 )
-from app.core.roles import CAN_CANCEL_CASE, CAN_DELETE_CASE, CAN_MANAGE_SPECIMEN_STORAGE, CAN_REQUEST_CONSULT
+from app.core.roles import (
+    CAN_APPROVE_OUTLAB_RESULT,
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
+    CAN_MANAGE_SPECIMEN_STORAGE,
+    CAN_REQUEST_CONSULT,
+)
 from app.crud import surgical_case as crud_case
-from app.dependencies.auth import get_current_user, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
+from app.dependencies.auth import InternalStaffOnly, get_current_user, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/surgical-cases",
     tags=[
         "Surgical Cases"
     ],  # 🔒 ใส่ตรงนี้! เพื่อบอกว่า "ทุกฟังก์ชันในไฟล์นี้ ต้องผ่านด่านตรวจรหัสผ่านก่อน"
-    dependencies=[Depends(check_password_status)],
+    dependencies=[
+        Depends(check_password_status),
+        Depends(InternalStaffOnly(open_to_external={
+            "search_all_reports_public",
+            "list_hospital_cases",
+            "get_hospital_unread_count",
+        })),
+    ],
 )
 
 
@@ -803,11 +818,14 @@ def download_consult_pdf(
         media_type="application/pdf"
     )
 
+# The approver's name is printed on the consult cover as its digital
+# signature, so approving is the pathologist's act, as it is for gyne's
+# out-lab result (CAN_APPROVE_OUTLAB_RESULT there too).
 @router.post("/{case_id}/consult-pdf/approve")
 def approve_consult_pdf_endpoint(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_APPROVE_OUTLAB_RESULT),
 ):
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:

@@ -16,11 +16,11 @@ class TestAuth:
     def test_requires_authentication(self, client):
         assert client.get("/outlab-consult-runs").status_code == 401
 
-    def test_any_authenticated_role_can_create_and_list(self, db, clinician_client, admin_user):
+    def test_any_lab_role_can_create_and_list(self, db, staff_client, admin_user):
         registrar, _ = admin_user
         case = make_bare_case(db, registrar_id=registrar.id)
 
-        created = clinician_client.post(
+        created = staff_client.post(
             "/outlab-consult-runs",
             json={
                 "destination_lab": "Reference Lab A",
@@ -29,7 +29,7 @@ class TestAuth:
         )
         assert created.status_code == 201
 
-        r = clinician_client.get("/outlab-consult-runs")
+        r = staff_client.get("/outlab-consult-runs")
         assert r.status_code == 200
         assert any(run["id"] == created.json()["id"] for run in r.json())
 

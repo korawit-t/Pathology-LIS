@@ -10,7 +10,10 @@ routes, found in the 2026-11-01 security review.
 - The cyto diagnosis reads and every preview (gyne, non-gyne, surgical) let a
   clinician / hospital account read any hospital's draft by case id. They now
   need the domain's read role and are hospital-scoped, like the published
-  report reads already were.
+  report reads already were. Since InternalStaffOnly
+  (test_external_account_gate.py) they are closed to those accounts outright,
+  even for their own hospital: the referring side sees a result once it is
+  published, through the portal's archive and PDF routes.
 """
 
 import uuid
@@ -184,14 +187,15 @@ class TestDraftReadsAreHospitalScoped:
 
         assert set(refused.values()) == {403}, refused
 
-    def test_external_account_reads_its_own_hospitals_diagnosis(self, client, db, admin_user):
+    def test_external_account_cannot_read_its_own_hospitals_drafts_either(self, client, db, admin_user):
         registrar, _ = admin_user
         hospital = make_hospital(db)
-        gyne, nongyne, _, _ = _cases_at(db, registrar.id, hospital)
+        reads = _draft_reads(*_cases_at(db, registrar.id, hospital))
         _login(client, *_user(db, "clinician", hospital))
 
-        assert client.get(f"/gyne-diagnosis/case/{gyne.id}").status_code == 200
-        assert client.get(f"/nongyne-diagnosis/case/{nongyne.id}").status_code == 200
+        refused = {url: _call(client, method, url, body).status_code for method, url, body in reads}
+
+        assert set(refused.values()) == {403}, refused
 
     @pytest.mark.parametrize("role", ["histo", "gross"])
     def test_internal_role_without_cyto_read_is_refused(self, client, db, admin_user, role):
