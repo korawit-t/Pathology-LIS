@@ -62,6 +62,13 @@ def update_user(db: Session, user_id: int, data: UserUpdate):
     # ดึงเฉพาะข้อมูลที่มีการส่งมาแก้ไข (exclude_unset=True)
     update_data = data.dict(exclude_unset=True)
 
+    # Only the account holder clears the temporary flag, by changing the
+    # password themselves (update_user_password). An admin may set it, never
+    # clear it: whoever set a password knows it, and sending False alongside
+    # (or after) a reset used to leave that known password in place for good.
+    if update_data.pop("is_temporary_password", None) is True:
+        user.is_temporary_password = True
+
     # ✅ ตรวจสอบว่ามีการแก้ไข Password หรือไม่
     if "password" in update_data:
         plain_password = update_data.pop("password")
@@ -69,6 +76,10 @@ def update_user(db: Session, user_id: int, data: UserUpdate):
         setattr(user, "hashed_password", get_password_hash(plain_password))
         # 🚩 ถ้า Admin เป็นคนเปลี่ยนรหัสให้ ให้บังคับเปลี่ยนรหัสใหม่เสมอ (เซตกลับเป็น True)
         user.is_temporary_password = True
+        # Ends every session the account already had (see
+        # issued_before_password_change), so a reset locks out whoever was
+        # still signed in with the old password.
+        user.last_update_password = local_now()
 
     # hospital_ids is a relationship, not a plain column — set separately
     if "hospital_ids" in update_data:

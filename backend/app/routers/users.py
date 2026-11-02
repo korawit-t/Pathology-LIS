@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -8,7 +8,12 @@ from app.crud.user import get_users, get_user, create_user, update_user, delete_
 import app.crud.user as user_crud
 
 # ✅ Import RoleChecker และ get_current_user เข้ามา
-from app.dependencies.auth import InternalStaffOnly, get_current_user, check_password_status
+from app.dependencies.auth import (
+    InternalStaffOnly,
+    allowed_while_password_change_due,
+    check_password_status,
+    get_current_user,
+)
 from app.models.user import User
 from app.core.roles import CAN_MANAGE_USERS, CAN_RESET_USER_MFA
 from app.dependencies.step_up import require_step_up
@@ -16,8 +21,8 @@ from app.crud import user_trusted_device as device_crud
 from app.crud import user_mfa as mfa_crud
 from app.models.audit_log import AuditLog
 from app.context import current_ip
-from app.core.security import verify_password
-from app.routers.auth import limiter
+from app.core.security import create_access_token, create_refresh_token, verify_password
+from app.routers.auth import _set_auth_cookies, limiter
 
 
 # Clinician and hospital accounts reach only the endpoints named here (what
@@ -37,6 +42,7 @@ router = APIRouter(
 
 # 1. ดูข้อมูลตัวเอง (ใคร Login มา ก็เห็นแค่คนนั้น)
 @router.get("/me", response_model=UserResponse)
+@allowed_while_password_change_due
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
@@ -150,9 +156,11 @@ def delete_existing_user(
 
 
 @router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+@allowed_while_password_change_due
 @limiter.limit("5/minute")
 def update_my_password(
     request: Request,
+    response: Response,
     data: PasswordUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),  # ยืนยันตัวตนจาก Token
@@ -199,6 +207,14 @@ def update_my_password(
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Every token minted before the change now fails
+    # (issued_before_password_change), this caller's included. Hand it a fresh
+    # pair so that changing the password from the profile menu does not also
+    # sign the user out. Every other session ends at its next request.
+    access_token, _jti, _exp = create_access_token(subject=updated_user.username, uid=updated_user.id)
+    refresh_token, _refresh_jti, _refresh_exp = create_refresh_token(subject=updated_user.username)
+    _set_auth_cookies(response, access_token, refresh_token)
+
     # HTTP 204 No Content หมายถึงสำเร็จแต่ไม่ต้องส่ง Body กลับไป
     return
 
@@ -208,6 +224,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from fastapi import Body
 
 @router.patch("/me/preferences")
+@allowed_while_password_change_due
 def update_my_preferences(
     prefs: dict = Body(...),
     db: Session = Depends(get_db),

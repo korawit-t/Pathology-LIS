@@ -23,7 +23,13 @@ _PLACEHOLDER_KEYS = {
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise ValueError("SECRET_KEY is not set. Generate one with: openssl rand -hex 32")
-if SECRET_KEY.lower() in _PLACEHOLDER_KEYS:
+# The exact-match set alone let .env.example's own value through:
+# "CHANGE_ME_generate_with_openssl_rand_hex_32" is long enough for the length
+# check below, and that file is public, so a copy deployed unedited signed
+# tokens anyone could forge. A generated key never contains these words.
+if SECRET_KEY.lower() in _PLACEHOLDER_KEYS or any(
+    marker in SECRET_KEY.lower() for marker in ("change_me", "changeme")
+):
     raise ValueError(
         "SECRET_KEY is still the placeholder value. "
         "Generate a real key with: openssl rand -hex 32"
@@ -62,13 +68,15 @@ def create_access_token(
     uid: Union[int, None] = None,
 ) -> tuple[str, str, datetime]:
     """สร้าง JWT Token — returns (token, jti, expires_at)"""
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
     jti = str(uuid.uuid4())
-    to_encode: dict = {"sub": str(subject), "exp": expire, "type": "access", "jti": jti}
+    # iat lets get_current_user refuse tokens minted before the account's last
+    # password change (see issued_before_password_change). Fractional seconds,
+    # which a JWT NumericDate allows: whole seconds could not tell a session
+    # opened a moment before the change from the one handed out just after.
+    to_encode: dict = {"sub": str(subject), "iat": now.timestamp(), "exp": expire, "type": "access", "jti": jti}
     if uid is not None:
         to_encode["uid"] = uid
 
@@ -122,11 +130,13 @@ def create_mfa_challenge_token(subject: Union[str, Any], uid: int) -> tuple[str,
     /auth/login/mfa revoke it once spent, so a captured token cannot be
     redeemed a second time.
     """
-    expire = datetime.now(timezone.utc) + timedelta(minutes=MFA_CHALLENGE_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=MFA_CHALLENGE_EXPIRE_MINUTES)
     jti = str(uuid.uuid4())
     to_encode = {
         "sub": str(subject),
         "uid": uid,
+        "iat": now.timestamp(),
         "exp": expire,
         "type": "mfa_challenge",
         "jti": jti,
@@ -140,10 +150,12 @@ def create_refresh_token(subject: Union[str, Any]) -> tuple[str, str, datetime]:
     (token, jti, expires_at). The jti lets the refresh endpoint revoke this
     specific token on rotation/logout and detect reuse of an already-rotated
     token."""
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     jti = str(uuid.uuid4())
     to_encode = {
         "sub": str(subject),
+        "iat": now.timestamp(),
         "exp": expire,
         "type": "refresh",  # ใส่ type เพื่อกันการสลับใช้
         "jti": jti,
