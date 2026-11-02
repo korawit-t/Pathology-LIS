@@ -10,9 +10,12 @@ from app.db.database import get_db
 from app.schemas.system_setting import SystemSettingAdminResponse, SystemSettingResponse, SystemSettingUpdate
 from app.crud import system_setting as crud
 from app.dependencies.auth import get_current_user
-from app.core.roles import CAN_MANAGE_SYSTEM_SETTINGS
+from app.core.roles import CAN_MANAGE_SYSTEM_SETTINGS, INTERNAL_STAFF_ONLY
 from app.dependencies.step_up import require_step_up
 
+# Not gated as a whole like the other routers (main.py): /all and /public work
+# without a login. The lab-only endpoints below carry INTERNAL_STAFF_ONLY
+# themselves; /{setting_id} stays open because every page loads it.
 router = APIRouter(prefix="/system-settings", tags=["System Settings"])
 
 # 🚩 ปรับให้ไปอยู่ที่ data/storage/system เพื่อให้สอดคล้องกับ main.py ที่ mount /storage ไว้
@@ -131,7 +134,7 @@ class ReportTemplateSet(BaseModel):
     template_name: str
 
 
-@router.get("/report-templates", dependencies=[Depends(get_current_user)])
+@router.get("/report-templates", dependencies=[Depends(INTERNAL_STAFF_ONLY)])
 def list_report_templates(slug: str = "master", db: Session = Depends(get_db)):
     """Returns available template filenames and the currently active one for each report type."""
     settings = crud.get_settings(db, hospital_slug=slug)
@@ -144,7 +147,7 @@ def list_report_templates(slug: str = "master", db: Session = Depends(get_db)):
     }
 
 
-@router.get("/report-templates/preview", dependencies=[Depends(get_current_user)])
+@router.get("/report-templates/preview", dependencies=[Depends(INTERNAL_STAFF_ONLY)])
 def preview_report_template(report_type: str, template_name: str, db: Session = Depends(get_db)):
     """Render the template with dummy data and return a PDF preview."""
     import io
@@ -275,14 +278,14 @@ def set_report_template(payload: ReportTemplateSet, slug: str = "master", db: Se
     return crud.update_settings(db, update_data, hospital_slug=slug)
 
 
-@router.get("/font-check", dependencies=[Depends(get_current_user)])
+@router.get("/font-check", dependencies=[Depends(INTERNAL_STAFF_ONLY)])
 def font_check():
     """Diagnostic: check whether Sarabun font files are accessible to the PDF renderer."""
     from app.services.pdf_service import check_fonts
     return check_fonts()
 
 
-@router.get("/sticker-test-print", dependencies=[Depends(get_current_user)])
+@router.get("/sticker-test-print", dependencies=[Depends(INTERNAL_STAFF_ONLY)])
 def sticker_test_print(db: Session = Depends(get_db)):
     from fastapi.responses import Response as FastAPIResponse
     from datetime import date

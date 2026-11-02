@@ -7,13 +7,15 @@ from tests.factories import make_bare_case
 
 
 class TestRbac:
-    def test_clinician_can_read(self, db, clinician_client, admin_user):
+    def test_clinician_cannot_read(self, db, clinician_client, admin_user):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
         registrar, _ = admin_user
         case = make_bare_case(db, registrar_id=registrar.id)
 
         r = clinician_client.get(f"/surgical-case-correlations/by-case/{case.id}")
 
-        assert r.status_code == 200
+        assert r.status_code == 403
 
     def test_clinician_cannot_create(self, db, clinician_client, admin_user):
         registrar, _ = admin_user

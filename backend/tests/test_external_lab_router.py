@@ -17,25 +17,25 @@ def _name():
 
 
 class TestExternalLabRouterAnyAuthenticatedUser:
-    def test_clinician_can_list(self, db, clinician_client):
+    def test_lab_staff_can_list(self, db, staff_client):
         create_external_lab(db, ExternalLabCreate(name=_name()))
-        r = clinician_client.get("/external-labs")
+        r = staff_client.get("/external-labs")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_clinician_can_create(self, clinician_client):
-        r = clinician_client.post("/external-labs", json={"name": _name()})
+    def test_lab_staff_can_create(self, staff_client):
+        r = staff_client.post("/external-labs", json={"name": _name()})
         assert r.status_code == 200
 
-    def test_clinician_can_update(self, db, clinician_client):
+    def test_lab_staff_can_update(self, db, staff_client):
         lab = create_external_lab(db, ExternalLabCreate(name=_name()))
-        r = clinician_client.put(f"/external-labs/{lab.id}", json={"description": "Updated"})
+        r = staff_client.put(f"/external-labs/{lab.id}", json={"description": "Updated"})
         assert r.status_code == 200
         assert r.json()["description"] == "Updated"
 
-    def test_clinician_can_delete(self, db, clinician_client):
+    def test_lab_staff_can_delete(self, db, staff_client):
         lab = create_external_lab(db, ExternalLabCreate(name=_name()))
-        r = clinician_client.delete(f"/external-labs/{lab.id}")
+        r = staff_client.delete(f"/external-labs/{lab.id}")
         assert r.status_code == 200
 
 

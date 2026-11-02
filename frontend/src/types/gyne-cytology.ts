@@ -129,9 +129,7 @@ export interface GyneCytologyCaseUpdate extends Partial<GyneCytologyCaseCreate> 
   collect_at?: string | null;
   is_out_lab_consult?: boolean;
   is_out_lab?: boolean;
-  out_lab_result_pdf_path?: string | null;
   consult_status?: string;
-  consult_pdf_path?: string | null;
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;
   consult_report_out_at?: string | null;

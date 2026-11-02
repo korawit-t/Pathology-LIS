@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime, date, time
 from app.utils.time import local_now
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf, approve_consult_pdf
 
 logger = logging.getLogger(__name__)
@@ -42,16 +42,31 @@ from app.schemas.surgical_case import (
     OutLabConsultRequest,
     OutLabConsultStateResponse,
 )
-from app.core.roles import CAN_MANAGE_SPECIMEN_STORAGE, CAN_REQUEST_CONSULT
+from app.core.roles import (
+    CAN_APPROVE_OUTLAB_RESULT,
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
+    CAN_MANAGE_SPECIMEN_STORAGE,
+    CAN_REQUEST_CONSULT,
+)
 from app.crud import surgical_case as crud_case
-from app.dependencies.auth import get_current_user, RoleChecker, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
+from app.dependencies.auth import InternalStaffOnly, get_current_user, check_password_status, assert_hospital_scoped_access, get_scoped_hospital_ids
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/surgical-cases",
     tags=[
         "Surgical Cases"
     ],  # 🔒 ใส่ตรงนี้! เพื่อบอกว่า "ทุกฟังก์ชันในไฟล์นี้ ต้องผ่านด่านตรวจรหัสผ่านก่อน"
-    dependencies=[Depends(check_password_status)],
+    dependencies=[
+        Depends(check_password_status),
+        Depends(InternalStaffOnly(open_to_external={
+            "search_all_reports_public",
+            "list_hospital_cases",
+            "get_hospital_unread_count",
+        })),
+    ],
 )
 
 
@@ -547,6 +562,11 @@ def update_case(
     db_case = crud_case.get_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     # 2. เรียกใช้ฟังก์ชัน Update ที่เราเขียนไว้ใน CRUD
     return crud_case.update_case(db, db_obj=db_case, obj_in=case_in)
@@ -630,7 +650,7 @@ def bulk_update_storage(
 def delete_case(
     case_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(RoleChecker(["admin"])),
+    _: User = Depends(CAN_DELETE_CASE),
 ):
     """
     ลบเคสแบบ Hard Delete (เฉพาะ Admin)
@@ -788,20 +808,24 @@ def download_consult_pdf(
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    if not os.path.exists(case.consult_pdf_path):
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
         raise HTTPException(status_code=404, detail="Physical file missing")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf"
     )
 
+# The approver's name is printed on the consult cover as its digital
+# signature, so approving is the pathologist's act, as it is for gyne's
+# out-lab result (CAN_APPROVE_OUTLAB_RESULT there too).
 @router.post("/{case_id}/consult-pdf/approve")
 def approve_consult_pdf_endpoint(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_APPROVE_OUTLAB_RESULT),
 ):
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
@@ -859,7 +883,7 @@ def cancel_case(
     case_id: int,
     payload: CaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker(["admin", "lab_manager"])),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     # เรียกใช้ฟังก์ชัน cancel ที่เราเตรียมไว้ใน CRUD
     db_case = crud_case.cancel_surgical_case(

@@ -17,8 +17,10 @@ from tests.pdf_probe import footer_barcode_bars
 
 
 class TestRbacReadEndpoints:
-    def test_clinician_can_list_all_reports(self, clinician_client):
-        assert clinician_client.get("/surgical-reports/all").status_code == 200
+    def test_clinician_cannot_list_all_reports(self, clinician_client):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
+        assert clinician_client.get("/surgical-reports/all").status_code == 403
 
     def test_clinician_can_read_archive(self, clinician_client):
         assert clinician_client.get("/surgical-reports/archive").status_code == 200

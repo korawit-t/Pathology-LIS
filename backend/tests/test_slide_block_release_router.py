@@ -22,11 +22,11 @@ class TestAuth:
     def test_requires_authentication(self, client):
         assert client.get("/slide-block-releases").status_code == 401
 
-    def test_any_authenticated_role_can_create_and_list(self, db, clinician_client, admin_user):
+    def test_any_lab_role_can_create_and_list(self, db, staff_client, admin_user):
         registrar, _ = admin_user
         case, _ = make_signable_case(db, registrar_id=registrar.id)
 
-        created = clinician_client.post(
+        created = staff_client.post(
             "/slide-block-releases",
             json={
                 "case_id": case.id,
@@ -37,7 +37,7 @@ class TestAuth:
         )
         assert created.status_code == 201
 
-        r = clinician_client.get("/slide-block-releases")
+        r = staff_client.get("/slide-block-releases")
         assert r.status_code == 200
         assert any(item["id"] == created.json()["id"] for item in r.json()["items"])
 

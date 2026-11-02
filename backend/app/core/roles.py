@@ -1,4 +1,4 @@
-from app.dependencies.auth import RoleChecker
+from app.dependencies.auth import InternalStaffOnly, RoleChecker
 
 # --- กลุ่มสิทธิ์สำหรับการเข้าถึงข้อมูล (Access) ---
 CAN_ACCESS_PATIENT = RoleChecker(
@@ -118,3 +118,27 @@ CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE = RoleChecker(
 CAN_READ_DIAGNOSIS_SEARCH = RoleChecker(
     ["admin", "lab_manager", "pathologist", "senior_pathologist", "cytotechnologist"]
 )
+
+# --- Cyto statistics (Report Analytics) ---
+# Two of these routes list cases with HN and patient name (the summary-table
+# drill-down and the QC case list), so they get exactly the internal-staff
+# roles of the Report Analytics page ("report-analytics" in the frontend's
+# pagePermissions.ts) and no external role.
+CAN_READ_CYTO_STATISTICS = RoleChecker(
+    ["admin", "lab_manager", "histo", "gross", "immuno", "cytotechnologist", "register", "pathologist", "senior_pathologist"]
+)
+
+# --- Removing a case (surgical, gyne, non-gyne) ---
+# Hard delete (a case still at registered) is admin's alone; cancelling a case
+# already in the workflow is admin's or the lab manager's.
+CAN_DELETE_CASE = RoleChecker(["admin"])
+CAN_CANCEL_CASE = RoleChecker(["admin", "lab_manager"])
+
+# The whole audit trail, user rows included. Only the Audit Log page (admin)
+# reads it.
+CAN_READ_AUDIT_LOG = RoleChecker(["admin"])
+
+# Closes a whole router to clinician/hospital accounts; see InternalStaffOnly.
+# Applied in main.py to every router no referring-side page calls. Routers
+# those pages do call declare their own InternalStaffOnly(open_to_external=...).
+INTERNAL_STAFF_ONLY = InternalStaffOnly()

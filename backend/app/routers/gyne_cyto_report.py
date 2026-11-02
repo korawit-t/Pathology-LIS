@@ -24,17 +24,26 @@ from app.core.roles import (
     CAN_WRITE_GYNE_CYTO_REPORT,
     CAN_READ_GYNE_CYTO_REPORT
 )
-from app.dependencies.auth import get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import InternalStaffOnly, get_scoped_hospital_ids, assert_hospital_scoped_access
 from pydantic import BaseModel
 from app.utils.time import local_now
 from app.crud.report_archive import get_gyne_archive
 from app.schemas.archive import ArchivePage
 from app.dependencies.step_up import require_step_up
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/gyne-cyto-reports",
     tags=["Gyne Cyto Reports"],
-    dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)],
+    dependencies=[
+        Depends(CAN_READ_GYNE_CYTO_REPORT),
+        Depends(InternalStaffOnly(open_to_external={
+            "read_gyne_archive",
+            "get_report_pdf",
+            "mark_gyne_report_read",
+        })),
+    ],
 )
 
 def build_gyne_barcode_value(case, report, opd_prefix: str, ipd_prefix: str, type_code: str) -> str:
@@ -264,8 +273,13 @@ def complete_review(
 
 
 @router.post("/cases/{case_id}/preview-data", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def preview_report_data(case_id: int, db: Session = Depends(get_db)):
+def preview_report_data(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ดูข้อมูลที่จะใช้ในรายงานก่อน Publish"""
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_gyne_report_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -300,9 +314,14 @@ def get_report_pdf(
 
 
 @router.get("/cases/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)])
-def preview_report_pdf(case_id: int, db: Session = Depends(get_db)):
+def preview_report_pdf(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """พรีวิวรายงาน PDF ก่อนส่งผล"""
     from app.crud.gyne_cyto_report import get_gyne_report_pdf
+    from app.models.gyne_cyto_case import GyneCytologyCase
+
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     pdf_blob = get_gyne_report_pdf(db, case_id=case_id, is_preview=True)
     if not pdf_blob:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -386,11 +405,12 @@ def generate_gyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_gyne_report_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/{report_id}/mark-read")
+def mark_gyne_report_read(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = db.query(GyneCytoReport).filter(GyneCytoReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     if not report.is_read:
         report.is_read = True
         report.read_at = local_now()

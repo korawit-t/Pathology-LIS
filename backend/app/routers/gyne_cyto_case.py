@@ -1,8 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Response
-from app.utils.file_handler import validate_and_sanitize
-from app.utils.time import local_now
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Any, Optional
@@ -20,11 +19,17 @@ from app.crud import gyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.dependencies.auth import (
     CLINICIAN_FACING_ROLES,
+    InternalStaffOnly,
     get_current_user,
     assert_hospital_scoped_access,
     get_scoped_hospital_ids,
 )
-from app.core.roles import CAN_APPROVE_OUTLAB_RESULT
+from app.core.roles import (
+    CAN_APPROVE_OUTLAB_RESULT,
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
+    CAN_READ_CYTO_STATISTICS,
+)
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
@@ -34,7 +39,17 @@ os.makedirs(GYNE_UPLOAD_DIR, exist_ok=True)
 OUTLAB_REPORT_DIR = os.path.join(os.getcwd(), "uploads", "outlab")
 os.makedirs(OUTLAB_REPORT_DIR, exist_ok=True)
 
-router = APIRouter(prefix="/gyne-cytology", tags=["Gyne Cytology"])
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
+router = APIRouter(
+    prefix="/gyne-cytology",
+    tags=["Gyne Cytology"],
+    dependencies=[
+        Depends(InternalStaffOnly(open_to_external={
+            "get_outlab_test_result",
+        })),
+    ],
+)
 
 
 @router.post(
@@ -123,7 +138,7 @@ def read_cases(
     )
 
 
-@router.get("/statistics")
+@router.get("/statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_statistics(
     start_date: str,
     end_date: str,
@@ -137,7 +152,7 @@ def read_gyne_statistics(
     return crud.get_gyne_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/summary-table")
+@router.get("/summary-table", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_summary_table(
     start_date: str,
     end_date: str,
@@ -151,7 +166,7 @@ def read_gyne_summary_table(
     return crud.get_gyne_summary_table(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/summary-table/cases")
+@router.get("/summary-table/cases", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_summary_table_cases(
     start_date: str,
     end_date: str,
@@ -166,7 +181,7 @@ def read_gyne_summary_table_cases(
     return crud.get_gyne_summary_table_cases(db, start, end, metric, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/slide-quality-stats")
+@router.get("/slide-quality-stats", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_slide_quality_stats(
     start_date: str,
     end_date: str,
@@ -178,7 +193,7 @@ def read_gyne_slide_quality_stats(
     return crud.get_gyne_slide_quality_stats(db, start, end)
 
 
-@router.get("/qc-statistics")
+@router.get("/qc-statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_qc_statistics(
     start_date: str,
     end_date: str,
@@ -192,7 +207,7 @@ def read_gyne_qc_statistics(
     return crud.get_gyne_qc_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/qc-cases")
+@router.get("/qc-cases", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_gyne_qc_cases(
     start_date: str,
     end_date: str,
@@ -330,6 +345,11 @@ def update_case_info(
     db_case = crud.get_gyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     return crud.update_gyne_case(
         db=db, db_obj=db_case, obj_in=case_in, actor_id=current_user.id
@@ -337,7 +357,7 @@ def update_case_info(
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def delete_case(case_id: int, db: Session = Depends(get_db), _: User = Depends(CAN_DELETE_CASE)):
     success = crud.delete_gyne_case(db=db, case_id=case_id)
     if not success:
         raise HTTPException(
@@ -351,7 +371,7 @@ def cancel_case(
     case_id: int,
     payload: GyneCaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     db_case = crud.cancel_gyne_case(
         db, case_id=case_id, user_id=current_user.id, reason=payload.reason
@@ -441,13 +461,15 @@ async def upload_outlab_test_result(
     case = crud.get_gyne_case(db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
     if not case.is_out_lab:
         raise HTTPException(status_code=400, detail="This case is not flagged as an outlab test.")
 
     data, ext = validate_and_sanitize(file, allowed="pdf")
 
-    if case.out_lab_result_pdf_path and os.path.exists(case.out_lab_result_pdf_path):
-        os.remove(case.out_lab_result_pdf_path)
+    old_file = resolve_stored_file(case.out_lab_result_pdf_path)
+    if old_file:
+        os.remove(old_file)
 
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(OUTLAB_REPORT_DIR, unique_filename)
@@ -457,11 +479,7 @@ async def upload_outlab_test_result(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-    from app.schemas.gyne_cyto_case import GyneCytologyCaseUpdate
-    updated = crud.update_gyne_case(db, case, GyneCytologyCaseUpdate(
-        out_lab_result_pdf_path=file_path,
-        out_lab_result_uploaded_at=local_now(),
-    ))
+    updated = crud.set_outlab_test_result_file(db, case, file_path)
     # A (re-)uploaded PDF always needs fresh pathologist sign-off.
     crud.clear_outlab_result_approval(db, updated)
     return updated
@@ -497,12 +515,13 @@ def get_outlab_test_result(
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    assert_hospital_scoped_access(current_user, case.hospital_id)
     if not case.out_lab_result_pdf_path:
         raise HTTPException(status_code=404, detail="No outlab test result uploaded for this case.")
     user_roles = current_user.roles if isinstance(current_user.roles, list) else []
     if CLINICIAN_FACING_ROLES.intersection(user_roles) and not case.outlab_result_approved_at:
         raise HTTPException(status_code=403, detail="This result is awaiting pathologist sign-off.")
-    if not os.path.exists(case.out_lab_result_pdf_path):
+    if not resolve_stored_file(case.out_lab_result_pdf_path):
         raise HTTPException(status_code=404, detail="Result file not found on server.")
     # Same lab-header + patient/accession cover sheet as the Surgical
     # external-consult / Molecular out-lab-pdf cover sheet — regenerated
@@ -557,12 +576,15 @@ def download_consult_pdf(
     current_user: Any = Depends(get_current_user),
 ):
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
-    if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
+    if not case:
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
+        raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf",
     )

@@ -7,16 +7,21 @@ is on (mirrors Surgical's enable_approve_system; see
 tests.factories.make_pending_nongyne_report's docstring), so there's no
 complete-review endpoint/test class to mirror."""
 
+import uuid
+
 from app.crud.nongyne_diagnosis import create_nongyne_diagnosis
 from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
 
-from tests.factories import make_bare_nongyne_case, make_pending_nongyne_report, make_system_setting
+from tests.conftest import _make_user
+from tests.factories import make_bare_nongyne_case, make_hospital, make_pending_nongyne_report, make_system_setting
 from tests.pdf_probe import footer_barcode_bars
 
 
 class TestRbac:
-    def test_clinician_can_read_list(self, clinician_client):
-        assert clinician_client.get("/nongyne-cyto-reports").status_code == 200
+    def test_clinician_cannot_read_the_lab_list(self, clinician_client):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
+        assert clinician_client.get("/nongyne-cyto-reports").status_code == 403
 
     def test_clinician_cannot_publish(self, db, clinician_client, admin_user):
         registrar, _ = admin_user
@@ -196,18 +201,23 @@ class TestPrintStatusAndMarkRead:
     def test_update_print_status_missing_returns_404(self, pathologist_client):
         assert pathologist_client.patch("/nongyne-cyto-reports/999999/print-status", json={"is_print": True}).status_code == 404
 
-    def test_mark_read_only_requires_authentication_not_a_role(self, db, clinician_client, admin_user, pathologist_user):
-        # Same finding as gyne_cyto_report: this route only depends on
-        # get_current_user, unlike its siblings' CAN_READ/CAN_WRITE gates —
-        # clinician is in both anyway so nothing is under-protected today.
+    def test_mark_read_is_scoped_to_the_clinicians_hospitals(self, db, client, admin_user, pathologist_user):
+        # The results portal marks a report read when it opens it. It used to
+        # accept any report id from any account.
         registrar, _ = admin_user
         pathologist, _ = pathologist_user
         _, report = make_pending_nongyne_report(db, registrar_id=registrar.id, pathologist_id=pathologist.id)
+        own, other = make_hospital(db), make_hospital(db)
+        report.hospital_id = own.id
+        db.commit()
 
-        r = clinician_client.post(f"/nongyne-cyto-reports/{report.id}/mark-read")
+        for hospital, expected in ((other, 403), (own, 200)):
+            clinician, pwd = _make_user(db, f"clin_{uuid.uuid4().hex[:8]}", "ClinPass1!", ["clinician"])
+            clinician.hospitals = [hospital]
+            db.commit()
+            client.post("/auth/login", data={"username": clinician.username, "password": pwd})
 
-        assert r.status_code == 200
-        assert r.json()["success"] is True
+            assert client.post(f"/nongyne-cyto-reports/{report.id}/mark-read").status_code == expected
 
     def test_mark_read_missing_returns_404(self, pathologist_client):
         assert pathologist_client.post("/nongyne-cyto-reports/999999/mark-read").status_code == 404

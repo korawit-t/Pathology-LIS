@@ -22,7 +22,7 @@ from app.schemas.nongyne_cyto_report import (
     NongyneCytoReportPagination,
     NongyneReportSignerCreate,
 )
-from app.dependencies.auth import get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import InternalStaffOnly, get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.models.nongyne_cyto_report import NongyneCytoReport
 from app.core.roles import CAN_WRITE_NONGYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_REPORT
@@ -31,10 +31,19 @@ from app.crud.report_archive import get_nongyne_archive
 from app.schemas.archive import ArchivePage
 from app.dependencies.step_up import require_step_up
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/nongyne-cyto-reports",
     tags=["Nongyne Cyto Reports"],
-    dependencies=[Depends(CAN_READ_NONGYNE_CYTO_REPORT)],
+    dependencies=[
+        Depends(CAN_READ_NONGYNE_CYTO_REPORT),
+        Depends(InternalStaffOnly(open_to_external={
+            "read_nongyne_archive",
+            "get_report_pdf",
+            "mark_nongyne_report_read",
+        })),
+    ],
 )
 
 
@@ -177,7 +186,12 @@ def read_report(report_id: int, db: Session = Depends(get_db), current_user: Use
 
 
 @router.post("/cases/{case_id}/preview-data")
-def preview_report_data(case_id: int, db: Session = Depends(get_db)):
+def preview_report_data(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.nongyne_cyto_case import NongyneCytologyCase
+
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_nongyne_report_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -190,7 +204,13 @@ def preview_report_pdf(
     db: Session = Depends(get_db),
     is_pending: bool = False,
     pending_reason: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
 ):
+    from app.models.nongyne_cyto_case import NongyneCytologyCase
+
+    case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     data = prepare_nongyne_report_pdf_data(db, case_id)
     if not data:
         raise HTTPException(status_code=404, detail="Case or Diagnosis not found")
@@ -335,11 +355,12 @@ def generate_nongyne_barcode_pdf(payload: dict, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_nongyne_report_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/{report_id}/mark-read")
+def mark_nongyne_report_read(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = db.query(NongyneCytoReport).filter(NongyneCytoReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     if not report.is_read:
         report.is_read = True
         report.read_at = local_now()

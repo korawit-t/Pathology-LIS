@@ -10,9 +10,10 @@ from app.schemas.gyne_diagnosis import (
     GyneDiagnosisCategoryBase,
 )
 from app.crud import gyne_diagnosis as crud
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, assert_hospital_scoped_access
 from app.models.user import User
-from app.core.roles import CAN_WRITE_GYNE_CYTO_REPORT
+from app.core.roles import CAN_READ_GYNE_CYTO_REPORT, CAN_WRITE_GYNE_CYTO_REPORT
+from app.models.gyne_cyto_case import GyneCytologyCase
 
 router = APIRouter(
     prefix="/gyne-diagnosis",
@@ -74,14 +75,26 @@ def update_existing_diagnosis(
     return db_diag
 
 
-@router.get("/case/{case_id}", response_model=GyneDiagnosisResponse | None)
-def read_current_diagnosis(case_id: int, db: Session = Depends(get_db)):
+@router.get(
+    "/case/{case_id}",
+    response_model=GyneDiagnosisResponse | None,
+    dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)],
+)
+def read_current_diagnosis(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     db_diag = crud.get_current_diagnosis(db, case_id=case_id)
     return db_diag  # ถ้าไม่เจอ จะส่ง null กลับไปพร้อมสถานะ 200 OK
 
 
-@router.get("/case/{case_id}/history", response_model=List[GyneDiagnosisResponse])
-def read_diagnosis_history(case_id: int, db: Session = Depends(get_db)):
+@router.get(
+    "/case/{case_id}/history",
+    response_model=List[GyneDiagnosisResponse],
+    dependencies=[Depends(CAN_READ_GYNE_CYTO_REPORT)],
+)
+def read_diagnosis_history(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
     return crud.get_diagnosis_history(db, case_id=case_id)
 
 

@@ -59,15 +59,16 @@ class TestGetAndUpsert:
 
         assert r.status_code == 403
 
-    def test_clinician_can_read(self, db, clinician_client, admin_user):
-        # CAN_READ_REPORT is much broader than CAN_WRITE_REPORT — includes clinician
+    def test_clinician_cannot_read(self, db, clinician_client, admin_user):
+        # CAN_READ_* lists clinician, but InternalStaffOnly closes this router
+        # to clinician and hospital accounts outside the results portal.
         registrar, _ = admin_user
         case = make_signable_case(db, registrar_id=registrar.id)[0]
         make_system_setting(db, tumor_registry_enabled=True)
 
         r = clinician_client.get(f"/tumor-registries/{case.id}")
 
-        assert r.status_code == 404  # enabled, readable, just nothing registered yet
+        assert r.status_code == 403
 
 
 class TestGetSummary:

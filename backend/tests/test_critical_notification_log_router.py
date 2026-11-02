@@ -28,8 +28,8 @@ class TestRbacAndAuth:
     def test_requires_authentication(self, client):
         assert client.get("/critical-notification-logs").status_code == 401
 
-    def test_any_authenticated_role_can_list(self, clinician_client):
-        assert clinician_client.get("/critical-notification-logs").status_code == 200
+    def test_any_lab_role_can_list(self, staff_client):
+        assert staff_client.get("/critical-notification-logs").status_code == 200
 
 
 class TestCreate:

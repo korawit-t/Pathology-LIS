@@ -1,7 +1,7 @@
 import os
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -75,6 +75,7 @@ from app.routers import (
 from app.middleware.audit_middleware import AuditContextMiddleware
 from app.services.audit_service import register_audit_listeners
 from app.core.config import IS_PRODUCTION, settings
+from app.core.roles import INTERNAL_STAFF_ONLY
 from app.his_export.worker import run_forever as run_his_export_worker
 from app.scheduled_notifications.worker import run_forever as run_scheduled_notifications_worker
 
@@ -263,78 +264,89 @@ from app.routers import wsi_settings as wsi_settings_router
 from app.routers import wsi_links as wsi_links_router
 
 # Include Routers
+#
+# Clinician and hospital accounts use only the results portal (Results /
+# Hospital Results). Every router that portal never calls is closed to them
+# here (see InternalStaffOnly), so an endpoint added to one of these routers
+# later is closed to them too. Routers the portal does call (users,
+# surgical_case and the report routers, gyne_cyto_case, molecular_case,
+# legacy_reports) declare their own gate listing the endpoints left open.
+# auth, user_mfa, system_setting, storage and version are left out because
+# each has endpoints that work without a login.
+# tests/test_external_account_gate.py fails for any route left uncovered.
+_INTERNAL_ONLY = [Depends(INTERNAL_STAFF_ONLY)]
 app.include_router(auth.router)
 app.include_router(user_mfa.router)
 app.include_router(users.router)
-app.include_router(organization.router)
-app.include_router(patients.router)
+app.include_router(organization.router, dependencies=_INTERNAL_ONLY)
+app.include_router(patients.router, dependencies=_INTERNAL_ONLY)
 app.include_router(surgical_case.router)
-app.include_router(surgical_specimen.router)
-app.include_router(surgical_block.router)
-app.include_router(gross_images.router)
-app.include_router(anatomical_pathology_test.router)
-app.include_router(surgical_specimen_ap_test.router)
-app.include_router(surgical_diagnosis.router)
+app.include_router(surgical_specimen.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_block.router, dependencies=_INTERNAL_ONLY)
+app.include_router(gross_images.router, dependencies=_INTERNAL_ONLY)
+app.include_router(anatomical_pathology_test.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_specimen_ap_test.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_diagnosis.router, dependencies=_INTERNAL_ONLY)
 app.include_router(surgical_report.router)
-app.include_router(tissue_processing.router)
-app.include_router(gross_templates.router)
-app.include_router(embedding.router)
+app.include_router(tissue_processing.router, dependencies=_INTERNAL_ONLY)
+app.include_router(gross_templates.router, dependencies=_INTERNAL_ONLY)
+app.include_router(embedding.router, dependencies=_INTERNAL_ONLY)
 app.include_router(system_setting.router)
-app.include_router(sectioning.router)
-app.include_router(surgical_block_stain.router)
-app.include_router(stain_run.router)
-app.include_router(he_control_slide.router)
-app.include_router(microscopic_images.router)
-app.include_router(diagnostic_templates.router)
-app.include_router(stain_panel.router)
-app.include_router(slide_dispatch.router)
-app.include_router(approval.router)
-app.include_router(specimen_template.router)
+app.include_router(sectioning.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_block_stain.router, dependencies=_INTERNAL_ONLY)
+app.include_router(stain_run.router, dependencies=_INTERNAL_ONLY)
+app.include_router(he_control_slide.router, dependencies=_INTERNAL_ONLY)
+app.include_router(microscopic_images.router, dependencies=_INTERNAL_ONLY)
+app.include_router(diagnostic_templates.router, dependencies=_INTERNAL_ONLY)
+app.include_router(stain_panel.router, dependencies=_INTERNAL_ONLY)
+app.include_router(slide_dispatch.router, dependencies=_INTERNAL_ONLY)
+app.include_router(approval.router, dependencies=_INTERNAL_ONLY)
+app.include_router(specimen_template.router, dependencies=_INTERNAL_ONLY)
 app.include_router(gyne_cyto_case.router)
-app.include_router(gyne_diagnosis.router)
-app.include_router(gyne_cyto_stain.router)
+app.include_router(gyne_diagnosis.router, dependencies=_INTERNAL_ONLY)
+app.include_router(gyne_cyto_stain.router, dependencies=_INTERNAL_ONLY)
 app.include_router(gyne_cyto_report.router)
-app.include_router(nongyne_cyto_case.router)
-app.include_router(nongyne_cyto_stain.router)
-app.include_router(external_lab.router)
-app.include_router(notification_channel.router)
-app.include_router(notification_rule.router)
-app.include_router(scheduled_notification_rule.router)
-app.include_router(block_storage.router)
-app.include_router(slide_storage.router)
-app.include_router(cyto_workload.router)
-app.include_router(nongyne_diagnosis.router)
+app.include_router(nongyne_cyto_case.router, dependencies=_INTERNAL_ONLY)
+app.include_router(nongyne_cyto_stain.router, dependencies=_INTERNAL_ONLY)
+app.include_router(external_lab.router, dependencies=_INTERNAL_ONLY)
+app.include_router(notification_channel.router, dependencies=_INTERNAL_ONLY)
+app.include_router(notification_rule.router, dependencies=_INTERNAL_ONLY)
+app.include_router(scheduled_notification_rule.router, dependencies=_INTERNAL_ONLY)
+app.include_router(block_storage.router, dependencies=_INTERNAL_ONLY)
+app.include_router(slide_storage.router, dependencies=_INTERNAL_ONLY)
+app.include_router(cyto_workload.router, dependencies=_INTERNAL_ONLY)
+app.include_router(nongyne_diagnosis.router, dependencies=_INTERNAL_ONLY)
 app.include_router(nongyne_cyto_report.router)
-app.include_router(nongyne_case_image.router)
-app.include_router(gyne_case_image.router)
-app.include_router(his.router)
-app.include_router(outlab_consult.router)
-app.include_router(internal_consult.router)
-app.include_router(slide_block_release.router)
-app.include_router(specimen_disposal_batch.router)
-app.include_router(nongyne_specimen_disposal_batch.router)
-app.include_router(surgical_block_event.router)
-app.include_router(ihc.router)
+app.include_router(nongyne_case_image.router, dependencies=_INTERNAL_ONLY)
+app.include_router(gyne_case_image.router, dependencies=_INTERNAL_ONLY)
+app.include_router(his.router, dependencies=_INTERNAL_ONLY)
+app.include_router(outlab_consult.router, dependencies=_INTERNAL_ONLY)
+app.include_router(internal_consult.router, dependencies=_INTERNAL_ONLY)
+app.include_router(slide_block_release.router, dependencies=_INTERNAL_ONLY)
+app.include_router(specimen_disposal_batch.router, dependencies=_INTERNAL_ONLY)
+app.include_router(nongyne_specimen_disposal_batch.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_block_event.router, dependencies=_INTERNAL_ONLY)
+app.include_router(ihc.router, dependencies=_INTERNAL_ONLY)
 app.include_router(molecular_case.router)
-app.include_router(cyto_histo_correlation.router)
-app.include_router(cyto_path_correlation.router)
-app.include_router(surgical_case_correlation.router)
-app.include_router(tumor_registry.router)
-app.include_router(diagnosis_search.router)
-app.include_router(llm_profile.router)
-app.include_router(report_generation.router)
-app.include_router(grossing_assist.router)
-app.include_router(unified_case.router)
-app.include_router(audit_log.router)
+app.include_router(cyto_histo_correlation.router, dependencies=_INTERNAL_ONLY)
+app.include_router(cyto_path_correlation.router, dependencies=_INTERNAL_ONLY)
+app.include_router(surgical_case_correlation.router, dependencies=_INTERNAL_ONLY)
+app.include_router(tumor_registry.router, dependencies=_INTERNAL_ONLY)
+app.include_router(diagnosis_search.router, dependencies=_INTERNAL_ONLY)
+app.include_router(llm_profile.router, dependencies=_INTERNAL_ONLY)
+app.include_router(report_generation.router, dependencies=_INTERNAL_ONLY)
+app.include_router(grossing_assist.router, dependencies=_INTERNAL_ONLY)
+app.include_router(unified_case.router, dependencies=_INTERNAL_ONLY)
+app.include_router(audit_log.router, dependencies=_INTERNAL_ONLY)
 app.include_router(storage_router_module.router)
 app.include_router(storage_router_module.public_router)
 app.include_router(version_router_module.router)
-app.include_router(critical_notification_log_router.router)
-app.include_router(his_export_log_router.router)
+app.include_router(critical_notification_log_router.router, dependencies=_INTERNAL_ONLY)
+app.include_router(his_export_log_router.router, dependencies=_INTERNAL_ONLY)
 app.include_router(legacy_reports_router.router)
-app.include_router(wsi_viewer.router)
-app.include_router(wsi_settings_router.router)
-app.include_router(wsi_links_router.router)
+app.include_router(wsi_viewer.router, dependencies=_INTERNAL_ONLY)
+app.include_router(wsi_settings_router.router, dependencies=_INTERNAL_ONLY)
+app.include_router(wsi_links_router.router, dependencies=_INTERNAL_ONLY)
 
 
 #

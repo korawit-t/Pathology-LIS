@@ -6,7 +6,7 @@ from datetime import datetime
 from app.db.database import get_db
 from app.models.audit_log import AuditLog
 from app.schemas.audit_log import AuditLogListResponse
-from app.dependencies.auth import get_current_user
+from app.core.roles import CAN_READ_AUDIT_LOG
 
 router = APIRouter(prefix="/audit-logs", tags=["Audit"])
 
@@ -22,7 +22,7 @@ def list_audit_logs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, le=200),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(CAN_READ_AUDIT_LOG),
 ):
     q = db.query(AuditLog).options(joinedload(AuditLog.user))
 

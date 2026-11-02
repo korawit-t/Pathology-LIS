@@ -11,14 +11,28 @@ resource_type="User"+resource_id=<that user's id> gives a precisely-scoped,
 collision-proof way to assert on this otherwise-unscoped/global endpoint
 without a baseline-delta dance."""
 
+import uuid
+
+import pytest
+
+from tests.conftest import _make_user
+
 
 class TestRbacAndAuth:
     def test_requires_authentication(self, client):
         assert client.get("/audit-logs").status_code == 401
 
-    def test_any_authenticated_role_can_list(self, clinician_client):
-        # Documents current behavior: no role check, only get_current_user.
-        assert clinician_client.get("/audit-logs").status_code == 200
+    def test_only_admin_can_list(self, clinician_client):
+        # It used to need only a login, so every clinician account could read
+        # the whole trail. The Audit Log page is admin's alone.
+        assert clinician_client.get("/audit-logs").status_code == 403
+
+    @pytest.mark.parametrize("role", ["lab_manager", "pathologist", "histo"])
+    def test_internal_staff_cannot_list_either(self, client, db, role):
+        user, pwd = _make_user(db, f"audit_{role}_{uuid.uuid4().hex[:8]}", "TestPass1!", [role])
+        client.post("/auth/login", data={"username": user.username, "password": pwd})
+
+        assert client.get("/audit-logs").status_code == 403
 
 
 class TestFiltering:

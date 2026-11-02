@@ -347,9 +347,14 @@ class TestNoOtherWayOutOfPendingReview:
         self._assert_held(db, case, "patch_status:published")
 
     def test_cancelling(self, db, client, admin_user):
-        case, ct_client = self._setup(db, client, admin_user)
+        # Cancelling is CAN_CANCEL_CASE's (admin / lab_manager), so the screener
+        # would be turned away by role before the QC lock — use someone who may
+        # cancel, and the lock is what still refuses it.
+        case, _ = self._setup(db, client, admin_user)
+        manager, pwd = _user(db, "lab_manager")
+        lm_client = _login(client, manager.username, pwd)
 
-        r = ct_client.post(f"/gyne-cytology/{case.id}/cancel", json={"reason": "dup"})
+        r = lm_client.post(f"/gyne-cytology/{case.id}/cancel", json={"reason": "dup"})
 
         assert r.status_code == 409
         self._assert_held(db, case, "cancel")

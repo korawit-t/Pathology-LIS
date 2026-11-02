@@ -1,7 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
-from app.utils.file_handler import validate_and_sanitize
+from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Any, List, Optional
@@ -22,7 +22,10 @@ from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.schemas.cyto_path_correlation import SendToPathologistRequest
 from app.core.roles import (
+    CAN_CANCEL_CASE,
+    CAN_DELETE_CASE,
     CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE,
+    CAN_READ_CYTO_STATISTICS,
     CAN_WRITE_NONGYNE_CYTO_REPORT,
 )
 from app.crud import nongyne_specimen_disposal_batch as disposal_crud
@@ -117,7 +120,7 @@ def read_cases(
     )
 
 
-@router.get("/statistics")
+@router.get("/statistics", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_nongyne_statistics(
     start_date: str,
     end_date: str,
@@ -131,7 +134,7 @@ def read_nongyne_statistics(
     return crud.get_nongyne_statistics(db, start, end, pathologist_id, cytotechnologist_id)
 
 
-@router.get("/slide-quality-stats")
+@router.get("/slide-quality-stats", dependencies=[Depends(CAN_READ_CYTO_STATISTICS)])
 def read_nongyne_slide_quality_stats(
     start_date: str,
     end_date: str,
@@ -354,17 +357,22 @@ def update_case_info(
     case_id: int,
     case_in: NongyneCytologyCaseUpdate,
     db: Session = Depends(get_db),
-    _: Any = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     db_case = crud.get_nongyne_case(db, case_id=case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Case not found")
+    # A hospital-scoped account may edit only its own hospitals' cases, and
+    # may not move one into a hospital outside its scope.
+    assert_hospital_scoped_access(current_user, db_case.hospital_id)
+    if case_in.hospital_id is not None:
+        assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     return crud.update_nongyne_case(db=db, db_obj=db_case, obj_in=case_in)
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(case_id: int, db: Session = Depends(get_db), _: Any = Depends(get_current_user)):
+def delete_case(case_id: int, db: Session = Depends(get_db), _: User = Depends(CAN_DELETE_CASE)):
     success = crud.delete_nongyne_case(db=db, case_id=case_id)
     if not success:
         raise HTTPException(
@@ -378,7 +386,7 @@ def cancel_case(
     case_id: int,
     payload: NongyneCaseCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_CANCEL_CASE),
 ):
     db_case = crud.cancel_nongyne_case(
         db, case_id=case_id, user_id=current_user.id, reason=payload.reason
@@ -522,12 +530,15 @@ def download_consult_pdf(
     current_user: Any = Depends(get_current_user),
 ):
     case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
-    if not case or not case.consult_pdf_path or not os.path.exists(case.consult_pdf_path):
+    if not case:
         raise HTTPException(status_code=404, detail="File not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
+    consult_pdf = resolve_stored_file(case.consult_pdf_path)
+    if not consult_pdf:
+        raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(
-        path=case.consult_pdf_path,
-        filename=os.path.basename(case.consult_pdf_path),
+        path=consult_pdf,
+        filename=consult_pdf.name,
         media_type="application/pdf",
     )

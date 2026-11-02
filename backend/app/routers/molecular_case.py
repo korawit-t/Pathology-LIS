@@ -13,6 +13,7 @@ from app.core.roles import (
 from app.db.database import get_db
 from app.dependencies.auth import (
     CLINICIAN_FACING_ROLES,
+    InternalStaffOnly,
     assert_hospital_scoped_access,
     check_password_status,
     get_current_user,
@@ -30,10 +31,19 @@ from app.schemas.molecular_case import (
 )
 import app.crud.molecular_case as molecular_crud
 
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
     prefix="/molecular-cases",
     tags=["Molecular Cases"],
-    dependencies=[Depends(check_password_status)],
+    dependencies=[
+        Depends(check_password_status),
+        Depends(InternalStaffOnly(open_to_external={
+            "list_molecular_cases",
+            "download_outlab_pdf",
+            "download_result_pdf",
+        })),
+    ],
 )
 
 

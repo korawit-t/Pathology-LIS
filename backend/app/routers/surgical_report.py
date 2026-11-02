@@ -28,7 +28,7 @@ from app.schemas.surgical_report import (
     SurgicalStatResponse,
     LabTechStatResponse,
 )
-from app.dependencies.auth import get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
+from app.dependencies.auth import InternalStaffOnly, get_current_user, get_scoped_hospital_ids, assert_hospital_scoped_access
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.models.surgical_report import SurgicalReport, ReportStatus
@@ -37,7 +37,19 @@ from app.crud.report_archive import get_surgical_archive
 from app.schemas.archive import ArchivePage
 from app.dependencies.step_up import require_step_up
 
-router = APIRouter(prefix="/surgical-reports", tags=["Surgical Reports"])
+# Clinician and hospital accounts reach only the endpoints named here (what
+# the results portal calls); see InternalStaffOnly before adding one.
+router = APIRouter(
+    prefix="/surgical-reports",
+    tags=["Surgical Reports"],
+    dependencies=[
+        Depends(InternalStaffOnly(open_to_external={
+            "read_surgical_archive",
+            "get_historical_report_pdf",
+            "mark_surgical_report_read",
+        })),
+    ],
+)
 
 
 def _build_barcode_value(case, setting, case_type_code: str) -> tuple[str, str]:
@@ -298,11 +310,16 @@ def read_report_history(
 
 
 @router.post("/cases/{case_id}/preview-pdf", dependencies=[Depends(CAN_READ_REPORT)])
-def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db)):
+def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     API สำหรับดึง PDF Preview (ยังไม่บันทึกลง DB)
     payload: { "active_specimen_ids": [1, 2, 3], "is_pending": True, "pending_reason": "Waiting" }
     """
+    from app.models.surgical_case import SurgicalCase
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     # 1. ดึงข้อมูลดิบจากฟังก์ชันที่เราทำไว้
     active_ids = payload.get("active_specimen_ids")
     
@@ -342,10 +359,15 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
 
 
 @router.post("/cases/{case_id}/preview-data", dependencies=[Depends(CAN_READ_REPORT)])
-def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(get_db)):
+def preview_report_data_api(case_id: int, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     ดึงข้อมูล JSON ที่รวมร่างแล้ว (Merge tags แล้ว) มาเช็คบน UI ก่อน Gen PDF
     """
+    from app.models.surgical_case import SurgicalCase
+
+    case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+    assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
+
     active_ids = payload.get("active_specimen_ids")
     data = prepare_report_data(db, case_id, active_specimen_ids=active_ids)
     if not data:
@@ -594,11 +616,12 @@ def generate_barcode_label_pdf(payload: dict, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/{report_id}/mark-read", dependencies=[Depends(get_current_user)])
-def mark_surgical_report_read(report_id: int, db: Session = Depends(get_db)):
+@router.post("/{report_id}/mark-read")
+def mark_surgical_report_read(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = db.query(SurgicalReport).filter(SurgicalReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    assert_hospital_scoped_access(current_user, report.hospital_id)
     if not report.is_read:
         report.is_read = True
         report.read_at = local_now()
