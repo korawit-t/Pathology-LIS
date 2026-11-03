@@ -7,6 +7,7 @@ import { requestStepUp } from "./stepUpBroker";
 /** Details the server sends instead of a bare 403 — see StepUpModal. */
 const STEP_UP_REQUIRED = "step_up_required";
 const MFA_SETUP_REQUIRED = "mfa_setup_required";
+const PASSWORD_CHANGE_DUE = ["FORCE_PASSWORD_CHANGE", "PASSWORD_EXPIRED"];
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -106,6 +107,24 @@ api.interceptors.response.use(
           "your profile menu, Two-Factor Authentication.",
         4,
       );
+      error.__stepUpHandled = true;
+    }
+
+    // The server answers nothing but the password change itself while the
+    // password is temporary or expired. ProtectedRoute sees that at login; an
+    // expiry that falls mid-session lands here, once per refused request, so
+    // the message is keyed to show only once.
+    if (
+      error.response?.status === 403 &&
+      PASSWORD_CHANGE_DUE.includes(error.response?.data?.detail)
+    ) {
+      message.warning({
+        key: "password-change-due",
+        content:
+          "Your password must be changed before you can continue — " +
+          "your profile menu, Change Password.",
+        duration: 6,
+      });
       error.__stepUpHandled = true;
     }
 

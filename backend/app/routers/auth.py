@@ -21,6 +21,7 @@ from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
 from app.crud import user_mfa as mfa_crud
 from app.crud import user_trusted_device as device_crud
 from app.schemas.user_mfa import MfaLoginRequest
+from app.dependencies.auth import issued_before_password_change
 from app.core.security import (
     verify_password,
     create_access_token,
@@ -409,6 +410,9 @@ def complete_mfa_login(
     )
     if not user or not user.status:
         raise _reject()
+    # The password this challenge proved has since been changed.
+    if issued_before_password_change(user, decoded.get("iat")):
+        raise _reject()
 
     # The same backoff that guards the password guards this step, so failures
     # here are not a free, unthrottled way to grind at a six-digit code.
@@ -509,6 +513,11 @@ def refresh_access_token(
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.status:
         raise HTTPException(status_code=401, detail="User not found or inactive")
+    # The password changed after this session began, so the session ends here
+    # rather than rotating on with a fresh token every time.
+    if issued_before_password_change(user, decoded.get("iat")):
+        _clear_auth_cookies(response)
+        raise HTTPException(status_code=401, detail="Session ended by a password change")
 
     # Rotate: issue both new access and new refresh tokens
     new_access_token, _jti, _exp = create_access_token(subject=user.username, uid=user.id)

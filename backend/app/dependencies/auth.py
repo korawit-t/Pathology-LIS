@@ -6,9 +6,53 @@ from app.db.database import get_db
 from app.models.user import User
 from app.models.revoked_token import RevokedToken
 from app.core.security import SECRET_KEY, ALGORITHM
+from app.utils.time import local_now, local_timestamp
+
+
+def allowed_while_password_change_due(endpoint):
+    """Mark an endpoint an account may still call while its password is
+    temporary or expired: only what the change-password screen needs. Every
+    other endpoint answers 403 FORCE_PASSWORD_CHANGE / PASSWORD_EXPIRED until
+    the password is changed (see get_current_user). Put it directly under the
+    @router decorator so it marks the function the router registers."""
+    endpoint.allowed_while_password_change_due = True
+    return endpoint
+
+
+def issued_before_password_change(user: User, issued_at) -> bool:
+    """True for a token minted before the account's password last changed.
+
+    Changing a password, or an admin resetting it, is how someone ends a
+    session they no longer control, such as one left open on a ward PC.
+    Without this, that session's refresh token kept rotating past the change
+    indefinitely. A token without iat predates this check and is treated as
+    older than any change on record.
+    """
+    changed = user.last_update_password
+    if changed is None:
+        return False
+    if not isinstance(issued_at, (int, float)):
+        return True
+    return issued_at < local_timestamp(changed)
+
+
+def password_change_due(user: User, db: Session) -> Optional[str]:
+    """FORCE_PASSWORD_CHANGE or PASSWORD_EXPIRED if the account must change its
+    password before doing anything else, otherwise None."""
+    if user.is_temporary_password:
+        return "FORCE_PASSWORD_CHANGE"
+    if not user.last_update_password:
+        return None
+    from app.models.system_setting import SystemSetting
+    settings = db.query(SystemSetting).first()
+    expiry_days = (settings.password_expiry_days or 0) if settings else 0
+    if expiry_days > 0 and (local_now() - user.last_update_password).days >= expiry_days:
+        return "PASSWORD_EXPIRED"
+    return None
 
 
 def get_current_user(
+    request: Request,
     access_token: Optional[str] = Cookie(default=None),
     authorization: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
@@ -29,6 +73,7 @@ def get_current_user(
         username: str = payload.get("sub")
         jti: Optional[str] = payload.get("jti")
         token_type: Optional[str] = payload.get("type")
+        issued_at = payload.get("iat")
         if username is None:
             raise credentials_exception
         # Only access tokens may authenticate a request. Without this check a
@@ -48,6 +93,22 @@ def get_current_user(
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise credentials_exception
+    # A disabled account stops at its next request rather than when its access
+    # token runs out. RoleChecker (via get_current_active_user) already refused
+    # one, but routes that need only a login come straight here.
+    if not user.status:
+        raise credentials_exception
+    if issued_before_password_change(user, issued_at):
+        raise credentials_exception
+
+    # Enforced here so it covers every route. As a per-router dependency
+    # (check_password_status) it reached 11 routers of 71, so a temporary or
+    # expired password still worked against the API almost everywhere.
+    reason = password_change_due(user, db)
+    if reason:
+        endpoint = getattr(request.scope.get("route"), "endpoint", None)
+        if not getattr(endpoint, "allowed_while_password_change_due", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
     return user
 
 
@@ -166,20 +227,8 @@ class InternalStaffOnly:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
 
-def check_password_status(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if current_user.is_temporary_password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="FORCE_PASSWORD_CHANGE")
-
-    from app.models.system_setting import SystemSetting
-    from app.utils.time import local_now
-    settings = db.query(SystemSetting).first()
-    expiry_days = (settings.password_expiry_days or 0) if settings else 0
-    if expiry_days > 0 and current_user.last_update_password:
-        age = (local_now() - current_user.last_update_password).days
-        if age >= expiry_days:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PASSWORD_EXPIRED")
-
+def check_password_status(current_user: User = Depends(get_current_user)):
+    """Kept for the routes that still declare it. The temporary/expired
+    password check it used to make now runs in get_current_user, for every
+    route."""
     return current_user

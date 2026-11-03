@@ -72,6 +72,29 @@ describe("httpClient step-up handling", () => {
     warn.mockRestore();
   });
 
+  it("says to change the password when it has expired mid-session", async () => {
+    // The server now refuses every route but the password change once the
+    // password expires; ProtectedRoute only checks expiry at login.
+    api.defaults.adapter = async (config) => {
+      throw Object.assign(new Error("Request failed with status code 403"), {
+        config,
+        response: { status: 403, data: { detail: "PASSWORD_EXPIRED" } },
+      });
+    };
+    const warn = vi.spyOn(message, "warning");
+
+    await expect(api.get("/surgical-cases")).rejects.toMatchObject({
+      __stepUpHandled: true,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "password-change-due",
+        content: expect.stringContaining("Change Password"),
+      }),
+    );
+    warn.mockRestore();
+  });
+
   it("marks the error when the prompt is dismissed", async () => {
     // The marker is what stops a page-level handler putting a second prompt up
     // on top of the one the user just closed.
