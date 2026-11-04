@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import String, and_, case, func, literal, or_, select, union_all
+from sqlalchemy import String, and_, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
+from app.crud.molecular_case import molecular_display_status_expr
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.molecular_case import MolecularCase
@@ -192,8 +193,10 @@ def _molecular_branch(**filters):
     # MolecularCase tracks cancellation via a separate is_cancelled flag rather
     # than folding it into `status` — synthesize a "cancelled" status value so
     # the unified status column stays consistent with how the other 3 types
-    # already represent cancellation as a status string.
-    status_expr = case((MolecularCase.is_cancelled, literal("cancelled")), else_=MolecularCase.status)
+    # already represent cancellation as a status string. Same expression also
+    # splits "pdf_received" out of "pending", so this column agrees with the
+    # Molecular page's own display_status.
+    status_expr = molecular_display_status_expr()
 
     query = (
         select(

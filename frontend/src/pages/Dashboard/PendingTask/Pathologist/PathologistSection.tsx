@@ -36,6 +36,7 @@ const PathologistSection: React.FC<PathologistSectionProps> = ({ userId, tatOver
               somebody else's turnaround. */}
           <CompactStatRow label="Molecular: Awaiting Result" value={stats.molecularPendingInHouse} color="#eb2f96" onClick={() => nav("molecular-cases")} hideZero={hideZero} />
           <CompactStatRow label="Molecular: Awaiting External Laboratory" value={stats.molecularPendingExternal} color="#eb2f96" onClick={() => nav("molecular-cases")} hideZero={hideZero} />
+          <CompactStatRow label="Molecular: PDF Received, Awaiting Sign-out" value={stats.molecularPdfReceived} color="#eb2f96" onClick={() => nav("molecular-cases")} hideZero={hideZero} />
         </Spin>
       </Card>
     </Col>

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import UploadFile
-from sqlalchemy import func, or_
+from sqlalchemy import and_, case as sql_case, func, literal, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.molecular_case import MolecularCase
@@ -28,6 +28,61 @@ from app.services.pdf_service import generate_consult_cover_pdf, generate_pdf_bl
 
 UPLOAD_MOLECULAR_DIR = os.path.join(os.getcwd(), "uploads", "molecular")
 os.makedirs(UPLOAD_MOLECULAR_DIR, exist_ok=True)
+
+# An out-lab case whose PDF is already on file but has not been finalized —
+# the external lab is done and only the pathologist's sign-out is left.
+# Derived, never stored: the `status` column stays pending -> reported, so
+# everything that gates on "pending" (editing, cancel-vs-delete, the release
+# gate) is unaffected. It exists for display and for the status filter.
+PDF_RECEIVED = "pdf_received"
+
+
+def _pdf_received_clause():
+    """SQL form of _display_status's PDF_RECEIVED branch (cancellation aside)."""
+    return and_(
+        MolecularCase.status == "pending",
+        MolecularCase.is_outlab.is_(True),
+        MolecularCase.outlab_pdf_path.isnot(None),
+    )
+
+
+def molecular_display_status_expr():
+    """SQL form of _display_status, for the unified Accession query."""
+    return sql_case(
+        (MolecularCase.is_cancelled, literal("cancelled")),
+        (_pdf_received_clause(), literal(PDF_RECEIVED)),
+        else_=MolecularCase.status,
+    )
+
+
+def _display_status(case: MolecularCase) -> str:
+    """The status a worklist shows: cancellation folded in (it is a separate
+    flag on this model) and a pending out-lab case with its PDF on file split
+    out as PDF_RECEIVED. Keyed on is_outlab as well as the path because the
+    PDF panel is only shown for out-lab cases — a status must not point at a
+    PDF the page does not display."""
+    if case.is_cancelled:
+        return "cancelled"
+    if case.status == "pending" and case.is_outlab and case.outlab_pdf_path:
+        return PDF_RECEIVED
+    return case.status
+
+
+def _apply_status_filter(query, status: str | None):
+    """Filter on the display status rather than the raw column, so the buckets
+    do not overlap: "pending" leaves out the cases already counted under
+    PDF_RECEIVED, which is what lets the dashboard tell "still at the
+    external lab" from "back, waiting on us"."""
+    if not status:
+        return query
+    if status == PDF_RECEIVED:
+        return query.filter(_pdf_received_clause())
+    query = query.filter(MolecularCase.status == status)
+    if status == "pending":
+        query = query.filter(
+            or_(MolecularCase.is_outlab.is_(False), MolecularCase.outlab_pdf_path.is_(None))
+        )
+    return query
 
 
 def _is_blank_rich_text(html: str | None) -> bool:
@@ -226,6 +281,7 @@ def _to_response_dict(case: MolecularCase) -> dict:
         "ap_test_id": case.ap_test_id,
         "test_name": case.ap_test.name if case.ap_test else None,
         "status": case.status,
+        "display_status": _display_status(case),
         "is_outlab": case.is_outlab,
         "result_text": case.result_text,
         "outlab_pdf_path": case.outlab_pdf_path,
@@ -283,8 +339,7 @@ def get_molecular_cases(
     hospital_ids: list[int] | None = None,
 ) -> list[dict]:
     query = _base_query(db).filter(MolecularCase.is_cancelled == False)  # noqa: E712
-    if status:
-        query = query.filter(MolecularCase.status == status)
+    query = _apply_status_filter(query, status)
     if is_outlab is not None:
         query = query.filter(MolecularCase.is_outlab == is_outlab)
     if parent_case_id is not None:
@@ -424,8 +479,7 @@ def count_molecular_cases(
         .select_from(MolecularCase)
         .filter(MolecularCase.is_cancelled == False)  # noqa: E712
     )
-    if status:
-        query = query.filter(MolecularCase.status == status)
+    query = _apply_status_filter(query, status)
     if is_outlab is not None:
         query = query.filter(MolecularCase.is_outlab == is_outlab)
     if hospital_ids is not None:

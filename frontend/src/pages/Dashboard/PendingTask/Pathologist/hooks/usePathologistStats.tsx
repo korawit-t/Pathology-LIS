@@ -15,6 +15,7 @@ export const usePathologistStats = (userId: number | undefined) => {
     pendingAddendum: 0,
     molecularPendingInHouse: 0,
     molecularPendingExternal: 0,
+    molecularPdfReceived: 0,
   });
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +35,7 @@ export const usePathologistStats = (userId: number | undefined) => {
         addendumRes,
         molecularInHouse,
         molecularExternal,
+        molecularPdfReceived,
       ] = await Promise.all([
         // แยก call ทีละสถานะเพื่อหลีกเลี่ยงปัญหา URL encoding ของ "in progress"
         PathologistService.getMyWorklist(userId, 0, 1, undefined, CASE_STATUS.REGISTERED),
@@ -48,12 +50,16 @@ export const usePathologistStats = (userId: number | undefined) => {
         // rows above. Deliberate: a Molecular case can sit with no assisting
         // pathologist recorded, and those unowned cases are exactly the ones
         // that go unwatched — scoping to the viewer would hide them.
-        // .catch here, not on the Promise.all: these two are an addition to a
+        // .catch here, not on the Promise.all: these are an addition to a
         // card that worked without them, so a Molecular outage must not blank
         // the surgical rows that were already there. Promise.all rejects as a
         // unit, which is exactly what that would do.
+        // "pending" excludes out-lab cases whose PDF is already back — those
+        // are counted on their own under "pdf_received", since they wait on a
+        // pathologist's sign-out, not on the external lab.
         MolecularCaseService.count({ status: "pending", is_outlab: false }).catch(() => 0),
         MolecularCaseService.count({ status: "pending", is_outlab: true }).catch(() => 0),
+        MolecularCaseService.count({ status: "pdf_received" }).catch(() => 0),
       ]);
 
       setStats({
@@ -65,6 +71,7 @@ export const usePathologistStats = (userId: number | undefined) => {
         pendingAddendum: addendumRes.total || 0,
         molecularPendingInHouse: molecularInHouse || 0,
         molecularPendingExternal: molecularExternal || 0,
+        molecularPdfReceived: molecularPdfReceived || 0,
       });
     } catch (err) {
       logger.error("Pathologist Stats Error:", err);

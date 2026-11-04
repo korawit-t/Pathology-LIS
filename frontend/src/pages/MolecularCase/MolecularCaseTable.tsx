@@ -59,13 +59,13 @@ const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({ dataSource, loa
     },
     {
       title: "Status",
-      dataIndex: "status",
-      width: 120,
+      dataIndex: "display_status",
+      width: 130,
       fixed: "right" as const,
-      // /molecular reports cancellation as its own flag, so fold it in here the
-      // same way the unified-case query does for the Accession page's All tab.
-      render: (s: string, record: MolecularCaseResponse) => {
-        const cfg = MOLECULAR_STATUS_MAP[record.is_cancelled ? "cancelled" : s] ?? { color: "warning", label: s };
+      // display_status, not status — same value the unified-case query puts in
+      // the Accession page's All tab, so both tables render the same tag.
+      render: (s: string) => {
+        const cfg = MOLECULAR_STATUS_MAP[s] ?? { color: "warning", label: s };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
@@ -120,7 +120,7 @@ const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({ dataSource, loa
       className="standard-table"
       rowClassName={() => "editable-row"}
       onRow={(record) => ({ onClick: () => onSelectCase(record.id) })}
-      scroll={{ x: 1310, y: "calc(100vh - 360px)" }}
+      scroll={{ x: 1320, y: "calc(100vh - 360px)" }}
       sticky
       pagination={{
         pageSize: 20,

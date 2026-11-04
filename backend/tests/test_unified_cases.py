@@ -168,6 +168,28 @@ class TestUnifiedCasesCrud:
         result = get_unified_cases(db, search=marker)
         assert result["items"][0]["status"] == "cancelled"
 
+    def test_molecular_outlab_case_with_pdf_reports_pdf_received_status(self, db, admin_user):
+        # Same value the Molecular page's own display_status carries, so the
+        # All tab and the Molecular tab show the same tag for one case.
+        registrar, _ = admin_user
+        marker = uuid.uuid4().hex[:10]
+        patient = make_patient(db, name=f"PdfUnified{marker}")
+        ap_test = make_anatomical_pathology_test(db, category="Molecular", system_code=None, name="ALK Unified Test")
+        case = create_standalone_molecular_case(
+            db,
+            MolecularCaseCreate(patient_id=patient.id, ap_test_id=ap_test.id, hn=marker),
+            registrar_id=registrar.id,
+        )
+        case.is_outlab = True
+        db.commit()
+        assert get_unified_cases(db, search=marker)["items"][0]["status"] == "pending"
+
+        case.outlab_pdf_path = "uploads/molecular/never-read.pdf"  # only its presence matters
+        db.commit()
+        result = get_unified_cases(db, search=marker)
+        assert result["items"][0]["status"] == "pdf_received"
+        assert get_unified_cases(db, search=marker, status=["pending"])["total"] == 0
+
     def test_case_type_filter_can_restrict_to_molecular(self, db, admin_user):
         registrar, _ = admin_user
         marker = uuid.uuid4().hex[:10]
