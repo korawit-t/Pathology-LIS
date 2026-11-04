@@ -1,7 +1,7 @@
 """snapshot report logo path and gyne/nongyne header
 
 Revision ID: b0fab3cb5651
-Revises: c0f8df8596af
+Revises: 04b59817b3b5
 Create Date: 2026-11-04 22:56:42.749800
 
 Deliberately no backfill: NULL report_logo_path_snapshot marks a report signed
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'b0fab3cb5651'
-down_revision: Union[str, Sequence[str], None] = 'c0f8df8596af'
+down_revision: Union[str, Sequence[str], None] = '04b59817b3b5'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
