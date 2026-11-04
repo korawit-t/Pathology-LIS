@@ -15,6 +15,7 @@ from app.utils.file_handler import save_gross_image_local, delete_gross_image_lo
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_ACCESS_GROSS_IMAGE  # 🌟 นำเข้ากลุ่มสิทธิ์ที่ตั้งไว้
 from app.utils.case_lock import assert_surgical_specimen_unlocked
+from app.crud.report_images import surgical_image_still_in_report
 
 router = APIRouter(
     prefix="/surgical-specimens",
@@ -91,11 +92,14 @@ async def delete_gross_image(image_id: int, db: Session = Depends(get_db)):
     # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
     assert_surgical_specimen_unlocked(db, db_image.specimen_id)
 
-    try:
-        delete_gross_image_local(db_image.image_url)
-    except Exception as e:
-        # ลบไฟล์ไม่สำเร็จอาจจะบันทึก log ไว้ แต่ยังลบ record ใน DB ต่อได้
-        logger.warning("Failed to delete gross image file %s: %s", db_image.image_url, e)
+    # A report already issued with this image still prints it from this file
+    # (app/crud/report_images.py), so only the case's own record goes.
+    if not surgical_image_still_in_report(db, db_image.image_url):
+        try:
+            delete_gross_image_local(db_image.image_url)
+        except Exception as e:
+            # ลบไฟล์ไม่สำเร็จอาจจะบันทึก log ไว้ แต่ยังลบ record ใน DB ต่อได้
+            logger.warning("Failed to delete gross image file %s: %s", db_image.image_url, e)
 
     db.delete(db_image)
     db.commit()
@@ -164,7 +168,8 @@ async def replace_gross_image_content(
     db.commit()
     db.refresh(db_image)
 
-    if old_url and old_url != new_url:
+    # Keep the old file while an issued report still prints it (app/crud/report_images.py)
+    if old_url and old_url != new_url and not surgical_image_still_in_report(db, old_url):
         try:
             delete_gross_image_local(old_url)
         except Exception as e:

@@ -10,6 +10,7 @@ from app.schemas.gyne_case_image import GyneCaseImageResponse, GyneCaseImageUpda
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.utils.file_handler import save_gyne_image_local, delete_gyne_image_local
+from app.crud.report_images import gyne_image_still_in_report
 from app.dependencies.auth import get_current_user, check_password_status
 from app.core.roles import CAN_ACCESS_GYNE_CYTO_IMAGE
 from app.utils.case_lock import (
@@ -106,10 +107,13 @@ def delete_gyne_image(image_id: int, db: Session = Depends(get_db)):
     # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
     assert_gyne_case_id_unlocked(db, db_image.case_id)
 
-    try:
-        delete_gyne_image_local(db_image.image_url)
-    except Exception as exc:
-        logger.warning("Failed to delete gyne image file %s: %s", db_image.image_url, exc)
+    # A report already issued with this image still prints it from this file
+    # (app/crud/report_images.py), so only the case's own record goes.
+    if not gyne_image_still_in_report(db, db_image.case_id, db_image.image_url):
+        try:
+            delete_gyne_image_local(db_image.image_url)
+        except Exception as exc:
+            logger.warning("Failed to delete gyne image file %s: %s", db_image.image_url, exc)
     db.delete(db_image)
     db.commit()
     return None
@@ -151,7 +155,12 @@ async def replace_gyne_image_content(
     db.commit()
     db.refresh(db_image)
 
-    if old_url and old_url != new_url:
+    # Keep the old file while an issued report still prints it (app/crud/report_images.py)
+    if (
+        old_url
+        and old_url != new_url
+        and not gyne_image_still_in_report(db, db_image.case_id, old_url)
+    ):
         try:
             delete_gyne_image_local(old_url)
         except Exception as e:
