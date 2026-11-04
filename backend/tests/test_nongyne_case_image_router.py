@@ -1,12 +1,12 @@
 """Router-level tests for app/routers/nongyne_case_image.py. Mirrors
 test_gyne_case_image_router.py exactly — see that file's module docstring
-for the STORAGE_ROOT / real-PNG rationale."""
+for the UPLOAD_ROOT / real-PNG rationale."""
 
 import io
 
 from PIL import Image
 
-import app.utils.file_handler as file_handler
+import app.core.config as config
 
 from tests.factories import make_bare_nongyne_case
 
@@ -19,7 +19,7 @@ def _png_bytes():
 
 class TestRbac:
     def test_clinician_cannot_upload(self, db, clinician_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
 
@@ -30,7 +30,7 @@ class TestRbac:
         assert r.status_code == 403
 
     def test_pathologist_can_upload(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
 
@@ -45,7 +45,7 @@ class TestRbac:
 
 class TestUploadListUpdateDelete:
     def test_upload_to_missing_case_returns_404(self, pathologist_client, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         r = pathologist_client.post(
             "/nongyne-cytology/999999/images",
             files={"file": ("test.png", _png_bytes(), "image/png")},
@@ -53,7 +53,7 @@ class TestUploadListUpdateDelete:
         assert r.status_code == 404
 
     def test_list_returns_uploaded_images_in_order(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         pathologist_client.post(
@@ -68,7 +68,7 @@ class TestUploadListUpdateDelete:
         assert len(r.json()) == 1
 
     def test_update_show_in_report(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -85,7 +85,7 @@ class TestUploadListUpdateDelete:
         assert pathologist_client.patch("/nongyne-cytology/images/999999", json={"description": "x"}).status_code == 404
 
     def test_delete_removes_the_db_record_even_if_file_delete_fails(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -110,7 +110,7 @@ class TestStain:
     def test_stain_round_trips_through_upload(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
         # The capture modal has always shown a stain picker; until now the
         # value was selected, rendered as an overlay, and then dropped.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
 
@@ -127,7 +127,7 @@ class TestStain:
         assert listing.json()[0]["stain"] == "Giemsa"
 
     def test_stain_can_be_patched(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -156,7 +156,7 @@ class TestReplaceContent:
         ).json()
 
     def test_replace_swaps_the_file_and_keeps_metadata(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, case.id)
@@ -180,7 +180,7 @@ class TestReplaceContent:
         assert body["order"] == 2
 
     def test_replace_rejects_a_non_image(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, case.id)
@@ -194,7 +194,7 @@ class TestReplaceContent:
         assert (tmp_path / created["image_url"].removeprefix("/storage/")).exists()
 
     def test_replace_missing_image_returns_404(self, pathologist_client, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         r = pathologist_client.put(
             "/nongyne-cytology/images/999999/content",
             files={"file": ("edited.png", _png_bytes(), "image/png")},
@@ -202,7 +202,7 @@ class TestReplaceContent:
         assert r.status_code == 404
 
     def test_clinician_cannot_replace(self, db, pathologist_client, clinician_user, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, case.id)
@@ -234,7 +234,7 @@ class TestLockedCaseGuard:
         ).json()
 
     def test_every_write_is_rejected_once_the_case_is_published(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, case.id)
@@ -263,7 +263,7 @@ class TestLockedCaseGuard:
     def test_pending_approval_is_also_locked(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
         # Non-gyne has no "revised" state — pending_approval is the other
         # locked status worth pinning down.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, case.id)

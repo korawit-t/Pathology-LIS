@@ -1,12 +1,13 @@
 """Router-level tests for app/routers/gross_images.py. save_gross_image_local/
-delete_gross_image_local write to the real STORAGE_ROOT dir by default —
-monkeypatch it to tmp_path so nothing touches the real uploads/ folder."""
+delete_gross_image_local write under the upload root (settings.UPLOAD_ROOT,
+the real backend/uploads by default) — monkeypatch it to tmp_path so nothing
+touches the real uploads/ folder."""
 
 import io
 
 from PIL import Image
 
-import app.utils.file_handler as file_handler
+import app.core.config as config
 
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 
@@ -25,7 +26,7 @@ def _png_bytes():
 
 class TestUploadAndList:
     def test_pathologist_can_upload_and_list(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
 
@@ -42,7 +43,7 @@ class TestUploadAndList:
         assert len(listing.json()) == 1
 
     def test_clinician_cannot_upload(self, db, clinician_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
 
@@ -53,7 +54,7 @@ class TestUploadAndList:
         assert r.status_code == 403
 
     def test_upload_to_missing_specimen_returns_404(self, pathologist_client, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         r = pathologist_client.post(
             "/surgical-specimens/999999/images/",
             files={"file": ("test.png", _png_bytes(), "image/png")},
@@ -63,7 +64,7 @@ class TestUploadAndList:
 
 class TestUpdateAndDelete:
     def test_update_show_in_report(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -79,7 +80,7 @@ class TestUpdateAndDelete:
     def test_delete_removes_the_db_record_even_if_file_delete_fails(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
         # The router swallows any exception from delete_gross_image_local and
         # still removes the DB row — confirm that resilience behavior.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -115,7 +116,7 @@ class TestReplaceContent:
         ).json()
 
     def test_replace_swaps_the_file_and_keeps_metadata(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)
@@ -140,7 +141,7 @@ class TestReplaceContent:
         assert body["order"] == 3
 
     def test_replace_rejects_a_non_image(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)
@@ -155,7 +156,7 @@ class TestReplaceContent:
         assert (tmp_path / created["image_url"].removeprefix("/storage/")).exists()
 
     def test_replace_missing_image_returns_404(self, pathologist_client, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         r = pathologist_client.put(
             "/surgical-specimens/images/999999/content",
             files={"file": ("edited.png", _png_bytes(), "image/png")},
@@ -163,7 +164,7 @@ class TestReplaceContent:
         assert r.status_code == 404
 
     def test_clinician_cannot_replace(self, db, pathologist_client, clinician_user, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         _, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)
@@ -195,7 +196,7 @@ class TestLockedCaseGuard:
         ).json()
 
     def test_every_write_is_rejected_once_the_case_is_signed_out(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)
@@ -221,7 +222,7 @@ class TestLockedCaseGuard:
     def test_an_open_addendum_draft_unlocks_writes_again(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
         # A draft diagnosis on a signed-out case is the addendum flow; the
         # frontend re-enables editing there, so the backend must too.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)
@@ -237,7 +238,7 @@ class TestLockedCaseGuard:
         assert pathologist_client.patch(f"/surgical-specimens/images/{created['id']}", json={"show_in_report": False}).status_code == 200
 
     def test_a_cancelled_case_is_locked_even_with_a_draft(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload(pathologist_client, specimen.id)

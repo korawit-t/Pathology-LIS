@@ -6,6 +6,8 @@
 #   BACKUP_PG_BIN        e.g. C:\Program Files\PostgreSQL\18\bin
 #   SLACK_BACKUP_WEBHOOK https://hooks.slack.com/...  (optional)
 #   BACKUP_KEEP          how many dated backups to retain (optional, default 14)
+# Uploads archived from (first one set): STORAGE_DIR, UPLOAD_ROOT (where the
+# backend keeps them), else backend\uploads.
 
 # ---------------------------------------------------------------------------
 # LOAD .env
@@ -38,7 +40,9 @@ if ($cfg["DATABASE_URL"] -match '://([^:]+):([^@]+)@([^:/]+):?(\d+)?/([^?]+)') {
 $PG_BIN        = $cfg["BACKUP_PG_BIN"]
 $BACKUP_ROOT   = $cfg["BACKUP_ROOT"]
 $SLACK_WEBHOOK = $cfg["SLACK_BACKUP_WEBHOOK"]
-$STORAGE_DIR   = if ($cfg["STORAGE_DIR"]) { $cfg["STORAGE_DIR"] } else { Join-Path $PSScriptRoot "backend\uploads" }
+$STORAGE_DIR   = $cfg["STORAGE_DIR"]
+if (-not $STORAGE_DIR) { $STORAGE_DIR = $cfg["UPLOAD_ROOT"] }
+if (-not $STORAGE_DIR) { $STORAGE_DIR = Join-Path $PSScriptRoot "backend\uploads" }
 
 # ---------------------------------------------------------------------------
 # INTERNAL

@@ -30,6 +30,10 @@ os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "3")
 os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("ENVIRONMENT", "development")
+# Empty means the default backend/uploads. Set so an UPLOAD_ROOT in a
+# developer's .env (possibly a live share) is not picked up by the tests;
+# tests that write files point settings.UPLOAD_ROOT at tmp_path themselves.
+os.environ.setdefault("UPLOAD_ROOT", "")
 
 import uuid
 import pytest

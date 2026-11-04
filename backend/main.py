@@ -228,14 +228,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-STORAGE_DIR = (
-    "uploads"  # 👈 Path ใน Local Disk ที่เก็บไฟล์จริง (ต้องตรงกับ file_handler.py)
-)
-
-# 1. 🔑 ตรวจสอบและสร้าง Directory ถ้าไม่มี
-if not os.path.isdir(STORAGE_DIR):
-    print(f"Creating storage directory: {STORAGE_DIR}")
-    os.makedirs(STORAGE_DIR, exist_ok=True)
+# 1. 🔑 Upload root (UPLOAD_ROOT in .env, default backend/uploads). The default
+#    is created when missing; a folder set through UPLOAD_ROOT must already
+#    exist and be writable, or startup stops here with the reason — see
+#    app/utils/storage_paths.py check_upload_root().
+from app.utils.storage_paths import check_upload_root
+print(f"[uploads] Storing uploaded files under {check_upload_root()}")
 
 # 2. Bootstrap report templates: copy *.html.example → *.html if not already present.
 #    Each lab customizes the .html files locally; .html.example are the git-tracked defaults.
@@ -250,7 +248,7 @@ for _example in _TEMPLATES_DIR.glob("*.html.example"):
 
 # 2. File delivery is now handled by `app.routers.storage`:
 #   - /storage/{path}        — requires authentication (PHI images, etc.)
-#   - /public-assets/{path}  — open, restricted to uploads/system/
+#   - /public-assets/{path}  — open, restricted to <upload root>/system/
 # The previous `app.mount("/storage", StaticFiles(...))` served every
 # uploaded file unauthenticated and is intentionally not used anymore
 # (SECURITY_AUDIT.md M1).

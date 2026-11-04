@@ -78,9 +78,9 @@ class TestPHIRestriction:
 class TestPathTraversalGuard:
     def test_traversal_detected_by_resolve(self):
         """The resolve() + relative_to() guard catches path traversal attempts."""
-        from app.routers.storage import STORAGE_DIR
+        from app.utils.storage_paths import get_upload_root
 
-        storage_root = STORAGE_DIR.resolve()
+        storage_root = get_upload_root()
         malicious_paths = [
             "../../etc/passwd",
             "../../../etc/shadow",
@@ -96,10 +96,10 @@ class TestPathTraversalGuard:
             assert escaped, f"Path traversal not caught for: {path!r}"
 
     def test_normal_path_passes_guard(self):
-        """A normal path within STORAGE_DIR passes the resolve() check."""
-        from app.routers.storage import STORAGE_DIR
+        """A normal path within the upload root passes the resolve() check."""
+        from app.utils.storage_paths import get_upload_root
 
-        storage_root = STORAGE_DIR.resolve()
+        storage_root = get_upload_root()
         normal = (storage_root / "gross_images" / "case_001.jpg").resolve()
         try:
             normal.relative_to(storage_root)

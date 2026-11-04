@@ -7,13 +7,13 @@ replace/delete (an addendum or revision unlocks those writes again)."""
 import io
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
+import app.core.config as config
 import app.crud.gyne_cyto_report as gyne_report_crud
 import app.crud.nongyne_cyto_report as nongyne_report_crud
 import app.crud.surgical_report_builder as surgical_builder
-import app.routers.microscopic_images as micro_images_module
-import app.utils.file_handler as file_handler
 from app.crud.gyne_cyto_report import prepare_gyne_report_pdf_data, publish_gyne_report
 from app.crud.gyne_diagnosis import create_initial_diagnosis
 from app.crud.nongyne_cyto_report import get_nongyne_snapshot_pdf_data, publish_nongyne_report
@@ -30,6 +30,7 @@ from app.models.surgical_diagnosis import SurgicalDiagnosis
 from app.models.surgical_report import SurgicalReport, SurgicalReportImage
 from app.schemas.gyne_diagnosis import GyneDiagnosisCreate
 from app.schemas.nongyne_diagnosis import NongyneDiagnosisCreate
+from app.utils import storage_paths
 from app.utils.time import local_now
 
 from tests.factories import (
@@ -50,7 +51,18 @@ def _urls(images):
     return [img["image_url"] for img in images]
 
 
+def _put_files(*keys):
+    """Real PNGs under the (tmp) upload root: report building skips, and logs,
+    an image whose file is missing."""
+    for key in keys:
+        storage_paths.save(key, _png_bytes())
+
+
 class TestSurgicalReprint:
+    @pytest.fixture(autouse=True)
+    def _upload_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
+
     def _publish_with_images(self, db, admin_user, two_pathologists):
         registrar, _ = admin_user
         path1, _ = two_pathologists
@@ -72,6 +84,7 @@ class TestSurgicalReprint:
         )
         db.add_all([gross, micro])
         db.commit()
+        _put_files(gross.image_url, micro.image_url)
         report = finalize_and_snapshot_orchestrator(
             db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id
         )
@@ -104,6 +117,7 @@ class TestSurgicalReprint:
         db.add(GrossImage(specimen_id=specimen.id, image_url=f"/storage/gross_images/{specimen.id}/new.png", order=2))
         micro.show_in_report = False
         db.commit()
+        _put_files(gross.image_url, f"/storage/gross_images/{specimen.id}/new.png")
 
         data = {}
         attach_report_images(db, report, data)
@@ -125,6 +139,7 @@ class TestSurgicalReprint:
         report.images_snapshot = None  # finalized before the column existed
         gross.image_url = f"/storage/gross_images/{specimen.id}/v2.png"
         db.commit()
+        _put_files(gross.image_url)
 
         data = {}
         attach_report_images(db, report, data)
@@ -132,8 +147,10 @@ class TestSurgicalReprint:
         assert _urls(data["gross_images"]) == [gross.image_url]
 
     def test_an_image_file_gone_from_disk_is_skipped(self, db, admin_user, two_pathologists, monkeypatch):
-        _, _, _, _, report = self._publish_with_images(db, admin_user, two_pathologists)
-        monkeypatch.setattr(surgical_builder, "get_image_base64_from_path", lambda path, max_width=1024: None)
+        _, _, gross, micro, report = self._publish_with_images(db, admin_user, two_pathologists)
+        assert report.images_snapshot["gross"] and report.images_snapshot["micro"]
+        storage_paths.delete(gross.image_url)
+        storage_paths.delete(micro.image_url)
 
         data = {}
         attach_report_images(db, report, data)
@@ -209,7 +226,7 @@ class TestSurgicalFilesOutliveAddendumEdits:
         db.commit()
 
     def test_replace_and_delete_keep_a_file_a_published_report_uses(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload_gross(pathologist_client, specimen.id)
@@ -231,7 +248,7 @@ class TestSurgicalFilesOutliveAddendumEdits:
         assert signed_out_file.exists()
 
     def test_a_draft_report_does_not_hold_on_to_a_file(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = self._upload_gross(pathologist_client, specimen.id)
@@ -246,9 +263,7 @@ class TestSurgicalFilesOutliveAddendumEdits:
         assert not (tmp_path / created["image_url"].removeprefix("/storage/")).exists()
 
     def test_microscopic_delete_keeps_a_file_a_published_report_uses(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        (tmp_path / "microscopic_images").mkdir()
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
-        monkeypatch.setattr(micro_images_module, "STORAGE_DIR", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case, specimen = make_signable_case(db, registrar_id=registrar.id)
         created = pathologist_client.post(
@@ -270,7 +285,7 @@ class TestCytoFilesOutliveRevisionEdits:
         ).json()
 
     def test_gyne_delete_keeps_only_files_a_report_uses(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
         issued = self._upload(pathologist_client, "gyne-cytology", case.id)
@@ -285,7 +300,7 @@ class TestCytoFilesOutliveRevisionEdits:
         assert not (tmp_path / unissued["image_url"].removeprefix("/storage/")).exists()
 
     def test_nongyne_replace_keeps_a_file_a_report_uses(self, db, pathologist_client, admin_user, tmp_path, monkeypatch):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         registrar, _ = admin_user
         case = make_bare_nongyne_case(db, registrar_id=registrar.id)
         issued = self._upload(pathologist_client, "nongyne-cytology", case.id)

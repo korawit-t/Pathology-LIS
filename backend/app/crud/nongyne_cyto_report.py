@@ -4,6 +4,7 @@ from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from app.utils.time import local_now
 from app.utils.signatures import reconcile_signatures
+from app.utils.storage_paths import find_for_report
 from app.models.nongyne_cyto_report import NongyneCytoReport, NongyneReportStatus, NongyneReportType, NongyneReportSigner
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.nongyne_case_image import NongyneCaseImage
@@ -12,7 +13,6 @@ from app.models.cyto_approval_log import CytoReportAuditLog
 from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.crud.organization import resolve_lab_header
-from app.crud.surgical_report_builder import STORAGE_BASE
 from app.crud.report_images import case_images_snapshot
 from app.schemas.report_approval import ReportApproveRequest
 from app.enums.case_states import NONGYNE_SPINE
@@ -21,7 +21,6 @@ from dateutil.relativedelta import relativedelta
 from typing import List
 import base64
 import re
-from pathlib import Path
 from app.crud import his_export_log as his_export_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
 
@@ -493,10 +492,8 @@ def _get_image_base64(image_url: str, max_width: int = 800) -> str | None:
     try:
         from PIL import Image
         import io
-        storage_root = Path("uploads")
-        relative = image_url.removeprefix("/storage/")
-        file_path = storage_root / relative
-        if not file_path.exists():
+        file_path = find_for_report(image_url, "non-gyne image")
+        if not file_path:
             return None
         with Image.open(file_path) as img:
             if img.width > max_width:
@@ -568,8 +565,8 @@ def _enrich_report_data(data: dict, db: Session, case_id: int, images: list | No
     logo_url = data["report_logo_path_snapshot"]
     if logo_url:
         try:
-            full_path = STORAGE_BASE / logo_url.removeprefix("/storage/")
-            if full_path.exists():
+            full_path = find_for_report(logo_url, "logo")
+            if full_path:
                 with open(full_path, "rb") as f:
                     encoded = base64.b64encode(f.read()).decode("utf-8")
                     ext = full_path.suffix.lower().lstrip(".")

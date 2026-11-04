@@ -1,6 +1,5 @@
 import io
 import base64
-from pathlib import Path
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -11,6 +10,7 @@ from app.models.legacy_surgical_report import LegacySurgicalReport
 from app.models.legacy_gyne_cyto_report import LegacyGyneCytoReport
 from app.models.legacy_nongyne_cyto_report import LegacyNongyneCytoReport
 from app.models.system_setting import SystemSetting
+from app.utils.storage_paths import find_for_report
 from app.utils.time import local_now
 from app.dependencies.auth import InternalStaffOnly, get_current_user, assert_hospital_scoped_access
 from app.core.roles import CAN_READ_REPORT, CAN_READ_GYNE_CYTO_REPORT, CAN_READ_NONGYNE_CYTO_REPORT
@@ -71,9 +71,8 @@ def _build_legacy_pdf_data(report, db: Session) -> dict:
         data["report_footer_snapshot"] = settings.report_footer_text or ""
         if settings.report_logo_url:
             try:
-                storage_root = Path("uploads")
-                full_path = storage_root / settings.report_logo_url.removeprefix("/storage/")
-                if full_path.exists():
+                full_path = find_for_report(settings.report_logo_url, "logo")
+                if full_path:
                     with open(full_path, "rb") as f:
                         encoded = base64.b64encode(f.read()).decode("utf-8")
                         ext = full_path.suffix.lower().lstrip(".")

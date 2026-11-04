@@ -1,4 +1,3 @@
-from pathlib import Path
 import os
 import base64
 import io
@@ -9,7 +8,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
-from app.utils.file_handler import resolve_stored_file
+from app.utils.storage_paths import find_for_report, resolve_stored_file
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
 from dateutil.relativedelta import relativedelta
@@ -30,12 +29,6 @@ except ImportError:
     FITZ_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-STORAGE_BASE = BASE_DIR / "uploads"
-
-GROSS_UPLOAD_DIR = STORAGE_BASE / "gross_images"
-MICRO_UPLOAD_DIR = STORAGE_BASE / "microscopic_images"
 
 
 def _darken_hex(hex_color: str, factor: float = 0.65) -> str:
@@ -153,31 +146,30 @@ GROSS_IMAGE_WIDTH = 600
 MICRO_IMAGE_WIDTH = 800
 
 
-def _report_image_base64(image_url: str, max_width: int):
+def _report_image_base64(image_url: str, max_width: int, what: str):
     """Gross URLs carry a "/storage/" prefix and microscopic ones don't (see
-    save_microscopic_image_local); both live under uploads/."""
-    path = BASE_DIR / "uploads" / image_url.removeprefix("/storage/")
-    return get_image_base64_from_path(str(path), max_width=max_width)
+    save_microscopic_image_local); storage_paths resolves both under the
+    upload root, and logs the key when the file is missing."""
+    path = find_for_report(image_url, what)
+    return get_image_base64_from_path(str(path), max_width=max_width) if path else None
 
 
 def render_snapshot_images(images_snapshot: dict) -> dict:
     """Rebuild the gross_images / micro_images template payloads of one
     report version from its images_snapshot (see app/crud/report_images.py)."""
     payload = {"gross_images": [], "micro_images": []}
-    for key, kind, width in (
-        ("gross_images", "gross", GROSS_IMAGE_WIDTH),
-        ("micro_images", "micro", MICRO_IMAGE_WIDTH),
+    for key, kind, width, what in (
+        ("gross_images", "gross", GROSS_IMAGE_WIDTH, "gross image"),
+        ("micro_images", "micro", MICRO_IMAGE_WIDTH, "microscopic image"),
     ):
         for entry in images_snapshot.get(kind) or []:
-            b64 = _report_image_base64(entry["image_url"], width)
+            b64 = _report_image_base64(entry["image_url"], width, what)
             if b64:
                 payload[key].append({**entry, "base64": b64})
     return payload
 
 
-def _prepare_specimen_and_images(
-    db: Session, db_case, active_specimen_ids, STORAGE_BASE
-):
+def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
     spec_texts = []
     gross_images_payload = []
     micro_images_payload = []
@@ -197,7 +189,7 @@ def _prepare_specimen_and_images(
             for g_img in s.gross_images:
                 if getattr(g_img, "show_in_report", True) is False:
                     continue
-                g_b64 = _report_image_base64(g_img.image_url, GROSS_IMAGE_WIDTH)
+                g_b64 = _report_image_base64(g_img.image_url, GROSS_IMAGE_WIDTH, "gross image")
                 if g_b64:
                     gross_images_payload.append(
                         {
@@ -211,7 +203,7 @@ def _prepare_specimen_and_images(
             for m_img in s.microscopic_images:
                 if getattr(m_img, "show_in_report", True) is False:
                     continue
-                m_b64 = _report_image_base64(m_img.image_url, MICRO_IMAGE_WIDTH)
+                m_b64 = _report_image_base64(m_img.image_url, MICRO_IMAGE_WIDTH, "microscopic image")
                 if m_b64:
                     micro_images_payload.append(
                         {
@@ -578,9 +570,7 @@ def prepare_report_data(
     if db_case.hospital and db_case.hospital.use_custom_report_header:
         lab_name_th = db_case.hospital.name
 
-    spec_data = _prepare_specimen_and_images(
-        db, db_case, active_specimen_ids, STORAGE_BASE
-    )
+    spec_data = _prepare_specimen_and_images(db, db_case, active_specimen_ids)
     order_groups = _get_grouped_diagnoses(db, case_id)
 
     diag_summary = _get_diagnosis_html_summary(

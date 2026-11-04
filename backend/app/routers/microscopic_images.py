@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from app.utils import storage_paths
 from app.utils.file_handler import (
     save_microscopic_image_local,
     delete_microscopic_image_local,
@@ -34,14 +34,6 @@ router = APIRouter(
     tags=["Microscopic Images"],
     dependencies=[Depends(CAN_ACCESS_MICROSCOPIC_IMAGE)],
 )
-
-# กำหนด Path หลัก
-BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
-STORAGE_DIR = BACKEND_DIR / "uploads"
-UPLOAD_DIR = STORAGE_DIR / "microscopic_images"
-
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 
 @router.post("/{specimen_id}", response_model=MicroscopicImageResponse)
 async def upload_micro_image(
@@ -93,11 +85,9 @@ async def get_microscopic_image(
     # app/routers/storage.py — a plain ".." substring blocklist doesn't
     # canonicalize symlinks or (on the on-prem Windows deploy) drive-letter
     # absolute paths, both of which pathlib's resolve()/relative_to() catch.
-    resolved_storage_dir = STORAGE_DIR.resolve()
-    file_path = (STORAGE_DIR / path).resolve()
     try:
-        file_path.relative_to(resolved_storage_dir)
-    except ValueError:
+        file_path = storage_paths.resolve(path)
+    except storage_paths.InvalidStorageKey:
         raise HTTPException(status_code=400, detail="Path ไม่ถูกต้อง")
 
     if not file_path.exists():

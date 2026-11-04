@@ -6,13 +6,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.utils.time import local_now
 from app.utils.signatures import reconcile_signatures
+from app.utils.storage_paths import find_for_report
 from app.models.gyne_cyto_report import GyneCytoReport, GyneReportStatus, GyneReportType, GyneReportSigner
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
 from app.crud.organization import resolve_lab_header
-from app.crud.surgical_report_builder import STORAGE_BASE
 from app.crud.report_images import case_images_snapshot
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException
@@ -21,7 +21,6 @@ from dateutil.relativedelta import relativedelta
 from datetime import date
 from typing import List
 import base64
-from pathlib import Path
 from app.crud import his_export_log as his_export_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
 from app.crud.gyne_qc_guard import QC_REVIEW_DENIED, assert_not_awaiting_qc, deny
@@ -895,8 +894,8 @@ def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dic
     logo_url = data["report_logo_path_snapshot"]
     if logo_url:
         try:
-            full_path = STORAGE_BASE / logo_url.removeprefix("/storage/")
-            if full_path.exists():
+            full_path = find_for_report(logo_url, "logo")
+            if full_path:
                 with open(full_path, "rb") as f:
                     encoded = base64.b64encode(f.read()).decode("utf-8")
                     ext = full_path.suffix.lower().lstrip(".")
@@ -927,12 +926,10 @@ def _embed_case_images(images: list) -> list:
     import io as _io
 
     result = []
-    storage_root = Path("uploads")
     for img in images:
         try:
-            rel = img["image_url"].removeprefix("/storage/")
-            full_path = (storage_root / rel).resolve()
-            if not full_path.is_file():
+            full_path = find_for_report(img["image_url"], "gyne image")
+            if not full_path:
                 continue
             with PILImage.open(full_path) as pil_img:
                 if pil_img.width > 800:

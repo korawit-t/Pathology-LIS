@@ -3,7 +3,9 @@ import os
 import uuid
 from datetime import datetime, date, time
 from app.utils.time import local_now
-from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
+from app.utils import storage_paths
+from app.utils.file_handler import validate_and_sanitize
+from app.utils.storage_paths import resolve_stored_file
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf, approve_consult_pdf
 
 logger = logging.getLogger(__name__)
@@ -665,9 +667,6 @@ def delete_case(
 
 # --- 📂 Request Files Endpoints ---
 
-UPLOAD_DIR = os.path.join(os.getcwd(), "uploads", "requests")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 @router.post("/{case_id}/request-files", response_model=None)
 async def upload_request_file(
     case_id: int,
@@ -687,10 +686,8 @@ async def upload_request_file(
     data, ext = validate_and_sanitize(file, allowed="mixed")
 
     unique_filename = f"{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
     try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(data)
+        file_path = str(storage_paths.save(f"requests/{unique_filename}", data))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
@@ -725,11 +722,12 @@ def download_request_file(
     case = db.query(SurgicalCase).filter(SurgicalCase.id == req_file.case_id).first()
     assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
 
-    if not os.path.exists(req_file.file_path):
+    stored_file = resolve_stored_file(req_file.file_path)
+    if not stored_file:
          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Physical file not found on server")
 
     return FileResponse(
-        path=req_file.file_path,
+        path=stored_file,
         filename=req_file.file_name,
         media_type=req_file.file_type
     )
@@ -751,12 +749,13 @@ def delete_request_file(
     assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
 
     # Delete physical file
-    if os.path.exists(req_file.file_path):
+    stored_file = resolve_stored_file(req_file.file_path)
+    if stored_file:
         try:
-            os.remove(req_file.file_path)
+            os.remove(stored_file)
         except Exception as e:
              # Log the error, but proceed to delete db record or handle appropriately
-             logger.warning("Failed to remove physical file %s: %s", req_file.file_path, e)
+             logger.warning("Failed to remove physical file %s: %s", stored_file, e)
 
     # Delete DB record
     db.delete(req_file)

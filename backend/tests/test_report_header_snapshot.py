@@ -12,9 +12,7 @@ import base64
 
 import pytest
 
-import app.crud.gyne_cyto_report as gyne_report_module
-import app.crud.nongyne_cyto_report as nongyne_report_module
-import app.crud.surgical_report as surgical_report_module
+import app.core.config as config
 from app.crud.gyne_cyto_report import prepare_gyne_report_pdf_data
 from app.crud.nongyne_cyto_report import (
     get_nongyne_snapshot_pdf_data,
@@ -70,8 +68,7 @@ def logo_store(tmp_path, monkeypatch):
         f = tmp_path / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_bytes(rel.encode())
-    for module in (surgical_report_module, gyne_report_module, nongyne_report_module):
-        monkeypatch.setattr(module, "STORAGE_BASE", tmp_path)
+    monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
     return tmp_path
 
 

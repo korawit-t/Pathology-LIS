@@ -1,4 +1,3 @@
-import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
@@ -20,6 +19,7 @@ from app.dependencies.auth import (
     get_scoped_hospital_ids,
 )
 from app.models.user import User
+from app.utils.storage_paths import resolve_stored_file
 from app.schemas.molecular_case import (
     MolecularCaseCancel,
     MolecularCaseCreate,
@@ -317,7 +317,7 @@ def download_outlab_pdf(
         raise HTTPException(status_code=404, detail="No out-lab PDF uploaded for this case")
     _assert_case_in_scope(case, current_user)
     _assert_result_released(case, current_user)
-    if not os.path.exists(case["outlab_pdf_path"]):
+    if not resolve_stored_file(case["outlab_pdf_path"]):
         raise HTTPException(status_code=404, detail="Out-lab PDF file missing on disk")
     # Same lab-header + patient/accession cover sheet as the Surgical/Non-Gyne
     # external-consult PDF — regenerated fresh on every request.

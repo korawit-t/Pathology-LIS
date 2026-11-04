@@ -6,7 +6,8 @@ from sqlalchemy import func, or_, cast, and_, literal
 from fastapi import HTTPException, status
 from datetime import datetime
 from app.utils.time import local_now
-from app.utils.file_handler import resolve_stored_file
+from app.core.config import BACKEND_DIR
+from app.utils.storage_paths import file_uri, find_for_report, resolve_stored_file
 from app.models.gyne_cyto_case import GyneCytologyCase  # ตรวจสอบชื่อ Model ในโปรเจกต์คุณ
 from app.models.patient import Patient
 from app.models.gyne_diagnosis import GyneDiagnosis
@@ -17,7 +18,7 @@ from app.crud.gyne_qc_guard import QC_BYPASS_BLOCKED, assert_not_awaiting_qc, de
 from app.enums.case_states import GYNE_REVIEW
 from app.crud.organization import resolve_lab_header
 from app.crud.system_setting import get_settings as get_system_settings
-from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64, STORAGE_BASE
+from app.crud.surgical_report_builder import get_consult_pdf_thumbnails_base64
 from app.services.pdf_service import generate_consult_cover_pdf
 
 try:
@@ -485,11 +486,11 @@ def get_outlab_test_result_with_cover(db: Session, case_id: int) -> bytes | None
     lab_name_en, lab_address, logo_path = resolve_lab_header(case.hospital, settings)
     logo_url = None
     if logo_path:
-        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
-        logo_url = full.as_uri() if full.exists() else None
+        full = find_for_report(logo_path, "logo")
+        logo_url = file_uri(full) if full else None
 
     primary_color = settings.report_primary_color if settings else None
-    font_path = STORAGE_BASE.parent / "assets" / "fonts"
+    font_path = BACKEND_DIR / "assets" / "fonts"
 
     approver_name = (
         (case.outlab_result_approver.report_name or case.outlab_result_approver.full_name)
