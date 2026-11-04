@@ -44,7 +44,10 @@ services:
     volumes:
       # Live-reload backend code in dev (uvicorn --reload picks up changes).
       - ./backend:/app
-      - ./backend/data/storage:/app/data/storage
+      # Keep dev uploads in the host's backend/uploads, as a non-Docker run
+      # does. Same container path, so this replaces the base file's
+      # uploads_data volume.
+      - ./backend/uploads:/app/uploads
 
   frontend:
     restart: "no"

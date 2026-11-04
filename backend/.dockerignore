@@ -1,0 +1,4 @@
+# Uploaded patient images and files belong in the uploads_data volume, never in
+# the image. A local uploads/ would otherwise be baked in, then copied into a
+# fresh volume the first time it is mounted.
+uploads/

@@ -7,6 +7,7 @@
 #   DATABASE_URL          postgresql+psycopg2://user:pass@host:port/dbname
 #   BACKUP_ROOT           /mnt/PATHOLOGY_BK/pathology_backup
 #   DB_CONTAINER          pathology-db         (optional, default: pathology-db)
+#   BACKEND_CONTAINER     pathology-backend    (optional, default: pathology-backend)
 #   SLACK_BACKUP_WEBHOOK  https://hooks.slack.com/...  (optional)
 #
 # วิธีใช้:
@@ -47,7 +48,7 @@ DB_NAME="${_URL#*/}"; DB_NAME="${DB_NAME%%\?*}"
 
 DB_CONTAINER="${DB_CONTAINER:-pathology-db}"
 SLACK_BACKUP_WEBHOOK="${SLACK_BACKUP_WEBHOOK:-}"
-STORAGE_DIR="$(dirname "$0")/backend/data/storage"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-pathology-backend}"
 LOG_CSV="$BACKUP_ROOT/backup_log.csv"
 
 # ตรวจสอบว่า BACKUP_ROOT เข้าถึงได้จริง (HDD mount แล้วหรือยัง)
@@ -139,17 +140,20 @@ DB_SIZE=$(du -m "$DB_DUMP_FILE" | cut -f1)
 echo "    -> $DB_DUMP_FILE (${DB_SIZE} MB, ${TABLE_COUNT} tables verified)"
 
 # 2. Backup Storage
+# Uploads live in the backend container's uploads_data volume, not on the
+# host, so they are archived from inside the container, as pg_dump is above.
+# This used to tar the host's backend/data/storage, which the backend never
+# wrote to: every run archived an empty folder and reported success.
 echo "[2/3] Archiving storage..."
-if [[ -d "$STORAGE_DIR" ]]; then
-  tar -czf "$STORAGE_TMP" -C "$(dirname "$STORAGE_DIR")" "$(basename "$STORAGE_DIR")" \
-    || fail "tar archive failed"
-  mv -f "$STORAGE_TMP" "$STORAGE_ARCHIVE"
-  FILES_SIZE=$(du -m "$STORAGE_ARCHIVE" | cut -f1)
-  echo "    -> $STORAGE_ARCHIVE (${FILES_SIZE} MB)"
-else
-  DETAIL="storage dir not found: $STORAGE_DIR"
-  echo "    [WARN] $DETAIL"
+if ! docker ps --format '{{.Names}}' | grep -q "^${BACKEND_CONTAINER}$"; then
+  fail "Docker container '$BACKEND_CONTAINER' is not running"
 fi
+
+docker exec "$BACKEND_CONTAINER" tar -czf - -C /app uploads \
+  > "$STORAGE_TMP" || fail "tar archive failed"
+mv -f "$STORAGE_TMP" "$STORAGE_ARCHIVE"
+FILES_SIZE=$(du -m "$STORAGE_ARCHIVE" | cut -f1)
+echo "    -> $STORAGE_ARCHIVE (${FILES_SIZE} MB)"
 
 # 3. Prune old backups - only after a successful, verified run, so a run of
 # failures can never age out the last good copy.

@@ -47,8 +47,11 @@ RUN fc-cache -fv
 RUN fc-list | grep "Sarabun"
 
 # 🔒 SECURITY: run as non-root to limit blast radius if the process is compromised.
+#    uploads/ is created here so the uploads_data volume that docker-compose.yml
+#    mounts over it is initialised owned by appuser, not root.
 RUN groupadd --gid 1001 appgroup \
     && useradd --uid 1001 --gid appgroup --shell /bin/sh --no-create-home appuser \
+    && mkdir -p /app/uploads \
     && chown -R appuser:appgroup /app
 USER appuser
 
