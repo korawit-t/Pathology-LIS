@@ -91,6 +91,19 @@ class TestStripExif:
 
         assert dict(Image.open(io.BytesIO(cleaned)).getexif()) == {}
 
+    def test_jpeg_is_re_encoded_at_quality_92_not_pillow_default_75(self):
+        # JPEG quantization tables depend only on the quality setting, so
+        # matching them against a reference encode pins the quality used.
+        img = Image.effect_noise((64, 64), 64).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95)
+        reference = io.BytesIO()
+        img.save(reference, format="JPEG", quality=92)
+
+        cleaned = Image.open(io.BytesIO(_strip_exif(buf.getvalue(), "jpg")))
+
+        assert cleaned.quantization == Image.open(reference).quantization
+
     def test_tiff_is_re_encoded_as_png(self):
         original = _image_bytes("TIFF")
 
