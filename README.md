@@ -218,6 +218,8 @@ curl.exe -k "https://<host>/api/system-settings/public?slug=master"
 
 > `start.ps1` auto-runs `alembic upgrade head` before starting Uvicorn. `VITE_API_BASE_URL` is compiled in, so changing it means rebuilding the frontend and recopying `dist/`.
 
+**5. Where uploads live.** Uploaded images and files go to `backend\uploads` unless `UPLOAD_ROOT` in `backend/.env` says otherwise — see [Moving the uploads folder](#moving-the-uploads-folder) to keep them on another disk or a file server.
+
 ---
 
 ### 5. Accessing the system
@@ -244,7 +246,7 @@ Open inbound rules on the server firewall:
 | Uploaded images & files | Docker volume `uploads_data` (mounted at `/app/uploads` in the backend container) |
 | Database | Docker volume `postgres_data` |
 
-Back up both regularly — `backup.sh` does both (see [Backup and Restore](#backup-and-restore)). To keep uploads on an external drive or NAS instead, replace `uploads_data:/app/uploads` in `docker-compose.yml` with a bind mount to that path, and `chown -R 1001:1001` the directory first: the backend runs as uid 1001 and cannot write to a root-owned directory.
+Back up both regularly — `backup.sh` does both (see [Backup and Restore](#backup-and-restore)). To keep uploads on an external drive or NAS instead, replace `uploads_data:/app/uploads` in `docker-compose.yml` with a bind mount to that path, and `chown -R 1001:1001` the directory first: the backend runs as uid 1001 and cannot write to a root-owned directory. Under Docker leave `UPLOAD_ROOT` unset; the backend keeps using `/app/uploads`, and the mount decides where that really is.
 
 > ⚠️ **Upgrading a Docker install whose `docker-compose.yml` still mounts `./backend/data/storage`:** that mount pointed at a path the backend never writes to, so uploads were kept inside the backend container itself and lost every time it was recreated. Copy them out **before** updating and rebuilding:
 >
@@ -254,6 +256,52 @@ Back up both regularly — `backup.sh` does both (see [Backup and Restore](#back
 > docker cp ./uploads-rescue/. pathology-backend:/app/uploads/
 > docker compose -f docker-compose.yml exec -u root backend chown -R appuser:appgroup /app/uploads
 > ```
+
+---
+
+## Moving the uploads folder
+
+Every uploaded file — gross, microscopic and cytology images, logos, request
+documents, consult and out-lab PDFs — lives under one folder, `UPLOAD_ROOT` in
+`backend/.env`. Unset, it is `backend/uploads`, as it has always been. The
+database refers to each file by its place inside this folder, so moving the
+uploads to another disk or a file server needs no database change:
+
+1. Stop the backend.
+2. Copy the whole uploads folder to the new place, subfolders included
+   (`robocopy "C:\...\backend\uploads" "\\fileserver\lis-uploads" /E /COPY:DAT`).
+3. Set `UPLOAD_ROOT=\\fileserver\lis-uploads` in `backend/.env`.
+4. Check that every file the database refers to is there (read-only; exits 1
+   and lists them if any are missing):
+   ```powershell
+   cd backend
+   .\venv\Scripts\python scripts\check_upload_paths.py
+   ```
+5. Start the backend. It prints `[uploads] Storing uploaded files under ...` at
+   startup. Keep the old folder until reports have been checked with images.
+
+On Windows:
+
+- **Use a UNC path** (`\\fileserver\lis-uploads`), never a mapped drive
+  letter. The backend runs from a scheduled task or service, which does not see
+  drives mapped in a user's logon session.
+- **The account running the backend needs read/write permission** on the share
+  and its folder.
+- **The folder must already exist.** With `UPLOAD_ROOT` set, the backend checks
+  at startup that the folder exists and is writable, and refuses to start
+  otherwise, naming the folder. It never creates it, so a file server that is
+  down or a share that failed to mount stops the backend instead of quietly
+  turning into an empty local folder. If the backend starts automatically at
+  boot, set its task or service to retry on failure, so it comes up once the
+  file server is reachable instead of staying down.
+- While the backend runs, a report whose image or logo cannot be found still
+  prints without it, as before, and the backend log gets a warning naming the
+  missing file. A burst of those usually means the file server is unreachable.
+- `backup.ps1` archives `UPLOAD_ROOT` when it is set, so the nightly backup
+  follows the move. Make sure the account running the backup can read the share.
+
+Docker keeps `/app/uploads` (the `uploads_data` volume); change the volume mount
+rather than `UPLOAD_ROOT` there (see [Backup](#7-backup)).
 
 ---
 
@@ -413,6 +461,8 @@ Docker) each take a compressed `pg_dump` of the database plus an archive of the
 uploads directory. Both read all their configuration from `backend/.env` —
 `BACKUP_ROOT`, `BACKUP_PG_BIN` and `STORAGE_DIR` (Windows), `DB_CONTAINER` and
 `BACKEND_CONTAINER` (Linux), `BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
+On Windows the uploads archived are `STORAGE_DIR` if set, else `UPLOAD_ROOT`
+(where the backend keeps them), else `backend\uploads`.
 
 Run one manually:
 

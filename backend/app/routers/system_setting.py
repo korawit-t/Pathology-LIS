@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pathlib import Path
 import uuid
+from app.utils import storage_paths
 from app.utils.file_handler import validate_and_sanitize
 from pydantic import BaseModel
 
@@ -18,10 +19,7 @@ from app.dependencies.step_up import require_step_up
 # themselves; /{setting_id} stays open because every page loads it.
 router = APIRouter(prefix="/system-settings", tags=["System Settings"])
 
-# โลโก้ระบบเก็บที่ uploads/system/ — โฟลเดอร์เดียวที่เปิดได้โดยไม่ต้อง login ผ่าน /public-assets/ (app/routers/storage.py)
-STORAGE_DIR = Path("uploads")
-UPLOAD_DIR = STORAGE_DIR / "system"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# โลโก้ระบบเก็บที่ <upload root>/system/ — โฟลเดอร์เดียวที่เปิดได้โดยไม่ต้อง login ผ่าน /public-assets/ (app/routers/storage.py)
 
 
 from typing import List
@@ -87,12 +85,8 @@ async def upload_logo(
     file_bytes, safe_ext = validate_and_sanitize(file, allowed="image")
 
     # Save validated file
-    file_name = f"logo_{logo_type}_{uuid.uuid4()}.{safe_ext}"
-    file_path = UPLOAD_DIR / file_name
-    with file_path.open("wb") as buffer:
-        buffer.write(file_bytes)
-
-    url = f"system/{file_name}"
+    url = f"system/logo_{logo_type}_{uuid.uuid4()}.{safe_ext}"
+    storage_paths.save(url, file_bytes)
     update_data = SystemSettingUpdate(**{f"{logo_type}_logo_url": url})
     return crud.update_settings(db, update_data, hospital_slug=slug)
 

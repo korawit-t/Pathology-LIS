@@ -4,20 +4,15 @@ which — like the file_handler.py delete bug — ate the whole leading path
 segment on any word sharing letters with "/storage/", e.g. "system").
 This is not a full test suite for the (otherwise still-untested) router."""
 
+import app.core.config as config
 from app.routers.legacy_reports import _build_legacy_pdf_data
 from app.models.legacy_surgical_report import LegacySurgicalReport
-import app.routers.legacy_reports as legacy_reports_module
 
 from tests.factories import make_system_setting
 
 
 def _patch_uploads_dir(monkeypatch, tmp_path):
-    real_path_cls = legacy_reports_module.Path
-
-    def fake_path(p):
-        return tmp_path if p == "uploads" else real_path_cls(p)
-
-    monkeypatch.setattr(legacy_reports_module, "Path", fake_path)
+    monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
 
 class TestBuildLegacyPdfDataLogoSnapshot:

@@ -10,6 +10,8 @@ from weasyprint import HTML
 from weasyprint.text.fonts import FontConfiguration
 from weasyprint.urls import URLFetcher
 
+from app.utils.storage_paths import get_upload_root
+
 try:
     from pypdf import PdfWriter
     PYPDF_AVAILABLE = True
@@ -31,22 +33,22 @@ FONT_DIR = os.path.join(PROJECT_ROOT, "assets", "fonts")
 # default fetcher a <link rel="attachment" href="file:///…/.env"> typed into
 # clinical history embedded that file in the PDF, and an <img src="http://…">
 # made the server request any URL on its network.
-_ALLOWED_FILE_ROOTS = tuple({
-    Path(p).resolve()
-    for p in (
-        FONT_DIR,
-        TEMPLATE_DIR,
-        os.path.join(PROJECT_ROOT, "uploads", "system"),
-        os.path.join(PROJECT_ROOT, "uploads", "hospitals"),
-        # system_setting.py saves the lab logo relative to the working directory.
-        os.path.join("uploads", "system"),
+# Worked out per fetch rather than at import so the logo folders follow the
+# upload root (UPLOAD_ROOT) wherever it is.
+def _allowed_file_roots() -> tuple[Path, ...]:
+    upload_root = get_upload_root()
+    return (
+        Path(FONT_DIR).resolve(),
+        Path(TEMPLATE_DIR).resolve(),
+        upload_root / "system",
+        upload_root / "hospitals",
     )
-})
 
 
 class _ReportURLFetcher(URLFetcher):
-    """Loads data: URIs and local files under _ALLOWED_FILE_ROOTS, and refuses
-    everything else. WeasyPrint logs a refused URL and renders without it."""
+    """Loads data: URIs and local files under _allowed_file_roots(), and
+    refuses everything else. WeasyPrint logs a refused URL and renders
+    without it."""
 
     def fetch(self, url, headers=None):
         parts = urlsplit(url)
@@ -54,7 +56,7 @@ class _ReportURLFetcher(URLFetcher):
         if scheme == "file":
             path = Path(url2pathname(parts.path)).resolve()
             if parts.netloc not in ("", "localhost") or not any(
-                path.is_relative_to(root) for root in _ALLOWED_FILE_ROOTS
+                path.is_relative_to(root) for root in _allowed_file_roots()
             ):
                 raise ValueError(f"Report may not load {url}")
         elif scheme != "data":

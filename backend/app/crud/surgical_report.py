@@ -1,5 +1,5 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
-from app.crud.surgical_report_builder import prepare_report_data, STORAGE_BASE
+from app.crud.surgical_report_builder import prepare_report_data
 from app.schemas.surgical_bulk import BulkSaveDraft
 import logging
 from sqlalchemy.orm import Session, joinedload
@@ -18,6 +18,7 @@ from app.models.organization import Hospital
 from app.crud.organization import resolve_lab_header
 from app.crud.system_setting import get_settings as get_system_settings
 from app.enums.case_status import CaseStatus
+from app.utils.storage_paths import file_uri, find_for_report
 from app.crud import his_export_log as his_export_crud
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def resolve_report_logo(report_data: dict, db: Session) -> None:
     )
     _name, _address, logo_path = resolve_lab_header(hospital, settings)
     if logo_path:
-        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
-        report_data["report_logo_url_snapshot"] = full.as_uri() if full.exists() else None
+        full = find_for_report(logo_path, "logo")
+        report_data["report_logo_url_snapshot"] = file_uri(full) if full else None
     else:
         report_data["report_logo_url_snapshot"] = None
 

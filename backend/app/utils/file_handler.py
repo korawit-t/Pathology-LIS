@@ -1,15 +1,10 @@
 from fastapi import UploadFile, HTTPException
-import logging
-import os
 import io
+import re
 import uuid
-from pathlib import Path
 from typing import Literal
 
-logger = logging.getLogger(__name__)
-
-# Path ฐานสำหรับเก็บไฟล์ Static (ต้องตรงกับที่ Mount ใน main.py)
-STORAGE_ROOT = Path("uploads")
+from app.utils import storage_paths
 
 # ---------------------------------------------------------------------------
 # Upload validation constants
@@ -134,88 +129,51 @@ async def save_gross_image_local(specimen_id: int, file: UploadFile) -> str:
     """Validate, sanitise (EXIF strip), and save a gross pathology image."""
     data, ext = validate_and_sanitize(file, allowed="image")
 
-    dest_dir = STORAGE_ROOT / "gross_images" / str(specimen_id)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    unique_filename = f"{uuid.uuid4()}.{ext}"
-    (dest_dir / unique_filename).write_bytes(data)
-    return f"/storage/gross_images/{specimen_id}/{unique_filename}"
+    key = f"/storage/gross_images/{specimen_id}/{uuid.uuid4()}.{ext}"
+    storage_paths.save(key, data)
+    return key
 
 
 async def save_nongyne_image_local(case_id: int, file: UploadFile) -> str:
     """Validate, sanitise (EXIF strip), and save a non-gyne cytology image."""
     data, ext = validate_and_sanitize(file, allowed="image")
 
-    dest_dir = STORAGE_ROOT / "nongyne_images" / str(case_id)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    unique_filename = f"{uuid.uuid4()}.{ext}"
-    (dest_dir / unique_filename).write_bytes(data)
-    return f"/storage/nongyne_images/{case_id}/{unique_filename}"
+    key = f"/storage/nongyne_images/{case_id}/{uuid.uuid4()}.{ext}"
+    storage_paths.save(key, data)
+    return key
 
 
 def delete_nongyne_image_local(image_url: str):
-    import re
     if not re.fullmatch(r"/storage/nongyne_images/\d+/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
-    relative = image_url.removeprefix("/storage/")
-    file_path = (STORAGE_ROOT / relative).resolve()
-    storage_root_resolved = STORAGE_ROOT.resolve()
-    if not file_path.is_relative_to(storage_root_resolved):
-        raise ValueError("Path traversal attempt detected")
-    if file_path.exists():
-        os.remove(file_path)
-        return True
-    return False
+    return storage_paths.delete(image_url)
 
 
 async def save_gyne_image_local(case_id: int, file: UploadFile) -> str:
     """Validate, sanitise (EXIF strip), and save a gyne cytology image."""
     data, ext = validate_and_sanitize(file, allowed="image")
 
-    dest_dir = STORAGE_ROOT / "gyne_images" / str(case_id)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    unique_filename = f"{uuid.uuid4()}.{ext}"
-    (dest_dir / unique_filename).write_bytes(data)
-    return f"/storage/gyne_images/{case_id}/{unique_filename}"
+    key = f"/storage/gyne_images/{case_id}/{uuid.uuid4()}.{ext}"
+    storage_paths.save(key, data)
+    return key
 
 
 def delete_gyne_image_local(image_url: str):
-    import re
     if not re.fullmatch(r"/storage/gyne_images/\d+/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
-    relative = image_url.removeprefix("/storage/")
-    file_path = (STORAGE_ROOT / relative).resolve()
-    storage_root_resolved = STORAGE_ROOT.resolve()
-    if not file_path.is_relative_to(storage_root_resolved):
-        raise ValueError("Path traversal attempt detected")
-    if file_path.exists():
-        os.remove(file_path)
-        return True
-    return False
+    return storage_paths.delete(image_url)
 
 
 def delete_gross_image_local(image_url: str):
     """
     Delete a Gross image from local storage using its URL path.
-    Only files inside STORAGE_ROOT are allowed to be deleted.
+    Only files inside the upload root are allowed to be deleted: the pattern
+    check here, and storage_paths.delete's containment check behind it.
     """
-    import re
     # Only accept paths matching the expected pattern to prevent traversal
     if not re.fullmatch(r"/storage/gross_images/\d+/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
-
-    # Strip the leading /storage prefix and resolve against STORAGE_ROOT
-    relative = image_url.removeprefix("/storage/")
-    file_path = (STORAGE_ROOT / relative).resolve()
-
-    # Ensure the resolved path stays inside STORAGE_ROOT
-    storage_root_resolved = STORAGE_ROOT.resolve()
-    if not file_path.is_relative_to(storage_root_resolved):
-        raise ValueError("Path traversal attempt detected")
-
-    if file_path.exists():
-        os.remove(file_path)
-        return True
-    return False
+    return storage_paths.delete(image_url)
 
 
 async def save_microscopic_image_local(file: UploadFile) -> str:
@@ -223,18 +181,16 @@ async def save_microscopic_image_local(file: UploadFile) -> str:
     Validate, sanitise (EXIF strip), and save a microscopic image.
 
     The layout deliberately differs from the other three image domains: files
-    are flat in uploads/microscopic_images/ (no per-specimen subdirectory) and
+    are flat in <upload root>/microscopic_images/ (no per-specimen subdirectory) and
     the stored URL carries no "/storage/" prefix, because this domain is served
     by its own /microscopic-images/get-image/ endpoint instead of the shared
     storage router. Kept as-is so existing rows keep resolving.
     """
     data, ext = validate_and_sanitize(file, allowed="image")
 
-    dest_dir = STORAGE_ROOT / "microscopic_images"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    unique_filename = f"{uuid.uuid4()}.{ext}"
-    (dest_dir / unique_filename).write_bytes(data)
-    return f"microscopic_images/{unique_filename}"
+    key = f"microscopic_images/{uuid.uuid4()}.{ext}"
+    storage_paths.save(key, data)
+    return key
 
 
 def delete_microscopic_image_local(image_url: str):
@@ -244,42 +200,7 @@ def delete_microscopic_image_local(image_url: str):
     the pattern has no "/storage/" prefix and no id segment to match the
     flat layout described in save_microscopic_image_local.
     """
-    import re
     if not re.fullmatch(r"microscopic_images/[\w\-]+\.\w+", image_url):
         raise ValueError(f"Invalid image_url format: {image_url}")
+    return storage_paths.delete(image_url)
 
-    file_path = (STORAGE_ROOT / image_url).resolve()
-
-    storage_root_resolved = STORAGE_ROOT.resolve()
-    if not file_path.is_relative_to(storage_root_resolved):
-        raise ValueError("Path traversal attempt detected")
-
-    if file_path.exists():
-        os.remove(file_path)
-        return True
-    return False
-
-
-def resolve_stored_file(stored_path: str | None) -> Path | None:
-    """Resolve a file path kept on a DB row (a case's consult_pdf_path or
-    out_lab_result_pdf_path) before it is served, read or deleted.
-
-    Returns None when the path is unset, is not a file, or resolves outside
-    STORAGE_ROOT. The upload handlers store these as absolute paths, and the
-    download / replace / clear endpoints act on whatever the column holds, so
-    a value pointing anywhere else (such as one written through a case PATCH
-    before those fields were taken out of the Update schemas) must not get the
-    backend's .env served or an arbitrary file deleted.
-    """
-    if not stored_path:
-        return None
-    try:
-        resolved = Path(stored_path).resolve()
-    except (OSError, RuntimeError, ValueError):
-        return None
-    if not resolved.is_relative_to(STORAGE_ROOT.resolve()):
-        logger.warning("Refusing stored file path outside %s: %r", STORAGE_ROOT, stored_path)
-        return None
-    if not resolved.is_file():
-        return None
-    return resolved

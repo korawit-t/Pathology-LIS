@@ -12,9 +12,9 @@ multiple hospitals -- see app.dependencies.auth.assert_hospital_scoped_access.
 """
 
 import uuid
-from pathlib import Path
 
-from app.crud.consult_pdf import UPLOAD_CONSULT_DIR
+import app.core.config as config
+from app.utils import storage_paths
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.nongyne_request_file import NongyneRequestFile
 from app.models.surgical_request_file import SurgicalRequestFile
@@ -100,12 +100,16 @@ class TestSurgicalRequestFileHospitalScoping:
 
         assert response.status_code == 403
 
-    def test_clinician_can_download_own_hospital_request_file(self, client, db, admin_user, tmp_path):
+    def test_clinician_can_download_own_hospital_request_file(
+        self, client, db, admin_user, tmp_path, monkeypatch
+    ):
         registrar, _ = admin_user
         hosp_a = make_hospital(db)
         case_a = make_bare_case(db, registrar_id=registrar.id, hospital=hosp_a)
-        file_path = tmp_path / "req.pdf"
-        file_path.write_bytes(b"%PDF-fake")
+        # Inside the upload root, where uploads put request files: the download
+        # refuses a stored path anywhere else.
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
+        file_path = storage_paths.save("requests/req.pdf", b"%PDF-fake")
         req_file = SurgicalRequestFile(
             case_id=case_a.id, file_path=str(file_path),
             file_name="req.pdf", file_type="application/pdf", uploaded_by_id=registrar.id,
@@ -169,8 +173,7 @@ class TestGyneConsultPdfHospitalScoping:
         hosp_a = make_hospital(db)
         # Inside uploads/consults: the download refuses a stored path outside
         # the uploads directory (see test_case_file_path_safety.py).
-        file_path = Path(UPLOAD_CONSULT_DIR) / f"test_scoping_{uuid.uuid4().hex}.pdf"
-        file_path.write_bytes(b"%PDF-fake")
+        file_path = storage_paths.save(f"consults/test_scoping_{uuid.uuid4().hex}.pdf", b"%PDF-fake")
         case_a = make_bare_gyne_case(db, registrar_id=registrar.id, hospital=hosp_a)
         case_a.consult_pdf_path = str(file_path)
         db.commit()

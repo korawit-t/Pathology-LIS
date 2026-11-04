@@ -15,19 +15,18 @@ from app.models.surgical_block import SurgicalBlock
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.models.patient import Patient
 from app.schemas.molecular_case import MolecularCaseCreate, MolecularCaseUpdate
+from app.core.config import BACKEND_DIR
+from app.utils import storage_paths
 from app.utils.file_handler import validate_and_sanitize
+from app.utils.storage_paths import file_uri, find_for_report, resolve_stored_file
 from app.utils.time import local_now
 from app.crud.organization import resolve_lab_header
 from app.crud.system_setting import get_settings as get_system_settings
 from app.crud.surgical_report_builder import (
     get_consult_pdf_thumbnails_base64,
-    STORAGE_BASE,
     _calculate_patient_age,
 )
 from app.services.pdf_service import generate_consult_cover_pdf, generate_pdf_blob
-
-UPLOAD_MOLECULAR_DIR = os.path.join(os.getcwd(), "uploads", "molecular")
-os.makedirs(UPLOAD_MOLECULAR_DIR, exist_ok=True)
 
 # An out-lab case whose PDF is already on file but has not been finalized —
 # the external lab is done and only the pathologist's sign-out is left.
@@ -602,15 +601,14 @@ def save_outlab_pdf(db: Session, case_id: int, file: UploadFile, received_at: st
 
     data, ext = validate_and_sanitize(file, allowed="pdf")
 
-    if case.outlab_pdf_path and os.path.exists(case.outlab_pdf_path):
-        os.remove(case.outlab_pdf_path)
+    old_file = resolve_stored_file(case.outlab_pdf_path)
+    if old_file:
+        os.remove(old_file)
 
     unique_filename = f"molecular_{case.id}_{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(UPLOAD_MOLECULAR_DIR, unique_filename)
-    with open(file_path, "wb") as buffer:
-        buffer.write(data)
+    file_path = storage_paths.save(f"molecular/{unique_filename}", data)
 
-    case.outlab_pdf_path = file_path
+    case.outlab_pdf_path = str(file_path)
     case.outlab_pdf_received_at = (
         datetime.fromisoformat(received_at) if received_at else local_now()
     )
@@ -622,8 +620,9 @@ def clear_outlab_pdf(db: Session, case_id: int) -> dict | None:
     case = _get_case_obj(db, case_id)
     if not case:
         return None
-    if case.outlab_pdf_path and os.path.exists(case.outlab_pdf_path):
-        os.remove(case.outlab_pdf_path)
+    old_file = resolve_stored_file(case.outlab_pdf_path)
+    if old_file:
+        os.remove(old_file)
     case.outlab_pdf_path = None
     case.outlab_pdf_received_at = None
     db.commit()
@@ -795,7 +794,8 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
         .filter(MolecularCase.id == case_id)
         .first()
     )
-    if not case or not case.outlab_pdf_path or not os.path.exists(case.outlab_pdf_path):
+    outlab_pdf = resolve_stored_file(case.outlab_pdf_path) if case else None
+    if not outlab_pdf:
         return None
 
     # Rendered sharper than the shared default (1000px/150dpi): with nothing
@@ -808,14 +808,13 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
     # get_consult_pdf_thumbnails_base64, whose default still serves the
     # Surgical and Gyne covers, where the full-size original does follow.
     thumbnails = get_consult_pdf_thumbnails_base64(
-        case.outlab_pdf_path, max_width=1600, dpi=200
+        str(outlab_pdf), max_width=1600, dpi=200
     )
     if not thumbnails:
         # Rasterizing failed (unreadable/corrupt upload, or PyMuPDF missing).
         # Hand back the lab's own file rather than nothing: a report with no
         # header still beats no report, and this is the only path that has it.
-        with open(case.outlab_pdf_path, "rb") as f:
-            return f.read()
+        return outlab_pdf.read_bytes()
 
     fields = _resolve_display_fields(case)
     patient = fields["patient"]
@@ -827,11 +826,11 @@ def get_outlab_pdf_with_cover(db: Session, case_id: int, with_barcode: bool = Fa
     lab_name_en, lab_address, logo_path = resolve_lab_header(hospital, settings)
     logo_url = None
     if logo_path:
-        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
-        logo_url = full.as_uri() if full.exists() else None
+        full = find_for_report(logo_path, "logo")
+        logo_url = file_uri(full) if full else None
 
     primary_color = settings.report_primary_color if settings else None
-    font_path = STORAGE_BASE.parent / "assets" / "fonts"
+    font_path = BACKEND_DIR / "assets" / "fonts"
 
     report_data = {
         "font_path": font_path.as_uri(),
@@ -891,11 +890,11 @@ def _build_molecular_report_data(db: Session, case: MolecularCase, with_barcode:
     lab_name_en, lab_address, logo_path = resolve_lab_header(hospital, settings)
     logo_url = None
     if logo_path:
-        full = STORAGE_BASE / logo_path.removeprefix("/storage/")
-        logo_url = full.as_uri() if full.exists() else None
+        full = find_for_report(logo_path, "logo")
+        logo_url = file_uri(full) if full else None
 
     primary_color = settings.report_primary_color if settings else None
-    font_path = STORAGE_BASE.parent / "assets" / "fonts"
+    font_path = BACKEND_DIR / "assets" / "fonts"
 
     # Freeze age as of registration, same convention Surgical uses, rather
     # than the live patient.age_display property (which would drift with

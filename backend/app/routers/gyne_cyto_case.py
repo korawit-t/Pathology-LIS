@@ -1,7 +1,9 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Response
-from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
+from app.utils import storage_paths
+from app.utils.file_handler import validate_and_sanitize
+from app.utils.storage_paths import resolve_stored_file
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Any, Optional
@@ -33,11 +35,6 @@ from app.core.roles import (
 from app.models.gyne_cyto_request_file import GyneCytoRequestFile
 from app.models.gyne_cyto_case import GyneCytologyCase
 from app.models.user import User
-
-GYNE_UPLOAD_DIR = os.path.join(os.getcwd(), "uploads", "requests")
-os.makedirs(GYNE_UPLOAD_DIR, exist_ok=True)
-OUTLAB_REPORT_DIR = os.path.join(os.getcwd(), "uploads", "outlab")
-os.makedirs(OUTLAB_REPORT_DIR, exist_ok=True)
 
 # Clinician and hospital accounts reach only the endpoints named here (what
 # the results portal calls); see InternalStaffOnly before adding one.
@@ -397,10 +394,8 @@ async def upload_request_file(
     data, ext = validate_and_sanitize(file, allowed="mixed")
 
     unique_filename = f"{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(GYNE_UPLOAD_DIR, unique_filename)
     try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(data)
+        file_path = str(storage_paths.save(f"requests/{unique_filename}", data))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
@@ -428,9 +423,10 @@ def download_request_file(
         raise HTTPException(status_code=404, detail="File not found")
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == req_file.case_id).first()
     assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
-    if not os.path.exists(req_file.file_path):
+    stored_file = resolve_stored_file(req_file.file_path)
+    if not stored_file:
         raise HTTPException(status_code=404, detail="Physical file not found on server")
-    return FileResponse(path=req_file.file_path, filename=req_file.file_name, media_type=req_file.file_type)
+    return FileResponse(path=stored_file, filename=req_file.file_name, media_type=req_file.file_type)
 
 
 @router.delete("/request-files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -444,8 +440,9 @@ def delete_request_file(
         raise HTTPException(status_code=404, detail="File not found")
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == req_file.case_id).first()
     assert_hospital_scoped_access(current_user, case.hospital_id if case else None)
-    if os.path.exists(req_file.file_path):
-        os.remove(req_file.file_path)
+    stored_file = resolve_stored_file(req_file.file_path)
+    if stored_file:
+        os.remove(stored_file)
     db.delete(req_file)
     db.commit()
     return None
@@ -472,10 +469,8 @@ async def upload_outlab_test_result(
         os.remove(old_file)
 
     unique_filename = f"{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(OUTLAB_REPORT_DIR, unique_filename)
     try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(data)
+        file_path = str(storage_paths.save(f"outlab/{unique_filename}", data))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 

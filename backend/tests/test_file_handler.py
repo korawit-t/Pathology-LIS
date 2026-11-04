@@ -3,10 +3,9 @@ This is the file CLAUDE.md calls out as having already-fixed magic-byte and
 EXIF-stripping security checks (SECURITY_AUDIT.md is stale on this point);
 these tests lock in that current, correct behavior.
 
-save_*_image_local write to STORAGE_ROOT, which defaults to the real
-`uploads/` directory relative to cwd — every test here monkeypatches
-STORAGE_ROOT to a pytest tmp_path so nothing ever touches the app's actual
-upload storage."""
+save_*_image_local write under settings.UPLOAD_ROOT, which defaults to the
+real backend/uploads/ directory — every test here monkeypatches UPLOAD_ROOT to
+a pytest tmp_path so nothing ever touches the app's actual upload storage."""
 
 import io
 
@@ -14,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 from PIL import Image
 
-import app.utils.file_handler as file_handler
+import app.core.config as config
 from app.utils.file_handler import (
     _detect_type,
     _strip_exif,
@@ -164,7 +163,7 @@ class TestValidateAndSanitize:
 
 class TestSaveImageLocal:
     def test_save_gross_image_writes_under_the_specimen_id_and_returns_its_url(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         url = _run(save_gross_image_local(42, FakeUploadFile(_image_bytes("PNG"))))
 
@@ -174,7 +173,7 @@ class TestSaveImageLocal:
         assert saved_path.exists()
 
     def test_save_nongyne_image_writes_under_the_case_id(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         url = _run(save_nongyne_image_local(7, FakeUploadFile(_image_bytes("JPEG"))))
 
@@ -182,7 +181,7 @@ class TestSaveImageLocal:
         assert (tmp_path / "nongyne_images" / "7").exists()
 
     def test_save_gyne_image_writes_under_the_case_id(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         url = _run(save_gyne_image_local(9, FakeUploadFile(_image_bytes("JPEG"))))
 
@@ -195,7 +194,7 @@ class TestDeleteImageLocal:
     # defense-in-depth: the regex fullmatch above it only allows
     # `\d+/[\w\-]+\.\w+`, which already excludes "/" and ".." from the
     # filename segment — so a real bypass of the regex that still escapes
-    # STORAGE_ROOT isn't constructible through this function's public
+    # the upload root isn't constructible through this function's public
     # contract. Both checks are exercised together below via malformed URLs.
 
     def test_rejects_a_malformed_url(self):
@@ -213,7 +212,7 @@ class TestDeleteImageLocal:
         # got eaten too ("/storage/gross_images/1/x.png" -> "_images/1/x.png"),
         # meaning the file was never found and this always returned False
         # without raising. Fixed via .removeprefix("/storage/").
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         dest = tmp_path / "gross_images" / "1"
         dest.mkdir(parents=True)
         (dest / "abc123.png").write_bytes(b"fake png bytes")
@@ -227,7 +226,7 @@ class TestDeleteImageLocal:
         # Regression: same root cause, off-by-one symptom — "gyne_images"
         # starts with "g", which *is* in the old lstrip char-set, so just
         # the leading "g" got eaten too.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         dest = tmp_path / "gyne_images" / "9"
         dest.mkdir(parents=True)
         (dest / "abc123.png").write_bytes(b"fake png bytes")
@@ -241,7 +240,7 @@ class TestDeleteImageLocal:
         # "nongyne_images" starts with "n", which was never in the old
         # lstrip char-set, so this one always worked — by coincidence, not
         # by correct code. Still covered here since removeprefix changed it too.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         dest = tmp_path / "nongyne_images" / "3"
         dest.mkdir(parents=True)
         (dest / "abc123.png").write_bytes(b"fake png bytes")
@@ -250,12 +249,12 @@ class TestDeleteImageLocal:
         assert not (dest / "abc123.png").exists()
 
     def test_missing_file_returns_false_without_raising(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         assert delete_nongyne_image_local("/storage/nongyne_images/1/does-not-exist.png") is False
 
     def test_delete_nongyne_and_gyne_use_their_own_url_patterns(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         with pytest.raises(ValueError):
             delete_nongyne_image_local("/storage/gross_images/1/abc.png")
         with pytest.raises(ValueError):
@@ -269,7 +268,7 @@ class TestMicroscopicImageLocal:
     # are served by their own router endpoint. The guards must still hold.
 
     def test_save_uses_the_flat_prefixless_layout(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         url = _run(save_microscopic_image_local(FakeUploadFile(_image_bytes("JPEG"))))
 
@@ -278,7 +277,7 @@ class TestMicroscopicImageLocal:
         assert (tmp_path / url).exists()
 
     def test_delete_removes_an_existing_file_and_returns_true(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         dest = tmp_path / "microscopic_images"
         dest.mkdir(parents=True)
         (dest / "abc123.png").write_bytes(b"fake png bytes")
@@ -287,14 +286,14 @@ class TestMicroscopicImageLocal:
         assert not (dest / "abc123.png").exists()
 
     def test_missing_file_returns_false_without_raising(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
         assert delete_microscopic_image_local("microscopic_images/nope.png") is False
 
     def test_rejects_traversal_and_other_image_kinds(self, monkeypatch, tmp_path):
         # Previously the router deleted via `STORAGE_DIR / image.image_url`
         # with no validation at all; these are the guards that closes.
-        monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
+        monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
         for bad in (
             "microscopic_images/../../etc/passwd",
             "../../etc/passwd",

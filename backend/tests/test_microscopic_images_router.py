@@ -6,18 +6,15 @@ unlike CAN_ACCESS_GROSS_IMAGE) + wiring, using the same real-PNG approach
 as test_gross_images_router.py (validate_and_sanitize opens/re-encodes via
 Pillow, so magic-bytes-only fakes 500 instead of the intended 200/400).
 
-Uploads and deletes go through file_handler (save/delete_microscopic_image_
-local), so STORAGE_ROOT must be redirected at tmp_path — but this router also
-keeps its own module-level UPLOAD_DIR/STORAGE_DIR, computed from BACKEND_DIR at
-import time, which the get-image endpoint still serves from. Patch all three or
-tests write into the real backend/uploads/microscopic_images/ folder."""
+Uploads, deletes and the get-image endpoint all resolve against the upload
+root (settings.UPLOAD_ROOT), so pointing it at tmp_path keeps the tests out of
+the real backend/uploads/microscopic_images/ folder."""
 
 import io
 
 from PIL import Image
 
-import app.routers.microscopic_images as micro_images_module
-import app.utils.file_handler as file_handler
+import app.core.config as config
 
 from app.models.surgical_diagnosis import SurgicalDiagnosis
 
@@ -31,15 +28,7 @@ def _png_bytes():
 
 
 def _patch_storage(monkeypatch, tmp_path):
-    # Mirror the real STORAGE_DIR -> UPLOAD_DIR relationship (image_url is
-    # stored as "microscopic_images/<file>", relative to STORAGE_DIR) so
-    # the get-image lookup matches where the upload wrote it. STORAGE_ROOT is
-    # what save/delete_microscopic_image_local actually resolve against.
-    upload_dir = tmp_path / "microscopic_images"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(file_handler, "STORAGE_ROOT", tmp_path)
-    monkeypatch.setattr(micro_images_module, "STORAGE_DIR", tmp_path)
-    monkeypatch.setattr(micro_images_module, "UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr(config.settings, "UPLOAD_ROOT", tmp_path)
 
 
 class TestRbac:

@@ -9,26 +9,22 @@ finding M1 (effectively critical: direct PHI leak).
 Two routers live here:
 
 - `/storage/{file_path:path}` requires a valid session via
-  `Depends(get_current_user)` and serves anything under `uploads/`.
+  `Depends(get_current_user)` and serves anything under the upload root
+  (UPLOAD_ROOT, default backend/uploads — see app/utils/storage_paths.py).
 - `/public-assets/{file_path:path}` is unauthenticated but constrained to
-  `uploads/system/` (branding logos rendered on the login page, before
+  `<upload root>/system/` (branding logos rendered on the login page, before
   the user authenticates). Every other subdirectory is rejected.
 
 Both routes resolve the requested path and verify it stays inside the
 expected base, defeating `../` traversal attempts.
 """
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import get_current_user, EXTERNAL_ROLES
 from app.models.user import User
+from app.utils.storage_paths import get_upload_root
 
-
-# Must match main.py's STORAGE_DIR constant.
-STORAGE_DIR = Path("uploads").resolve()
-PUBLIC_ASSETS_DIR = (STORAGE_DIR / "system").resolve()
 
 # Raw diagnostic image directories — external roles must not access them directly.
 # Internal lab staff (pathologist, cytotechnologist, gross, etc.) may access all dirs.
@@ -40,12 +36,13 @@ router = APIRouter(prefix="/storage", tags=["Storage"])
 
 @router.get("/{file_path:path}")
 def serve_file(file_path: str, current_user: User = Depends(get_current_user)):
-    """Serve any file under `uploads/` to an authenticated caller."""
-    requested = (STORAGE_DIR / file_path).resolve()
+    """Serve any file under the upload root to an authenticated caller."""
+    storage_dir = get_upload_root()
+    requested = (storage_dir / file_path).resolve()
 
     # 🔒 path-traversal protection
     try:
-        requested.relative_to(STORAGE_DIR)
+        requested.relative_to(storage_dir)
     except ValueError:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -71,16 +68,17 @@ public_router = APIRouter(prefix="/public-assets", tags=["Public Assets"])
 @public_router.get("/{file_path:path}")
 def serve_public_file(file_path: str):
     """
-    Serve files from `uploads/system/` without authentication. Used for
+    Serve files from `<upload root>/system/` without authentication. Used for
     branding (login-page logo) which is fetched before login.
     """
-    requested = (STORAGE_DIR / file_path).resolve()
+    storage_dir = get_upload_root()
+    requested = (storage_dir / file_path).resolve()
 
-    # 🔒 must resolve to something inside uploads/system/ — rejects both
+    # 🔒 must resolve to something inside <upload root>/system/ — rejects both
     # traversal (`../etc/passwd`) and accidental escapes to other
-    # subdirs like uploads/gross_images/.
+    # subdirs like gross_images/.
     try:
-        requested.relative_to(PUBLIC_ASSETS_DIR)
+        requested.relative_to(storage_dir / "system")
     except ValueError:
         raise HTTPException(status_code=403, detail="Forbidden")
 

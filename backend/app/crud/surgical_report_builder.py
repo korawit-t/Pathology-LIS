@@ -1,4 +1,3 @@
-from pathlib import Path
 import os
 import base64
 import io
@@ -9,7 +8,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
-from app.utils.file_handler import resolve_stored_file
+from app.utils.storage_paths import find_for_report, resolve_stored_file
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
 from dateutil.relativedelta import relativedelta
@@ -30,12 +29,6 @@ except ImportError:
     FITZ_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-STORAGE_BASE = BASE_DIR / "uploads"
-
-GROSS_UPLOAD_DIR = STORAGE_BASE / "gross_images"
-MICRO_UPLOAD_DIR = STORAGE_BASE / "microscopic_images"
 
 
 def _darken_hex(hex_color: str, factor: float = 0.65) -> str:
@@ -149,9 +142,7 @@ def _calculate_patient_age(birth_date: date, ref_date: date = None) -> dict:
     return {"years": years_only, "display": display}
 
 
-def _prepare_specimen_and_images(
-    db: Session, db_case, active_specimen_ids, STORAGE_BASE
-):
+def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
     spec_texts = []
     gross_images_payload = []
     micro_images_payload = []
@@ -171,9 +162,8 @@ def _prepare_specimen_and_images(
             for g_img in s.gross_images:
                 if getattr(g_img, "show_in_report", True) is False:
                     continue
-                rel_url = g_img.image_url.removeprefix("/storage/")
-                g_path = BASE_DIR / "uploads" / rel_url
-                if g_path.exists():
+                g_path = find_for_report(g_img.image_url, "gross image")
+                if g_path:
                     g_b64 = get_image_base64_from_path(str(g_path), max_width=600)
                     if g_b64:
                         gross_images_payload.append(
@@ -188,8 +178,8 @@ def _prepare_specimen_and_images(
             for m_img in s.microscopic_images:
                 if getattr(m_img, "show_in_report", True) is False:
                     continue
-                m_path = BASE_DIR / "uploads" / m_img.image_url.removeprefix("/storage/")
-                m_b64 = get_image_base64_from_path(str(m_path), max_width=800)
+                m_path = find_for_report(m_img.image_url, "microscopic image")
+                m_b64 = get_image_base64_from_path(str(m_path), max_width=800) if m_path else None
                 if m_b64:
                     micro_images_payload.append(
                         {
@@ -556,9 +546,7 @@ def prepare_report_data(
     if db_case.hospital and db_case.hospital.use_custom_report_header:
         lab_name_th = db_case.hospital.name
 
-    spec_data = _prepare_specimen_and_images(
-        db, db_case, active_specimen_ids, STORAGE_BASE
-    )
+    spec_data = _prepare_specimen_and_images(db, db_case, active_specimen_ids)
     order_groups = _get_grouped_diagnoses(db, case_id)
 
     diag_summary = _get_diagnosis_html_summary(

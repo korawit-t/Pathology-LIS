@@ -7,8 +7,8 @@ consult-PDF download, the gyne outlab-result download and the replace / clear
 endpoints then opened or os.remove()d whatever the column held — an arbitrary
 file read (the backend's .env, /proc/self/environ) and delete. The Update
 schemas no longer carry those fields, and every sink goes through
-app.utils.file_handler.resolve_stored_file, which refuses a path outside
-STORAGE_ROOT, so a row already holding a bad path from before the fix is
+app.utils.storage_paths.resolve_stored_file, which refuses a path outside
+the upload root, so a row already holding a bad path from before the fix is
 defused too.
 
 The PATCH routes are also hospital-scoped now, like the case reads already
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from app.crud.consult_pdf import UPLOAD_CONSULT_DIR
+from app.utils.storage_paths import get_upload_root
 from app.utils.time import local_now
 from tests.conftest import _make_user
 from tests.factories import (
@@ -143,7 +143,7 @@ class TestStoredPathOutsideUploads:
         db.refresh(case)
         new_path = Path(case.consult_pdf_path)
         try:
-            assert new_path.resolve().is_relative_to(Path(UPLOAD_CONSULT_DIR).resolve())
+            assert new_path.resolve().is_relative_to(get_upload_root() / "consults")
         finally:
             new_path.unlink(missing_ok=True)
 

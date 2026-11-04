@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import date
-from pathlib import Path
 import uuid
 
 from app.db.database import get_db
+from app.utils import storage_paths
 from app.utils.file_handler import validate_and_sanitize
 from app.schemas.organization import (
     HospitalCreate,
@@ -31,12 +31,6 @@ from app.core.roles import CAN_MANAGE_SETTINGS
 from app.utils.time import local_now
 
 router = APIRouter(prefix="/org", tags=["Organization"])
-
-# Anchored to this file's location (not the process cwd) so uploads land in the
-# same place regardless of where the server was launched from.
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-HOSPITAL_LOGO_DIR = BASE_DIR / "uploads" / "hospitals"
-HOSPITAL_LOGO_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- Hospitals Endpoints ---
 
@@ -98,13 +92,10 @@ async def upload_hospital_logo(
 ):
     file_bytes, safe_ext = validate_and_sanitize(file, allowed="image")
 
-    HOSPITAL_LOGO_DIR.mkdir(parents=True, exist_ok=True)
-    file_name = f"logo_{hospital_id}_{uuid.uuid4()}.{safe_ext}"
-    file_path = HOSPITAL_LOGO_DIR / file_name
-    with file_path.open("wb") as buffer:
-        buffer.write(file_bytes)
+    logo_key = f"hospitals/logo_{hospital_id}_{uuid.uuid4()}.{safe_ext}"
+    storage_paths.save(logo_key, file_bytes)
 
-    updated = crud.update_hospital_logo(db, hospital_id, f"hospitals/{file_name}")
+    updated = crud.update_hospital_logo(db, hospital_id, logo_key)
     if not updated:
         raise HTTPException(status_code=404, detail="Hospital not found")
     return updated

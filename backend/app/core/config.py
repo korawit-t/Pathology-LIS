@@ -1,4 +1,12 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Loaded here as well as in app/db/database.py so settings read on their own
+# (scripts/check_upload_paths.py) see backend/.env too. Never overrides a
+# variable already set in the environment.
+load_dotenv()
 
 # C4/H6: default to "production" so cookies are marked Secure and CORS
 # is strict unless an operator explicitly opts into development. Local
@@ -74,11 +82,44 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_COMPATIBLE_API_KEY: str = os.getenv("OPENAI_COMPATIBLE_API_KEY", "")
 
 
+# Where uploaded files live: images, logos, request documents, consult and
+# out-lab PDFs. Rows keep paths relative to this root (see
+# app/utils/storage_paths.py), so moving the uploads to another disk or a
+# file share means moving the files, changing UPLOAD_ROOT and restarting, with
+# no database change. On Windows use a UNC path (\\fileserver\lis-uploads),
+# never a mapped drive letter: a scheduled task or service does not see the
+# drives mapped in somebody's logon session.
+#
+# Unset, it is <backend>/uploads, anchored to this file rather than the working
+# directory, which is where every install has kept them so far. A value that is
+# set must already exist and be writable or the backend refuses to start
+# (storage_paths.check_upload_root): a share that failed to mount must not
+# quietly turn into an empty local folder.
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_UPLOAD_ROOT = BACKEND_DIR / "uploads"
+
+
+def parse_upload_root(raw: str | None) -> tuple[Path, bool]:
+    """(root, set explicitly?) for a raw UPLOAD_ROOT value."""
+    # start.ps1 copies .env values into the environment without removing quotes.
+    value = (raw or "").strip().strip('"').strip("'")
+    if not value:
+        return DEFAULT_UPLOAD_ROOT, False
+    path = Path(value)
+    # A relative value is taken from the backend folder, like the default.
+    return (path if path.is_absolute() else BACKEND_DIR / path), True
+
+
+UPLOAD_ROOT, UPLOAD_ROOT_IS_EXPLICIT = parse_upload_root(os.getenv("UPLOAD_ROOT"))
+
+
 class Settings:
     PROJECT_NAME: str = "Pathology LIS"
     VERSION: str = "2.0.0"
     ENVIRONMENT: str = ENVIRONMENT
     IS_PRODUCTION: bool = IS_PRODUCTION
     EXPOSE_DOCS: bool = EXPOSE_DOCS
+    UPLOAD_ROOT: Path = UPLOAD_ROOT
+    UPLOAD_ROOT_IS_EXPLICIT: bool = UPLOAD_ROOT_IS_EXPLICIT
 
 settings = Settings()

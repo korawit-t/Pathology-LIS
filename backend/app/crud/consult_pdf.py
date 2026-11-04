@@ -5,11 +5,10 @@ from datetime import datetime
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.utils.file_handler import resolve_stored_file, validate_and_sanitize
+from app.utils import storage_paths
+from app.utils.file_handler import validate_and_sanitize
+from app.utils.storage_paths import resolve_stored_file
 from app.utils.time import local_now
-
-UPLOAD_CONSULT_DIR = os.path.join(os.getcwd(), "uploads", "consults")
-os.makedirs(UPLOAD_CONSULT_DIR, exist_ok=True)
 
 
 def save_consult_pdf(db: Session, case, case_type: str, file: UploadFile, received_at: str | None) -> None:
@@ -22,11 +21,9 @@ def save_consult_pdf(db: Session, case, case_type: str, file: UploadFile, receiv
         os.remove(old_file)
 
     unique_filename = f"consult_{case_type}_{case.id}_{uuid.uuid4()}.{ext}"
-    file_path = os.path.join(UPLOAD_CONSULT_DIR, unique_filename)
-    with open(file_path, "wb") as buffer:
-        buffer.write(data)
+    file_path = storage_paths.save(f"consults/{unique_filename}", data)
 
-    case.consult_pdf_path = file_path
+    case.consult_pdf_path = str(file_path)
     case.consult_pdf_received_at = (
         datetime.fromisoformat(received_at) if received_at else local_now()
     )
