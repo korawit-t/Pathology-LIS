@@ -1,5 +1,6 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
-from app.crud.surgical_report_builder import prepare_report_data
+from app.crud.surgical_report_builder import prepare_report_data, render_snapshot_images
+from app.crud.report_images import surgical_images_snapshot
 from app.schemas.surgical_bulk import BulkSaveDraft
 import logging
 from sqlalchemy.orm import Session, joinedload
@@ -26,19 +27,51 @@ logger = logging.getLogger(__name__)
 
 def resolve_report_logo(report_data: dict, db: Session) -> None:
     """Pass the logo as a file:// URI so WeasyPrint reads it directly from disk.
-    Always uses the current hospital/system settings — no snapshot needed for logo."""
-    settings = get_system_settings(db)
-    hospital = (
-        db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
-        if report_data.get("hospital_id")
-        else None
-    )
-    _name, _address, logo_path = resolve_lab_header(hospital, settings)
+
+    Uses the logo path frozen on the report at sign-out (report_logo_path_snapshot,
+    "" = issued with no logo). Reports signed before that column existed have it NULL
+    and keep following the current hospital/system settings."""
+    logo_path = report_data.get("report_logo_path_snapshot")
+    if logo_path is None:
+        settings = get_system_settings(db)
+        hospital = (
+            db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
+            if report_data.get("hospital_id")
+            else None
+        )
+        _name, _address, logo_path = resolve_lab_header(hospital, settings)
     if logo_path:
         full = find_for_report(logo_path, "logo")
         report_data["report_logo_url_snapshot"] = file_uri(full) if full else None
     else:
         report_data["report_logo_url_snapshot"] = None
+
+
+def attach_report_images(db: Session, report: SurgicalReport, report_data: dict) -> None:
+    """Put this report version's gross/micro images into report_data.
+
+    They come from the report's own images_snapshot, so a reprint shows what
+    went out with this version even after an addendum re-crops or deletes a
+    case image. Reports finalized before that column existed fall back to
+    the case's current images, as every report did before."""
+    fresh_data = None
+
+    def _fresh():
+        return prepare_report_data(db, report.case_id) if report.case_id else None
+
+    if report.images_snapshot is not None:
+        report_data.update(render_snapshot_images(report.images_snapshot))
+    else:
+        # case_id can be None for migrated reports whose case no longer exists
+        fresh_data = _fresh()
+        report_data["gross_images"] = fresh_data.get("gross_images", []) if fresh_data else []
+        report_data["micro_images"] = fresh_data.get("micro_images", []) if fresh_data else []
+
+    # Backfill patient_title from live data if the snapshot is missing it
+    if not report_data.get("patient_title"):
+        fresh_data = fresh_data or _fresh()
+        if fresh_data:
+            report_data["patient_title"] = fresh_data.get("patient_title") or ""
 
 
 def get_surgical_report_pdf(db: Session, report: SurgicalReport) -> bytes:
@@ -47,13 +80,7 @@ def get_surgical_report_pdf(db: Session, report: SurgicalReport) -> bytes:
     pairing, used by both the report-download router and the HIS export
     worker so the two never drift apart."""
     report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
-
-    fresh_data = prepare_report_data(db, report.case_id) if report.case_id else None
-    report_data["gross_images"] = fresh_data.get("gross_images", []) if fresh_data else []
-    report_data["micro_images"] = fresh_data.get("micro_images", []) if fresh_data else []
-    if not report_data.get("patient_title") and fresh_data:
-        report_data["patient_title"] = fresh_data.get("patient_title") or ""
-
+    attach_report_images(db, report, report_data)
     resolve_report_logo(report_data, db)
 
     settings = get_system_settings(db)
@@ -136,6 +163,7 @@ def create_final_report_snapshot(db: Session, case_id: int, report_id: int = Non
 
     allowed_keys = {c.name for c in SurgicalReport.__table__.columns}
     safe_data = {k: v for k, v in report_dict.items() if k in allowed_keys}
+    safe_data["images_snapshot"] = surgical_images_snapshot(gross_imgs_list, micro_imgs_list)
 
     if existing_report:
         for key, value in safe_data.items():

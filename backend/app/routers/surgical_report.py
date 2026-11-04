@@ -13,6 +13,7 @@ import io
 
 from app.db.database import get_db
 from app.crud.surgical_report import (
+    attach_report_images,
     finalize_and_snapshot_orchestrator,
     get_all_reports_paginated,
     get_reports_paginated,
@@ -396,12 +397,7 @@ def get_latest_finalized_report_pdf(
     assert_hospital_scoped_access(current_user, report.hospital_id)
 
     report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
-
-    fresh_data = prepare_report_data(db, case_id)
-    report_data["gross_images"] = fresh_data.get("gross_images", []) if fresh_data else []
-    report_data["micro_images"] = fresh_data.get("micro_images", []) if fresh_data else []
-    if not report_data.get("patient_title") and fresh_data:
-        report_data["patient_title"] = fresh_data.get("patient_title") or ""
+    attach_report_images(db, report, report_data)
 
     report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
 
@@ -437,21 +433,9 @@ def get_historical_report_pdf(
         raise HTTPException(status_code=404, detail="Report not found")
     assert_hospital_scoped_access(current_user, report.hospital_id)
 
-    # 2. แปลงเป็น Dictionary
+    # 2. แปลงเป็น Dictionary + รูปของฉบับนี้ (จาก images_snapshot ไม่ใช่รูปสดของเคส)
     report_data = {c.name: getattr(report, c.name) for c in report.__table__.columns}
-
-    # 🚩 [จุดที่ต้องเพิ่ม]: ดึงรูปภาพกลับมาแปะคืน (วิธีที่ 1: ดึงสดจากเคสต้นทาง)
-    # หรือจะดึงจากตาราง SurgicalReportImage (ถ้าคุณทำตารางแยกไว้ในขั้นตอนที่แล้ว)
-    fresh_data = prepare_report_data(db, report.case_id)
-
-    # เสียบรูปกลับเข้าไปเพื่อให้ PDF มีรูปโชว์
-    # fresh_data can be None for migrated reports whose case no longer exists
-    report_data["gross_images"] = fresh_data.get("gross_images", []) if fresh_data else []
-    report_data["micro_images"] = fresh_data.get("micro_images", []) if fresh_data else []
-
-    # Backfill patient_title from live data if snapshot is missing it
-    if not report_data.get("patient_title") and fresh_data:
-        report_data["patient_title"] = fresh_data.get("patient_title") or ""
+    attach_report_images(db, report, report_data)
 
     if with_barcode:
         from app.models.surgical_case import SurgicalCase

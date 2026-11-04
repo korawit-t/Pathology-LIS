@@ -142,6 +142,33 @@ def _calculate_patient_age(birth_date: date, ref_date: date = None) -> dict:
     return {"years": years_only, "display": display}
 
 
+GROSS_IMAGE_WIDTH = 600
+MICRO_IMAGE_WIDTH = 800
+
+
+def _report_image_base64(image_url: str, max_width: int, what: str):
+    """Gross URLs carry a "/storage/" prefix and microscopic ones don't (see
+    save_microscopic_image_local); storage_paths resolves both under the
+    upload root, and logs the key when the file is missing."""
+    path = find_for_report(image_url, what)
+    return get_image_base64_from_path(str(path), max_width=max_width) if path else None
+
+
+def render_snapshot_images(images_snapshot: dict) -> dict:
+    """Rebuild the gross_images / micro_images template payloads of one
+    report version from its images_snapshot (see app/crud/report_images.py)."""
+    payload = {"gross_images": [], "micro_images": []}
+    for key, kind, width, what in (
+        ("gross_images", "gross", GROSS_IMAGE_WIDTH, "gross image"),
+        ("micro_images", "micro", MICRO_IMAGE_WIDTH, "microscopic image"),
+    ):
+        for entry in images_snapshot.get(kind) or []:
+            b64 = _report_image_base64(entry["image_url"], width, what)
+            if b64:
+                payload[key].append({**entry, "base64": b64})
+    return payload
+
+
 def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
     spec_texts = []
     gross_images_payload = []
@@ -162,24 +189,21 @@ def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
             for g_img in s.gross_images:
                 if getattr(g_img, "show_in_report", True) is False:
                     continue
-                g_path = find_for_report(g_img.image_url, "gross image")
-                if g_path:
-                    g_b64 = get_image_base64_from_path(str(g_path), max_width=600)
-                    if g_b64:
-                        gross_images_payload.append(
-                            {
-                                "base64": g_b64,
-                                "image_url": g_img.image_url,
-                                "label": s.specimen_label,
-                            }
-                        )
+                g_b64 = _report_image_base64(g_img.image_url, GROSS_IMAGE_WIDTH, "gross image")
+                if g_b64:
+                    gross_images_payload.append(
+                        {
+                            "base64": g_b64,
+                            "image_url": g_img.image_url,
+                            "label": s.specimen_label,
+                        }
+                    )
 
         if hasattr(s, "microscopic_images") and s.microscopic_images:
             for m_img in s.microscopic_images:
                 if getattr(m_img, "show_in_report", True) is False:
                     continue
-                m_path = find_for_report(m_img.image_url, "microscopic image")
-                m_b64 = get_image_base64_from_path(str(m_path), max_width=800) if m_path else None
+                m_b64 = _report_image_base64(m_img.image_url, MICRO_IMAGE_WIDTH, "microscopic image")
                 if m_b64:
                     micro_images_payload.append(
                         {
@@ -542,7 +566,7 @@ def prepare_report_data(
     if not db_case:
         return None
 
-    lab_name_en, lab_address, _logo_relative_path = resolve_lab_header(db_case.hospital, settings)
+    lab_name_en, lab_address, logo_relative_path = resolve_lab_header(db_case.hospital, settings)
     if db_case.hospital and db_case.hospital.use_custom_report_header:
         lab_name_th = db_case.hospital.name
 
@@ -655,6 +679,9 @@ def prepare_report_data(
         "lab_name_en_snapshot": lab_name_en,
         "lab_address_snapshot": lab_address,
         "report_footer_snapshot": footer_text,
+        # "" rather than None so "issued with no logo" stays distinct from a
+        # pre-snapshot row (NULL), which follows current settings.
+        "report_logo_path_snapshot": logo_relative_path or "",
         "collect_at": db_case.collect_at,
         "registered_at": db_case.created_at,
         "hospital_id": db_case.hospital_id,

@@ -13,6 +13,7 @@ from app.db.database import get_db
 from app.dependencies.auth import get_current_user
 from app.core.roles import CAN_ACCESS_MICROSCOPIC_IMAGE
 from app.utils.case_lock import assert_surgical_specimen_unlocked
+from app.crud.report_images import surgical_image_still_in_report
 from app.models.user import User
 from app.models.surgical_specimen import SurgicalSpecimen  # 🚩 ตรวจสอบชื่อรุ่น
 from app.models.microscopic_image import MicroscopicImage
@@ -173,13 +174,16 @@ def delete_micro_image(
     # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
     assert_surgical_specimen_unlocked(db, image.specimen_id)
 
-    try:
-        delete_microscopic_image_local(image.image_url)
-    except Exception as e:
-        # A missing file is no reason to leave an orphaned DB row behind.
-        logger.warning(
-            "Failed to delete microscopic image file %s: %s", image.image_url, e
-        )
+    # A report already issued with this image still prints it from this file
+    # (app/crud/report_images.py), so only the case's own record goes.
+    if not surgical_image_still_in_report(db, image.image_url):
+        try:
+            delete_microscopic_image_local(image.image_url)
+        except Exception as e:
+            # A missing file is no reason to leave an orphaned DB row behind.
+            logger.warning(
+                "Failed to delete microscopic image file %s: %s", image.image_url, e
+            )
 
     db.delete(image)
     db.commit()
@@ -225,7 +229,8 @@ async def replace_micro_image_content(
     db.commit()
     db.refresh(db_image)
 
-    if old_url and old_url != new_url:
+    # Keep the old file while an issued report still prints it (app/crud/report_images.py)
+    if old_url and old_url != new_url and not surgical_image_still_in_report(db, old_url):
         try:
             delete_microscopic_image_local(old_url)
         except Exception as e:

@@ -83,6 +83,10 @@ class SurgicalReport(Base):
     submitted_sections_snapshot = Column(
         JSON, nullable=True
     )  # block data snapshot: [{specimen_label, specimen_name, is_entirely_submitted, blocks:[{block_no,tissue_count,...}]}]
+    # รูปที่ออกไปกับฉบับนี้ (path + caption ไม่เก็บ base64) — ดู app/crud/report_images.py
+    # {"gross": [{image_url, label}], "micro": [{image_url, label, desc, mag, stain}]}
+    # NULL = ฉบับที่ออกก่อนมีคอลัมน์นี้ (ใช้รูปปัจจุบันของเคสแทน)
+    images_snapshot = Column(JSON, nullable=True)
     diagnosis_summary = Column(Text, nullable=True)  # ผลการวินิจฉัยทางพยาธิวิทยา (รวมทุกชิ้น)
     microscopic_summary = Column(Text, nullable=True)
     comment_summary = Column(Text, nullable=True)  # ความเห็นเพิ่มเติมหรือข้อแนะนำ
@@ -105,6 +109,9 @@ class SurgicalReport(Base):
     lab_name_en_snapshot = Column(String, nullable=True)
     lab_address_snapshot = Column(Text, nullable=True)
     report_footer_snapshot = Column(Text, nullable=True)
+    # Logo files are UUID-named and never overwritten, so the path is a full snapshot.
+    # "" = issued with no logo; NULL = signed before this column existed → follow settings.
+    report_logo_path_snapshot = Column(String, nullable=True)
     consult_pdf_path_snapshot = Column(String, nullable=True)
     consult_pdf_thumbnail_snapshot = Column(Text, nullable=True)
     consult_pdf_approved_by_snapshot = Column(String, nullable=True)

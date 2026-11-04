@@ -13,6 +13,7 @@ from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
 from app.crud.organization import resolve_lab_header
+from app.crud.report_images import case_images_snapshot
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException
 from app.services import pdf_service
@@ -327,8 +328,8 @@ def prepare_gyne_report_data(db: Session, case_id: int):
         "signers_snapshot": signers_data,
         
         "lab_name_snapshot": settings.lab_name_th if settings else "Pathology Lab",
-        "lab_address_snapshot": settings.lab_address if settings else "",
-        
+        **_current_lab_header(db_case.hospital, settings),
+
         "registered_at": db_case.registered_at,
         "collect_at": db_case.collect_at,
         "report_type": GyneReportType.FINAL,
@@ -431,6 +432,8 @@ def publish_gyne_report(
     report_data.pop("collect_at", None)
     report_data.pop("specimen_type", None)
     report_data.pop("collection_site", None)
+
+    report_data["images_snapshot"] = _case_report_images(db, case_id)
 
     db_report = GyneCytoReport(**report_data)
     db.add(db_report)
@@ -807,7 +810,7 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         # ปรับรูปแบบวันที่ให้พร้อมแสดงผล
         data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
         data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
-        data["cytology_images"] = _embed_case_images(db, case_id)
+        data["cytology_images"] = _embed_case_images(_case_report_images(db, case_id))
         _enrich_gyne_settings_snapshot(data, db, case_id)
         return data
 
@@ -851,24 +854,44 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     
     _enrich_gyne_settings_snapshot(data, db, case_id)
 
-    data["cytology_images"] = _embed_case_images(db, case_id)
+    # The images this version went out with, not the case's current ones (see
+    # app/crud/report_images.py); NULL = published before images_snapshot existed.
+    images = report.images_snapshot
+    if images is None:
+        images = _case_report_images(db, case_id)
+    data["cytology_images"] = _embed_case_images(images)
     return data
 
 
-def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dict:
-    """Add lab name/address/footer/logo snapshot fields — from the case's hospital when
-    it has use_custom_report_header, else from the current master SystemSetting.
-    Shared by both the live-preview (no report yet) and existing-report code paths."""
-    settings = db.query(SystemSetting).first()
-    db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
-    hospital = db_case.hospital if db_case else None
+def _current_lab_header(hospital, settings) -> dict:
+    """Lab name/address/footer/logo as current settings would draw them — the case's
+    hospital when it has use_custom_report_header, else the master SystemSetting.
+    Frozen onto the report at publish; also the fallback for reports signed before
+    the header was snapshotted."""
+    name_en, address, logo_path = resolve_lab_header(hospital, settings)
+    return {
+        "lab_name_en_snapshot": name_en,
+        "lab_address_snapshot": address,
+        "report_footer_snapshot": (
+            (settings.gyne_report_footer or settings.report_footer_text or "") if settings else ""
+        ),
+        # "" rather than None so "issued with no logo" stays distinct from a
+        # pre-snapshot row (NULL).
+        "report_logo_path_snapshot": logo_path or "",
+    }
 
-    name_en, address, logo_url = resolve_lab_header(hospital, settings)
-    data["lab_name_en_snapshot"] = name_en
-    data["lab_address_snapshot"] = address
-    data["report_footer_snapshot"] = (
-        (settings.gyne_report_footer or settings.report_footer_text or "") if settings else ""
-    )
+
+def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dict:
+    """Resolve the header for rendering and embed the logo. Uses the header frozen on
+    the report at publish; a report signed before that (report_logo_path_snapshot
+    NULL — its stored address was the master one even for custom-header hospitals)
+    follows current settings instead. Preview data already carries the current header."""
+    if data.get("report_logo_path_snapshot") is None:
+        settings = db.query(SystemSetting).first()
+        db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+        data.update(_current_lab_header(db_case.hospital if db_case else None, settings))
+
+    logo_url = data["report_logo_path_snapshot"]
     if logo_url:
         try:
             full_path = find_for_report(logo_url, "logo")
@@ -886,21 +909,26 @@ def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dic
     return data
 
 
-def _embed_case_images(db: Session, case_id: int) -> list:
-    """Return show_in_report images for case_id as base64 JPEG data-URI dicts."""
-    from PIL import Image as PILImage
-    import io as _io
-
+def _case_report_images(db: Session, case_id: int) -> list:
+    """The case's current show_in_report images, as images_snapshot entries."""
     imgs = (
         db.query(GyneCaseImage)
         .filter(GyneCaseImage.case_id == case_id, GyneCaseImage.show_in_report == True)
         .order_by(GyneCaseImage.order)
         .all()
     )
+    return case_images_snapshot(imgs)
+
+
+def _embed_case_images(images: list) -> list:
+    """Return images_snapshot entries as base64 JPEG data-URI dicts."""
+    from PIL import Image as PILImage
+    import io as _io
+
     result = []
-    for img in imgs:
+    for img in images:
         try:
-            full_path = find_for_report(img.image_url, "gyne image")
+            full_path = find_for_report(img["image_url"], "gyne image")
             if not full_path:
                 continue
             with PILImage.open(full_path) as pil_img:
@@ -914,7 +942,7 @@ def _embed_case_images(db: Session, case_id: int) -> list:
                 encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
             result.append({
                 "data_uri": f"data:image/jpeg;base64,{encoded}",
-                "description": img.description or "",
+                "description": img.get("description") or "",
             })
         except Exception:
             continue

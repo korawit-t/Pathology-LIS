@@ -396,7 +396,7 @@ class TestReportsFromCustomRoot:
     def test_gyne_report_embeds_images_from_the_root_and_logs_a_missing_one(
         self, root, db, admin_user, caplog
     ):
-        from app.crud.gyne_cyto_report import _embed_case_images
+        from app.crud.gyne_cyto_report import _case_report_images, _embed_case_images
 
         registrar, _ = admin_user
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
@@ -410,7 +410,7 @@ class TestReportsFromCustomRoot:
         db.commit()
 
         with caplog.at_level(logging.WARNING, logger=storage_paths.__name__):
-            images = _embed_case_images(db, case.id)
+            images = _embed_case_images(_case_report_images(db, case.id))
 
         assert len(images) == 1
         assert images[0]["data_uri"].startswith("data:image/jpeg;base64,")
