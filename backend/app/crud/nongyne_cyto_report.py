@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.crud.organization import resolve_lab_header
 from app.crud.surgical_report_builder import STORAGE_BASE
+from app.crud.report_images import case_images_snapshot
 from app.schemas.report_approval import ReportApproveRequest
 from app.enums.case_states import NONGYNE_SPINE
 from fastapi import HTTPException
@@ -373,6 +374,8 @@ def publish_nongyne_report(
         report_data["status"] = NongyneReportStatus.PUBLISHED
         report_data["published_at"] = local_now()
 
+    report_data["images_snapshot"] = _case_report_images(db, case_id)
+
     db_report = NongyneCytoReport(**report_data)
     db.add(db_report)
     db.flush()
@@ -534,8 +537,22 @@ def _current_lab_header(hospital, settings) -> dict:
     }
 
 
-def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
-    """Add template variables that are missing from snapshot/preview data."""
+def _case_report_images(db: Session, case_id: int) -> list:
+    """The case's current show_in_report images, as images_snapshot entries."""
+    images = (
+        db.query(NongyneCaseImage)
+        .filter(NongyneCaseImage.case_id == case_id, NongyneCaseImage.show_in_report == True)
+        .order_by(NongyneCaseImage.order)
+        .all()
+    )
+    return case_images_snapshot(images)
+
+
+def _enrich_report_data(data: dict, db: Session, case_id: int, images: list | None = None) -> dict:
+    """Add template variables that are missing from snapshot/preview data.
+
+    `images` is a report's images_snapshot; None draws the case's current
+    images (a preview, or a report published before that column existed)."""
     db_case_obj = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
 
     # The header frozen on the report at publish wins. A report signed before that
@@ -598,19 +615,15 @@ def _enrich_report_data(data: dict, db: Session, case_id: int) -> dict:
         data.setdefault("is_pending", False)
 
     # Images
-    images = (
-        db.query(NongyneCaseImage)
-        .filter(NongyneCaseImage.case_id == case_id, NongyneCaseImage.show_in_report == True)
-        .order_by(NongyneCaseImage.order)
-        .all()
-    )
+    if images is None:
+        images = _case_report_images(db, case_id)
     data["all_nongyne_images"] = []
     for img in images:
-        b64 = _get_image_base64(img.image_url)
+        b64 = _get_image_base64(img["image_url"])
         if b64:
             data["all_nongyne_images"].append({
                 "base64": b64,
-                "description": img.description or "",
+                "description": img.get("description") or "",
             })
 
     return data
@@ -646,7 +659,7 @@ def get_nongyne_snapshot_pdf_data(db: Session, report: NongyneCytoReport) -> dic
         if data["patient_birth_date"]
         else "-"
     )
-    return _enrich_report_data(data, db, report.case_id)
+    return _enrich_report_data(data, db, report.case_id, images=report.images_snapshot)
 
 
 def get_nongyne_report_pdf(db: Session, report: NongyneCytoReport) -> bytes:

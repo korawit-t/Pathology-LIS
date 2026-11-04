@@ -13,6 +13,7 @@ from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
 from app.crud.organization import resolve_lab_header
 from app.crud.surgical_report_builder import STORAGE_BASE
+from app.crud.report_images import case_images_snapshot
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException
 from app.services import pdf_service
@@ -433,6 +434,8 @@ def publish_gyne_report(
     report_data.pop("specimen_type", None)
     report_data.pop("collection_site", None)
 
+    report_data["images_snapshot"] = _case_report_images(db, case_id)
+
     db_report = GyneCytoReport(**report_data)
     db.add(db_report)
     db.flush()
@@ -808,7 +811,7 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
         # ปรับรูปแบบวันที่ให้พร้อมแสดงผล
         data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
         data["patient_age_display"] = _calculate_patient_age(data["patient_birth_date"])["display"] if data["patient_birth_date"] else "-"
-        data["cytology_images"] = _embed_case_images(db, case_id)
+        data["cytology_images"] = _embed_case_images(_case_report_images(db, case_id))
         _enrich_gyne_settings_snapshot(data, db, case_id)
         return data
 
@@ -852,7 +855,12 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     
     _enrich_gyne_settings_snapshot(data, db, case_id)
 
-    data["cytology_images"] = _embed_case_images(db, case_id)
+    # The images this version went out with, not the case's current ones (see
+    # app/crud/report_images.py); NULL = published before images_snapshot existed.
+    images = report.images_snapshot
+    if images is None:
+        images = _case_report_images(db, case_id)
+    data["cytology_images"] = _embed_case_images(images)
     return data
 
 
@@ -902,22 +910,27 @@ def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dic
     return data
 
 
-def _embed_case_images(db: Session, case_id: int) -> list:
-    """Return show_in_report images for case_id as base64 JPEG data-URI dicts."""
-    from PIL import Image as PILImage
-    import io as _io
-
+def _case_report_images(db: Session, case_id: int) -> list:
+    """The case's current show_in_report images, as images_snapshot entries."""
     imgs = (
         db.query(GyneCaseImage)
         .filter(GyneCaseImage.case_id == case_id, GyneCaseImage.show_in_report == True)
         .order_by(GyneCaseImage.order)
         .all()
     )
+    return case_images_snapshot(imgs)
+
+
+def _embed_case_images(images: list) -> list:
+    """Return images_snapshot entries as base64 JPEG data-URI dicts."""
+    from PIL import Image as PILImage
+    import io as _io
+
     result = []
     storage_root = Path("uploads")
-    for img in imgs:
+    for img in images:
         try:
-            rel = img.image_url.removeprefix("/storage/")
+            rel = img["image_url"].removeprefix("/storage/")
             full_path = (storage_root / rel).resolve()
             if not full_path.is_file():
                 continue
@@ -932,7 +945,7 @@ def _embed_case_images(db: Session, case_id: int) -> list:
                 encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
             result.append({
                 "data_uri": f"data:image/jpeg;base64,{encoded}",
-                "description": img.description or "",
+                "description": img.get("description") or "",
             })
         except Exception:
             continue

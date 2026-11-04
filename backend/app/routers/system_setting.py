@@ -18,7 +18,7 @@ from app.dependencies.step_up import require_step_up
 # themselves; /{setting_id} stays open because every page loads it.
 router = APIRouter(prefix="/system-settings", tags=["System Settings"])
 
-# 🚩 ปรับให้ไปอยู่ที่ data/storage/system เพื่อให้สอดคล้องกับ main.py ที่ mount /storage ไว้
+# โลโก้ระบบเก็บที่ uploads/system/ — โฟลเดอร์เดียวที่เปิดได้โดยไม่ต้อง login ผ่าน /public-assets/ (app/routers/storage.py)
 STORAGE_DIR = Path("uploads")
 UPLOAD_DIR = STORAGE_DIR / "system"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

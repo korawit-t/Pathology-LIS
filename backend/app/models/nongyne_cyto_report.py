@@ -78,6 +78,9 @@ class NongyneCytoReport(Base):
     cytotechnologist_name = Column(String, nullable=True)
 
     signers_snapshot = Column(JSON, nullable=True)
+    # รูปที่ออกไปกับฉบับนี้ [{image_url, description}] — ดู app/crud/report_images.py
+    # NULL = ฉบับที่ออกก่อนมีคอลัมน์นี้ (ใช้รูปปัจจุบันของเคสแทน)
+    images_snapshot = Column(JSON, nullable=True)
 
     # --- Footer & Identity Snapshots ---
     lab_name_snapshot = Column(String, nullable=True)

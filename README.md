@@ -241,10 +241,19 @@ Open inbound rules on the server firewall:
 
 | Data | Location |
 |---|---|
-| Uploaded images & files | `./backend/data/storage/` |
+| Uploaded images & files | Docker volume `uploads_data` (mounted at `/app/uploads` in the backend container) |
 | Database | Docker volume `postgres_data` |
 
-Back up both locations regularly. The storage directory can be bind-mounted to an external drive or NAS in `docker-compose.yml`.
+Back up both regularly — `backup.sh` does both (see [Backup and Restore](#backup-and-restore)). To keep uploads on an external drive or NAS instead, replace `uploads_data:/app/uploads` in `docker-compose.yml` with a bind mount to that path, and `chown -R 1001:1001` the directory first: the backend runs as uid 1001 and cannot write to a root-owned directory.
+
+> ⚠️ **Upgrading a Docker install whose `docker-compose.yml` still mounts `./backend/data/storage`:** that mount pointed at a path the backend never writes to, so uploads were kept inside the backend container itself and lost every time it was recreated. Copy them out **before** updating and rebuilding:
+>
+> ```bash
+> docker cp pathology-backend:/app/uploads ./uploads-rescue
+> git pull && docker compose -f docker-compose.yml up -d --build
+> docker cp ./uploads-rescue/. pathology-backend:/app/uploads/
+> docker compose -f docker-compose.yml exec -u root backend chown -R appuser:appgroup /app/uploads
+> ```
 
 ---
 
@@ -402,8 +411,8 @@ procedure names who is contactable out of hours.
 `backup.ps1` (Windows, native PostgreSQL) and `backup.sh` (Linux, PostgreSQL in
 Docker) each take a compressed `pg_dump` of the database plus an archive of the
 uploads directory. Both read all their configuration from `backend/.env` —
-`BACKUP_ROOT`, `BACKUP_PG_BIN` (Windows), `DB_CONTAINER` (Linux), `STORAGE_DIR`,
-`BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
+`BACKUP_ROOT`, `BACKUP_PG_BIN` and `STORAGE_DIR` (Windows), `DB_CONTAINER` and
+`BACKEND_CONTAINER` (Linux), `BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
 
 Run one manually:
 

@@ -30,7 +30,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/data/storage:/app/data/storage
+      # Every uploaded image and file (gross/cyto/microscopic photos, request
+      # forms, consult PDFs, logos). The code writes to `uploads/` under
+      # WORKDIR /app; without this volume they live in the container layer and
+      # are lost whenever the container is recreated (e.g. `up --build`).
+      # A named volume, not a host bind mount: the backend runs as uid 1001
+      # and a bind-mounted host directory is root-owned on Linux.
+      - uploads_data:/app/uploads
     environment:
       # DATABASE_URL is supplied via env_file (./backend/.env) — no duplication here.
       # ENVIRONMENT defaults to "production" (fail-closed); override sets "development".
@@ -76,3 +82,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
