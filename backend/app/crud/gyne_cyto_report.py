@@ -12,6 +12,7 @@ from app.models.gyne_diagnosis import GyneDiagnosis
 from app.models.gyne_case_image import GyneCaseImage
 from app.models.user import User
 from app.crud.organization import resolve_lab_header
+from app.crud.surgical_report_builder import STORAGE_BASE
 from app.models.system_setting import SystemSetting
 from fastapi import HTTPException
 from app.services import pdf_service
@@ -327,8 +328,8 @@ def prepare_gyne_report_data(db: Session, case_id: int):
         "signers_snapshot": signers_data,
         
         "lab_name_snapshot": settings.lab_name_th if settings else "Pathology Lab",
-        "lab_address_snapshot": settings.lab_address if settings else "",
-        
+        **_current_lab_header(db_case.hospital, settings),
+
         "registered_at": db_case.registered_at,
         "collect_at": db_case.collect_at,
         "report_type": GyneReportType.FINAL,
@@ -855,24 +856,38 @@ def prepare_gyne_report_pdf_data(db: Session, case_id: int, is_preview: bool = F
     return data
 
 
-def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dict:
-    """Add lab name/address/footer/logo snapshot fields — from the case's hospital when
-    it has use_custom_report_header, else from the current master SystemSetting.
-    Shared by both the live-preview (no report yet) and existing-report code paths."""
-    settings = db.query(SystemSetting).first()
-    db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
-    hospital = db_case.hospital if db_case else None
+def _current_lab_header(hospital, settings) -> dict:
+    """Lab name/address/footer/logo as current settings would draw them — the case's
+    hospital when it has use_custom_report_header, else the master SystemSetting.
+    Frozen onto the report at publish; also the fallback for reports signed before
+    the header was snapshotted."""
+    name_en, address, logo_path = resolve_lab_header(hospital, settings)
+    return {
+        "lab_name_en_snapshot": name_en,
+        "lab_address_snapshot": address,
+        "report_footer_snapshot": (
+            (settings.gyne_report_footer or settings.report_footer_text or "") if settings else ""
+        ),
+        # "" rather than None so "issued with no logo" stays distinct from a
+        # pre-snapshot row (NULL).
+        "report_logo_path_snapshot": logo_path or "",
+    }
 
-    name_en, address, logo_url = resolve_lab_header(hospital, settings)
-    data["lab_name_en_snapshot"] = name_en
-    data["lab_address_snapshot"] = address
-    data["report_footer_snapshot"] = (
-        (settings.gyne_report_footer or settings.report_footer_text or "") if settings else ""
-    )
+
+def _enrich_gyne_settings_snapshot(data: dict, db: Session, case_id: int) -> dict:
+    """Resolve the header for rendering and embed the logo. Uses the header frozen on
+    the report at publish; a report signed before that (report_logo_path_snapshot
+    NULL — its stored address was the master one even for custom-header hospitals)
+    follows current settings instead. Preview data already carries the current header."""
+    if data.get("report_logo_path_snapshot") is None:
+        settings = db.query(SystemSetting).first()
+        db_case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
+        data.update(_current_lab_header(db_case.hospital if db_case else None, settings))
+
+    logo_url = data["report_logo_path_snapshot"]
     if logo_url:
         try:
-            storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
-            full_path = storage_root / logo_url.removeprefix("/storage/")
+            full_path = STORAGE_BASE / logo_url.removeprefix("/storage/")
             if full_path.exists():
                 with open(full_path, "rb") as f:
                     encoded = base64.b64encode(f.read()).decode("utf-8")

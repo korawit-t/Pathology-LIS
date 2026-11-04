@@ -77,6 +77,12 @@ class GyneCytoReport(Base):
     # --- Footer & Identity Snapshots ---
     lab_name_snapshot = Column(String, nullable=True)
     lab_address_snapshot = Column(Text, nullable=True)
+    lab_name_en_snapshot = Column(String, nullable=True)
+    report_footer_snapshot = Column(Text, nullable=True)
+    # Logo files are UUID-named and never overwritten, so the path is a full snapshot.
+    # "" = issued with no logo; NULL = signed before the header snapshot existed, so
+    # the whole header (name/address/footer/logo) follows current settings.
+    report_logo_path_snapshot = Column(String, nullable=True)
 
     # --- Status & Timestamps ---
     status = Column(Enum(GyneReportStatus, values_callable=lambda x: [e.value for e in x]), default=GyneReportStatus.DRAFT, nullable=False)

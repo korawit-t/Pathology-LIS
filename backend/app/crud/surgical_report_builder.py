@@ -552,7 +552,7 @@ def prepare_report_data(
     if not db_case:
         return None
 
-    lab_name_en, lab_address, _logo_relative_path = resolve_lab_header(db_case.hospital, settings)
+    lab_name_en, lab_address, logo_relative_path = resolve_lab_header(db_case.hospital, settings)
     if db_case.hospital and db_case.hospital.use_custom_report_header:
         lab_name_th = db_case.hospital.name
 
@@ -667,6 +667,9 @@ def prepare_report_data(
         "lab_name_en_snapshot": lab_name_en,
         "lab_address_snapshot": lab_address,
         "report_footer_snapshot": footer_text,
+        # "" rather than None so "issued with no logo" stays distinct from a
+        # pre-snapshot row (NULL), which follows current settings.
+        "report_logo_path_snapshot": logo_relative_path or "",
         "collect_at": db_case.collect_at,
         "registered_at": db_case.created_at,
         "hospital_id": db_case.hospital_id,
