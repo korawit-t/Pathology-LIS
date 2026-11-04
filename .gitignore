@@ -25,7 +25,6 @@ build/
 .eslintcache
 
 # --- Docker ---
-.dockerignore
 # ไม่ควร ignore docker-compose.yml แต่บางคนจะ ignore ไฟล์ override
 # docker-compose.override.yml
 
