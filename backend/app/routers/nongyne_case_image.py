@@ -10,6 +10,7 @@ from app.schemas.nongyne_case_image import NongyneCaseImageResponse, NongyneCase
 from app.models.nongyne_case_image import NongyneCaseImage
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.utils.file_handler import save_nongyne_image_local, delete_nongyne_image_local
+from app.crud.report_images import nongyne_image_still_in_report
 from app.dependencies.auth import get_current_user, check_password_status
 from app.core.roles import CAN_ACCESS_NONGYNE_CYTO_IMAGE
 from app.utils.case_lock import (
@@ -107,10 +108,13 @@ def delete_nongyne_image(image_id: int, db: Session = Depends(get_db)):
     # 🔒 เคสที่ออกผล/ยกเลิก/รออนุมัติแล้ว ห้ามแก้รูปประกอบรายงาน
     assert_nongyne_case_id_unlocked(db, db_image.case_id)
 
-    try:
-        delete_nongyne_image_local(db_image.image_url)
-    except Exception as exc:
-        logger.warning("Failed to delete nongyne image file %s: %s", db_image.image_url, exc)
+    # A report already issued with this image still prints it from this file
+    # (app/crud/report_images.py), so only the case's own record goes.
+    if not nongyne_image_still_in_report(db, db_image.case_id, db_image.image_url):
+        try:
+            delete_nongyne_image_local(db_image.image_url)
+        except Exception as exc:
+            logger.warning("Failed to delete nongyne image file %s: %s", db_image.image_url, exc)
     db.delete(db_image)
     db.commit()
     return None
@@ -154,7 +158,12 @@ async def replace_nongyne_image_content(
     db.commit()
     db.refresh(db_image)
 
-    if old_url and old_url != new_url:
+    # Keep the old file while an issued report still prints it (app/crud/report_images.py)
+    if (
+        old_url
+        and old_url != new_url
+        and not nongyne_image_still_in_report(db, db_image.case_id, old_url)
+    ):
         try:
             delete_nongyne_image_local(old_url)
         except Exception as e:
