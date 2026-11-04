@@ -55,6 +55,7 @@ const MolecularCaseList: React.FC<MolecularCaseListProps> = ({ onSelectCase }) =
             onChange={setStatusFilter}
             options={[
               { value: "pending", label: "Pending" },
+              { value: "pdf_received", label: "PDF Received" },
               { value: "reported", label: "Reported" },
             ]}
           />

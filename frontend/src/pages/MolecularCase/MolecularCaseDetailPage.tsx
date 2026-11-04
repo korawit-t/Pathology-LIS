@@ -6,6 +6,7 @@ import PageContainer from "../../components/Layout/PageContainer";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
 import ReportPreviewModal from "../../components/ReportPreviewModal";
 import SimpleTiptapEditor from "../../components/Editors/SimpleTiptapEditor";
+import { MOLECULAR_STATUS_MAP } from "../../constants/lab.constants";
 import { MolecularCaseService, MolecularCaseResponse } from "../../services/molecularCaseService";
 import UserService from "../../services/userService";
 import { useAuth } from "../../hooks/useAuth";
@@ -18,11 +19,6 @@ const { Text } = Typography;
  * out-lab PDF once it has been signed out. Attaching the PDF beforehand is open
  * to the whole lab (CAN_UPLOAD_OUTLAB_RESULT). */
 const CAN_CHANGE_A_SIGNED_OUT_RESULT = ["admin", "pathologist", "senior_pathologist"];
-
-const STATUS_COLOR: Record<string, string> = {
-  pending: "gold",
-  reported: "green",
-};
 
 interface MolecularCaseDetailPageProps {
   caseId: number;
@@ -77,6 +73,7 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
   }, [resultPdfUrl]);
 
   const isLocked = !!record && (record.status === "reported" || record.is_cancelled);
+  const statusCfg = record ? MOLECULAR_STATUS_MAP[record.display_status] : undefined;
 
   const toggleOutlab = async (checked: boolean) => {
     if (!record) return;
@@ -168,10 +165,9 @@ const MolecularCaseDetailPage: React.FC<MolecularCaseDetailPageProps> = ({ caseI
             <Text type="secondary">
               Patient: {record.patient_name || "—"} {record.hn ? `(HN ${record.hn})` : ""}
             </Text>
-            <Space>
-              <Tag color={STATUS_COLOR[record.status] || "default"}>{record.status}</Tag>
-              {record.is_cancelled && <Tag color="red">Cancelled</Tag>}
-            </Space>
+            <div>
+              <Tag color={statusCfg?.color ?? "default"}>{statusCfg?.label ?? record.display_status}</Tag>
+            </div>
           </Space>
 
           <Space align="center">

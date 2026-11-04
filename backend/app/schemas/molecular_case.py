@@ -82,6 +82,9 @@ class MolecularCaseResponse(BaseModel):
     ap_test_id: int
     test_name: Optional[str] = None
     status: str
+    # What a worklist shows — `status` with cancellation folded in and
+    # "pdf_received" split out of "pending" (see crud._display_status).
+    display_status: str
     is_outlab: bool
     result_text: Optional[str] = None
     outlab_pdf_path: Optional[str] = None

@@ -862,3 +862,107 @@ class TestMolecularResultReleaseGate:
 
         assert client.get("/molecular-cases/999999999/result-pdf").status_code == 404
 
+
+
+class TestMolecularPdfReceivedStatus:
+    """An out-lab case whose PDF is on file but that no pathologist has
+    finalized yet reads "pdf_received" in display_status and in the status
+    filter. Derived, never stored — `status` itself stays "pending", so the
+    edit/cancel/release gates that key on it are untouched."""
+
+    def _ids(self, client, parent_case_id, **params):
+        resp = client.get(
+            "/molecular-cases", params={"parent_case_id": parent_case_id, **params}
+        )
+        assert resp.status_code == 200, resp.text
+        return [c["id"] for c in resp.json()]
+
+    def _count(self, client, **params):
+        resp = client.get("/molecular-cases/count", params=params)
+        assert resp.status_code == 200, resp.text
+        return resp.json()["count"]
+
+    def test_an_outlab_case_still_waiting_on_the_lab_is_plain_pending(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert mcase["display_status"] == "pending"
+
+    def test_uploading_the_pdf_moves_it_to_pdf_received(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+
+        resp = _upload(pathologist_client, mcase["id"])
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "pending"
+        assert resp.json()["display_status"] == "pdf_received"
+
+    def test_the_status_filter_puts_it_in_exactly_one_bucket(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        parent_id = mcase["parent_case_id"]
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        assert self._ids(pathologist_client, parent_id, status="pdf_received") == [mcase["id"]]
+        assert self._ids(pathologist_client, parent_id, status="pending") == []
+
+    def test_the_count_moves_it_off_the_external_lab_tile(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        before_external = self._count(pathologist_client, status="pending", is_outlab=True)
+        before_received = self._count(pathologist_client, status="pdf_received")
+
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        assert self._count(pathologist_client, status="pending", is_outlab=True) == before_external - 1
+        assert self._count(pathologist_client, status="pdf_received") == before_received + 1
+
+    def test_finalizing_takes_it_to_reported(self, db, pathologist_client, admin_user):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+        before_received = self._count(pathologist_client, status="pdf_received")
+
+        resp = pathologist_client.post(f"/molecular-cases/{mcase['id']}/finalize", json={})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["display_status"] == "reported"
+        assert self._count(pathologist_client, status="pdf_received") == before_received - 1
+
+    def test_removing_the_pdf_puts_it_back_to_pending(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        resp = pathologist_client.delete(f"/molecular-cases/{mcase['id']}/outlab-pdf")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["display_status"] == "pending"
+
+    def test_a_pdf_left_on_an_in_house_case_does_not_count(
+        self, db, pathologist_client, admin_user
+    ):
+        # The PDF panel is only shown for out-lab cases, so the status must not
+        # point at a PDF the page does not display.
+        case, _ = _order_molecular_test(db, pathologist_client, admin_user, is_external=False)
+        mcase = pathologist_client.get(
+            "/molecular-cases", params={"parent_case_id": case.id}
+        ).json()[0]
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        fresh = pathologist_client.get(f"/molecular-cases/{mcase['id']}").json()
+        assert fresh["display_status"] == "pending"
+        assert self._ids(pathologist_client, case.id, status="pending") == [mcase["id"]]
+
+    def test_cancellation_wins_over_a_received_pdf(
+        self, db, pathologist_client, admin_user
+    ):
+        mcase = _outlab_case(db, pathologist_client, admin_user)
+        assert _upload(pathologist_client, mcase["id"]).status_code == 200
+
+        resp = pathologist_client.post(
+            f"/molecular-cases/{mcase['id']}/cancel", json={"cancel_reason": "duplicate"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["display_status"] == "cancelled"

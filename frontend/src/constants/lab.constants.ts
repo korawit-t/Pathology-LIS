@@ -143,13 +143,15 @@ export const REPORT_TYPE_COLORS: Record<string, string> = {
 // =======================
 // Molecular
 // =======================
-// Backend keeps molecular cancellation in a separate `is_cancelled` flag —
-// only the unified-case query folds it into `status` (see
-// backend/app/crud/unified_case.py::_molecular_branch). Callers reading the
-// plain /molecular endpoint must map `is_cancelled` to "cancelled" themselves
-// so both tables render the same tag.
+// Keyed by the backend's derived display status, not the raw `status` column
+// (which only ever holds pending/reported): the unified-case query returns it
+// as `status`, the plain /molecular-cases endpoint as `display_status`. Both
+// fold in the separate `is_cancelled` flag and split "pdf_received" — an
+// out-lab PDF on file that no pathologist has finalized yet — out of "pending"
+// (see backend/app/crud/molecular_case.py::_display_status).
 export const MOLECULAR_STATUS_MAP: Record<string, { color: string; label: string }> = {
   pending: { color: "gold", label: "Pending" },
+  pdf_received: { color: "blue", label: "PDF Received" },
   reported: { color: "green", label: "Reported" },
   cancelled: { color: "error", label: "Cancelled" },
 };

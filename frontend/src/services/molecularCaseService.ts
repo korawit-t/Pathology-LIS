@@ -23,6 +23,9 @@ export interface MolecularCaseResponse {
   ap_test_id: number;
   test_name?: string | null;
   status: string;
+  /** What a worklist shows: `status` with cancellation folded in and
+   * "pdf_received" split out of "pending". Key MOLECULAR_STATUS_MAP with this. */
+  display_status: string;
   is_outlab: boolean;
   result_text?: string | null;
   outlab_pdf_path?: string | null;
