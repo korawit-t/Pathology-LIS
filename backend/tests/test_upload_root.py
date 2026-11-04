@@ -516,3 +516,28 @@ class TestCheckUploadPathsScript:
         assert f"Checking uploads under {root}" in out
         assert "hospitals.logo_path" in out
         assert "molecular_cases.outlab_pdf_path" in out
+
+
+class TestStorageRouterExternalRoles:
+    """Clinician / hospital accounts get reports, never the raw diagnostic
+    images. The folder is judged on the path as resolved, so a dot segment
+    in the URL cannot hide which folder the file is really in."""
+
+    @pytest.mark.parametrize("url", [
+        "/storage/gross_images/1/a.png",
+        "/storage/system/%2e%2e/gross_images/1/a.png",
+        "/storage/x/%2E%2E/gross_images/1/a.png",
+        "/storage/./gross_images/1/a.png",
+    ])
+    def test_phi_image_is_refused_however_the_path_is_spelled(self, root, clinician_client, url):
+        storage_paths.save("/storage/gross_images/1/a.png", b"phi")
+
+        r = clinician_client.get(url)
+
+        assert r.status_code == 403
+        assert r.content != b"phi"
+
+    def test_non_phi_upload_is_still_served(self, root, clinician_client):
+        storage_paths.save("system/logo_report_x.png", b"logo")
+
+        assert clinician_client.get("/storage/system/logo_report_x.png").content == b"logo"

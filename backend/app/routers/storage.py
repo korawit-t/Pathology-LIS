@@ -15,15 +15,16 @@ Two routers live here:
   `<upload root>/system/` (branding logos rendered on the login page, before
   the user authenticates). Every other subdirectory is rejected.
 
-Both routes resolve the requested path and verify it stays inside the
-expected base, defeating `../` traversal attempts.
+Both routes resolve the requested path through storage_paths.resolve, which
+refuses anything outside the upload root (`../` traversal, absolute paths,
+symlinks out), and then check the folder it actually landed in.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import get_current_user, EXTERNAL_ROLES
 from app.models.user import User
-from app.utils.storage_paths import get_upload_root
+from app.utils import storage_paths
 
 
 # Raw diagnostic image directories — external roles must not access them directly.
@@ -37,20 +38,20 @@ router = APIRouter(prefix="/storage", tags=["Storage"])
 @router.get("/{file_path:path}")
 def serve_file(file_path: str, current_user: User = Depends(get_current_user)):
     """Serve any file under the upload root to an authenticated caller."""
-    storage_dir = get_upload_root()
-    requested = (storage_dir / file_path).resolve()
-
     # 🔒 path-traversal protection
     try:
-        requested.relative_to(storage_dir)
-    except ValueError:
+        requested = storage_paths.resolve(file_path)
+    except storage_paths.InvalidStorageKey:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     # 🔒 External roles (clinician, hospital) may not access raw diagnostic images.
     # They receive reports via the report endpoints, not raw uploads.
+    # The folder is read off the resolved path, not the URL: a URL's first
+    # segment can be a decoy ("system/%2e%2e/gross_images/…" is gross_images).
     user_roles = set(current_user.roles or [])
     if user_roles & _EXTERNAL_ROLES:
-        top_subdir = file_path.split("/")[0]
+        parts = requested.relative_to(storage_paths.get_upload_root()).parts
+        top_subdir = parts[0].lower() if parts else ""
         if top_subdir in _PHI_IMAGE_DIRS:
             raise HTTPException(status_code=403, detail="Access denied.")
 
@@ -71,15 +72,14 @@ def serve_public_file(file_path: str):
     Serve files from `<upload root>/system/` without authentication. Used for
     branding (login-page logo) which is fetched before login.
     """
-    storage_dir = get_upload_root()
-    requested = (storage_dir / file_path).resolve()
-
     # 🔒 must resolve to something inside <upload root>/system/ — rejects both
     # traversal (`../etc/passwd`) and accidental escapes to other
     # subdirs like gross_images/.
     try:
-        requested.relative_to(storage_dir / "system")
-    except ValueError:
+        requested = storage_paths.resolve(file_path)
+    except storage_paths.InvalidStorageKey:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not requested.is_relative_to(storage_paths.get_upload_root() / "system"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if not requested.is_file():
