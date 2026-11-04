@@ -20,6 +20,11 @@ MAX_MIXED_BYTES = 30 * 1024 * 1024   # 30 MB for mixed (image or PDF)
 
 _FileKind = Literal["image", "pdf", "mixed"]
 
+# Quality for re-encoding lossy images in _strip_exif. Matches the frontend's
+# camera capture quality (0.92); Pillow's defaults (JPEG 75, WebP 80) silently
+# double-compressed every diagnostic photo on upload.
+LOSSY_REENCODE_QUALITY = 92
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -85,7 +90,8 @@ def _strip_exif(image_bytes: bytes, fmt: str) -> bytes:
     if pil_fmt == "PNG" and img.mode == "I":
         img = img.convert("I;16")
 
-    img.save(out, format=pil_fmt)
+    save_kwargs = {"quality": LOSSY_REENCODE_QUALITY} if pil_fmt in ("JPEG", "WEBP") else {}
+    img.save(out, format=pil_fmt, **save_kwargs)
     return out.getvalue()
 
 
