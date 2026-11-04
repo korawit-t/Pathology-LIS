@@ -109,6 +109,9 @@ class SurgicalReport(Base):
     lab_name_en_snapshot = Column(String, nullable=True)
     lab_address_snapshot = Column(Text, nullable=True)
     report_footer_snapshot = Column(Text, nullable=True)
+    # Logo files are UUID-named and never overwritten, so the path is a full snapshot.
+    # "" = issued with no logo; NULL = signed before this column existed → follow settings.
+    report_logo_path_snapshot = Column(String, nullable=True)
     consult_pdf_path_snapshot = Column(String, nullable=True)
     consult_pdf_thumbnail_snapshot = Column(Text, nullable=True)
     consult_pdf_approved_by_snapshot = Column(String, nullable=True)

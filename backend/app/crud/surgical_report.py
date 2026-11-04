@@ -26,14 +26,19 @@ logger = logging.getLogger(__name__)
 
 def resolve_report_logo(report_data: dict, db: Session) -> None:
     """Pass the logo as a file:// URI so WeasyPrint reads it directly from disk.
-    Always uses the current hospital/system settings — no snapshot needed for logo."""
-    settings = get_system_settings(db)
-    hospital = (
-        db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
-        if report_data.get("hospital_id")
-        else None
-    )
-    _name, _address, logo_path = resolve_lab_header(hospital, settings)
+
+    Uses the logo path frozen on the report at sign-out (report_logo_path_snapshot,
+    "" = issued with no logo). Reports signed before that column existed have it NULL
+    and keep following the current hospital/system settings."""
+    logo_path = report_data.get("report_logo_path_snapshot")
+    if logo_path is None:
+        settings = get_system_settings(db)
+        hospital = (
+            db.query(Hospital).filter(Hospital.id == report_data.get("hospital_id")).first()
+            if report_data.get("hospital_id")
+            else None
+        )
+        _name, _address, logo_path = resolve_lab_header(hospital, settings)
     if logo_path:
         full = STORAGE_BASE / logo_path.removeprefix("/storage/")
         report_data["report_logo_url_snapshot"] = full.as_uri() if full.exists() else None

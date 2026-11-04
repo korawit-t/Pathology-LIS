@@ -203,7 +203,7 @@ def make_anatomical_pathology_test(
     return test
 
 
-def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
+def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int, hospital: Hospital = None):
     """Case + current GyneDiagnosis + a real GyneCytoReport in PENDING_APPROVAL,
     with a 'primary' GyneReportSigner already signed for pathologist_id.
 
@@ -223,7 +223,7 @@ def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
     signed_at the publishing request claims for someone else.
 
     Returns (case, report)."""
-    case = make_bare_gyne_case(db, registrar_id=registrar_id)
+    case = make_bare_gyne_case(db, registrar_id=registrar_id, hospital=hospital)
     signers = [{"user_id": pathologist_id, "role": "primary", "signed_at": local_now()}]
     create_initial_diagnosis(
         db, GyneDiagnosisCreate(case_id=case.id, signers=signers), actor_id=pathologist_id
@@ -238,7 +238,7 @@ def make_pending_gyne_report(db, registrar_id: int, pathologist_id: int):
     return case, report
 
 
-def make_pending_nongyne_report(db, registrar_id: int, pathologist_id: int):
+def make_pending_nongyne_report(db, registrar_id: int, pathologist_id: int, hospital: Hospital = None):
     """Case + current NongyneDiagnosis + a real NongyneCytoReport in
     PENDING_APPROVAL, with a 'primary' NongyneReportSigner already signed.
 
@@ -256,7 +256,7 @@ def make_pending_nongyne_report(db, registrar_id: int, pathologist_id: int):
     else:
         make_system_setting(db, enable_non_gyne_approve_system=True)
 
-    case = make_bare_nongyne_case(db, registrar_id=registrar_id)
+    case = make_bare_nongyne_case(db, registrar_id=registrar_id, hospital=hospital)
     create_nongyne_diagnosis(db, NongyneDiagnosisCreate(case_id=case.id, diagnosis="Test diagnosis"))
     report = publish_nongyne_report(
         db, case.id,

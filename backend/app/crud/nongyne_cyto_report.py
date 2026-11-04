@@ -12,6 +12,7 @@ from app.models.cyto_approval_log import CytoReportAuditLog
 from app.models.user import User
 from app.models.system_setting import SystemSetting
 from app.crud.organization import resolve_lab_header
+from app.crud.surgical_report_builder import STORAGE_BASE
 from app.crud.report_images import case_images_snapshot
 from app.schemas.report_approval import ReportApproveRequest
 from app.enums.case_states import NONGYNE_SPINE
@@ -321,7 +322,7 @@ def prepare_nongyne_report_data(db: Session, case_id: int):
         "signers_snapshot": signers_data,
 
         "lab_name_snapshot": settings.lab_name_th if settings else "Pathology Lab",
-        "lab_address_snapshot": settings.lab_address if settings else "",
+        **_current_lab_header(db_case.hospital, settings),
 
         "report_type": NongyneReportType.FINAL,
         "status": NongyneReportStatus.PENDING_APPROVAL,
@@ -518,6 +519,24 @@ def _is_blank_richtext(html: str | None) -> bool:
     return re.sub(r"<[^>]*>", "", html).replace("&nbsp;", "").strip() == ""
 
 
+def _current_lab_header(hospital, settings) -> dict:
+    """Lab name/address/footer/logo as current settings would draw them — the case's
+    hospital when it has use_custom_report_header, else the master SystemSetting.
+    Frozen onto the report at publish; also the fallback for reports signed before
+    the header was snapshotted."""
+    name_en, address, logo_path = resolve_lab_header(hospital, settings)
+    return {
+        "lab_name_en_snapshot": name_en,
+        "lab_address_snapshot": address,
+        "report_footer_snapshot": (
+            (settings.nongyne_report_footer or settings.report_footer_text or "") if settings else ""
+        ),
+        # "" rather than None so "issued with no logo" stays distinct from a
+        # pre-snapshot row (NULL).
+        "report_logo_path_snapshot": logo_path or "",
+    }
+
+
 def _case_report_images(db: Session, case_id: int) -> list:
     """The case's current show_in_report images, as images_snapshot entries."""
     images = (
@@ -534,22 +553,22 @@ def _enrich_report_data(data: dict, db: Session, case_id: int, images: list | No
 
     `images` is a report's images_snapshot; None draws the case's current
     images (a preview, or a report published before that column existed)."""
-    settings = db.query(SystemSetting).first()
     db_case_obj = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
-    hospital = db_case_obj.hospital if db_case_obj else None
 
-    name_en, address, logo_url = resolve_lab_header(hospital, settings)
-    data["lab_name_snapshot"] = (settings.lab_name_th or "") if settings else ""
-    data["lab_name_en_snapshot"] = name_en
-    data["lab_address_snapshot"] = address
-    data["report_footer_snapshot"] = (
-        (settings.nongyne_report_footer or settings.report_footer_text or "") if settings else ""
-    )
+    # The header frozen on the report at publish wins. A report signed before that
+    # (report_logo_path_snapshot NULL — its stored address was the master one even
+    # for custom-header hospitals) follows current settings instead. Preview data
+    # already carries the current header.
+    if data.get("report_logo_path_snapshot") is None:
+        settings = db.query(SystemSetting).first()
+        data["lab_name_snapshot"] = (settings.lab_name_th or "") if settings else ""
+        data.update(_current_lab_header(db_case_obj.hospital if db_case_obj else None, settings))
+
     # Logo base64
+    logo_url = data["report_logo_path_snapshot"]
     if logo_url:
         try:
-            storage_root = Path(__file__).resolve().parent.parent.parent / "uploads"
-            full_path = storage_root / logo_url.removeprefix("/storage/")
+            full_path = STORAGE_BASE / logo_url.removeprefix("/storage/")
             if full_path.exists():
                 with open(full_path, "rb") as f:
                     encoded = base64.b64encode(f.read()).decode("utf-8")
