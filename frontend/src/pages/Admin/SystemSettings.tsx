@@ -14,7 +14,8 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import { APP_VERSION } from "../../constants/app.constants";
-import api from "../../services/httpClient";
+import VersionService from "../../services/versionService";
+import type { UpdateStatus, VersionInfo } from "../../types/version";
 import PageContainer from "../../components/Layout/PageContainer";
 import GeneralTab from "./components/GeneralTab";
 import ReportTab from "./components/ReportTab";
@@ -30,17 +31,20 @@ import AiConfigTab from "./components/AiConfigTab";
 import ReportGenTab from "./components/ReportGenTab";
 import GrossingAssistTab from "./components/GrossingAssistTab";
 import WsiTab from "./components/WsiTab";
+import LatestRelease from "./components/LatestRelease";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Sider, Content } = Layout;
 
 const SystemSettings: React.FC = () => {
   const [activeKey, setActiveKey] = useState("general");
-  const [backendVersion, setBackendVersion] = useState<{ version: string; environment: string } | null>(null);
+  const [backendVersion, setBackendVersion] = useState<VersionInfo | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 
   useEffect(() => {
     if (activeKey === "about" && !backendVersion) {
-      api.get("/version").then((res) => setBackendVersion(res.data)).catch(() => {});
+      VersionService.getVersion().then(setBackendVersion).catch(() => {});
+      VersionService.getUpdateStatus().then(setUpdateStatus).catch(() => {});
     }
   }, [activeKey]);
 
@@ -129,6 +133,13 @@ const SystemSettings: React.FC = () => {
                     ? <Tag color="green">v{backendVersion.version}</Tag>
                     : <Tag>-</Tag>
                   }
+                  {/* One of the two wasn't redeployed: dist/ not rebuilt, or the backend not restarted. */}
+                  {backendVersion && backendVersion.version !== APP_VERSION && (
+                    <Text type="warning">ไม่ตรงกับ frontend</Text>
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="Latest Release">
+                  <LatestRelease status={updateStatus} />
                 </Descriptions.Item>
                 <Descriptions.Item label="Environment">
                   {backendVersion

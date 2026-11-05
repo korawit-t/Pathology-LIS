@@ -26,6 +26,16 @@
 # every request then hangs until it times out connecting upstream.
 resolver ${RESOLVER_ADDR} valid=10s;
 
+# index.html names the hashed JS/CSS of the build it came from, so the browser
+# must ask for it again on every load (no-cache = revalidate, still 304s when
+# unchanged). Left to heuristic caching, a tab opened after a redeploy can get
+# yesterday's index.html, whose chunks the new build has already deleted.
+# The hashed assets themselves are unaffected (empty value = no header).
+map $sent_http_content_type $spa_cache_control {
+    ~^text/html  "no-cache";
+    default      "";
+}
+
 server {
     listen 80;
     root /usr/share/nginx/html;
@@ -50,6 +60,7 @@ server {
         add_header Permissions-Policy         "geolocation=(), microphone=(), camera=()" always;
         add_header Strict-Transport-Security  "max-age=31536000; includeSubDomains" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
+        add_header Cache-Control              $spa_cache_control                  always;
 
         # $uri/ is required so "/" itself (and any other directory-like
         # path) resolves to index.html via the `index` directive above,
@@ -91,6 +102,7 @@ server {
         add_header Permissions-Policy         "geolocation=(), microphone=(), camera=()" always;
         add_header Strict-Transport-Security  "max-age=31536000; includeSubDomains" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
+        add_header Cache-Control              $spa_cache_control                  always;
 
         try_files /index.html =404;
     }

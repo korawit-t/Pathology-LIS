@@ -41,6 +41,9 @@ import logger from "../../utils/logger";
 import SystemSettingService from "../../services/systemSettingService";
 import ChangePasswordModal from "../../components/auth/ChangePasswordModal";
 import MfaSettingsModal from "../../components/auth/MfaSettingsModal";
+import StaleChunkBoundary from "../../components/StaleChunkBoundary";
+import UpdateAvailableButton from "../../components/Layout/UpdateAvailableButton";
+import { hasRole } from "../../utils/hasRole";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -243,6 +246,8 @@ const Dashboard: React.FC = () => {
             )}
           </div>
           <Space align="center" size="middle">
+            <UpdateAvailableButton isAdmin={hasRole(user, "admin")} />
+
             <Button
               type="text"
               icon={isDarkMode ? <SunOutlined /> : <MoonOutlined />}
@@ -329,86 +334,90 @@ const Dashboard: React.FC = () => {
             overflow: "initial", // ช่วยเรื่อง Sticky bar ในหน้า Gross
           }}
         >
-          {resolveDashboardView({
-            currentView,
-            user,
-            isSidebarCollapsed: collapsed,
-            isSideLayout: layoutMode === "side",
-            selectedSpecimenId,
-            onNavigate: (view: string) => {
-              if (view.includes(":")) {
-                const [page, tab] = view.split(":");
-                if (page === "pathologist-page") setPathologistDefaultTab(tab);
-                setCurrentView(page);
-              } else {
-                setCurrentView(view);
-              }
-            },
-            defaultTab: pathologistDefaultTab,
-            onActiveTabChange: setPathologistDefaultTab,
-            onOpenReport: (id, type) => {
-              setSelectedSpecimenId(id);
-              setPreviousView(currentView);
-
-              if (currentView === "approval") {
-                if (type === "gyne") {
-                  setCurrentView("gyne-approval-manage");
-                } else if (type === "nongyne") {
-                  setCurrentView("nongyne-approval-manage");
+          {/* resetKey, not key: several views share one page component, and a
+              key would remount it on every switch between them. */}
+          <StaleChunkBoundary resetKey={currentView}>
+            {resolveDashboardView({
+              currentView,
+              user,
+              isSidebarCollapsed: collapsed,
+              isSideLayout: layoutMode === "side",
+              selectedSpecimenId,
+              onNavigate: (view: string) => {
+                if (view.includes(":")) {
+                  const [page, tab] = view.split(":");
+                  if (page === "pathologist-page") setPathologistDefaultTab(tab);
+                  setCurrentView(page);
                 } else {
-                  setCurrentView("approval-manage");
+                  setCurrentView(view);
                 }
-              } else if (currentView === "gyne-cyto-work-list" || currentView === "gyne-qc-review" || type === "gyne") {
-                const isPathologistUser = user?.roles?.some(
-                  (r) => r === "pathologist" || r === "senior_pathologist",
-                );
-                setCurrentView(
-                  isPathologistUser
-                    ? "pathologist-gyne-diagnosis"
-                    : "gyne-cyto-diagnosis-entry",
-                );
-              } else if (currentView === "pathologist-page" && type === "nongyne") {
-                setCurrentView("pathologist-nongyne-diagnosis");
-              } else if (currentView === "nongyne-cyto-work-list" || type === "nongyne") {
-                setCurrentView("nongyne-cyto-diagnosis-entry");
-              } else {
-                // Default for Surgical
-                setCurrentView("surgical-report-form");
-              }
-            },
-            onBackToWorklist: () => {
-              if (
-                currentView === "approval-manage" ||
-                currentView === "gyne-approval-manage" ||
-                currentView === "nongyne-approval-manage"
-              ) {
-                setCurrentView("approval");
-              } else if (currentView === "gyne-cyto-diagnosis-entry") {
-                setCurrentView(previousView === "gyne-qc-review" ? "gyne-qc-review" : "gyne-cyto-work-list");
-                setPreviousView(null);
-              } else if (currentView === "pathologist-gyne-diagnosis") {
-                // A pathologist opening a case from QC Review lands here, not in
-                // gyne-cyto-diagnosis-entry — so Back has to honour previousView
-                // too, or it drops them on the Pathologist page instead.
-                setCurrentView(
-                  previousView === "gyne-qc-review"
-                    ? "gyne-qc-review"
-                    : "pathologist-page",
-                );
-                setPreviousView(null);
-              } else if (currentView === "pathologist-nongyne-diagnosis") {
-                setCurrentView("pathologist-page");
-              } else if (currentView === "nongyne-cyto-diagnosis-entry") {
-                setCurrentView("nongyne-cyto-work-list");
-              } else if (currentView === "nongyne-cyto-stains") {
-                setCurrentView("nongyne-cyto-work-list");
-              } else if (currentView === "gyne-cyto-stains") {
-                setCurrentView("gyne-cyto-work-list");
-              } else {
-                setCurrentView("pathologist-page");
-              }
-            },
-          })}
+              },
+              defaultTab: pathologistDefaultTab,
+              onActiveTabChange: setPathologistDefaultTab,
+              onOpenReport: (id, type) => {
+                setSelectedSpecimenId(id);
+                setPreviousView(currentView);
+
+                if (currentView === "approval") {
+                  if (type === "gyne") {
+                    setCurrentView("gyne-approval-manage");
+                  } else if (type === "nongyne") {
+                    setCurrentView("nongyne-approval-manage");
+                  } else {
+                    setCurrentView("approval-manage");
+                  }
+                } else if (currentView === "gyne-cyto-work-list" || currentView === "gyne-qc-review" || type === "gyne") {
+                  const isPathologistUser = user?.roles?.some(
+                    (r) => r === "pathologist" || r === "senior_pathologist",
+                  );
+                  setCurrentView(
+                    isPathologistUser
+                      ? "pathologist-gyne-diagnosis"
+                      : "gyne-cyto-diagnosis-entry",
+                  );
+                } else if (currentView === "pathologist-page" && type === "nongyne") {
+                  setCurrentView("pathologist-nongyne-diagnosis");
+                } else if (currentView === "nongyne-cyto-work-list" || type === "nongyne") {
+                  setCurrentView("nongyne-cyto-diagnosis-entry");
+                } else {
+                  // Default for Surgical
+                  setCurrentView("surgical-report-form");
+                }
+              },
+              onBackToWorklist: () => {
+                if (
+                  currentView === "approval-manage" ||
+                  currentView === "gyne-approval-manage" ||
+                  currentView === "nongyne-approval-manage"
+                ) {
+                  setCurrentView("approval");
+                } else if (currentView === "gyne-cyto-diagnosis-entry") {
+                  setCurrentView(previousView === "gyne-qc-review" ? "gyne-qc-review" : "gyne-cyto-work-list");
+                  setPreviousView(null);
+                } else if (currentView === "pathologist-gyne-diagnosis") {
+                  // A pathologist opening a case from QC Review lands here, not in
+                  // gyne-cyto-diagnosis-entry — so Back has to honour previousView
+                  // too, or it drops them on the Pathologist page instead.
+                  setCurrentView(
+                    previousView === "gyne-qc-review"
+                      ? "gyne-qc-review"
+                      : "pathologist-page",
+                  );
+                  setPreviousView(null);
+                } else if (currentView === "pathologist-nongyne-diagnosis") {
+                  setCurrentView("pathologist-page");
+                } else if (currentView === "nongyne-cyto-diagnosis-entry") {
+                  setCurrentView("nongyne-cyto-work-list");
+                } else if (currentView === "nongyne-cyto-stains") {
+                  setCurrentView("nongyne-cyto-work-list");
+                } else if (currentView === "gyne-cyto-stains") {
+                  setCurrentView("gyne-cyto-work-list");
+                } else {
+                  setCurrentView("pathologist-page");
+                }
+              },
+            })}
+          </StaleChunkBoundary>
         </Content>
       </Layout>
 

@@ -18,6 +18,7 @@ import ForceChangePassword from "./pages/Auth/ForceChangePassword";
 import MfaSetup from "./pages/Auth/MfaSetup";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import StepUpGate from "./components/auth/StepUpGate";
+import NewVersionNotice from "./components/NewVersionNotice";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const IdleWarningBanner: React.FC = () => {
@@ -58,6 +59,8 @@ const MainApp: React.FC = () => {
       >
         <AuthProvider>
           <IdleWarningBanner />
+          {/* Any page, logged in or not: a tab left open across a deploy. */}
+          <NewVersionNotice />
           {/* Answers any request the server refuses with step_up_required,
               wherever it was fired from, and lets it be retried. */}
           <StepUpGate />

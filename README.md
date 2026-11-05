@@ -347,7 +347,33 @@ curl http://localhost:8000/version      # {"version": "2.0.0", "environment": ".
 ```
 
 …in the footer of the login page, and in **System Settings → About**, which
-lists the frontend and backend numbers separately — they should always match.
+lists the frontend and backend numbers separately — they should always match,
+and About says so when they don't.
+
+### Update notices
+
+Two separate notices, for two different kinds of "out of date":
+
+- **This server is behind the latest release** — admins only. The backend
+  compares its own version with the latest
+  [GitHub Release](https://github.com/korawit-t/Pathology-LIS/releases) of
+  `UPDATE_CHECK_REPO` (one unauthenticated request, cached six hours) and the
+  header shows a download icon that links to the release notes — red when the
+  new release is a MAJOR. **System Settings → About** has the detail. Set
+  `UPDATE_CHECK_REPO=off` in `backend/.env` on a server with no internet
+  access; see `backend/.env.example`. The answer comes from
+  `GET /version/update-status`, which is admin only on purpose: `GET /version`
+  stays public, and a public "this install is behind" would tell anyone which
+  published fixes it is missing.
+- **This browser tab is behind the server** — everyone. Every build writes
+  `version.json` next to `index.html` with an id unique to that build. An open
+  tab checks it on load, every five minutes and when it comes back into view,
+  and once the id differs it shows a notice asking the user to save their work
+  and reload. It never reloads by itself: someone may be halfway through a
+  report. A page whose code the new build replaced (its chunk is gone) shows a
+  reload prompt in its place instead of a blank screen. This needs
+  `index.html` served with `Cache-Control: no-cache`, which `web.config` (IIS)
+  and both nginx configs already do.
 
 The number is [Semantic Versioning](https://semver.org/spec/v2.0.0.html), read
 from the point of view of whoever performs the upgrade:
@@ -384,10 +410,21 @@ disagree. Then collect the entries for CHANGELOG.md:
 git log v2.0.0..HEAD --format='- %s' --no-merges
 ```
 
-Commit, merge the PR, and tag the merge commit on `main`:
+Commit and merge the PR. **Only after the merge**, tag the merge commit on
+`main` — a tag made before it lands on the commit that still carries the old
+number:
 
 ```bash
-git tag -a v2.1.0 -m "v2.1.0" && git push origin v2.1.0
+git fetch origin && git tag -a v2.1.0 -m "v2.1.0" origin/main && git push origin v2.1.0
+```
+
+Then publish a GitHub Release from that tag, with the version's CHANGELOG
+section as its notes. The admin update notice reads `releases/latest`, which
+sees releases, not bare tags — without this step no install is told about the
+new version:
+
+```bash
+gh release create v2.1.0 --verify-tag --latest --title v2.1.0 --notes-file notes.md
 ```
 
 ---
