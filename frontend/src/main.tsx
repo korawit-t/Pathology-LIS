@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
+import { watchForStaleChunks } from "./utils/staleBuild";
+
+watchForStaleChunks();
 
 // 1. เพิ่มการเช็ค Null สำหรับ Element 'root'
 const rootElement = document.getElementById("root");

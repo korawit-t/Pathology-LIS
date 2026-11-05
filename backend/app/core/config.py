@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -113,6 +114,36 @@ def parse_upload_root(raw: str | None) -> tuple[Path, bool]:
 UPLOAD_ROOT, UPLOAD_ROOT_IS_EXPLICIT = parse_upload_root(os.getenv("UPLOAD_ROOT"))
 
 
+# The GitHub repository whose latest release the admin's "update available"
+# notice compares this install against (app/services/update_check.py). The
+# check is one unauthenticated GET to api.github.com every few hours, made by
+# the backend only when an admin asks for it; it sends nothing about this
+# install but the request itself. A fork points it at its own repository; an
+# install with no internet access, or that doesn't want the call, turns it off
+# with an empty value or "off".
+DEFAULT_UPDATE_CHECK_REPO = "korawit-t/Pathology-LIS"
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def parse_update_check_repo(raw: str | None) -> str | None:
+    """owner/name to check, or None when the check is switched off."""
+    if raw is None:
+        return DEFAULT_UPDATE_CHECK_REPO
+    # start.ps1 copies .env values into the environment without removing quotes.
+    value = raw.strip().strip('"').strip("'")
+    if value.lower() in {"", "off", "false", "none", "0"}:
+        return None
+    if not _REPO_SLUG_RE.match(value):
+        raise RuntimeError(
+            f"UPDATE_CHECK_REPO='{value}' is not a GitHub repository. "
+            "Use owner/name (e.g. korawit-t/Pathology-LIS), or 'off' to disable the check."
+        )
+    return value
+
+
+UPDATE_CHECK_REPO: str | None = parse_update_check_repo(os.getenv("UPDATE_CHECK_REPO"))
+
+
 class Settings:
     PROJECT_NAME: str = "Pathology LIS"
     VERSION: str = "3.0.0"
@@ -121,5 +152,6 @@ class Settings:
     EXPOSE_DOCS: bool = EXPOSE_DOCS
     UPLOAD_ROOT: Path = UPLOAD_ROOT
     UPLOAD_ROOT_IS_EXPLICIT: bool = UPLOAD_ROOT_IS_EXPLICIT
+    UPDATE_CHECK_REPO: str | None = UPDATE_CHECK_REPO
 
 settings = Settings()
