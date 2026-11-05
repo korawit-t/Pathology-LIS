@@ -966,3 +966,67 @@ class TestMolecularPdfReceivedStatus:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["display_status"] == "cancelled"
+
+
+class TestMolecularAssistPathologistFilter:
+    """The pathologist's My Worklist lists their own Molecular cases plus the
+    ones nobody has been named on, so an unassigned case still reaches some
+    pathologist rather than none."""
+
+    def _setup(self, db, client):
+        me, _ = _make_user(db, f"mol_me_{uuid.uuid4().hex[:10]}", "PathPass1!", ["pathologist"])
+        other, _ = _make_user(db, f"mol_other_{uuid.uuid4().hex[:10]}", "PathPass1!", ["pathologist"])
+        marker = uuid.uuid4().hex[:10]
+        patient = make_patient(db, name=f"AssistFilter{marker}")
+        ap_test = make_anatomical_pathology_test(
+            db, category="Molecular", system_code=None, name=f"Assist Assay {marker}"
+        )
+        ids = {}
+        for key, assist_id in (("mine", me.id), ("other", other.id), ("unassigned", None)):
+            resp = client.post(
+                "/molecular-cases",
+                json={"patient_id": patient.id, "ap_test_id": ap_test.id, "assist_pathologist_id": assist_id},
+            )
+            assert resp.status_code == 201, resp.text
+            ids[key] = resp.json()["id"]
+        return me, marker, ids
+
+    def _ids(self, client, **params):
+        resp = client.get("/molecular-cases", params=params)
+        assert resp.status_code == 200, resp.text
+        return {c["id"] for c in resp.json()}
+
+    def test_only_mine_without_include_unassigned(self, db, pathologist_client):
+        me, marker, ids = self._setup(db, pathologist_client)
+        assert self._ids(pathologist_client, search=marker, assist_pathologist_id=me.id) == {ids["mine"]}
+
+    def test_include_unassigned_adds_the_cases_nobody_owns(self, db, pathologist_client):
+        me, marker, ids = self._setup(db, pathologist_client)
+        found = self._ids(
+            pathologist_client, search=marker, assist_pathologist_id=me.id, include_unassigned=True
+        )
+        assert found == {ids["mine"], ids["unassigned"]}
+
+    def test_count_applies_the_same_scope(self, db, pathologist_client):
+        def count(**params):
+            resp = pathologist_client.get("/molecular-cases/count", params=params)
+            assert resp.status_code == 200, resp.text
+            return resp.json()["count"]
+
+        me, _ = _make_user(db, f"mol_cnt_{uuid.uuid4().hex[:10]}", "PathPass1!", ["pathologist"])
+        before_scoped = count(assist_pathologist_id=me.id, include_unassigned=True)
+        assert count(assist_pathologist_id=me.id) == 0
+
+        patient = make_patient(db, name=f"AssistCount{uuid.uuid4().hex[:8]}")
+        ap_test = make_anatomical_pathology_test(
+            db, category="Molecular", system_code=None, name=f"Count Assay {uuid.uuid4().hex[:8]}"
+        )
+        for assist_id in (me.id, None):
+            resp = pathologist_client.post(
+                "/molecular-cases",
+                json={"patient_id": patient.id, "ap_test_id": ap_test.id, "assist_pathologist_id": assist_id},
+            )
+            assert resp.status_code == 201, resp.text
+
+        assert count(assist_pathologist_id=me.id) == 1
+        assert count(assist_pathologist_id=me.id, include_unassigned=True) == before_scoped + 2
