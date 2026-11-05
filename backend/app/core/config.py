@@ -115,7 +115,7 @@ UPLOAD_ROOT, UPLOAD_ROOT_IS_EXPLICIT = parse_upload_root(os.getenv("UPLOAD_ROOT"
 
 class Settings:
     PROJECT_NAME: str = "Pathology LIS"
-    VERSION: str = "2.0.0"
+    VERSION: str = "3.0.0"
     ENVIRONMENT: str = ENVIRONMENT
     IS_PRODUCTION: bool = IS_PRODUCTION
     EXPOSE_DOCS: bool = EXPOSE_DOCS
