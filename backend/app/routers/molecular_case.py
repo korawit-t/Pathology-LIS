@@ -94,6 +94,8 @@ def list_molecular_cases(
     stain_id: Optional[int] = None,
     search: Optional[str] = None,
     clinician: Optional[str] = None,
+    assist_pathologist_id: Optional[int] = None,
+    include_unassigned: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -101,6 +103,8 @@ def list_molecular_cases(
         db, skip=skip, limit=limit, status=status, is_outlab=is_outlab,
         parent_case_id=parent_case_id, stain_id=stain_id, search=search,
         clinician=clinician, hospital_ids=_hospital_scope(current_user),
+        assist_pathologist_id=assist_pathologist_id,
+        include_unassigned=include_unassigned,
     )
 
 
@@ -108,10 +112,13 @@ def list_molecular_cases(
 def count_molecular_cases(
     status: Optional[str] = None,
     is_outlab: Optional[bool] = None,
+    assist_pathologist_id: Optional[int] = None,
+    include_unassigned: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Count matching cases without fetching them — for the dashboard tiles.
+    """Count matching cases without fetching them — for the dashboard tiles
+    and the pathologist worklist's Molecular badge.
 
     Must stay declared above ``/{case_id}``: FastAPI matches in declaration
     order, so the other way round "count" is captured as a case id and the
@@ -121,6 +128,8 @@ def count_molecular_cases(
         "count": molecular_crud.count_molecular_cases(
             db, status=status, is_outlab=is_outlab,
             hospital_ids=_hospital_scope(current_user),
+            assist_pathologist_id=assist_pathologist_id,
+            include_unassigned=include_unassigned,
         )
     }
 

@@ -79,6 +79,25 @@ describe("useTabBadgeCounts", () => {
     expect(mockGetMyPending).toHaveBeenCalledWith({ skip: 0, limit: 1 });
   });
 
+  it("counts the Molecular tab's PDF Received and In-house cases", async () => {
+    // MolecularCaseService.count goes through the mocked httpClient, so route
+    // its calls by URL; the ready-stain call still gets an empty list.
+    mockApiGet.mockImplementation((url: string, config?: { params?: { status?: string } }) =>
+      Promise.resolve(
+        url === "/molecular-cases/count"
+          ? { data: { count: config?.params?.status === "pdf_received" ? 3 : 2 } }
+          : { data: [] },
+      ),
+    );
+
+    const { result } = renderHook(() => useTabBadgeCounts(USER_ID));
+
+    await waitFor(() => expect(result.current.molecularCount).toBe(5));
+    expect(mockApiGet).toHaveBeenCalledWith("/molecular-cases/count", {
+      params: { assist_pathologist_id: USER_ID, include_unassigned: true, status: "pdf_received" },
+    });
+  });
+
   it("keeps the other badges when one endpoint fails", async () => {
     mockGetCases.mockRejectedValue(new Error("boom"));
     mockGetMyPending.mockResolvedValue({ items: [], total: 5 });

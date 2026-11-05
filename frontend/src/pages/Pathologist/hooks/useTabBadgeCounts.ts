@@ -5,6 +5,7 @@ import GyneCytologyCaseService from "../../../services/gyneCytoCaseService";
 import InternalConsultService from "../../../services/internalConsultService";
 import { buildMyConsultBadgeParams } from "../components/MyConsultCases";
 import { buildOutlabApprovalBadgeParams } from "../components/MyOutlabApprovals";
+import { countMyMolecularBadge } from "../components/MyMolecularCases";
 import logger from "../../../utils/logger";
 
 interface ReadyStainCase {
@@ -26,6 +27,7 @@ export const useTabBadgeCounts = (userId: number | undefined) => {
   const [externalConsultCount, setExternalConsultCount] = useState(0);
   const [outlabApprovalCount, setOutlabApprovalCount] = useState(0);
   const [internalConsultCount, setInternalConsultCount] = useState(0);
+  const [molecularCount, setMolecularCount] = useState(0);
 
   const refreshBadgeCounts = useCallback(async () => {
     if (!userId) return;
@@ -55,6 +57,10 @@ export const useTabBadgeCounts = (userId: number | undefined) => {
       InternalConsultService.getMyPending({ skip: 0, limit: 1 })
         .then((res) => setInternalConsultCount(res.total || 0))
         .catch((err) => logger.error("Failed to count internal consults:", err)),
+
+      countMyMolecularBadge(userId)
+        .then(setMolecularCount)
+        .catch((err) => logger.error("Failed to count Molecular cases:", err)),
     ]);
   }, [userId]);
 
@@ -67,6 +73,7 @@ export const useTabBadgeCounts = (userId: number | undefined) => {
     externalConsultCount,
     outlabApprovalCount,
     internalConsultCount,
+    molecularCount,
     // Handed to the panels as `onCountChange` so an action taken inside a tab
     // (approving an outlab result, answering a consult) updates its badge.
     // These are `useState` setters, so their identity is stable — the panels
@@ -74,6 +81,7 @@ export const useTabBadgeCounts = (userId: number | undefined) => {
     setExternalConsultCount,
     setOutlabApprovalCount,
     setInternalConsultCount,
+    setMolecularCount,
     refreshBadgeCounts,
   };
 };

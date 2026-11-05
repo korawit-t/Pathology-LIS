@@ -34,6 +34,8 @@ import MyReadyStains from "./components/MyReadyStains";
 import MyWorkloadSummary from "./components/MyWorkloadSummary";
 import MyConsultCases from "./components/MyConsultCases";
 import MyOutlabApprovals from "./components/MyOutlabApprovals";
+import MyMolecularCases from "./components/MyMolecularCases";
+import MolecularCaseDetailPage from "../MolecularCase/MolecularCaseDetailPage";
 import InternalConsultWorklistPanel from "../../components/InternalConsult/InternalConsultWorklistPanel";
 import PageContainer from "../../components/Layout/PageContainer";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -53,6 +55,9 @@ const PathologistPage: React.FC<{
   };
   const [cytoRefreshTrigger, setCytoRefreshTrigger] = useState(0);
   const [workflowOpen, setWorkflowOpen] = useState(false);
+  // Molecular has its own result page rather than a report form, so it opens
+  // in place here (as on the Accession page) instead of through onSelectCase.
+  const [selectedMolecularCaseId, setSelectedMolecularCaseId] = useState<number | null>(null);
   const { overdueCases: tatCases, loading: tatLoading } = useMyTatStatus(user?.id);
 
   // Badges for tabs antd hasn't mounted yet — see useTabBadgeCounts.
@@ -61,9 +66,11 @@ const PathologistPage: React.FC<{
     externalConsultCount,
     outlabApprovalCount,
     internalConsultCount,
+    molecularCount,
     setExternalConsultCount,
     setOutlabApprovalCount,
     setInternalConsultCount,
+    setMolecularCount,
     refreshBadgeCounts,
   } = useTabBadgeCounts(user?.id);
 
@@ -216,6 +223,22 @@ const renderWorklist = (
       ),
     },
     {
+      key: "molecular",
+      label: (
+        <span>
+          Molecular <Badge count={molecularCount} size="small" color="blue" />
+        </span>
+      ),
+      children: (
+        <MyMolecularCases
+          pathologistId={user?.id}
+          onSelectCase={setSelectedMolecularCaseId}
+          onCountChange={setMolecularCount}
+          refreshTrigger={cytoRefreshTrigger}
+        />
+      ),
+    },
+    {
       key: "ready-stains",
       label: (
         <span>
@@ -296,6 +319,20 @@ const renderWorklist = (
       children: renderTATOverdue(),
     },
   ];
+
+  if (selectedMolecularCaseId != null) {
+    return (
+      <MolecularCaseDetailPage
+        caseId={selectedMolecularCaseId}
+        onBack={() => {
+          setSelectedMolecularCaseId(null);
+          // Finalizing there takes the case off this tab — the panel refetches
+          // when it remounts, but the badge lives up here.
+          refreshBadgeCounts();
+        }}
+      />
+    );
+  }
 
   return (
     <PageContainer

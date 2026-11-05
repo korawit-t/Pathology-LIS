@@ -22,9 +22,14 @@ interface MolecularCaseTableProps {
   /** Available on any case regardless of parent-link/status — printing a
    * label doesn't touch case data the way editing demographics does. */
   onPrintCase?: (record: MolecularCaseResponse) => void;
+  /** Adds an Assist Pathologist column — for the pathologist's own worklist,
+   * which also lists unassigned cases and needs to tell them apart. */
+  showAssistPathologist?: boolean;
 }
 
-const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({ dataSource, loading, onSelectCase, onEditCase, onPrintCase }) => {
+const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({
+  dataSource, loading, onSelectCase, onEditCase, onPrintCase, showAssistPathologist,
+}) => {
   const columns: ColumnsType<MolecularCaseResponse> = [
     {
       title: "Accession No.",
@@ -57,6 +62,16 @@ const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({ dataSource, loa
       align: "center" as const,
       render: (v: boolean) => (v ? <Tag color="purple">Out-lab</Tag> : <Tag>In-house</Tag>),
     },
+    ...(showAssistPathologist
+      ? [
+          {
+            title: "Assist Pathologist",
+            dataIndex: "assist_pathologist_name",
+            width: 170,
+            render: (t: string | null) => t || <Text type="secondary">Unassigned</Text>,
+          },
+        ]
+      : []),
     {
       title: "Status",
       dataIndex: "display_status",
@@ -120,7 +135,7 @@ const MolecularCaseTable: React.FC<MolecularCaseTableProps> = ({ dataSource, loa
       className="standard-table"
       rowClassName={() => "editable-row"}
       onRow={(record) => ({ onClick: () => onSelectCase(record.id) })}
-      scroll={{ x: 1320, y: "calc(100vh - 360px)" }}
+      scroll={{ x: showAssistPathologist ? 1490 : 1320, y: "calc(100vh - 360px)" }}
       sticky
       pagination={{
         pageSize: 20,
