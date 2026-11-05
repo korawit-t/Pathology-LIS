@@ -19,6 +19,132 @@ before the server starts.
 Entries below are the `feat:` and `fix:` commits of each release. Commits
 touching only tests or CI are left out.
 
+## [3.0.0] — 2026-11-05
+
+About ten weeks of work since 2.0.0 — 17 features and 36 fixes. It is a MAJOR
+because a Docker install has to rescue its uploads before it upgrades, and a
+deploy still running the example `SECRET_KEY` no longer starts. Both are
+below, along with a change to who may perform a gyne QC review.
+
+### Upgrade notes
+
+Back up the database and the uploads before you start — see
+[Backup and Restore](./README.md#backup-and-restore).
+
+**Do these before you deploy**
+
+- **Docker installs: copy the uploads out of the backend container first.**
+  `docker-compose.yml` used to mount `./backend/data/storage`, a path the
+  backend never writes to, so every uploaded image and file lived inside the
+  container and was lost whenever it was recreated. This release mounts a
+  named volume, `uploads_data`, at `/app/uploads`. Copy the files out before
+  you rebuild and back in afterwards; the four commands are under
+  [README → Backup](./README.md#7-backup). On-premise Windows installs are not
+  affected.
+- **`SECRET_KEY` must be a real key.** The backend now refuses to start when
+  `SECRET_KEY` contains `change_me` or `changeme`, which is what
+  `backend/.env.example` ships with. If yours does, generate a new one with
+  `openssl rand -hex 32` before you deploy.
+
+**Changes users will notice**
+
+- **Everyone signs in once more after the upgrade.** Tokens issued before it
+  carry no issue time, so they count as older than any password change. From
+  now on a password change or an admin reset ends that user's other sessions,
+  and a disabled account stops working at its next request.
+- **A temporary or expired password now blocks the whole API**, not only 11
+  routers. Until it is changed, the user can load their profile and
+  preferences and change the password, nothing else.
+- **Gyne QC review is limited to pathologists.** Only a pathologist or senior
+  pathologist can Agree/Disagree — not a cytotechnologist, a lab manager or an
+  admin — and never on a case they screened or sent for review. A
+  pathologist's own abnormal or unsatisfactory read-out now publishes directly
+  instead of queueing a review of themselves, and a case in `pending_review`
+  leaves it only through the review. Tell the cytology staff before go-live.
+- **"Require All Signatures"** (gyne and non-gyne): while it is on, the server
+  records each signature itself, so a user can add only their own. A sign-off
+  that is still missing one is refused and names who is outstanding.
+
+**New settings (both optional)**
+
+- `EXPOSE_DOCS` — `/docs`, `/redoc` and `/openapi.json` are now closed unless
+  this is the literal `true`. They used to follow `ENVIRONMENT=development`,
+  which a LAN install has to run with, so they were open to the whole subnet.
+  Leave it unset wherever real patient data lives;
+  `docker-compose.override.yml` sets it for the dev stack.
+- `UPLOAD_ROOT` — moves the uploads folder to another disk or a file share.
+  Unset keeps `backend/uploads`, as before. A folder set here must already
+  exist and be writable, or the backend refuses to start. See
+  [Moving the uploads folder](./README.md#moving-the-uploads-folder).
+
+**Database**
+
+Eleven new revisions, all applied by `alembic upgrade head`. `start.ps1` and
+Railway run it before the server starts; if you start uvicorn any other way,
+run it yourself first, or pages that read the new columns fail with a 500.
+One revision (`04b59817b3b5`) backfills an image snapshot for every existing
+report — nothing to do by hand. Coming from 2.0.0 needs no particular starting
+revision.
+
+### Added
+
+- **molecular** — add a Molecular tab to the pathologist's My Worklist
+- **uploads** — make the uploads folder configurable with UPLOAD_ROOT
+- **molecular** — show when an out-lab PDF is in but not yet finalized
+- **gyne** — give pathologists a QC Review tab in their worklist
+- **slide-storage** — give a slide sticker's QR the slide's own identity
+- **report** — find cases by specimen text and diagnosis text
+- **molecular** — hand out the out-lab report as cover pages only
+- **pathologist** — count badge and click-to-preview on the gross images tab
+- **nongyne** — rename the disposal queue tab to "ครบกำหนด"
+- **nongyne** — leave slides-only specimen types out of storage and disposal
+- **pathologist** — approve outlab results from inside the PDF preview
+- **molecular** — add Molecular to the print queue and put a barcode on its PDFs
+- **nongyne** — add the specimen storage step and make disposal depend on it
+- **surgical** — enforce the specimen retention gate on disposal sheets
+- **nongyne** — add specimen disposal with a backend-enforced retention gate
+- **images** — add rotate/flip, re-editable uploads, and a locked-case guard
+- **qc** — compare cytotech screening against the signed-out diagnosis
+
+### Fixed
+
+- **reports** — re-render signed reports with the letterhead they were issued with
+- **reports** — reprint each report version with the images it went out with
+- **docker** — persist uploads in a named volume and back them up
+- **uploads** — re-encode JPEG/WebP at quality 92 instead of Pillow defaults
+- **auth** — end sessions on password change, enforce forced change everywhere, refuse placeholder key
+- **security** — close file read, cross-hospital and external-account access holes
+- enforce gyne QC reviewer eligibility and cyto sign-off server-side
+- **slide-storage** — list the special stains Manual Select was hiding
+- **slide-storage** — match a scanned slide against the barcode its sticker prints
+- **report** — export the case list as real .xlsx, and stop the placeholder sitting on typed text
+- **security** — put the API docs on their own flag so a LAN deploy can close them
+- **backup** — stage the storage archive under a name Compress-Archive accepts
+- **backup** — say why the storage archive failed, and keep one that is merely incomplete
+- **molecular** — keep a case inside the hospital that sent it
+- **molecular** — hand a result to the referring side only once it is signed out
+- **gross** — keep a case in the gross worklist when stain orders change
+- **consult** — let an out-lab round sign off without a typed diagnosis
+- **editor** — keep the caret on its line when using the toolbar
+- **reports** — keep the lab header on every consult cover page
+- **disposal** — keep the signatures on a page that lists cases
+- **pathologist** — make the Pending tab list the cases its label names
+- **pathologist** — float pending immuno cases in the All tab too
+- **pathologist** — float pending diagnosis cases alongside slide sent in the All tab
+- **molecular** — name the signer on the out-lab cover sheet
+- **cyto** — let a cleared pathologist assignment actually save
+- **nongyne** — sort the work still to be done to the top of the "All" tab
+- **pathologist** — count tab badges up front, not on first click
+- **deps** — reach a patched @tiptap/core by dropping four unused shim packages
+- **his** — stop showing HOSxP-only UI, and stop reporting a failed HIS lookup as an empty result
+- **deps** — bump browserslist to 4.28.8 for GHSA-73wf-gq98-2v4g / GHSA-c83g-rgw3-j3cx
+- **deps** — bump pypdf 6.15.0 -> 6.16.2 for CVE-2026-84309/84310/84311
+- **his** — stop the visits-today query full-scanning vn_stat
+- **release-form** — print HN and accession no on the slide/block request form
+- **case-status** — stop late blocks pulling a dispatched case backward
+- **accession** — align the Out Lab and Molecular tables with the case tables
+- **editor** — trim the &nbsp; blank lines an HTML paste brings along
+
 ## [2.0.0] — 2026-08-28
 
 The first tagged release since the initial public one. It collects roughly two
@@ -197,3 +323,4 @@ Initial public release.
 
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 [2.0.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v2.0.0
+[3.0.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.0.0
