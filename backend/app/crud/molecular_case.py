@@ -84,6 +84,23 @@ def _apply_status_filter(query, status: str | None):
     return query
 
 
+def _apply_assignee_filter(query, assist_pathologist_id: int | None, include_unassigned: bool):
+    """Scope to one Assist Pathologist's cases — for the pathologist's own
+    worklist. include_unassigned also keeps the cases nobody has been named on
+    (a standalone registration can leave it blank), so those still reach some
+    pathologist's worklist instead of nobody's."""
+    if assist_pathologist_id is None:
+        return query
+    if include_unassigned:
+        return query.filter(
+            or_(
+                MolecularCase.assist_pathologist_id == assist_pathologist_id,
+                MolecularCase.assist_pathologist_id.is_(None),
+            )
+        )
+    return query.filter(MolecularCase.assist_pathologist_id == assist_pathologist_id)
+
+
 def _is_blank_rich_text(html: str | None) -> bool:
     """result_text is now rich HTML from the same TipTap editor Surgical's
     diagnosis fields use (see SimpleTiptapEditor.tsx) — an "empty" editor
@@ -336,9 +353,12 @@ def get_molecular_cases(
     search: str | None = None,
     clinician: str | None = None,
     hospital_ids: list[int] | None = None,
+    assist_pathologist_id: int | None = None,
+    include_unassigned: bool = False,
 ) -> list[dict]:
     query = _base_query(db).filter(MolecularCase.is_cancelled == False)  # noqa: E712
     query = _apply_status_filter(query, status)
+    query = _apply_assignee_filter(query, assist_pathologist_id, include_unassigned)
     if is_outlab is not None:
         query = query.filter(MolecularCase.is_outlab == is_outlab)
     if parent_case_id is not None:
@@ -464,6 +484,8 @@ def count_molecular_cases(
     status: str | None = None,
     is_outlab: bool | None = None,
     hospital_ids: list[int] | None = None,
+    assist_pathologist_id: int | None = None,
+    include_unassigned: bool = False,
 ) -> int:
     """Row count only, for the dashboard tiles.
 
@@ -479,6 +501,7 @@ def count_molecular_cases(
         .filter(MolecularCase.is_cancelled == False)  # noqa: E712
     )
     query = _apply_status_filter(query, status)
+    query = _apply_assignee_filter(query, assist_pathologist_id, include_unassigned)
     if is_outlab is not None:
         query = query.filter(MolecularCase.is_outlab == is_outlab)
     if hospital_ids is not None:

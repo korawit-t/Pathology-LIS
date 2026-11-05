@@ -101,6 +101,9 @@ export interface MolecularCaseCancel {
 export interface MolecularCaseCountParams {
   status?: string;
   is_outlab?: boolean;
+  assist_pathologist_id?: number;
+  /** With assist_pathologist_id: also match cases with no Assist Pathologist. */
+  include_unassigned?: boolean;
 }
 
 export interface MolecularCaseListParams {
@@ -112,6 +115,9 @@ export interface MolecularCaseListParams {
   stain_id?: number;
   search?: string;
   clinician?: string;
+  assist_pathologist_id?: number;
+  /** With assist_pathologist_id: also match cases with no Assist Pathologist. */
+  include_unassigned?: boolean;
 }
 
 export interface MolecularPrintQueueParams {
