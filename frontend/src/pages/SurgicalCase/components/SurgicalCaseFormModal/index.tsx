@@ -53,6 +53,10 @@ import type { User } from "../../../../types/user";
 import PrintPreviewModal from "../PrintPreviewModal";
 import logger from "../../../../utils/logger";
 import { getErrorDetail } from "../../../../utils/errorHandler";
+import {
+  richTextToEditable,
+  editableToRichText,
+} from "../../../../utils/richTextField";
 import type { CaseFormModalProps } from "../../../../types/caseFormModal";
 
 const { Option } = Select;
@@ -180,6 +184,8 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         hospital_id: data.hospital?.id || data.hospital_id,
         medical_scheme_id: data.medical_scheme?.id || data.medical_scheme_id,
         department_id: data.department?.id || data.department_id,
+        // Gross/pathologist screens save this as HTML — show it without tags
+        clinical_diagnosis: richTextToEditable(data.clinical_diagnosis),
 
         collect_at: data.collect_at ? dayjs(data.collect_at) : null,
         registered_at: data.registered_at ? dayjs(data.registered_at) : null,
@@ -255,6 +261,10 @@ const SurgicalCaseFormModal: React.FC<SurgicalCaseFormModalProps> = ({
         is_slide_prepped: !!values.is_slide_prepped,
         is_reported: !!values.is_reported,
 
+        clinical_diagnosis: editableToRichText(
+          values.clinical_diagnosis as string | null | undefined,
+          editingId ? caseData?.clinical_diagnosis : undefined,
+        ),
         collect_at: values.collect_at
           ? (values.collect_at as Dayjs).toISOString()
           : null,
