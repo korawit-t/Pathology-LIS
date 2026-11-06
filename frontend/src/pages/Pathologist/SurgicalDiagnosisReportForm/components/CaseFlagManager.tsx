@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Form,
   Switch,
@@ -77,6 +77,17 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   const [outLabOpen, setOutLabOpen] = useState(false);
   const [outLabReason, setOutLabReason] = useState("");
   const [outLabSubmitting, setOutLabSubmitting] = useState(false);
+  const pendingReasonRef = useRef<React.ComponentRef<typeof TextArea>>(null);
+  // Set by the Provisional switch itself, so the reason box grabs focus only
+  // when the user turns it on — not when a saved provisional case loads.
+  const focusReasonOnShow = useRef(false);
+
+  useEffect(() => {
+    if (isPending && focusReasonOnShow.current) {
+      focusReasonOnShow.current = false;
+      pendingReasonRef.current?.focus();
+    }
+  }, [isPending]);
 
   const outLabState = isOutLabConsult
     ? OUT_LAB_STATE[consultStatus || "pending"] ?? {
@@ -228,43 +239,69 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
               </Form.Item>
             </div>
 
-            {/* Provisional */}
+            {/* Provisional — the reason box opens inside this same row so it
+                reads as part of the toggle, not of the rows below it. */}
             <div
+              data-testid="provisional-row"
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
                 padding: "8px 12px",
                 background: "#e6f7ff",
                 borderRadius: "8px",
                 border: "1px solid #91d5ff",
               }}
             >
-              <Flex vertical gap={0}>
-                <Space>
-                  <ClockCircleOutlined style={{ color: "#1890ff" }} />
-                  <Text strong style={{ color: "#1890ff", fontSize: "13px" }}>
-                    Provisional
-                  </Text>
-                </Space>
-                <Text
-                  type="secondary"
-                  style={{ fontSize: "10px", paddingLeft: 22 }}
-                >
-                  (Awaiting IHC / Special Stain)
-                </Text>
-              </Flex>
-              <Form.Item
-                name="is_pending"
-                valuePropName="checked"
-                style={{ marginBottom: 0 }}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
               >
-                <Switch
-                  disabled={isLocked}
-                  checkedChildren="Yes"
-                  unCheckedChildren="No"
-                />
-              </Form.Item>
+                <Flex vertical gap={0}>
+                  <Space>
+                    <ClockCircleOutlined style={{ color: "#1890ff" }} />
+                    <Text strong style={{ color: "#1890ff", fontSize: "13px" }}>
+                      Provisional
+                    </Text>
+                  </Space>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: "10px", paddingLeft: 22 }}
+                  >
+                    (Awaiting IHC / Special Stain)
+                  </Text>
+                </Flex>
+                <Form.Item
+                  name="is_pending"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Switch
+                    disabled={isLocked}
+                    checkedChildren="Yes"
+                    unCheckedChildren="No"
+                    onChange={(checked) => {
+                      focusReasonOnShow.current = checked;
+                    }}
+                  />
+                </Form.Item>
+              </div>
+
+              {isPending && (
+                <Form.Item
+                  name="pending_reason"
+                  rules={[{ required: true, message: "Please specify reason" }]}
+                  style={{ marginTop: 8, marginBottom: 0 }}
+                >
+                  <TextArea
+                    ref={pendingReasonRef}
+                    rows={2}
+                    placeholder="Reason for pending (e.g. Wait for stains)..."
+                    disabled={isLocked}
+                    style={{ borderRadius: 8, fontSize: "13px" }}
+                  />
+                </Form.Item>
+              )}
             </div>
 
             {/* Internal Consult */}
@@ -372,23 +409,6 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
               </div>
             )}
           </div>
-
-          {/* Pending reason */}
-          {isPending && (
-            <div style={{ paddingLeft: 4, paddingRight: 4 }}>
-              <Form.Item
-                name="pending_reason"
-                rules={[{ required: true, message: "Please specify reason" }]}
-              >
-                <TextArea
-                  rows={2}
-                  placeholder="Reason for pending (e.g. Wait for stains)..."
-                  disabled={isLocked}
-                  style={{ borderRadius: 8, fontSize: "13px" }}
-                />
-              </Form.Item>
-            </div>
-          )}
 
           {/* Internal Consult history */}
           {reportId && (

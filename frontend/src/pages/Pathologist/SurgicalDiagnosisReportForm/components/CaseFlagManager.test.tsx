@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { Form } from "antd";
 import CaseFlagManager from "./CaseFlagManager";
 
@@ -49,19 +49,28 @@ describe("CaseFlagManager", () => {
 
   it("shows the pending-reason field when is_pending is already true", () => {
     renderInForm({ is_pending: true });
-    expect(
-      screen.getByPlaceholderText(/Reason for pending/i),
-    ).toBeInTheDocument();
+    const reason = screen.getByPlaceholderText(/Reason for pending/i);
+    expect(reason).toBeInTheDocument();
+    // A saved provisional case must not pull focus away from the report editor.
+    expect(reason).not.toHaveFocus();
   });
 
-  it("reveals the pending-reason field when the Provisional switch is toggled on", () => {
-    const { container } = renderInForm({ is_pending: false });
-    const switches = container.querySelectorAll<HTMLElement>("button.ant-switch");
-    // Order matches the card: Malignancy, Critical Case, Provisional
-    fireEvent.click(switches[2]);
+  it("opens the reason box inside the Provisional row, focused, when toggled on", async () => {
+    renderInForm(
+      { is_pending: false },
+      { caseId: 1, reportId: 1, onRequestOutLabConsult: vi.fn() },
+    );
+    const row = screen.getByTestId("provisional-row");
+    fireEvent.click(within(row).getByRole("switch"));
+
+    const reason = within(row).getByPlaceholderText(/Reason for pending/i);
+    // Next to the toggle, not after the Internal / Out-Lab Consult rows.
     expect(
-      screen.getByPlaceholderText(/Reason for pending/i),
-    ).toBeInTheDocument();
+      screen
+        .getByText("Out-Lab Consult")
+        .compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    await waitFor(() => expect(reason).toHaveFocus());
   });
 });
 
