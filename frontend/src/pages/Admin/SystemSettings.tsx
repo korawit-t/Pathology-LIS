@@ -32,6 +32,7 @@ import ReportGenTab from "./components/ReportGenTab";
 import GrossingAssistTab from "./components/GrossingAssistTab";
 import WsiTab from "./components/WsiTab";
 import LatestRelease from "./components/LatestRelease";
+import UpdateNoticeSettings from "./components/UpdateNoticeSettings";
 
 const { Title, Text } = Typography;
 const { Sider, Content } = Layout;
@@ -41,10 +42,14 @@ const SystemSettings: React.FC = () => {
   const [backendVersion, setBackendVersion] = useState<VersionInfo | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 
+  const loadUpdateStatus = () => {
+    VersionService.getUpdateStatus().then(setUpdateStatus).catch(() => {});
+  };
+
   useEffect(() => {
     if (activeKey === "about" && !backendVersion) {
       VersionService.getVersion().then(setBackendVersion).catch(() => {});
-      VersionService.getUpdateStatus().then(setUpdateStatus).catch(() => {});
+      loadUpdateStatus();
     }
   }, [activeKey]);
 
@@ -148,6 +153,9 @@ const SystemSettings: React.FC = () => {
                   }
                 </Descriptions.Item>
               </Descriptions>
+              <UpdateNoticeSettings
+                onChange={(key) => key === "notify_new_release" && loadUpdateStatus()}
+              />
             </div>
           )}
         </Content>

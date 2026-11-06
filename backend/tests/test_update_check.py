@@ -9,6 +9,7 @@ import pytest
 
 from app.core.config import parse_update_check_repo, settings
 from app.services import update_check
+from tests.factories import make_system_setting
 
 URL = "/version/update-status"
 RELEASE_URL = "https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.1.0"
@@ -124,8 +125,21 @@ class TestDisabled:
         monkeypatch.setattr(settings, "UPDATE_CHECK_REPO", None)
         status = update_check.get_update_status()
         assert status["enabled"] is False
+        assert status["disabled_by"] == "env"
         assert status["update_available"] is False
         assert calls == []
+
+    def test_no_lookup_when_the_setting_is_off(self, monkeypatch):
+        calls = _respond(monkeypatch, payload=_release("v9.0.0"))
+        status = update_check.get_update_status(notify=False)
+        assert status["enabled"] is False
+        assert status["disabled_by"] == "setting"
+        assert calls == []
+
+    def test_env_off_wins_over_the_setting(self, monkeypatch):
+        _respond(monkeypatch, payload=_release("v9.0.0"))
+        monkeypatch.setattr(settings, "UPDATE_CHECK_REPO", None)
+        assert update_check.get_update_status(notify=True)["disabled_by"] == "env"
 
     @pytest.mark.parametrize("raw", ["", "off", "OFF", "false", "none", "0", '""'])
     def test_off_values(self, raw):
@@ -144,7 +158,8 @@ class TestDisabled:
 
 
 class TestEndpoint:
-    def test_admin_gets_the_status(self, admin_client, monkeypatch):
+    def test_admin_gets_the_status(self, admin_client, db, monkeypatch):
+        make_system_setting(db, hospital_slug="master")
         _respond(monkeypatch, payload=_release("v4.0.0"))
         r = admin_client.get(URL)
         assert r.status_code == 200
@@ -154,6 +169,16 @@ class TestEndpoint:
         assert body["update_available"] is True
         assert body["major_update"] is True
         assert body["release_url"] == RELEASE_URL
+        assert body["disabled_by"] is None
+
+    def test_the_admin_setting_stops_the_lookup(self, admin_client, db, monkeypatch):
+        make_system_setting(db, hospital_slug="master", notify_new_release=False)
+        calls = _respond(monkeypatch, payload=_release("v4.0.0"))
+        body = admin_client.get(URL).json()
+        assert body["enabled"] is False
+        assert body["disabled_by"] == "setting"
+        assert body["update_available"] is False
+        assert calls == []
 
     def test_pathologist_is_refused(self, pathologist_client, monkeypatch):
         calls = _respond(monkeypatch, payload=_release("v4.0.0"))
@@ -174,3 +199,29 @@ class TestEndpoint:
         r = client.get("/version")
         assert r.status_code == 200
         assert set(r.json()) == {"version", "environment"}
+
+
+class TestSettings:
+    """The two switches on the system settings screen."""
+
+    def test_both_default_on(self, db):
+        setting = make_system_setting(db, hospital_slug="master")
+        assert setting.notify_new_release is True
+        assert setting.notify_new_build is True
+
+    def test_admin_saves_them(self, admin_client, db):
+        make_system_setting(db, hospital_slug="master")
+        r = admin_client.patch(
+            "/system-settings/update",
+            json={"notify_new_release": False, "notify_new_build": False},
+        )
+        assert r.status_code == 200
+        assert r.json()["notify_new_release"] is False
+        assert r.json()["notify_new_build"] is False
+
+    def test_login_page_sees_only_the_tab_notice_switch(self, client, db):
+        make_system_setting(db, hospital_slug="master", notify_new_build=False)
+        body = client.get("/system-settings/public").json()
+        assert body["notify_new_build"] is False
+        # Whether admins are told about releases is no business of the login page.
+        assert "notify_new_release" not in body

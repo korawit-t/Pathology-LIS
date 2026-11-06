@@ -359,9 +359,11 @@ Two separate notices, for two different kinds of "out of date":
   [GitHub Release](https://github.com/korawit-t/Pathology-LIS/releases) of
   `UPDATE_CHECK_REPO` (one unauthenticated request, cached six hours) and the
   header shows a download icon that links to the release notes — red when the
-  new release is a MAJOR. **System Settings → About** has the detail. Set
-  `UPDATE_CHECK_REPO=off` in `backend/.env` on a server with no internet
-  access; see `backend/.env.example`. The answer comes from
+  new release is a MAJOR. **System Settings → About** has the detail. Turn it
+  off with the **แจ้ง admin เมื่อมี release ใหม่** switch under About, or fix
+  it off in config with `UPDATE_CHECK_REPO=off` in `backend/.env` (for a
+  server with no internet access; see `backend/.env.example`). Either way
+  GitHub is never asked. The answer comes from
   `GET /version/update-status`, which is admin only on purpose: `GET /version`
   stays public, and a public "this install is behind" would tell anyone which
   published fixes it is missing.
@@ -370,7 +372,8 @@ Two separate notices, for two different kinds of "out of date":
   tab checks it on load, every five minutes and when it comes back into view,
   and once the id differs it shows a notice asking the user to save their work
   and reload. It never reloads by itself: someone may be halfway through a
-  report. A page whose code the new build replaced (its chunk is gone) shows a
+  report. The **แจ้งผู้ใช้ให้รีเฟรชหลัง deploy** switch under About stops the
+  polling. A page whose code the new build replaced (its chunk is gone) shows a
   reload prompt in its place instead of a blank screen. This needs
   `index.html` served with `Cache-Control: no-cache`, which `web.config` (IIS)
   and both nginx configs already do.
