@@ -114,4 +114,52 @@ describe("SurgicalCaseFormModal", () => {
       expect.objectContaining({ patient_id: 1, hospital_id: 1, hn: "HN001" }),
     );
   });
+
+  describe("editing a case whose clinical diagnosis was saved as HTML by gross/pathologist", () => {
+    const html = "<p>Breast mass</p><p>R/O <strong>CA</strong></p>";
+
+    beforeEach(() => {
+      (SurgicalCaseService.getCaseById as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 7,
+        accession_no: "S26-00007",
+        patient: mockPatient,
+        patient_id: 1,
+        hospital_id: 1,
+        hn: "HN001",
+        clinical_diagnosis: html,
+      });
+      (SurgicalCaseService.updateCase as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 7 });
+    });
+
+    const clinicalField = () =>
+      screen.getByLabelText("Clinical History / Diagnosis") as HTMLTextAreaElement;
+
+    it("shows the text without HTML tags", async () => {
+      renderModal({ editingId: 7 });
+      await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
+    });
+
+    it("saves the original HTML when the field wasn't edited", async () => {
+      renderModal({ editingId: 7 });
+      await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
+
+      fireEvent.click(await screen.findByRole("button", { name: /Save Changes/ }));
+
+      await waitFor(() => expect(SurgicalCaseService.updateCase).toHaveBeenCalled());
+      const [, payload] = (SurgicalCaseService.updateCase as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(payload.clinical_diagnosis).toBe(html);
+    });
+
+    it("saves edited text as paragraphs", async () => {
+      renderModal({ editingId: 7 });
+      await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
+
+      fireEvent.change(clinicalField(), { target: { value: "Breast mass, left\nR/O CA" } });
+      fireEvent.click(await screen.findByRole("button", { name: /Save Changes/ }));
+
+      await waitFor(() => expect(SurgicalCaseService.updateCase).toHaveBeenCalled());
+      const [, payload] = (SurgicalCaseService.updateCase as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(payload.clinical_diagnosis).toBe("<p>Breast mass, left</p><p>R/O CA</p>");
+    });
+  });
 });

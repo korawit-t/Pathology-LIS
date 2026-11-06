@@ -44,6 +44,10 @@ import MedicalSchemeService from "../../../services/medicalSchemeService";
 import UserService from "../../../services/userService";
 import logger from "../../../utils/logger";
 import { getErrorDetail } from "../../../utils/errorHandler";
+import {
+  richTextToEditable,
+  editableToRichText,
+} from "../../../utils/richTextField";
 import { NongyneCytologyCase, NongyneCytologyCaseCreate, PatientRef } from "../../../types/nongyne";
 import type { Title } from "../../../types/title";
 import type { Hospital } from "../../../types/hospital";
@@ -88,6 +92,8 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
   const [saveAndNewData, setSaveAndNewData] =
     useState<NongyneCytologyCase | null>(null);
   const pendingResetRef = React.useRef(false);
+  // clinical_history as loaded for edit, so an untouched save keeps its HTML
+  const loadedClinicalHistoryRef = React.useRef<string | undefined>(undefined);
 
   const {
     fileList,
@@ -169,6 +175,7 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
       } else {
         form.resetFields();
         setFileList([]);
+        loadedClinicalHistoryRef.current = undefined;
         form.setFieldsValue({ collect_at: dayjs() });
       }
     }
@@ -181,9 +188,12 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
 
       if (data.patient) setPatients([data.patient]);
       setFileList(toUploadFileList(data.request_files));
+      loadedClinicalHistoryRef.current = data.clinical_history;
 
       form.setFieldsValue({
         ...data,
+        // The diagnosis screens save this as HTML — show it without tags
+        clinical_history: richTextToEditable(data.clinical_history),
         patient_id: data.patient?.id,
         pathologist_id: data.pathologist?.id || data.pathologist_id,
         cytotechnologist_id:
@@ -261,6 +271,10 @@ const NongyneCaseFormModal: React.FC<NongyneCaseFormModalProps> = ({
   // explicit null instead.
   const buildPayload = (values: Record<string, unknown>) => ({
     ...values,
+    clinical_history: editableToRichText(
+      values.clinical_history as string | null | undefined,
+      editingId ? loadedClinicalHistoryRef.current : undefined,
+    ),
     collect_at: values.collect_at
       ? (values.collect_at as Dayjs).toISOString()
       : null,
