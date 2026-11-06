@@ -15,7 +15,15 @@ const UPDATE_CHECK_ERRORS: Record<NonNullable<UpdateStatus["error"]>, string> = 
 /** System Settings → About: this install against the latest GitHub release. */
 const LatestRelease: React.FC<{ status: UpdateStatus | null }> = ({ status }) => {
   if (!status) return <Tag>-</Tag>;
-  if (!status.enabled) return <Text type="secondary">ปิดการเช็คไว้ (UPDATE_CHECK_REPO)</Text>;
+  if (!status.enabled) {
+    return (
+      <Text type="secondary">
+        {status.disabled_by === "setting"
+          ? "ปิดการแจ้งเตือนไว้ (สวิตช์ด้านล่าง)"
+          : "ปิดการเช็คไว้ใน backend/.env (UPDATE_CHECK_REPO)"}
+      </Text>
+    );
+  }
 
   const checkedAt = status.checked_at && (
     <Text type="secondary" style={{ fontSize: 12 }}>

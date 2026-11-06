@@ -188,6 +188,16 @@ class SystemSetting(Base):
     grossing_assist_llm_profile_id = Column(Integer, ForeignKey("llm_profiles.id"), nullable=True)
     grossing_assist_system_prompt = Column(Text, nullable=True)
 
+    # --- Update notices (System Settings → About; read from the master row) ---
+    # The admin's "a newer release is out" check. Off, the backend never asks
+    # GitHub at all (app/services/update_check.py); UPDATE_CHECK_REPO=off in
+    # .env is the same switch for an install that wants it fixed in config.
+    notify_new_release = Column(Boolean, default=True, nullable=False, server_default="true")
+    # Everyone's "this tab is running an older build, reload" notice. Off, a
+    # tab stops polling version.json; a page that fails to load because a
+    # deploy replaced it still says so, since that's an error, not a nudge.
+    notify_new_build = Column(Boolean, default=True, nullable=False, server_default="true")
+
     # --- Default Test Selection ---
     # 🚩 ต้องใส่ ForeignKey("ชื่อตารางใน_db.id") ลงไปในคอลัมน์ ID ด้วย
     default_gyne_test_id = Column(

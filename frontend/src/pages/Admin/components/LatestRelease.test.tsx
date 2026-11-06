@@ -16,6 +16,7 @@ const status = (over: Partial<UpdateStatus> = {}): UpdateStatus => ({
   published_at: null,
   checked_at: "2026-11-20T04:00:00Z",
   error: null,
+  disabled_by: null,
   ...over,
 });
 
@@ -59,8 +60,14 @@ describe("LatestRelease", () => {
     expect(screen.queryByText("เป็นเวอร์ชันล่าสุดแล้ว")).not.toBeInTheDocument();
   });
 
-  it("names the setting when the check is off", () => {
-    render(<LatestRelease status={status({ enabled: false, checked_at: null })} />);
+  it("names the .env setting when that turned the check off", () => {
+    render(<LatestRelease status={status({ enabled: false, checked_at: null, disabled_by: "env" })} />);
     expect(screen.getByText(/UPDATE_CHECK_REPO/)).toBeInTheDocument();
+  });
+
+  it("points at the switch when an admin turned it off", () => {
+    render(<LatestRelease status={status({ enabled: false, checked_at: null, disabled_by: "setting" })} />);
+    expect(screen.getByText(/สวิตช์ด้านล่าง/)).toBeInTheDocument();
+    expect(screen.queryByText(/UPDATE_CHECK_REPO/)).not.toBeInTheDocument();
   });
 });

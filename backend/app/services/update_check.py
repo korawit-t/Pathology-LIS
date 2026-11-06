@@ -1,7 +1,11 @@
 """Is a newer release of this LIS out than the one running here?
 
 Compares settings.VERSION with the latest GitHub release of
-settings.UPDATE_CHECK_REPO, for the admin's "update available" notice.
+settings.UPDATE_CHECK_REPO, for the admin's "update available" notice. Two
+switches turn it off, and either one means GitHub is never asked:
+UPDATE_CHECK_REPO=off in .env, and the notify_new_release system setting an
+admin flips under System Settings → About.
+
 Releases, not commits on main: a release is what someone decided is ready to
 deploy, and its MAJOR number says whether the upgrade needs a human (see
 CHANGELOG.md), so an install is never told to chase every merge.
@@ -70,6 +74,7 @@ def _status(**fields) -> dict:
         "published_at": None,
         "checked_at": datetime.now(timezone.utc),
         "error": None,
+        "disabled_by": None,
     }
     status.update(fields)
     return status
@@ -118,12 +123,15 @@ def _check(repo: str) -> tuple[dict, int]:
     )
 
 
-def get_update_status() -> dict:
+def get_update_status(notify: bool = True) -> dict:
+    """`notify` is the master row's notify_new_release."""
     global _cached, _cached_until
 
     repo = settings.UPDATE_CHECK_REPO
     if not repo:
-        return _status(enabled=False, checked_at=None)
+        return _status(enabled=False, checked_at=None, disabled_by="env")
+    if not notify:
+        return _status(enabled=False, checked_at=None, disabled_by="setting")
 
     with _lock:
         now = time.monotonic()

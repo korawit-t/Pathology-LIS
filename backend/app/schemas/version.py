@@ -7,7 +7,8 @@ from pydantic import BaseModel
 class UpdateStatus(BaseModel):
     """GET /version/update-status — this install against the latest release."""
 
-    # False when UPDATE_CHECK_REPO is off; nothing below is then looked up.
+    # False when the check is switched off (disabled_by says which switch);
+    # nothing below is then looked up.
     enabled: bool
     repo: Optional[str] = None
     current_version: str
@@ -20,3 +21,6 @@ class UpdateStatus(BaseModel):
     published_at: Optional[datetime] = None
     checked_at: Optional[datetime] = None
     error: Optional[Literal["unreachable", "no_release", "rate_limited", "bad_response"]] = None
+    # Why enabled is False: UPDATE_CHECK_REPO=off in .env, or the
+    # notify_new_release system setting.
+    disabled_by: Optional[Literal["env", "setting"]] = None

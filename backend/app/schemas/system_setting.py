@@ -100,6 +100,12 @@ class SystemSettingBase(BaseModel):
     grossing_assist_llm_profile_id: Optional[int] = None
     grossing_assist_system_prompt: Optional[str] = None
 
+    # --- Update notices ---
+    # On the public shape because every tab, the login page included, reads it
+    # to decide whether to poll for a new build. notify_new_release is admin
+    # only and lives on SystemSettingAdminResponse.
+    notify_new_build: bool = True
+
 
 class SystemSettingUpdate(SystemSettingBase):
     # --- Multi-Factor Authentication (write path; authenticated only) ---
@@ -175,6 +181,10 @@ class SystemSettingUpdate(SystemSettingBase):
     barcode_nongyne_type_code: Optional[str] = None
     barcode_molecular_type_code: Optional[str] = None
 
+    # --- Update notices ---
+    notify_new_release: Optional[bool] = None
+    notify_new_build: Optional[bool] = None
+
 
 class SystemSettingResponse(SystemSettingBase):
     id: int
@@ -213,3 +223,7 @@ class SystemSettingAdminResponse(SystemSettingResponse):
     barcode_gyne_type_code: Optional[str] = None
     barcode_nongyne_type_code: Optional[str] = None
     barcode_molecular_type_code: Optional[str] = None
+
+    # Whether the backend checks GitHub for a newer release. Admin only: the
+    # login page has no use for it.
+    notify_new_release: Optional[bool] = None

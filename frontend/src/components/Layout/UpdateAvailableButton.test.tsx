@@ -21,6 +21,7 @@ const status = (over: Partial<UpdateStatus> = {}): UpdateStatus => ({
   published_at: "2026-11-20T03:00:00Z",
   checked_at: "2026-11-20T04:00:00Z",
   error: null,
+  disabled_by: null,
   ...over,
 });
 

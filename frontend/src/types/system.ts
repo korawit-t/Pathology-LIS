@@ -147,6 +147,13 @@ export interface SystemSetting {
 
   // --- Scheduled Notification Check Times ---
   scheduled_notification_times?: string[];
+
+  // --- Update notices (System Settings → About) ---
+  // Admin header icon for a newer GitHub release. Only on the authenticated
+  // settings response, not /system-settings/public.
+  notify_new_release?: boolean;
+  // Everyone's "reload for the new build" notice; public, the login page reads it.
+  notify_new_build?: boolean;
 }
 
 /**
