@@ -213,7 +213,18 @@ def build_his_patient_context(hn: str) -> tuple:
         return "", ""
 
     from app.db.his_database import get_his_session_direct
-    from app.his_adapters.hosxp import get_active_admission, get_future_appointments
+    from app.his_adapters import HisFeature, get_his_adapter_or_none
+
+    adapter = get_his_adapter_or_none()
+    if adapter is None:
+        return "", ""
+    # A HIS without one of these (e.g. a custom-SQL site) leaves that part out
+    # rather than running HOSxP's query against another vendor's database —
+    # and an unsupported lookup is "unknown", never "no appointment found".
+    want_admission = adapter.supports(HisFeature.ADMISSION)
+    want_appointments = adapter.supports(HisFeature.APPOINTMENTS)
+    if not (want_admission or want_appointments):
+        return "", ""
 
     his_db = None
     try:
@@ -221,8 +232,8 @@ def build_his_patient_context(hn: str) -> tuple:
         if his_db is None:
             return "", ""
         return (
-            format_admission_line(get_active_admission(his_db, hn)),
-            format_appointment_block(get_future_appointments(his_db, hn)),
+            format_admission_line(adapter.get_active_admission(his_db, hn)) if want_admission else "",
+            format_appointment_block(adapter.get_future_appointments(his_db, hn)) if want_appointments else "",
         )
     except Exception:
         return "", ""

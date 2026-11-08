@@ -9,7 +9,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { formatPatientName } from "../../utils/patientName";
-import { useHisConfigured } from "../../hooks/useHisConfigured";
+import { useHisInfo } from "../../hooks/useHisInfo";
 import type { Patient } from "../../types/patient";
 import type { Title } from "../../types/title";
 import type { Hospital } from "../../types/hospital";
@@ -46,7 +46,11 @@ const PatientSearchField: React.FC<PatientSearchFieldProps> = ({
 }) => {
   const patientId = Form.useWatch("patient_id");
   const selectedPatient = patients.find((p) => p.id === patientId);
-  const { hisConfigured } = useHisConfigured();
+  const { hisInfo } = useHisInfo();
+  // Shown while the lookup is still pending so the common (connected) case
+  // doesn't flicker in; hidden once we know there's no patient search.
+  const showHisButton = hisInfo?.features.patient_search !== false;
+  const hisName = hisInfo?.display_name ?? "HIS";
 
   return (
     <Form.Item label="Search Patient (Name / HN / CID)" required>
@@ -102,17 +106,29 @@ const PatientSearchField: React.FC<PatientSearchFieldProps> = ({
           <Tooltip title="Add New Patient">
             <Button icon={<UserAddOutlined />} onClick={onNewPatient} />
           </Tooltip>
-          {/* Hidden on deployments with no HIS configured — the button would
-              only ever 503 there. Rendered while the lookup is still
-              undefined so the common (configured) case doesn't flicker. */}
-          {hisConfigured !== false && (
-            <Tooltip title="Pull from HIS">
+          {/* Labelled with the HIS this site is actually connected to
+              (HOSxP, SSB, …) so staff know where the data comes from.
+              Hidden where the HIS can't search patients — no HIS at all, or
+              a custom-SQL HIS whose query files aren't written yet. */}
+          {showHisButton && (
+            <Tooltip title={`Pull from ${hisName}`}>
               <Button
                 icon={<CloudDownloadOutlined />}
                 onClick={onHisSearch}
                 style={{ backgroundColor: "#f0f5ff", color: "#1d39c4", borderColor: "#adc6ff" }}
               >
-                HIS
+                <span
+                  style={{
+                    display: "inline-block",
+                    maxWidth: 120,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  {hisName}
+                </span>
               </Button>
             </Tooltip>
           )}

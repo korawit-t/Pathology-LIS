@@ -33,9 +33,17 @@ interface HosxpKeyItem {
 
 interface HosxpKeyTabProps {
   refreshTrigger?: number;
+  /** Name of the HIS results are keyed into (HOSxP, SSB, …). */
+  hisName?: string;
+  /** Whether the HIS can list appointments; rows only expand when it can. */
+  appointmentsAvailable?: boolean;
 }
 
-export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
+export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({
+  refreshTrigger,
+  hisName = "HIS",
+  appointmentsAvailable = true,
+}) => {
   const { resolveCaseInfo } = useCaseInfoByAccession();
   const [runs, setRuns] = useState<OutlabRun[]>([]);
   const [caseMap, setCaseMap] = useState<Record<string, CaseInfo>>({});
@@ -117,7 +125,7 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
         }))
       );
     } catch {
-      message.error("Failed to update HosXP flag");
+      message.error(`Failed to update ${hisName} flag`);
     }
   };
 
@@ -198,13 +206,13 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
       render: (text) => <StainTag text={text} />,
     },
     {
-      title: "HosXP",
+      title: hisName,
       key: "hosxp_keyed",
       width: 110,
       fixed: "right",
       align: "center",
       render: (_, record) => (
-        <Tooltip title={record.is_hosxp_keyed ? "Click to unmark" : "Mark as keyed in HosXP"}>
+        <Tooltip title={record.is_hosxp_keyed ? "Click to unmark" : `Mark as keyed in ${hisName}`}>
           <Button
             size="small"
             type={record.is_hosxp_keyed ? "primary" : "default"}
@@ -295,7 +303,10 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
         sticky
         locale={{ emptyText: "No items found" }}
         rowClassName={(r) => r.is_hosxp_keyed ? "hosxp-row-keyed" : ""}
-        expandable={{
+        // Keying is tracked in the LIS and applies to any HIS, but the
+        // appointment lookup behind each row's expansion is HIS-specific
+        // (HOSxP's oapp) — on a HIS without it every expand would 501.
+        expandable={appointmentsAvailable ? {
           onExpand: (expanded, record) => {
             if (expanded) fetchAppointments(record.hn);
           },
@@ -306,7 +317,7 @@ export const HosxpKeyTab: React.FC<HosxpKeyTabProps> = ({ refreshTrigger }) => {
               unavailable={apptUnavailable[record.hn]}
             />
           ),
-        }}
+        } : undefined}
       />
     </>
   );
