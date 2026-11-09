@@ -1,8 +1,8 @@
 """
-Pydantic schemas for HIS (HOSxP) patient query results.
+Pydantic schemas for HIS patient query results and HIS configuration info.
 """
 from pydantic import ConfigDict, BaseModel
-from typing import Optional
+from typing import Dict, Optional
 
 
 class HisPatientResult(BaseModel):
@@ -35,3 +35,11 @@ class HisSearchParams(BaseModel):
     hn: Optional[str] = None
     date_start: str  # yyyy-mm-dd
     date_end: str    # yyyy-mm-dd
+
+
+class HisInfo(BaseModel):
+    """GET /his/info — which HIS is connected and what it supports."""
+    configured: bool                  # a HIS connection is set up and usable
+    his_type: str                     # HIS_TYPE key, e.g. "hosxp", "custom"
+    display_name: str                 # name shown to users, e.g. "HOSxP", "SSB"
+    features: Dict[str, bool]         # HisFeature key -> available right now

@@ -30,12 +30,50 @@ Adapter Factory (selected by HIS_TYPE in .env)
 # Select HIS type: hosxp, custom
 HIS_TYPE=hosxp
 
-# Connection URL to the HIS database
+# Optional: name shown to staff on the HIS button / search screen
+# (default: "HOSxP" for hosxp, "HIS" for custom)
+HIS_DISPLAY_NAME=
+
+# Connection URL to the HIS database (any SQLAlchemy URL whose driver is installed)
 HIS_DATABASE_URL=mysql+pymysql://user:password@host:3306/dbname?charset=utf8
 ```
 
+For a non-HOSxP HIS, set `HIS_DISPLAY_NAME` to the program's real name
+(e.g. `SSB`) so staff can see where imported data comes from.
+
 > **Note:** If the password contains special characters (e.g. `@`), use URL encoding:
 > `@` → `%40`, `#` → `%23`, `:` → `%3A`
+
+---
+
+## Features
+
+Patient search is the one thing every adapter does. The rest are optional:
+an adapter lists what it implements in `supported_features`, and callers check
+`adapter.supports(HisFeature.X)` before using it, so a HOSxP-only query is
+never run against another vendor's database.
+
+| Feature | Used by | `hosxp` | `custom` |
+|---|---|---|---|
+| `patient_search` | HIS button on every case-registration form | ✓ | ✓ once a `data/*.sql` file exists |
+| `appointments` | Outlab "Key" tab row expansion, malignancy alert | ✓ | — |
+| `visits_today` | Outlab "Today's Patients" tab, scheduled outlab reminder | ✓ | — |
+| `admission` | malignancy alert ("currently admitted") | ✓ | — |
+
+`GET /his/info` reports all of this, and the frontend hides whatever isn't
+available instead of showing a control that would fail:
+
+```json
+{
+  "configured": true,
+  "his_type": "custom",
+  "display_name": "SSB",
+  "features": {"patient_search": true, "appointments": false, "visits_today": false, "admission": false}
+}
+```
+
+Calling an unsupported feature's endpoint returns **501**; no HIS at all
+returns **503**.
 
 ---
 
@@ -125,8 +163,12 @@ Only needed if the adapter logic cannot be expressed in SQL alone
 (e.g. calls an HTTP API, or requires complex Python transformations).
 
 1. Create `app/his_adapters/your_his.py` extending `HisAdapterBase`
-2. Register it in `app/his_adapters/__init__.py`
-3. Set `HIS_TYPE=your_his` in `.env`
+2. Implement `his_name` and `search_patients`; for each optional feature you
+   support, override its method (`get_appointments`, `get_future_appointments`,
+   `get_hns_with_visit_today`, `get_active_admission`) **and** add it to
+   `supported_features`
+3. Register it in `app/his_adapters/__init__.py`
+4. Set `HIS_TYPE=your_his` in `.env`
 
 ---
 
@@ -135,7 +177,9 @@ Only needed if the adapter logic cannot be expressed in SQL alone
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/his/patients` | Search patients from HIS database |
-| GET | `/his/info` | Show current HIS configuration status |
+| GET | `/his/appointments` | A patient's appointments (`appointments` feature) |
+| GET | `/his/visits-today` | HNs that visited today (`visits_today` feature) |
+| GET | `/his/info` | Connected HIS, its display name, and its features |
 
 **Parameters for `/his/patients`:**
 
@@ -153,7 +197,7 @@ Only needed if the adapter logic cannot be expressed in SQL alone
 ```
 app/
 ├── his_adapters/
-│   ├── __init__.py       # Base class + Factory
+│   ├── __init__.py       # Base class, HisFeature, Factory
 │   ├── hosxp.py          # HOSxP adapter (config via env vars)
 │   ├── custom.py         # Custom SQL adapter (reads from data/*.sql)
 │   ├── ssb.py            # Deprecated — use HIS_TYPE=custom instead

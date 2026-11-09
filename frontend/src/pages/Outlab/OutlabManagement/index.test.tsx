@@ -2,7 +2,8 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import OutlabManagement from "./index";
 import HisService from "../../../services/hisService";
-import { resetHisConfiguredCache } from "../../../hooks/useHisConfigured";
+import { resetHisInfoCache } from "../../../hooks/useHisInfo";
+import type { HisInfo } from "../../../services/hisService";
 
 vi.mock("../../../contexts/ThemeContext", () => ({
   useTheme: () => ({ isDarkMode: false }),
@@ -35,10 +36,25 @@ vi.mock("./CaseViewTab", () => ({
   ),
 }));
 vi.mock("./HosxpKeyTab", () => ({
-  HosxpKeyTab: ({ refreshTrigger }: { refreshTrigger?: number }) => (
-    <div data-testid="mock-hosxp-key">refreshTrigger:{refreshTrigger}</div>
+  HosxpKeyTab: ({
+    refreshTrigger,
+    hisName,
+    appointmentsAvailable,
+  }: { refreshTrigger?: number; hisName?: string; appointmentsAvailable?: boolean }) => (
+    <div data-testid="mock-hosxp-key">
+      refreshTrigger:{refreshTrigger} hisName:{hisName} appointments:{String(appointmentsAvailable)}
+    </div>
   ),
 }));
+
+const hisInfo = (overrides: Partial<HisInfo> = {}): HisInfo => ({
+  configured: true,
+  his_type: "hosxp",
+  display_name: "HOSxP",
+  features: { patient_search: true, appointments: true, visits_today: true, admission: true },
+  ...overrides,
+});
+const NO_FEATURES = { patient_search: false, appointments: false, visits_today: false, admission: false };
 vi.mock("./TodayPatientsTab", () => ({
   TodayPatientsTab: ({ refreshTrigger }: { refreshTrigger?: number }) => (
     <div data-testid="mock-today">refreshTrigger:{refreshTrigger}</div>
@@ -52,9 +68,9 @@ const activeTabLabel = () => document.querySelector(".ant-tabs-tab-active")?.tex
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetHisConfiguredCache();
+  resetHisInfoCache();
   // Default for the existing cases: a site with HOSxP wired up, i.e. every tab.
-  mockGetInfo.mockResolvedValue({ configured: true, his_type: "HOSxP" });
+  mockGetInfo.mockResolvedValue(hisInfo());
 });
 
 describe("OutlabManagement wrapper", () => {
@@ -80,7 +96,8 @@ describe("OutlabManagement wrapper", () => {
     fireEvent.click(screen.getByRole("tab", { name: /By Case/i }));
     expect(screen.getByTestId("mock-case-view")).toHaveTextContent("refreshTrigger:1");
 
-    fireEvent.click(screen.getByRole("tab", { name: /HosXP Key/i }));
+    // The label reads "HIS Key" until /his/info answers, then "HOSxP Key".
+    fireEvent.click(screen.getByRole("tab", { name: /Key/i }));
     expect(screen.getByTestId("mock-hosxp-key")).toHaveTextContent("refreshTrigger:1");
 
     fireEvent.click(screen.getByRole("tab", { name: /Today's Patients/i }));
@@ -107,10 +124,11 @@ describe("deployments without a HIS", () => {
     [...document.querySelectorAll(".ant-tabs-tab")].map((t) => t.textContent?.trim());
 
   it("drops the two HOSxP-only tabs when no HIS is configured", async () => {
-    mockGetInfo.mockResolvedValue({ configured: false, his_type: "Unknown" });
+    mockGetInfo.mockResolvedValue(hisInfo({ configured: false, features: NO_FEATURES }));
     render(<OutlabManagement />);
 
-    await waitFor(() => expect(tabLabels()).not.toContain("HosXP Key"));
+    await waitFor(() => expect(tabLabels()).not.toContain("HIS Key"));
+    expect(tabLabels()).not.toContain("HOSxP Key");
     expect(tabLabels()).not.toContain("Today's Patients");
     // The HIS-independent tabs are untouched.
     expect(tabLabels()).toEqual(["Send to Outlab", "Tracking / Receive", "By Case"]);
@@ -119,7 +137,7 @@ describe("deployments without a HIS", () => {
   it("keeps every tab when a HIS is configured", async () => {
     render(<OutlabManagement />);
 
-    await waitFor(() => expect(tabLabels()).toContain("HosXP Key"));
+    await waitFor(() => expect(tabLabels()).toContain("HOSxP Key"));
     expect(tabLabels()).toContain("Today's Patients");
   });
 
@@ -127,7 +145,41 @@ describe("deployments without a HIS", () => {
     mockGetInfo.mockRejectedValue(new Error("network"));
     render(<OutlabManagement />);
 
-    await waitFor(() => expect(tabLabels()).toContain("HosXP Key"));
+    await waitFor(() => expect(mockGetInfo).toHaveBeenCalled());
+    expect(tabLabels()).toContain("HIS Key");
     expect(tabLabels()).toContain("Today's Patients");
+  });
+});
+
+describe("deployments on a HIS other than HOSxP", () => {
+  const tabLabels = () =>
+    [...document.querySelectorAll(".ant-tabs-tab")].map((t) => t.textContent?.trim());
+
+  it("names the key tab after the connected HIS and drops Today's Patients when it can't say who visited", async () => {
+    mockGetInfo.mockResolvedValue(
+      hisInfo({
+        his_type: "custom",
+        display_name: "SSB",
+        features: { ...NO_FEATURES, patient_search: true },
+      }),
+    );
+    render(<OutlabManagement />);
+
+    await waitFor(() => expect(tabLabels()).toContain("SSB Key"));
+    expect(tabLabels()).not.toContain("Today's Patients");
+
+    // Keying still applies to any HIS; only the appointment lookup goes.
+    fireEvent.click(screen.getByRole("tab", { name: /SSB Key/i }));
+    expect(screen.getByTestId("mock-hosxp-key")).toHaveTextContent("hisName:SSB");
+    expect(screen.getByTestId("mock-hosxp-key")).toHaveTextContent("appointments:false");
+  });
+
+  it("keeps every tab against an older backend that only reports `configured`", async () => {
+    mockGetInfo.mockResolvedValue({ configured: true, his_type: "HOSxP" } as unknown as HisInfo);
+    render(<OutlabManagement />);
+
+    await waitFor(() => expect(mockGetInfo).toHaveBeenCalled());
+    await waitFor(() => expect(tabLabels()).toContain("Today's Patients"));
+    expect(tabLabels()).toContain("HIS Key");
   });
 });

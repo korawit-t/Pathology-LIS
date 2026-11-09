@@ -22,9 +22,18 @@ export interface HisPatientResult {
   age: number | null;
 }
 
+/** Optional HIS capabilities — mirrors HisFeature in backend/app/his_adapters. */
+export type HisFeature = "patient_search" | "appointments" | "visits_today" | "admission";
+
 export interface HisInfo {
+  /** A HIS connection is set up and usable. */
   configured: boolean;
+  /** The backend's HIS_TYPE key, e.g. "hosxp", "custom". */
   his_type: string;
+  /** Name to show users — the program the hospital runs (HOSxP, SSB, …). */
+  display_name: string;
+  /** What the connected HIS can do right now; all false when not configured. */
+  features: Record<HisFeature, boolean>;
 }
 
 export interface HisSearchParams {
@@ -36,7 +45,7 @@ export interface HisSearchParams {
 
 const HisService = {
   /**
-   * ค้นหาข้อมูลผู้ป่วยจากระบบ HIS (HOSxP)
+   * ค้นหาข้อมูลผู้ป่วยจากระบบ HIS ที่เชื่อมต่ออยู่ (HOSxP หรือระบบอื่นตาม HIS_TYPE)
    */
   searchPatients: async (params: HisSearchParams): Promise<HisPatientResult[]> => {
     const res = await api.get<HisPatientResult[]>("/his/patients", { params });
@@ -67,9 +76,11 @@ const HisService = {
   },
 
   /**
-   * What HIS, if any, this deployment is wired to. Answers from the backend's
-   * own configuration without touching the HIS, so it is safe to call on a
-   * site that has none — the other calls here 503 in that case.
+   * What HIS, if any, this deployment is wired to, its display name, and
+   * which features it offers. Answers from the backend's own configuration
+   * without touching the HIS, so it is safe to call on a site that has none —
+   * the other calls here 503 in that case (501 for a feature the HIS lacks).
+   * Use the cached useHisInfo() hook rather than calling this directly.
    */
   getInfo: async (): Promise<HisInfo> => {
     const res = await api.get<HisInfo>("/his/info");

@@ -154,4 +154,17 @@ describe("HosxpKeyTab", () => {
     expect(await screen.findByText(/Cannot reach the HIS — appointments unknown/i)).toBeInTheDocument();
     expect(screen.queryByText("No appointments found in HosXP")).not.toBeInTheDocument();
   });
+
+  it("on a HIS without appointments, rows don't expand and nothing asks for them", async () => {
+    SurgicalBlockStainService.getOutlabRuns.mockResolvedValue([run({ details: [detail({ id: 1 })] })]);
+    const { container } = render(
+      <HosxpKeyTab refreshTrigger={0} hisName="SSB" appointmentsAvailable={false} />,
+    );
+    await waitFor(() => expect(screen.getByText("HN-001")).toBeInTheDocument());
+
+    expect(container.querySelector(".ant-table-row-expand-icon")).toBeNull();
+    expect(HisService.getAppointments).not.toHaveBeenCalled();
+    // The keying column is named after the HIS results are keyed into.
+    expect(screen.getAllByText("SSB").length).toBeGreaterThan(0);
+  });
 });

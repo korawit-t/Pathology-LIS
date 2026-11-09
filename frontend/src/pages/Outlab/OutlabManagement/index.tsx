@@ -9,7 +9,7 @@ import {
   BellOutlined,
 } from "@ant-design/icons";
 import PageContainer from "../../../components/Layout/PageContainer";
-import { useHisConfigured } from "../../../hooks/useHisConfigured";
+import { useHisInfo } from "../../../hooks/useHisInfo";
 import { PendingQueueTab } from "./PendingQueueTab";
 import { TrackingTab } from "./TrackingTab";
 import { CaseViewTab } from "./CaseViewTab";
@@ -17,9 +17,6 @@ import { HosxpKeyTab } from "./HosxpKeyTab";
 import { TodayPatientsTab } from "./TodayPatientsTab";
 
 const { Title } = Typography;
-
-/** Tab keys that cannot work without a HIS connection. */
-const HIS_ONLY_TABS = ["hosxp-key", "today"];
 
 const OutlabManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState("queue");
@@ -34,13 +31,20 @@ const OutlabManagement: React.FC = () => {
     setSentTrigger((n) => n + 1);
   };
 
-  const { hisConfigured } = useHisConfigured();
+  const { hisInfo } = useHisInfo();
+  const hisName = hisInfo?.display_name ?? "HIS";
 
-  // The last two tabs both query HOSxP and are meaningless without it: one
-  // lists a patient's HIS appointments, the other asks the HIS who checked in
-  // today. On a site with no HIS configured they only ever 503, so they are
-  // dropped rather than shown broken. Kept while the lookup is undefined so
-  // the common (configured) case doesn't flash a shorter tab bar.
+  // The last two tabs depend on the HIS, each on a different part of it.
+  // "<HIS> Key" tracks keying results into whatever HIS the site runs, so it
+  // stays for any connected HIS — only its per-row appointment lookup needs
+  // the appointments feature. "Today's Patients" is entirely a "who checked
+  // in today" query, which only some HIS adapters (HOSxP) implement.
+  // Everything is kept while the lookup is undefined so the common
+  // (connected) case doesn't flash a shorter tab bar.
+  const tabAvailable: Record<string, boolean> = {
+    "hosxp-key": hisInfo?.configured !== false,
+    today: hisInfo?.features.visits_today !== false,
+  };
   const items = [
     {
       key: "queue",
@@ -73,10 +77,16 @@ const OutlabManagement: React.FC = () => {
       key: "hosxp-key",
       label: (
         <span>
-          <CheckCircleOutlined /> HosXP Key
+          <CheckCircleOutlined /> {hisName} Key
         </span>
       ),
-      children: <HosxpKeyTab refreshTrigger={sentTrigger} />,
+      children: (
+        <HosxpKeyTab
+          refreshTrigger={sentTrigger}
+          hisName={hisName}
+          appointmentsAvailable={hisInfo?.features.appointments !== false}
+        />
+      ),
     },
     {
       key: "today",
@@ -87,7 +97,7 @@ const OutlabManagement: React.FC = () => {
       ),
       children: <TodayPatientsTab refreshTrigger={sentTrigger} />,
     },
-  ].filter((tab) => hisConfigured !== false || !HIS_ONLY_TABS.includes(tab.key));
+  ].filter((tab) => tabAvailable[tab.key] !== false);
 
   return (
     <PageContainer

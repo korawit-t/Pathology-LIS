@@ -14,17 +14,19 @@ Setup:
   4. SQL must return columns matching HisPatientResult fields
 """
 import os
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.his_adapters import HisAdapterBase
+from app.his_adapters import HisAdapterBase, HisFeature
 from app.schemas.his import HisPatientResult
 
 _DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
     "data",
 )
+
+_CASE_TYPES = ("surgical", "gyne", "nongyne")
 
 _REQUIRED_COLUMNS = (
     "an, vn, hn, gender, gender_code, nationality, pname, fname, lname, "
@@ -41,7 +43,22 @@ class CustomSQLAdapter(HisAdapterBase):
 
     @property
     def his_name(self) -> str:
-        return "Custom SQL"
+        # Generic on purpose: the vendor's real name goes in HIS_DISPLAY_NAME.
+        return "HIS"
+
+    @property
+    def supported_features(self) -> FrozenSet[str]:
+        # Patient search only works once the hospital has written its SQL.
+        # Without any file every search would fail, so report it as missing
+        # and the frontend hides the button instead of showing a broken one.
+        if any(os.path.exists(p) for p in self._candidate_sql_paths()):
+            return frozenset({HisFeature.PATIENT_SEARCH})
+        return frozenset()
+
+    @staticmethod
+    def _candidate_sql_paths() -> List[str]:
+        names = [f"his_{ct}.sql" for ct in _CASE_TYPES] + ["his_custom_query.sql"]
+        return [os.path.join(_DATA_DIR, n) for n in names]
 
     def _get_sql_path(self, case_type: str) -> str:
         """Return path to the SQL file for this case_type, with fallback."""

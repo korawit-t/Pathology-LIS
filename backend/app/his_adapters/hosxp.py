@@ -6,11 +6,11 @@ Supports different case types: surgical, gyne (PAP), nongyne.
 
 import os
 from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import bindparam, text
 
-from app.his_adapters import HisAdapterBase
+from app.his_adapters import ALL_HIS_FEATURES, HisAdapterBase
 from app.schemas.his import HisPatientResult
 from app.utils.time import local_now
 
@@ -205,6 +205,25 @@ class HOSxPAdapter(HisAdapterBase):
     @property
     def his_name(self) -> str:
         return "HOSxP"
+
+    @property
+    def supported_features(self) -> FrozenSet[str]:
+        return frozenset(ALL_HIS_FEATURES)
+
+    # The optional features delegate to the module-level functions above,
+    # which stay importable on their own (tests and older callers use them).
+
+    def get_appointments(self, db: Session, hn: str) -> List[Dict]:
+        return get_appointments(db, hn)
+
+    def get_future_appointments(self, db: Session, hn: str, limit: int = 10) -> List[Dict]:
+        return get_future_appointments(db, hn, limit)
+
+    def get_hns_with_visit_today(self, db: Session, hns: Optional[List[str]] = None) -> List[str]:
+        return get_hns_with_visit_today(db, hns=hns)
+
+    def get_active_admission(self, db: Session, hn: str) -> Optional[Dict]:
+        return get_active_admission(db, hn)
 
     def search_patients(
         self,

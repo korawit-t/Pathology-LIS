@@ -24,6 +24,7 @@ import {
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import HisService, { HisPatientResult } from "../../../services/hisService";
+import { useHisInfo } from "../../../hooks/useHisInfo";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -46,6 +47,10 @@ const HisPatientSearchModal: React.FC<HisPatientSearchModalProps> = ({
   const [results, setResults] = useState<HisPatientResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [useDateFilter, setUseDateFilter] = useState(true);
+  // The program this site's HIS actually is (HOSxP, SSB, …), so the drawer
+  // says where the patient data is coming from.
+  const { hisInfo } = useHisInfo();
+  const hisName = hisInfo?.display_name ?? "HIS";
 
   const handleSearch = async () => {
     try {
@@ -72,10 +77,10 @@ const HisPatientSearchModal: React.FC<HisPatientSearchModalProps> = ({
       setResults(data);
 
       if (data.length === 0) {
-        message.info("ไม่พบข้อมูลในระบบ HIS");
+        message.info(`ไม่พบข้อมูลในระบบ ${hisName}`);
       }
     } catch (err: any) {
-      const detail = err.response?.data?.detail || "ไม่สามารถเชื่อมต่อระบบ HIS ได้";
+      const detail = err.response?.data?.detail || `ไม่สามารถเชื่อมต่อระบบ ${hisName} ได้`;
       message.error(detail);
       setResults([]);
     } finally {
@@ -234,7 +239,7 @@ const HisPatientSearchModal: React.FC<HisPatientSearchModalProps> = ({
       title={
         <Space>
           <CloudDownloadOutlined style={{ color: "#1d39c4" }} />
-          <span>ค้นหาข้อมูลผู้ป่วยจากระบบ HIS</span>
+          <span>ค้นหาข้อมูลผู้ป่วยจากระบบ {hisName}</span>
         </Space>
       }
       open={open}
@@ -311,8 +316,8 @@ const HisPatientSearchModal: React.FC<HisPatientSearchModalProps> = ({
         }}
         locale={{
           emptyText: hasSearched
-            ? "ไม่พบข้อมูลในระบบ HIS"
-            : "กรุณากดค้นหาเพื่อดึงข้อมูลจาก HIS",
+            ? `ไม่พบข้อมูลในระบบ ${hisName}`
+            : `กรุณากดค้นหาเพื่อดึงข้อมูลจาก ${hisName}`,
         }}
         onRow={(record) => ({
           onClick: () => handleRowClick(record),

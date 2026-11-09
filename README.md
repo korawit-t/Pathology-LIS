@@ -107,8 +107,9 @@ cp frontend/.env.example frontend/.env
 | `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
 | `TRUSTED_PROXY_IPS` | IP/CIDR of the reverse proxy directly in front of the backend (e.g. `127.0.0.1`). Drives the audit-log client IP **and** both login rate limits — set it correctly or every request looks like it came from the proxy: audit rows all record the proxy's address, and the per-IP cap becomes one shared bucket for everyone. Login still works in that state, because the per-username cap and the per-account failure backoff do the account-level work, but the audit trail is useless for tracing an incident. |
 | `COOKIE_DOMAIN` | Only when frontend/backend are on different subdomains of one custom domain (e.g. `.yourdomain.com`). Leave blank otherwise. |
-| `HIS_TYPE` | `hosxp` or leave blank to disable HIS |
-| `HIS_DATABASE_URL` | HIS database connection string (if using HIS integration) |
+| `HIS_TYPE` | `hosxp`, `custom` (any other HIS, via your own SQL files — see [backend/app/his_adapters/README.md](./backend/app/his_adapters/README.md)), or leave blank to disable HIS |
+| `HIS_DISPLAY_NAME` | Optional. The name of your HIS program as staff know it (e.g. `SSB`, `Hospital OS`) — shown on the HIS button and search screen. Defaults to `HOSxP` for `hosxp` and `HIS` for `custom`. |
+| `HIS_DATABASE_URL` | HIS database connection string (if using HIS integration). Any SQLAlchemy URL works once its driver is installed. |
 
 #### Environment modes
 

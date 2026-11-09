@@ -6,7 +6,7 @@ from typing import List
 
 from app.db.database import SessionLocal
 from app.db.his_database import get_his_session_direct
-from app.his_adapters.hosxp import get_hns_with_visit_today as hosxp_get_hns_with_visit_today
+from app.his_adapters import HisFeature, get_his_adapter_or_none
 from app.models.notification_channel import NotificationChannel
 from app.models.scheduled_notification_state import ScheduledNotificationState
 from app.models.system_setting import SystemSetting
@@ -69,13 +69,17 @@ def _load_unkeyed_outlab_by_hn() -> dict:
 
 
 def _load_visiting_hns(hns: List[str]) -> set:
-    """Empty set when HIS isn't configured — no HIS means no way to tell who
-    turned up, which is the same "notify nobody" outcome as nobody visiting."""
+    """Empty set when HIS isn't configured, or the configured HIS can't say
+    who visited today (e.g. a custom-SQL site) — no way to tell who turned up
+    is the same "notify nobody" outcome as nobody visiting."""
+    adapter = get_his_adapter_or_none()
+    if adapter is None or not adapter.supports(HisFeature.VISITS_TODAY):
+        return set()
     his_db = get_his_session_direct()
     if his_db is None:
         return set()
     try:
-        return set(hosxp_get_hns_with_visit_today(his_db, hns=hns))
+        return set(adapter.get_hns_with_visit_today(his_db, hns=hns))
     finally:
         his_db.close()
 
