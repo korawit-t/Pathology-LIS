@@ -312,6 +312,14 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
                           </span>
                         ))}
                       </div>
+                      {/* Sign-off is the "result is out" cut-off for these slides
+                          (backend mark_case_stains_reported), so say which way
+                          the switch below will count them. */}
+                      <div style={{ marginBottom: 8, fontSize: 12, color: "#595959" }}>
+                        {data.is_pending
+                          ? "These stay open while the report is pending — use Mark All as Reviewed for any already in this report."
+                          : "Signing off as complete records these as reported."}
+                      </div>
                       <Button size="small" icon={<CheckSquareOutlined />} loading={markingReviewed} onClick={handleMarkAllReviewed} style={{ color: "#52c41a", borderColor: "#52c41a" }}>
                         Mark All as Reviewed
                       </Button>

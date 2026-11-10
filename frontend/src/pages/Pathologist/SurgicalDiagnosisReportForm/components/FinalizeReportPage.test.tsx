@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FinalizeReportPage from "./FinalizeReportPage";
 import { ThemeProvider } from "../../../../contexts/ThemeContext";
+import SurgicalBlockStainService from "../../../../services/surgicalBlockStainService";
 
 vi.mock("../../../../services/surgicalReportService", () => ({
   default: { previewReportPdf: vi.fn().mockResolvedValue(new Blob()) },
@@ -85,4 +86,34 @@ it("keeps Confirm & Sign Off enabled across the in-flight sign-out", async () =>
   await waitFor(() => expect(btn).not.toHaveClass("ant-btn-loading"));
 
   expect(btn, "after the request settles").toBeEnabled();
+});
+
+/**
+ * Sign-off is the "result is out" cut-off for additional stains: signed as
+ * complete, the backend records every slide listed here as reported; signed
+ * "No, Pending", only the reviewed ones. The warning has to say which way the
+ * switch will count them, since nothing else on the page does.
+ */
+it("tells the pathologist how the completion switch counts the listed stains", async () => {
+  vi.mocked(SurgicalBlockStainService.getStainOrdersByAccession).mockResolvedValueOnce([
+    { stain_id: 7, block_code: "A1", test_name: "CD20", status: "stained", is_external: true },
+  ] as never);
+
+  render(
+    <ThemeProvider>
+      <Harness onConfirm={async () => {}} />
+    </ThemeProvider>,
+  );
+
+  expect(await screen.findByText("1 stain awaiting review")).toBeInTheDocument();
+  expect(screen.getByText("Signing off as complete records these as reported.")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("switch", { name: /Yes, Signed Off/ }));
+
+  expect(
+    await screen.findByText(
+      "These stay open while the report is pending — use Mark All as Reviewed for any already in this report.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Signing off as complete records these as reported.")).not.toBeInTheDocument();
 });

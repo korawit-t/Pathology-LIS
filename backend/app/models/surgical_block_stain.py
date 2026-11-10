@@ -32,6 +32,13 @@ class SurgicalBlockStain(Base):
     # ผู้ดำเนินการย้อม
     stained_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # เวลาที่ผลย้อมนี้ "ออก" = ตอนพยาธิแพทย์ sign รายงานที่รวมผลนี้ไว้
+    # (crud.surgical_block_stain.mark_case_stains_reported, เรียกจาก finalize)
+    # ไม่ผูกกับ IHC panel เพราะพยาธิแพทย์บางคนพิมพ์ผลใน diagnosis เอง
+    # status="completed" อย่างเดียวจึงไม่พอบอกว่าออกแล้ว และไม่มีเวลาด้วย
+    # ตั้งครั้งเดียว ไม่เขียนทับตอน sign Addendum — เก็บเวลาออกครั้งแรก
+    reported_at = Column(DateTime, nullable=True)
+
     # การคีย์ค่าตรวจเข้า HosXP (งานย้อมภายในแล็บ)
     # Outlab stains track this on SurgicalOutlabRunDetail instead — internal
     # stains never get a run detail, so the flag lives on the stain itself.
