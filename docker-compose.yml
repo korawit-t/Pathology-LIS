@@ -72,7 +72,7 @@ services:
     # itself defaults to production (fail-closed).
     #
     # Compose reads this file itself, and it expands `$NAME` inside values the
-    # way a shell would: a password Pa$word9 reaches the backend as "Pa". A `$`
+    # way a shell would: a password Pa$word reaches the backend as "Pa". A `$`
     # that is part of a value is written `$$` here (see backend/.env.example).
     env_file:
       - ./backend/.env

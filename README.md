@@ -135,9 +135,9 @@ credentials. docker compose reads it by itself; the dev override doesn't need it
 
 > ⚠️ **Docker: write a `$` in `backend/.env` as `$$`.** docker compose reads
 > the file itself and treats `$name` in a value as a variable, so a HIS
-> password `Pa$word9` reaches the backend as `Pa` — the only sign is a
-> `The "word9" variable is not set` warning from `docker compose up`. Write
-> `Pa$$word9`. Without Docker, write `$` as it is.
+> password `Pa$word` reaches the backend as `Pa` — the only sign is a
+> `The "word" variable is not set` warning from `docker compose up`. Write
+> `Pa$$word`. Without Docker, write `$` as it is.
 
 #### Environment modes
 
