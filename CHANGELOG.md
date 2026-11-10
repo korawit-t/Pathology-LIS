@@ -19,6 +19,84 @@ before the server starts.
 Entries below are the `feat:` and `fix:` commits of each release. Commits
 touching only tests or CI are left out.
 
+## [3.1.0] — 2026-11-10
+
+Three features and a round of fixes, most of them to the Docker install, which
+could not be brought up from the README as it stood: the database had no
+credentials, the backend refused a LAN origin, and the frontend sent its API
+calls to itself. An on-premise Windows install needs nothing beyond the usual
+deploy.
+
+The release notes now also appear in the app, under **System Settings → About**,
+so a hospital without internet access can still read what changed.
+
+### Upgrade notes
+
+**All installs**
+
+- **The database clock now follows the app.** Every database session is set
+  to Asia/Bangkok, the zone the app already writes its own times in. On a
+  PostgreSQL server that was already on Asia/Bangkok — the usual on-premise
+  Windows install — nothing changes. On one left on UTC (the postgres Docker
+  image, most managed hosts), columns the database fills itself, such as a
+  case's registration time, were stored 7 hours early, and anything registered
+  before 07:00 carried the previous day's date. New rows are right from this
+  release; rows written before it keep their old times. Check yours with
+  `SHOW timezone;` in psql.
+
+**Docker installs**
+
+- **Production needs a root `.env`** with `POSTGRES_USER`, `POSTGRES_PASSWORD`
+  and `POSTGRES_DB`. `docker-compose.yml` always read them, but nothing said so
+  and nothing showed the format; `.env.example` at the repo root now does. Keep
+  the password to letters and digits.
+- **`ENVIRONMENT` is read from `backend/.env`.** `docker-compose.yml` used to
+  force `production` over it. If you serve the app over HTTPS, make sure
+  `backend/.env` says `ENVIRONMENT=production`, or the auth cookies lose their
+  `Secure` flag.
+- **Migrations run in their own `migrate` service**, as the database owner,
+  before the backend starts. `backend/.env` may now point `DATABASE_URL` at the
+  least-privilege `lis_app_rw` role, which used to break the first migration.
+- **A dev database made by the old override has no Alembic revision**, so the
+  new `migrate` service stops on it with `DuplicateTable`. Reset it once with
+  `docker compose down -v`; it holds only seed data.
+
+**New settings (all optional)**
+
+- `UPDATE_CHECK_REPO` — which GitHub repository the admin's update notice
+  compares against; `off` for a server with no internet access.
+- `HIS_DISPLAY_NAME` — the name staff know your HIS by, shown on the HIS button
+  and search screen.
+
+**Database**
+
+One new revision (`96a7ae501bf4`, the update-notice switches), applied by
+`alembic upgrade head`.
+
+### Added
+
+- **about** — show the release notes in System Settings → About
+- **his** — show which HIS is connected and hide what it can't do
+- **update-check** — let an admin switch each update notice off
+- **update-check** — tell admins about a newer release, and open tabs about a new build
+
+### Fixed
+
+- **docker** — build the frontend with the API URL from frontend/.env, not an empty one
+- **docker** — let backend/.env decide ENVIRONMENT, so a LAN install over HTTP starts
+- **docker** — document the root .env the database container needs
+- **docker** — run migrations as the database owner in a one-shot `migrate` service
+- **docker** — build the dev schema with Alembic instead of create_tables.py
+- **docker** — wait for PostgreSQL to accept connections before migrating
+- **docker** — keep .env, virtualenvs and node_modules out of the images
+- **docker** — keep dev uploads in the named volume, so a Linux host can write them
+- **docker** — answer a missing JS/CSS chunk with a 404 instead of index.html
+- **time** — put every database session on Asia/Bangkok
+- **backup** — read backend/.env without executing it, so backup.sh runs again
+- **start.sh** — stop splitting .env values into words before the server starts
+- **accession** — show clinical HTML as text and keep it on save
+- **pathologist** — open the provisional reason box under its toggle
+
 ## [3.0.0] — 2026-11-05
 
 About ten weeks of work since 2.0.0 — 17 features and 36 fixes. It is a MAJOR
