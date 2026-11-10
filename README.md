@@ -270,7 +270,7 @@ rest across with `git stash`, `git pull`, `git stash pop`.
 | Symptom | Cause and fix |
 |---|---|
 | Login fails; the browser console shows a CORS error (preflight `400`) | `ALLOWED_ORIGINS` lacks the exact address users open, port included (`http://<server-ip>:3000`). Fix it, then `up -d`. |
-| `up` warns `The "…" variable is not set. Defaulting to a blank string.` | A `$` in `backend/.env` was read as a variable: write it `$$`. In the root `.env`, use letters and digits only. |
+| `up` warns `The "…" variable is not set. Defaulting to a blank string.` | Naming `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`: the root `.env` is missing or lacks them (the dev override prints these harmlessly; it brings its own). Naming anything else: a `$` in `backend/.env` was read as a variable — write it `$$`. |
 | `migrate` exits with `password authentication failed` | The root `.env` password is not the one the database volume was created with; `POSTGRES_*` only count when the volume is first created. |
 | `docker compose logs db` shows `/bin/bash^M: bad interpreter`, and `lis_app_rw` does not exist | A Windows checkout gave the shell scripts CRLF line endings (prevented from 3.1.1 by `.gitattributes`). Delete `backend/db/init-db.sh` and `backup.sh`, `git checkout -- backend/db/init-db.sh backup.sh`, then create the role with `docker exec pathology-db bash /docker-entrypoint-initdb.d/init-db.sh`. |
 
