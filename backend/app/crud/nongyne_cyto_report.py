@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from app.utils.time import local_now
 from app.utils.signatures import reconcile_signatures
 from app.utils.storage_paths import find_for_report
+from app.utils.report_round_heading import round_heading_html
 from app.models.nongyne_cyto_report import NongyneCytoReport, NongyneReportStatus, NongyneReportType, NongyneReportSigner
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.nongyne_case_image import NongyneCaseImage
@@ -25,6 +26,9 @@ from app.crud import his_export_log as his_export_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
 
 _BKK = ZoneInfo("Asia/Bangkok")
+
+# The dashed rule surgical draws between rounds.
+_ROUND_SEPARATOR = "<hr style='border: 0; border-top: 1px dashed #cbd5e1; margin: 8px 0;' />"
 
 
 def build_nongyne_export_payload(report: "NongyneCytoReport") -> dict:
@@ -239,19 +243,28 @@ def prepare_nongyne_report_data(db: Session, case_id: int):
 
     db_diag = all_diags[-1] if all_diags else None  # highest order = current
 
-    if is_cumulative and len(all_diags) > 1:
-        html_parts = []
-        for d in reversed(all_diags):
-            date_str = d.diagnosis_at.strftime("%d/%m/%Y") if d.diagnosis_at else (d.created_at.strftime("%d/%m/%Y") if d.created_at else "")
-            entry_label = f' — {d.entry_type}' if d.entry_type else ''
-            header = (
-                f'<p style="color:#666;font-size:11px;font-weight:bold;margin:4px 0 2px">'
-                f'REPORT #{d.diagnosis_order}{entry_label}' + (f' ({date_str})' if date_str else '') + '</p>'
-            )
-            html_parts.append(f'{header}<div>{d.diagnosis or ""}</div>')
-        diagnosis_html = '<div style="margin:6px 0;border-top:1px solid #ccc"></div>'.join(html_parts)
+    # Same round headings as surgical (DIAGNOSIS / ADDENDUM / REVISED REPORT,
+    # dated to the minute), in the order the cumulative setting asks for.
+    if is_cumulative:
+        newest_first = settings.cumulative_report_newest_first if settings else True
+        rounds = list(reversed(all_diags)) if newest_first else all_diags
     else:
-        diagnosis_html = db_diag.diagnosis if db_diag else None
+        rounds = [db_diag] if db_diag else []
+
+    diagnosis_html = (
+        _ROUND_SEPARATOR.join(
+            round_heading_html(
+                [d.entry_type],
+                d.diagnosis_at or d.created_at or local_now(),
+                d.entry_type,
+                d.revision_reason,
+            )
+            + f"<div>{d.diagnosis or ''}</div>"
+            for d in rounds
+        )
+        if rounds
+        else None
+    )
 
     pathologist_name = "Not Specified"
     pathologist_id = None

@@ -364,7 +364,11 @@
             <!-- DIAGNOSIS -->
             <div class="section-header">
               DIAGNOSIS
-              {% if reported_at %}
+              {#- Each round now carries its own "(Dated: …)" heading inside
+                  diagnosis_summary (app/utils/report_round_heading.py). A
+                  report published before that has none, so it keeps this
+                  date when it is reprinted. -#}
+              {% if reported_at and 'report-round-heading' not in (diagnosis_summary or '') %}
               <span style="font-weight: 400; font-size: 9.5px; color: #64748b; margin-left: 10px;">
                 Dated: {{ reported_at.strftime('%d/%m/%Y %H:%M') }}
               </span>
