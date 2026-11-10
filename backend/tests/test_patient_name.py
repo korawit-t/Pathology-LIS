@@ -8,7 +8,7 @@ notification paths that were dropping the title.
 import pytest
 
 from app.models.organization import Title
-from app.utils.patient_name import full_patient_name, short_person_name
+from app.utils.patient_name import full_patient_name, mask_person_name
 
 from tests.factories import make_patient
 
@@ -72,30 +72,39 @@ class TestNotificationPathsCarryTheTitle:
         assert data["name"] == "นางสาว สมหญิง รักดี"
 
 
-class TestShortPersonName:
-    """{name_short}/{clinician_short}: title and first name kept, surname cut
-    to its first letter (the format the user picked for group-chat alerts)."""
+class TestMaskPersonName:
+    """{name_short}/{clinician_short}: title kept, first name and surname each
+    cut to their first two letters plus a fixed "***" (the format the user
+    picked for group-chat alerts)."""
 
-    @pytest.mark.parametrize("full, short", [
-        ("นาย สมชาย ใจดี", "นาย สมชาย ใ."),
-        ("นางสาว สมหญิง รักไทย", "นางสาว สมหญิง ร."),
-        ("ด.ช. ต้นกล้า มีสุข", "ด.ช. ต้นกล้า ม."),
-        ("นพ. ประเสริฐ รักษาดี", "นพ. ประเสริฐ ร."),
+    @pytest.mark.parametrize("full, masked", [
+        ("นาย สมชาย ใจดี", "นาย สม*** ใจ***"),
+        ("นพ. ประเสริฐ รักษาดี", "นพ. ปร*** รัก***"),
+        # A letter carries its marks: สุ, รั and ชื่ each count as one.
+        ("นางสาว สุดา รักไทย", "นางสาว สุด*** รัก***"),
+        ("น.ส.ชื่นใจ เอกชัย", "น.ส. ชื่น*** เอ***"),
         # Clinician names are often typed with the title glued on.
-        ("พญ.สุดา ใจงาม", "พญ. สุดา ใ."),
-        ("น.ส.สมหญิง เอกชัย", "น.ส. สมหญิง เ."),
-        ("สมชาย ใจดี", "สมชาย ใ."),
-        ("Dr. John Michael Smith", "Dr. John Michael S."),
-        ("  นาง   มาลี   แก้วตา  ", "นาง มาลี แ."),
+        ("พญ.สุดา ใจงาม", "พญ. สุด*** ใจ***"),
+        ("สมชาย ใจดี", "สม*** ใจ***"),
+        ("นาย สมชาย", "นาย สม***"),
+        ("Dr. John Michael Smith", "Dr. Jo*** Mi*** Sm***"),
+        ("  นาง   มาลี   แก้วตา  ", "นาง มา*** แก้***"),
     ])
-    def test_surname_is_cut_to_its_first_letter(self, full, short):
-        assert short_person_name(full) == short
+    def test_each_name_part_keeps_two_letters(self, full, masked):
+        assert mask_person_name(full) == masked
 
-    @pytest.mark.parametrize("full", ["นาย สมชาย", "นพ.ประเสริฐ", "สมชาย"])
-    def test_name_without_a_surname_comes_back_whole(self, full):
-        assert short_person_name(full).replace(" ", "") == full.replace(" ", "")
+    def test_mask_length_never_reveals_the_name_length(self):
+        assert mask_person_name("นาย สมชาย ใจดี").endswith("ใจ***")
+        assert mask_person_name("นาย สมชาย ใจดีมากมายเหลือเกิน").endswith("ใจ***")
+
+    @pytest.mark.parametrize("full, masked", [
+        ("นาย มา ดี", "นาย ม*** ***"),   # two letters → one kept; one → none
+        ("นาง ก ข", "นาง *** ***"),
+    ])
+    def test_short_words_always_hide_at_least_one_letter(self, full, masked):
+        assert mask_person_name(full) == masked
 
     @pytest.mark.parametrize("empty", [None, "", "   ", "-"])
     def test_missing_name_gives_the_default(self, empty):
-        assert short_person_name(empty) == "-"
-        assert short_person_name(empty, default="") == ""
+        assert mask_person_name(empty) == "-"
+        assert mask_person_name(empty, default="") == ""

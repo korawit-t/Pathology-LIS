@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from app.utils.network_security import assert_public_https_url as _assert_public_https_url
-from app.utils.patient_name import short_person_name
+from app.utils.patient_name import mask_person_name
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def _fill_template(template: str, data: Dict[str, Any]) -> str:
     values = dict(data)
     for full_key, short_key in (("name", "name_short"), ("clinician", "clinician_short")):
         if short_key not in values and full_key in values:
-            values[short_key] = short_person_name(values[full_key])
+            values[short_key] = mask_person_name(values[full_key])
 
     def replacer(match):
         key = match.group(1)

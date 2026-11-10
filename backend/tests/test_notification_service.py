@@ -43,14 +43,14 @@ class TestFillTemplate:
         assert result == "Doctor: -"
 
 
-class TestShortNamePlaceholders:
-    def test_name_short_and_clinician_short_are_derived(self):
+class TestMaskedNamePlaceholders:
+    def test_name_short_and_clinician_short_are_masked(self):
         result = notification_service._fill_template(
             "{name_short} / {clinician_short}",
             {"name": "นาย สมชาย ใจดี", "clinician": "พญ.สุดา ใจงาม"},
         )
 
-        assert result == "นาย สมชาย ใ. / พญ. สุดา ใ."
+        assert result == "นาย สม*** ใจ*** / พญ. สุด*** ใจ***"
 
     def test_a_value_the_caller_passes_wins(self):
         result = notification_service._fill_template(
@@ -64,7 +64,7 @@ class TestShortNamePlaceholders:
 
     def test_frontend_triggered_events_get_them_too(self, monkeypatch):
         """trigger_event hands the frontend's data dict straight to
-        send_real_notification, which must still offer the short forms."""
+        send_real_notification, which must still offer the masked forms."""
         ctx, client = _mock_async_client(status_code=200)
         monkeypatch.setattr(notification_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
 
@@ -74,7 +74,7 @@ class TestShortNamePlaceholders:
             {"hn": "HN-9", "name": "นาง มาลี แก้วตา"},
         ))
 
-        assert client.post.call_args.kwargs["json"]["messages"][0]["text"] == "HN-9 นาง มาลี แ."
+        assert client.post.call_args.kwargs["json"]["messages"][0]["text"] == "HN-9 นาง มา*** แก้***"
 
 
 class TestToBangkokStr:
