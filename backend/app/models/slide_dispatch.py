@@ -35,6 +35,15 @@ class SlideDispatchRun(Base):
     sender = relationship("User", foreign_keys=[sender_id])
     pathologist = relationship("User", foreign_keys=[pathologist_id])
 
+    @property
+    def total_slides(self):
+        """Sum of the items' slide counts, or None when any item predates the
+        slide_count snapshot — a partial sum would undercount the note."""
+        counts = [item.slide_count for item in self.items]
+        if any(c is None for c in counts):
+            return None
+        return sum(counts)
+
 
 class SlideDispatchItem(Base):
     __tablename__ = "slide_dispatch_items"
@@ -46,6 +55,12 @@ class SlideDispatchItem(Base):
     case_type = Column(String(50), nullable=False)  # 'SURGICAL', etc.
 
     status = Column(String(20), default="slide sent")
+
+    # Stained slides of the case at the moment it was dispatched — a snapshot,
+    # so a reprinted note still matches what was handed over even after later
+    # special stains / IHC add slides to the case. NULL = dispatched before
+    # this column existed (count unknown).
+    slide_count = Column(Integer, nullable=True)
 
     # Relationships
     run = relationship("SlideDispatchRun", back_populates="items")

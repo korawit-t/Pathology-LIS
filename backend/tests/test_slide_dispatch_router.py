@@ -10,7 +10,7 @@ dependencies=[] either) — reachable with zero login. Fixed by adding
 `dependencies=[Depends(get_current_user)]` at the router level, matching
 its 3 siblings in this file."""
 
-from tests.factories import make_signable_case, make_bare_case
+from tests.factories import make_signable_case, make_bare_case, make_block, make_block_stain
 
 
 class TestAuth:
@@ -77,3 +77,33 @@ class TestBulkCreateAndDelete:
         r = pathologist_client.delete(f"/slide-dispatches/{created['id']}")
 
         assert r.status_code == 204
+
+
+class TestSlideCounts:
+    def test_verify_create_and_list_carry_slide_counts(self, db, pathologist_client, admin_user, pathologist_user):
+        registrar, _ = admin_user
+        pathologist, _ = pathologist_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        case.status = "stained"
+        db.commit()
+        for block_no in (1, 2):
+            block = make_block(db, specimen.id, block_no=block_no, status="stained")
+            make_block_stain(db, block.id, status="stained")
+
+        verified = pathologist_client.get(f"/slide-dispatches/verify/{case.accession_no}")
+        assert verified.json()["slide_count"] == 2
+
+        created = pathologist_client.post(
+            "/slide-dispatches/bulk",
+            json={
+                "items": [{"case_id": case.id, "case_type": "SURGICAL"}],
+                "pathologist_id": pathologist.id,
+            },
+        ).json()
+        assert created["items"][0]["slide_count"] == 2
+        assert created["total_slides"] == 2
+
+        listed = pathologist_client.get("/slide-dispatches", params={"limit": 100}).json()
+        run = next(r for r in listed["items"] if r["id"] == created["id"])
+        assert run["items"][0]["slide_count"] == 2
+        assert run["total_slides"] == 2

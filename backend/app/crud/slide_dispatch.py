@@ -3,6 +3,8 @@ from fastapi import HTTPException
 from app.utils.time import local_now
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen
+from app.models.surgical_block import SurgicalBlock
+from app.models.surgical_block_stain import SurgicalBlockStain
 from app.models.nongyne_cyto_case import NongyneCytologyCase
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.slide_dispatch import SlideDispatchItem, SlideDispatchRun
@@ -35,6 +37,38 @@ def generate_dispatch_no(db: Session):
     else:
         new_no = f"{prefix}0001"
     return new_no
+
+
+# A slide is ready to hand over once its stain is done. 'pending' slides aren't
+# cut/stained yet, and outlab stains ('sent') are out of the building.
+DISPATCHABLE_STAIN_STATUSES = ("stained", "completed")
+
+
+def count_dispatchable_slides(db: Session, case_type: str, case_id: int):
+    """Number of stained slides a case would hand over right now: one per stain
+    record (routine H&E, recuts, special stains already done). None for a case
+    type this module doesn't dispatch."""
+    if case_type == "SURGICAL":
+        return (
+            db.query(SurgicalBlockStain.id)
+            .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
+            .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+            .filter(
+                SurgicalSpecimen.case_id == case_id,
+                SurgicalBlockStain.status.in_(DISPATCHABLE_STAIN_STATUSES),
+            )
+            .count()
+        )
+    if case_type == "NONGYNE_CYTO":
+        return (
+            db.query(NongyneCytologyStain.id)
+            .filter(
+                NongyneCytologyStain.case_id == case_id,
+                NongyneCytologyStain.status.in_(DISPATCHABLE_STAIN_STATUSES),
+            )
+            .count()
+        )
+    return None
 
 
 def verify_accession_for_dispatch(db: Session, accession_no: str):
@@ -75,6 +109,7 @@ def verify_accession_for_dispatch(db: Session, accession_no: str):
             "patient_name": surgical_case.patient.name,
             "case_type": "SURGICAL",
             "specimens": specimens_data,
+            "slide_count": count_dispatchable_slides(db, "SURGICAL", surgical_case.id),
         }
 
     # 2. ลองหาใน Non-Gyne Cytology Case
@@ -85,11 +120,8 @@ def verify_accession_for_dispatch(db: Session, accession_no: str):
     )
 
     if nongyne_case:
-        stain_ready = db.query(NongyneCytologyStain).filter(
-            NongyneCytologyStain.case_id == nongyne_case.id,
-            NongyneCytologyStain.status.in_(["stained", "completed"]),
-        ).first()
-        if not stain_ready:
+        slide_count = count_dispatchable_slides(db, "NONGYNE_CYTO", nongyne_case.id)
+        if not slide_count:
             raise HTTPException(
                 status_code=400,
                 detail=f"เคส {accession_no} (Non-Gyne) ยังไม่ผ่านขั้นตอน Staining ไม่สามารถส่งสไลด์ได้",
@@ -99,6 +131,7 @@ def verify_accession_for_dispatch(db: Session, accession_no: str):
             "accession_no": nongyne_case.accession_no,
             "patient_name": nongyne_case.patient.name,
             "case_type": "NONGYNE_CYTO",
+            "slide_count": slide_count,
         }
 
     # 4. ถ้าไม่เจอเลย
@@ -130,6 +163,7 @@ def create_bulk_slide_dispatch(
                 case_id=item.case_id,
                 case_type=item.case_type,
                 status="slide sent",
+                slide_count=count_dispatchable_slides(db, item.case_type, item.case_id),
             )
             db.add(db_item)
 
