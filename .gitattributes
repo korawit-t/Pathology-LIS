@@ -1,0 +1,7 @@
+# Shell scripts run inside Linux containers (backend/db/init-db.sh, the Railway
+# entrypoint) or on a Linux host (backup.sh, backend/start.sh). Git for Windows
+# checks text files out with CRLF line endings by default, and a script with a
+# CRLF shebang dies with "/bin/bash^M: bad interpreter": init-db.sh then never
+# creates lis_app_rw, and backup.sh stops at `set -o pipefail`. Keep them LF on
+# every checkout.
+*.sh text eol=lf
