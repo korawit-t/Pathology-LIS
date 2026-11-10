@@ -18,6 +18,19 @@ const CONFIRM_Z_INDEX = 2100;
 
 const { Text } = Typography;
 
+/**
+ * เรียงตามรหัสกรมบัญชีกลาง ให้ได้ลำดับเดียวกับบัญชีอัตราค่าบริการ (เช่น 38001–38003
+ * ค่าตรวจตามขนาดชิ้นเนื้ออยู่ติดกัน) — backend ส่งมาเรียงตามชื่อ ซึ่งทำให้รายการกระจัด
+ * กระจายและชื่อภาษาไทยเรียงตาม collation ของ DB; รายการที่ไม่มีรหัสไว้ท้ายสุด
+ */
+const byCode =(a: AnatomicalPathologyTest, b: AnatomicalPathologyTest) => {
+  if (!a.code !== !b.code) return a.code ? -1 : 1;
+  return (
+    (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true }) ||
+    a.name.localeCompare(b.name)
+  );
+};
+
 interface Props {
   specimenId: number;
   disabled?: boolean; // 🚩 เพิ่มเพื่อให้รับค่าจากหน้าหลักได้
@@ -120,6 +133,7 @@ const SpecimenTestInline: React.FC<Props> = ({
             loading={loading && apTests.length === 0}
             options={apTests
               .filter((test) => test.category === "Surgical Pathology")
+              .sort(byCode)
               .map((test) => ({
                 label: `${test.name} - ${test.price_tier_3?.toLocaleString()}฿`,
                 value: Number(test.id),
