@@ -1,6 +1,7 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
 from app.crud.surgical_report_builder import prepare_report_data, render_snapshot_images
 from app.crud.report_images import surgical_images_snapshot
+from app.crud.surgical_block_stain import mark_case_stains_reported
 from app.schemas.surgical_bulk import BulkSaveDraft
 import logging
 from sqlalchemy.orm import Session, joinedload
@@ -471,6 +472,14 @@ def finalize_and_snapshot_orchestrator(
                 SurgicalDiagnosis.diagnosis_order == current_order_no,
             ).update(
                 {"status": "signed", "diagnosis_at": now}, synchronize_session=False
+            )
+
+            # The pathologist's sign-off is when additional stains' results go
+            # out — with the approve system on as well, by agreement; the
+            # approval wait is measured separately. Signed as complete, every
+            # ready slide counts; signed "No, Pending", only reviewed ones.
+            mark_case_stains_reported(
+                db, case_id, now, include_unreviewed=not data.is_pending
             )
 
             full_payload = prepare_report_data(db, case_id, target_report_id=report.id)

@@ -17,7 +17,7 @@ from app.models.surgical_block_stain import (
     SurgicalOutlabRunDetail,
 )
 from app.utils.block_workflow import stage_filter
-from app.utils.stain_filters import is_keyable_stain
+from app.utils.stain_filters import is_keyable_stain, is_not_he_base_test
 from app.enums.case_states import (
     SURGICAL_STAIN_HOLDS,
     SURGICAL_TERMINAL,
@@ -26,6 +26,62 @@ from app.enums.case_states import (
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
+
+
+def mark_case_stains_reported(
+    db: Session, case_id: int, at, include_unreviewed: bool
+) -> int:
+    """Stamp reported_at on the case's additional stains that went out with
+    the report the pathologist is signing right now. Does not commit.
+
+    This is the "result is out" cut-off. It deliberately does not depend on
+    the IHC panel: some pathologists type IHC results straight into the
+    diagnosis text, which left those slides at "stained" forever.
+
+    * include_unreviewed=True (signed as complete) — every slide that is ready
+      to read counts: "stained" (back from the outlab / stain run logged) or
+      "completed". Ready slides move to "completed".
+    * include_unreviewed=False (signed as "No, Pending") — only slides already
+      "completed" (panel result / Mark Reviewed) count; the rest stay open
+      for the next sign-off.
+
+    Slides still "pending" or "sent" are never touched — they get stamped by
+    the Addendum that carries them. A slide that already has reported_at keeps
+    it (first time out wins). Routine H&E, recuts and Molecular orders (which
+    report through their own M- case) are excluded. The backfill in alembic
+    revision 54bbe1c9fc1f applies the same rule to stains signed out before
+    this existed.
+
+    Returns the number of stains stamped.
+    """
+    statuses = ["stained", "completed"] if include_unreviewed else ["completed"]
+    stain_ids = [
+        row.id
+        for row in db.query(SurgicalBlockStain.id)
+        .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
+        .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+        .join(
+            AnatomicalPathologyTest,
+            AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
+        )
+        .filter(
+            SurgicalSpecimen.case_id == case_id,
+            SurgicalBlockStain.reported_at.is_(None),
+            SurgicalBlockStain.status.in_(statuses),
+            SurgicalBlockStain.is_recut.isnot(True),
+            is_not_he_base_test(),
+            func.lower(func.coalesce(AnatomicalPathologyTest.category, "")) != "molecular",
+        )
+        .all()
+    ]
+    if stain_ids:
+        db.query(SurgicalBlockStain).filter(
+            SurgicalBlockStain.id.in_(stain_ids)
+        ).update(
+            {"status": "completed", "reported_at": at},
+            synchronize_session=False,
+        )
+    return len(stain_ids)
 
 
 def count_unkeyed_internal_stains(db: Session) -> int:

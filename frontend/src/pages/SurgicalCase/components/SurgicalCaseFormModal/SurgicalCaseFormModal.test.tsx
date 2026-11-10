@@ -134,6 +134,17 @@ describe("SurgicalCaseFormModal", () => {
     const clinicalField = () =>
       screen.getByLabelText("Clinical History / Diagnosis") as HTMLTextAreaElement;
 
+    // Save Changes shares `loading` with the case load, and antd Button only
+    // drops its loading state one passive effect after the form is filled —
+    // so the field can already show the text while a click on the button is
+    // still swallowed. That flaked on a loaded CI runner (PR #368: updateCase
+    // never called). Wait for the button to be clickable first.
+    const clickSaveChanges = async () => {
+      const btn = await screen.findByRole("button", { name: /Save Changes/ });
+      await waitFor(() => expect(btn).not.toHaveClass("ant-btn-loading"));
+      fireEvent.click(btn);
+    };
+
     it("shows the text without HTML tags", async () => {
       renderModal({ editingId: 7 });
       await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
@@ -143,7 +154,7 @@ describe("SurgicalCaseFormModal", () => {
       renderModal({ editingId: 7 });
       await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
 
-      fireEvent.click(await screen.findByRole("button", { name: /Save Changes/ }));
+      await clickSaveChanges();
 
       await waitFor(() => expect(SurgicalCaseService.updateCase).toHaveBeenCalled());
       const [, payload] = (SurgicalCaseService.updateCase as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -155,7 +166,7 @@ describe("SurgicalCaseFormModal", () => {
       await waitFor(() => expect(clinicalField().value).toBe("Breast mass\nR/O CA"));
 
       fireEvent.change(clinicalField(), { target: { value: "Breast mass, left\nR/O CA" } });
-      fireEvent.click(await screen.findByRole("button", { name: /Save Changes/ }));
+      await clickSaveChanges();
 
       await waitFor(() => expect(SurgicalCaseService.updateCase).toHaveBeenCalled());
       const [, payload] = (SurgicalCaseService.updateCase as ReturnType<typeof vi.fn>).mock.calls[0];
