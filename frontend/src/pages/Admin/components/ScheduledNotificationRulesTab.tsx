@@ -39,7 +39,7 @@ const PLATFORM_COLOR: Record<string, string> = {
 
 // Template placeholders available for each rule_type (mirrors NotificationRulesTab's EVENT_VARS pattern)
 const RULE_VARS: Record<string, string[]> = {
-  outlab_pending_visit_today: ["hn", "name", "case_id", "pending_count", "pending_items"],
+  outlab_pending_visit_today: ["hn", "name", "name_short", "case_id", "pending_count", "pending_items"],
 };
 
 const ScheduledNotificationRulesTab: React.FC = () => {

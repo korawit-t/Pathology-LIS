@@ -5,8 +5,10 @@ joined back on for anything a human reads. Regression cover for two
 notification paths that were dropping the title.
 """
 
+import pytest
+
 from app.models.organization import Title
-from app.utils.patient_name import full_patient_name
+from app.utils.patient_name import full_patient_name, short_person_name
 
 from tests.factories import make_patient
 
@@ -68,3 +70,32 @@ class TestNotificationPathsCarryTheTitle:
         data = _lookup_case_data(db, case.id, "SURGICAL")
 
         assert data["name"] == "นางสาว สมหญิง รักดี"
+
+
+class TestShortPersonName:
+    """{name_short}/{clinician_short}: title and first name kept, surname cut
+    to its first letter (the format the user picked for group-chat alerts)."""
+
+    @pytest.mark.parametrize("full, short", [
+        ("นาย สมชาย ใจดี", "นาย สมชาย ใ."),
+        ("นางสาว สมหญิง รักไทย", "นางสาว สมหญิง ร."),
+        ("ด.ช. ต้นกล้า มีสุข", "ด.ช. ต้นกล้า ม."),
+        ("นพ. ประเสริฐ รักษาดี", "นพ. ประเสริฐ ร."),
+        # Clinician names are often typed with the title glued on.
+        ("พญ.สุดา ใจงาม", "พญ. สุดา ใ."),
+        ("น.ส.สมหญิง เอกชัย", "น.ส. สมหญิง เ."),
+        ("สมชาย ใจดี", "สมชาย ใ."),
+        ("Dr. John Michael Smith", "Dr. John Michael S."),
+        ("  นาง   มาลี   แก้วตา  ", "นาง มาลี แ."),
+    ])
+    def test_surname_is_cut_to_its_first_letter(self, full, short):
+        assert short_person_name(full) == short
+
+    @pytest.mark.parametrize("full", ["นาย สมชาย", "นพ.ประเสริฐ", "สมชาย"])
+    def test_name_without_a_surname_comes_back_whole(self, full):
+        assert short_person_name(full).replace(" ", "") == full.replace(" ", "")
+
+    @pytest.mark.parametrize("empty", [None, "", "   ", "-"])
+    def test_missing_name_gives_the_default(self, empty):
+        assert short_person_name(empty) == "-"
+        assert short_person_name(empty, default="") == ""

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from app.utils.network_security import assert_public_https_url as _assert_public_https_url
+from app.utils.patient_name import short_person_name
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,20 @@ DUMMY_DATA = {
 
 
 def _fill_template(template: str, data: Dict[str, Any]) -> str:
-    """Replace {key} placeholders in template with values from data dict."""
+    """Replace {key} placeholders in template with values from data dict.
+
+    {name_short} and {clinician_short} are derived here from {name} and
+    {clinician}, so every event offers them whatever built its data — the
+    backend or a frontend trigger. A value the caller passes itself wins.
+    """
+    values = dict(data)
+    for full_key, short_key in (("name", "name_short"), ("clinician", "clinician_short")):
+        if short_key not in values and full_key in values:
+            values[short_key] = short_person_name(values[full_key])
 
     def replacer(match):
         key = match.group(1)
-        return str(data.get(key, "-"))
+        return str(values.get(key, "-"))
 
     return re.sub(r"\{(\w+)\}", replacer, template)
 
