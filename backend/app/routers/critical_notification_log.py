@@ -85,6 +85,7 @@ router = APIRouter(prefix="/critical-notification-logs", tags=["Critical Notific
 _TYPE_TO_EVENT = {
     "malignancy": "malignancy_result",
     "critical_value": "critical_case",
+    "other": "other_notification",
 }
 
 _TYPE_LABEL = {

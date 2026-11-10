@@ -16,6 +16,7 @@ export const EVENT_LABELS: Record<string, string> = {
   stain_order_special: "สั่ง Special Stain",
   malignancy_result:   "ผลออก Malignancy",
   critical_case:       "เคสวิกฤต (Critical)",
+  other_notification:  "แจ้งเตือนอื่นๆ (Other)",
   case_signed_out:     "Sign-out เคส",
   outlab_consult:      "ส่ง Consult นอกโรงพยาบาล",
 };

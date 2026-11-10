@@ -43,6 +43,7 @@ const EVENT_VARS: Record<string, string[]> = {
   stain_order_special: ["id_case", "hn", "name", "name_short", "block", "count"],
   malignancy_result:   ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "diagnosis"],
   critical_case:       ["id_case", "hn", "name", "name_short", "clinician", "clinician_short"],
+  other_notification:  ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "specimen", "note", "recipient_name", "notified_at"],
   case_signed_out:     ["id_case", "hn", "name", "name_short", "clinician", "clinician_short"],
   outlab_consult:      ["id_case", "accession_no", "sender", "lab_name"],
 };

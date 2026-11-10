@@ -65,6 +65,34 @@ class TestCreate:
         mock_broadcast.assert_called_once()
 
 
+    def test_type_other_uses_the_other_notification_rule_template(self, db, pathologist_client, admin_user):
+        """Type Other used to have no rule, so it always went out on the
+        generic broadcast template (which shows the DB id as the case)."""
+        from app.crud.notification_rule import upsert_rule
+        from app.schemas.notification_rule import NotificationRuleUpdate
+
+        registrar, _ = admin_user
+        case, _ = make_signable_case(db, registrar_id=registrar.id)
+        channel = create_channel(
+            db, NotificationChannelCreate(platform="line", name="Other Ch", credentials={"token": "x"})
+        )
+        upsert_rule(db, "other_notification", NotificationRuleUpdate(message_template="OTHER {id_case}: {note}"))
+
+        with patch(
+            "app.routers.critical_notification_log.broadcast_to_channels", new_callable=AsyncMock
+        ) as mock_broadcast:
+            r = pathologist_client.post(
+                "/critical-notification-logs",
+                json=_log_payload(case.id, notification_type="other", note="ขอ block เพิ่ม", channel_ids=[channel.id]),
+            )
+
+        assert r.status_code == 201
+        kwargs = mock_broadcast.call_args.kwargs
+        assert kwargs["template"].startswith("OTHER {id_case}: {note}")
+        assert kwargs["data"]["note"] == "ขอ block เพิ่ม"
+        assert kwargs["data"]["type_label"] == "อื่นๆ"
+
+
 class TestListByCase:
     def test_scopes_to_case_id_and_type(self, db, pathologist_client, admin_user):
         registrar, _ = admin_user
