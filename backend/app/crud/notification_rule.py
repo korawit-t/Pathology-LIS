@@ -30,6 +30,15 @@ PREDEFINED_EVENTS = [
         "template": "🚨 Critical Case\nCase: {id_case}\nHN: {hn} | {name}\nแพทย์: {clinician}",
     },
     {
+        # "Add notification record" with type Other. Only the template comes
+        # from the rule: the record form picks the channels itself, as it does
+        # for malignancy_result and critical_case. {note} is what the
+        # pathologist typed, so it is the message here.
+        "event_key": "other_notification",
+        "label": "แจ้งเตือนอื่นๆ (Other)",
+        "template": "📢 แจ้งเตือน\nCase: {id_case}\nHN: {hn} | {name}\nแพทย์: {clinician}\nเรื่อง: {note}\nแจ้งผลให้: {recipient_name}",
+    },
+    {
         "event_key": "case_signed_out",
         "label": "Sign-out เคส",
         "template": "✅ Sign-out สำเร็จ\nCase: {id_case}\nHN: {hn} | {name}\nแพทย์: {clinician}",

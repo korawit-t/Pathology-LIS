@@ -123,3 +123,13 @@ class TestUpsertRuleUpdate:
         result = upsert_rule(db, event_key, NotificationRuleUpdate(is_active=True))
 
         assert result.channel_id == ch
+
+
+class TestOtherNotificationEvent:
+    def test_is_predefined_with_a_template_carrying_the_note(self):
+        from app.crud.notification_rule import PREDEFINED_EVENTS
+
+        ev = next(e for e in PREDEFINED_EVENTS if e["event_key"] == "other_notification")
+        # For type Other the note is the message itself.
+        assert "{note}" in ev["template"]
+        assert "{id_case}" in ev["template"]

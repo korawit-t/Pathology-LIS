@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from app.utils.network_security import assert_public_https_url as _assert_public_https_url
+from app.utils.patient_name import mask_person_name
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,14 @@ _TZ_BANGKOK = ZoneInfo("Asia/Bangkok")
 # MOPH Notify (หมอพร้อม bot in a LINE group), per MOPH's "API Document MOPH
 # Notify". Not MOPH Alert — that one (morpromt2c, /alert/v3.1/messages)
 # pushes to one person by CID and cannot reach a group.
+#
+# Known limitation: send-only. The bot is MOPH's LINE OA, so replies posted
+# in the group are delivered to MOPH's webhook, and the API offers nothing to
+# read them back — LIS cannot see a reply or who wrote it. Tracking who
+# acknowledged an alert would need either the hospital's own LINE OA with a
+# public webhook (matching `quotedMessageId` against the push's
+# `sentMessages[].id`; at odds with the LAN-only deployment) or a
+# "รับทราบ" link into LIS that records the signed-in user. Neither is built.
 MOPH_NOTIFY_DEFAULT_BASE_URL = "https://morpromt2f.moph.go.th"
 _MOPH_NOTIFY_SEND_PATH = "/api/notify/send"
 
@@ -45,11 +54,20 @@ DUMMY_DATA = {
 
 
 def _fill_template(template: str, data: Dict[str, Any]) -> str:
-    """Replace {key} placeholders in template with values from data dict."""
+    """Replace {key} placeholders in template with values from data dict.
+
+    {name_short} and {clinician_short} are derived here from {name} and
+    {clinician}, so every event offers them whatever built its data — the
+    backend or a frontend trigger. A value the caller passes itself wins.
+    """
+    values = dict(data)
+    for full_key, short_key in (("name", "name_short"), ("clinician", "clinician_short")):
+        if short_key not in values and full_key in values:
+            values[short_key] = mask_person_name(values[full_key])
 
     def replacer(match):
         key = match.group(1)
-        return str(data.get(key, "-"))
+        return str(values.get(key, "-"))
 
     return re.sub(r"\{(\w+)\}", replacer, template)
 

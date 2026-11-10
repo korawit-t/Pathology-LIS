@@ -5,8 +5,10 @@ joined back on for anything a human reads. Regression cover for two
 notification paths that were dropping the title.
 """
 
+import pytest
+
 from app.models.organization import Title
-from app.utils.patient_name import full_patient_name
+from app.utils.patient_name import full_patient_name, mask_person_name
 
 from tests.factories import make_patient
 
@@ -68,3 +70,41 @@ class TestNotificationPathsCarryTheTitle:
         data = _lookup_case_data(db, case.id, "SURGICAL")
 
         assert data["name"] == "นางสาว สมหญิง รักดี"
+
+
+class TestMaskPersonName:
+    """{name_short}/{clinician_short}: title kept, first name and surname each
+    cut to their first two letters plus a fixed "***" (the format the user
+    picked for group-chat alerts)."""
+
+    @pytest.mark.parametrize("full, masked", [
+        ("นาย สมชาย ใจดี", "นาย สม*** ใจ***"),
+        ("นพ. ประเสริฐ รักษาดี", "นพ. ปร*** รัก***"),
+        # A letter carries its marks: สุ, รั and ชื่ each count as one.
+        ("นางสาว สุดา รักไทย", "นางสาว สุด*** รัก***"),
+        ("น.ส.ชื่นใจ เอกชัย", "น.ส. ชื่น*** เอ***"),
+        # Clinician names are often typed with the title glued on.
+        ("พญ.สุดา ใจงาม", "พญ. สุด*** ใจ***"),
+        ("สมชาย ใจดี", "สม*** ใจ***"),
+        ("นาย สมชาย", "นาย สม***"),
+        ("Dr. John Michael Smith", "Dr. Jo*** Mi*** Sm***"),
+        ("  นาง   มาลี   แก้วตา  ", "นาง มา*** แก้***"),
+    ])
+    def test_each_name_part_keeps_two_letters(self, full, masked):
+        assert mask_person_name(full) == masked
+
+    def test_mask_length_never_reveals_the_name_length(self):
+        assert mask_person_name("นาย สมชาย ใจดี").endswith("ใจ***")
+        assert mask_person_name("นาย สมชาย ใจดีมากมายเหลือเกิน").endswith("ใจ***")
+
+    @pytest.mark.parametrize("full, masked", [
+        ("นาย มา ดี", "นาย ม*** ***"),   # two letters → one kept; one → none
+        ("นาง ก ข", "นาง *** ***"),
+    ])
+    def test_short_words_always_hide_at_least_one_letter(self, full, masked):
+        assert mask_person_name(full) == masked
+
+    @pytest.mark.parametrize("empty", [None, "", "   ", "-"])
+    def test_missing_name_gives_the_default(self, empty):
+        assert mask_person_name(empty) == "-"
+        assert mask_person_name(empty, default="") == ""

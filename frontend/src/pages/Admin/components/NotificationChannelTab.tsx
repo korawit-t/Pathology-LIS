@@ -335,22 +335,29 @@ const NotificationChannelTab: React.FC = () => {
               style={{ marginBottom: 16 }}
               message="MOPH Notify setup"
               description={
-                <ol style={{ margin: 0, paddingLeft: 18 }}>
-                  <li>
-                    Name the LINE group so it ends with HC + your 5-digit
-                    hospital code, before inviting the bot
-                  </li>
-                  <li>Invite the หมอพร้อม bot into the group</li>
-                  <li>
-                    Your hospital&apos;s MOPH Notify admin approves the group
-                    in the MOPH Notify CMS
-                  </li>
-                  <li>
-                    Copy client-key and secret-key from the หน่วยบริการ menu
-                    of the MOPH Notify CMS here, then press Test. The keys
-                    decide which group receives the message.
-                  </li>
-                </ol>
+                <>
+                  <ol style={{ margin: 0, paddingLeft: 18 }}>
+                    <li>
+                      Name the LINE group so it ends with HC + your 5-digit
+                      hospital code, before inviting the bot
+                    </li>
+                    <li>Invite the หมอพร้อม bot into the group</li>
+                    <li>
+                      Your hospital&apos;s MOPH Notify admin approves the
+                      group in the MOPH Notify CMS
+                    </li>
+                    <li>
+                      Copy client-key and secret-key from the หน่วยบริการ
+                      menu of the MOPH Notify CMS here, then press Test. The
+                      keys decide which group receives the message.
+                    </li>
+                  </ol>
+                  <p style={{ margin: "8px 0 0" }}>
+                    <strong>Send-only:</strong> replies posted in the group go
+                    to MOPH, not to LIS, so LIS cannot see them or tell who
+                    answered.
+                  </p>
+                </>
               }
             />
           )}

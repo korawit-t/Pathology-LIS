@@ -39,14 +39,15 @@ const PLATFORM_COLOR: Record<string, string> = {
 };
 
 const EVENT_VARS: Record<string, string[]> = {
-  stain_order_ihc:     ["id_case", "hn", "name", "clinician", "block", "count"],
-  stain_order_special: ["id_case", "hn", "name", "block", "count"],
-  malignancy_result:   ["id_case", "hn", "name", "clinician", "diagnosis"],
-  critical_case:       ["id_case", "hn", "name", "clinician"],
-  case_signed_out:     ["id_case", "hn", "name", "clinician"],
+  stain_order_ihc:     ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "block", "count"],
+  stain_order_special: ["id_case", "hn", "name", "name_short", "block", "count"],
+  malignancy_result:   ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "diagnosis"],
+  critical_case:       ["id_case", "hn", "name", "name_short", "clinician", "clinician_short"],
+  other_notification:  ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "specimen", "note", "recipient_name", "notified_at"],
+  case_signed_out:     ["id_case", "hn", "name", "name_short", "clinician", "clinician_short"],
   outlab_consult:      ["id_case", "accession_no", "sender", "lab_name"],
 };
-const ALL_VARS = ["id_case", "hn", "name", "clinician", "block", "count", "diagnosis", "accession_no", "sender", "lab_name"];
+const ALL_VARS = ["id_case", "hn", "name", "name_short", "clinician", "clinician_short", "block", "count", "diagnosis", "accession_no", "sender", "lab_name"];
 
 const NotificationRulesTab: React.FC = () => {
   const [rows, setRows] = useState<RuleRow[]>([]);

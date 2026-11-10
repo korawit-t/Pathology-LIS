@@ -43,6 +43,40 @@ class TestFillTemplate:
         assert result == "Doctor: -"
 
 
+class TestMaskedNamePlaceholders:
+    def test_name_short_and_clinician_short_are_masked(self):
+        result = notification_service._fill_template(
+            "{name_short} / {clinician_short}",
+            {"name": "นาย สมชาย ใจดี", "clinician": "พญ.สุดา ใจงาม"},
+        )
+
+        assert result == "นาย สม*** ใจ*** / พญ. สุด*** ใจ***"
+
+    def test_a_value_the_caller_passes_wins(self):
+        result = notification_service._fill_template(
+            "{name_short}", {"name": "นาย สมชาย ใจดี", "name_short": "custom"},
+        )
+
+        assert result == "custom"
+
+    def test_no_source_name_means_a_dash(self):
+        assert notification_service._fill_template("{name_short}|{clinician_short}", {}) == "-|-"
+
+    def test_frontend_triggered_events_get_them_too(self, monkeypatch):
+        """trigger_event hands the frontend's data dict straight to
+        send_real_notification, which must still offer the masked forms."""
+        ctx, client = _mock_async_client(status_code=200)
+        monkeypatch.setattr(notification_service.httpx, "AsyncClient", MagicMock(return_value=ctx))
+
+        asyncio.run(notification_service.send_real_notification(
+            "line",
+            {"channel_access_token": "tok", "to_user_id": "U1", "message_template": "{hn} {name_short}"},
+            {"hn": "HN-9", "name": "นาง มาลี แก้วตา"},
+        ))
+
+        assert client.post.call_args.kwargs["json"]["messages"][0]["text"] == "HN-9 นาง มา*** แก้***"
+
+
 class TestToBangkokStr:
     def test_naive_datetime_is_assumed_utc(self):
         naive = datetime(2026, 1, 15, 3, 0, 0)  # 03:00 UTC -> 10:00 Bangkok (+7)
