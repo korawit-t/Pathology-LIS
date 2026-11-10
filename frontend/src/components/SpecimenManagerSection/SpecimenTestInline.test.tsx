@@ -43,6 +43,41 @@ const closeIcon = () => document.querySelector(".ant-tag-close-icon") as HTMLEle
 const tagLabels = () =>
   Array.from(document.querySelectorAll(".ant-tag")).map((el) => el.textContent?.trim());
 
+describe("SpecimenTestInline — ลำดับใน dropdown", () => {
+  it("เรียงตามรหัสกรมบัญชีกลาง ไม่ใช่ตามชื่อ และรายการไม่มีรหัสไว้ท้ายสุด", async () => {
+    // backend ส่งมาเรียงตามชื่อ — ตั้งใจให้ลำดับชื่อกับลำดับรหัสไม่ตรงกัน
+    vi.mocked(AnatomicalPathologyTestService.getAllTests).mockResolvedValue({
+      data: [
+        { id: 1, code: "38190", name: "Bone", category: "Surgical Pathology", price_tier_3: 2400 },
+        { id: 2, code: "", name: "Custom fee", category: "Surgical Pathology", price_tier_3: 100 },
+        { id: 3, code: "38001", name: "Surgical biopsy", category: "Surgical Pathology", price_tier_3: 400 },
+        { id: 4, code: "38002", name: "ชิ้นเนื้อ ขนาด 2-5 ซม.", category: "Surgical Pathology", price_tier_3: 500 },
+        { id: 5, code: "38010", name: "Frozen section", category: "Surgical Pathology", price_tier_3: 1160 },
+        { id: 6, code: "00001", name: "Pap smear", category: "Cytology", price_tier_3: 150 },
+      ],
+    } as never);
+    const user = userEvent.setup();
+    renderInline();
+    await screen.findByText("Surgical pathology fee");
+
+    await user.click(screen.getByRole("combobox"));
+
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll(".ant-select-item-option-content")).map(
+          (el) => el.textContent,
+        ),
+      ).toEqual([
+        "Surgical biopsy - 400฿",
+        "ชิ้นเนื้อ ขนาด 2-5 ซม. - 500฿",
+        "Frozen section - 1,160฿",
+        "Bone - 2,400฿",
+        "Custom fee - 100฿",
+      ]),
+    );
+  });
+});
+
 describe("SpecimenTestInline — ยืนยันก่อนลบค่าตรวจ", () => {
   it("กดกากบาทเฉย ๆ ยังไม่ลบ จนกว่าจะกดยืนยัน", async () => {
     const user = userEvent.setup();
