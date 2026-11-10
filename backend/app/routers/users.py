@@ -21,6 +21,7 @@ from app.crud import user_trusted_device as device_crud
 from app.crud import user_mfa as mfa_crud
 from app.models.audit_log import AuditLog
 from app.context import current_ip
+from app.core.rate_limit import signed_in_user_key
 from app.core.security import create_access_token, create_refresh_token, verify_password
 from app.routers.auth import _set_auth_cookies, limiter
 
@@ -155,9 +156,14 @@ def delete_existing_user(
     return {"message": "User deleted successfully"}
 
 
+# Per user: an address is shared by everyone behind NAT or Docker Desktop, and
+# a forced change for many accounts at once must not lock colleagues out of it.
+PASSWORD_CHANGE_ATTEMPTS_PER_USER = "5/minute"
+
+
 @router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)
 @allowed_while_password_change_due
-@limiter.limit("5/minute")
+@limiter.limit(PASSWORD_CHANGE_ATTEMPTS_PER_USER, key_func=signed_in_user_key)
 def update_my_password(
     request: Request,
     response: Response,

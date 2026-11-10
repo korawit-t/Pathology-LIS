@@ -18,6 +18,7 @@ from app.models.revoked_token import RevokedToken
 from app.models.system_setting import SystemSetting
 from app.context import current_user_id, current_ip
 from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
+from app.core.rate_limit import refresh_token_user_key
 from app.crud import user_mfa as mfa_crud
 from app.crud import user_trusted_device as device_crud
 from app.schemas.user_mfa import MfaLoginRequest
@@ -480,8 +481,14 @@ def complete_mfa_login(
 
 
 # --- Refresh (with rotation) ---
+# Per user, not per address: every tab refreshes on its own schedule, and a
+# per-address cap made colleagues behind one address sign each other out
+# (app/core/rate_limit.py).
+REFRESH_ATTEMPTS_PER_USER = "20/minute"
+
+
 @router.post("/refresh")
-@limiter.limit("20/minute")
+@limiter.limit(REFRESH_ATTEMPTS_PER_USER, key_func=refresh_token_user_key)
 def refresh_access_token(
     request: Request,
     response: Response,
