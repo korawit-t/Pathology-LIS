@@ -338,8 +338,8 @@
                   <div><span class="label" style="width: 55px; display: inline-block">Dept:</span><span class="value" style="font-size: 10px">{{ department_name or '-' }}</span></div>
                 </td>
                 <td style="width: 25%">
-                  <div><span class="label" style="width: 55px; display: inline-block">Collected:</span><span class="value">{{ collect_at.strftime('%d/%m/%Y') if collect_at else '-' }}</span></div>
-                  <div><span class="label" style="width: 55px; display: inline-block">Received:</span><span class="value">{{ registered_at.strftime('%d/%m/%Y') if registered_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Collected:</span><span class="value">{{ collect_at.strftime('%d/%m/%Y %H:%M') if collect_at else '-' }}</span></div>
+                  <div><span class="label" style="width: 55px; display: inline-block">Received:</span><span class="value">{{ registered_at.strftime('%d/%m/%Y %H:%M') if registered_at else '-' }}</span></div>
                   <div><span class="label" style="width: 55px; display: inline-block">Reported:</span><span class="value">{{ reported_at.strftime('%d/%m/%Y %H:%M') if reported_at else '-' }}</span></div>
                 </td>
               </tr>
