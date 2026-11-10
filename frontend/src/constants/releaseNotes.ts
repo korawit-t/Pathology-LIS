@@ -22,6 +22,27 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "3.1.1",
+    date: "2026-11-10",
+    summary:
+      "แก้ปัญหาที่พบจากการติดตั้งด้วย Docker แบบเดียวกับที่โรงพยาบาลอื่นจะทำ และผู้ใช้ที่เข้ามาจาก IP เดียวกันไม่ทำให้กันหลุดออกจากระบบแล้ว",
+    upgrade: [
+      "ห้ามใช้ docker compose down -v บนเครื่อง production: หน้านี้ในเวอร์ชัน 3.1.0 แนะนำคำสั่งนี้ไว้ใช้ reset ฐานข้อมูล dev แต่คำสั่งนี้ลบฐานข้อมูลและไฟล์อัปโหลดทั้งหมดถาวร",
+      "Docker: ถ้าค่าใน backend/.env มีเครื่องหมาย $ (เช่นรหัสผ่าน HIS) ให้เขียนเป็น $$ ไม่อย่างนั้นค่าส่วนหลัง $ จะหายไป เครื่องที่ไม่ได้ใช้ Docker ไม่ต้องแก้",
+      "Docker: มีค่าใหม่ที่ตั้งใน .env ที่ root ได้ (ไม่บังคับ) ได้แก่ COMPOSE_PROJECT_NAME, FRONTEND_PORT, BACKEND_PORT, WSI_HOST_PATH ถ้าเครื่องที่ใช้งานอยู่แล้วจะตั้ง COMPOSE_PROJECT_NAME ต้องใช้ชื่อเดิมของ volume (ดูจาก docker volume ls) ไม่อย่างนั้นจะเปิดขึ้นมาเป็นฐานข้อมูลว่าง",
+    ],
+    fixed: [
+      "ผู้ใช้หลายคนที่เข้ามาจาก IP เดียวกัน (Docker Desktop, NAT) ไม่ทำให้กันหลุดออกจากระบบแล้ว: การต่ออายุ session, การเปลี่ยนรหัสผ่าน และ MFA จำกัดจำนวนครั้งต่อผู้ใช้",
+      "หลังฐานข้อมูล restart การใช้งานครั้งแรกไม่ขึ้น error 500 แล้ว",
+      "Docker: log ของ container ถูกหมุนเวียน ไม่โตจนเต็มดิสก์",
+      "Docker: ตั้ง port, ชื่อ project และโฟลเดอร์ WSI ใน .env ได้ ไม่ต้องแก้ docker-compose.yml",
+      "Docker: เปิดดูภาพ WSI ได้ โดย mount โฟลเดอร์ของ scanner แบบอ่านอย่างเดียว",
+      "Docker: clone บน Windows แล้วสคริปต์ .sh ทำงานได้ (role lis_app_rw ถูกสร้าง)",
+      "Docker: ตัวอย่าง ALLOWED_ORIGINS ใส่ port 3000 ของ frontend แล้ว จึง login จากเครื่องอื่นได้",
+      "README: เพิ่มขั้นตอนอัปเกรด, restore, ตรวจ backup และการแก้ปัญหาสำหรับ Docker",
+    ],
+  },
+  {
     version: "3.1.0",
     date: "2026-11-10",
     summary:
@@ -30,7 +51,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "เวลาในฐานข้อมูลตรงกับแอปแล้ว: ทุก session ของฐานข้อมูลตั้งเป็น Asia/Bangkok ถ้า PostgreSQL ตั้งเป็น UTC อยู่ (เช่นใน Docker) เวลาที่ฐานข้อมูลบันทึกเอง เช่น เวลาลงทะเบียนเคส จะถูกต้องตั้งแต่เวอร์ชันนี้ ส่วนข้อมูลเก่าจะช้าไป 7 ชั่วโมงเหมือนเดิม ตรวจได้ด้วย SHOW timezone; (เครื่อง Windows ทั่วไปเป็น Asia/Bangkok อยู่แล้ว ไม่มีอะไรเปลี่ยน)",
       "Docker production: ต้องมีไฟล์ .env ที่ root ของ repo (POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB) ดูตัวอย่างใน .env.example และใช้รหัสผ่านที่มีแต่ตัวอักษรกับตัวเลข",
       "Docker: ENVIRONMENT อ่านจาก backend/.env แล้ว ถ้าเปิดระบบผ่าน HTTPS ให้ตั้ง ENVIRONMENT=production",
-      "Docker dev: ฐานข้อมูล dev ที่สร้างจากเวอร์ชันก่อนต้อง reset หนึ่งครั้งด้วย docker compose down -v",
+      "Docker dev เท่านั้น: ฐานข้อมูล dev ที่สร้างจากเวอร์ชันก่อนต้องล้างหนึ่งครั้งตาม README หัวข้อ 4A ส่วนเครื่อง production ไม่ต้องทำอะไร",
     ],
     added: [
       "แสดง release notes ในหน้า About อ่านได้แม้เครื่องไม่มีอินเทอร์เน็ต",

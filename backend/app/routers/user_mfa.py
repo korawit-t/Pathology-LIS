@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.context import current_ip
 from app.core.mfa_crypto import MfaEncryptionKeyError, is_configured
 from app.core.config import IS_PRODUCTION, COOKIE_DOMAIN, COOKIE_SAMESITE
+from app.core.rate_limit import signed_in_user_key
 from app.dependencies import step_up as step_up_dep
 from app.core.security import STEP_UP_EXPIRE_MINUTES
 from jose import JWTError, jwt
@@ -46,7 +47,11 @@ from app.schemas.user_mfa import (
     TrustedDeviceRead,
 )
 
+# Every route here needs a session, so each limit is keyed on its user, not on
+# the address, which colleagues behind NAT or Docker Desktop all share
+# (app/core/rate_limit.py).
 limiter = Limiter(key_func=get_remote_address)
+MFA_ATTEMPTS_PER_USER = "10/minute"
 
 router = APIRouter(prefix="/auth/mfa", tags=["Authentication"])
 
@@ -130,7 +135,7 @@ def get_mfa_status(
 
 
 @router.post("/setup", response_model=MfaSetupResponse)
-@limiter.limit("10/minute")
+@limiter.limit(MFA_ATTEMPTS_PER_USER, key_func=signed_in_user_key)
 def start_mfa_setup(
     request: Request,
     payload: MfaPasswordConfirm,
@@ -166,7 +171,7 @@ def start_mfa_setup(
 
 
 @router.post("/confirm", response_model=MfaConfirmResponse)
-@limiter.limit("10/minute")
+@limiter.limit(MFA_ATTEMPTS_PER_USER, key_func=signed_in_user_key)
 def confirm_mfa_setup(
     request: Request,
     payload: MfaConfirmRequest,
@@ -211,7 +216,7 @@ def confirm_mfa_setup(
 
 
 @router.post("/disable", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("10/minute")
+@limiter.limit(MFA_ATTEMPTS_PER_USER, key_func=signed_in_user_key)
 def disable_mfa(
     request: Request,
     payload: MfaPasswordConfirm,
@@ -282,7 +287,7 @@ def revoke_all_trusted_devices(
 
 
 @router.post("/step-up", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("10/minute")
+@limiter.limit(MFA_ATTEMPTS_PER_USER, key_func=signed_in_user_key)
 def step_up(
     request: Request,
     response: Response,

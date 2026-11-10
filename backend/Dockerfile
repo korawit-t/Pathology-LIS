@@ -1,5 +1,9 @@
 # ใช้ Python Image ที่เบาและเสถียร
-FROM python:3.14-slim
+# Pinned to the Debian release (trixie) as well as the Python minor: plain
+# `3.14-slim` moves to the next Debian when it ships, where the apt package
+# names below are not guaranteed to exist, and the build would then break on
+# the first fresh install after that rather than on a change made here.
+FROM python:3.14-slim-trixie
 
 # ตั้งค่า Working Directory
 WORKDIR /app
@@ -60,7 +64,8 @@ RUN groupadd --gid 1001 appgroup \
 USER appuser
 
 # 🔒 SECURITY: production CMD does NOT run seed_data.py.
-#   - create_tables.py is idempotent (skips existing tables) so it's safe on restart.
+#   - `alembic upgrade head` is a no-op at head, so it's safe on restart; under
+#     docker compose the `migrate` service has already run it as the owner.
 #   - seed_data.py inserts a default admin (admin/admin1234, marked as
 #     a temporary password). Running it on every container start would
 #     re-attempt to seed on every restart and ship a known credential

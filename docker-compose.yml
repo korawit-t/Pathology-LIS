@@ -22,7 +22,21 @@
 #
 #   # Local development (auto-merges override.yml):
 #   docker compose up -d --build
+#
+# Everything that differs between sites (ports, the WSI scanner folder, the
+# project name) is read from the root .env, so this file never needs editing
+# and `git pull` never conflicts with a local change to it.
 # =============================================================================
+
+# Container logs rotate instead of growing forever. Docker's default json-file
+# driver keeps every line, and the backend's access log carries request URLs,
+# HNs and patient-name searches included. Five 20 MB files per service are kept,
+# about a week of a busy lab; `docker compose logs` reads them as usual.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
 
 services:
   # --- Database migrations (one-shot) ---
@@ -43,6 +57,7 @@ services:
       - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     command: ["alembic", "upgrade", "head"]
     restart: "no"
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy
@@ -55,12 +70,19 @@ services:
     # backend/.env, and a LAN install over plain HTTP has to run with
     # ENVIRONMENT=development (see backend/.env.example). Unset, the backend
     # itself defaults to production (fail-closed).
+    #
+    # Compose reads this file itself, and it expands `$NAME` inside values the
+    # way a shell would: a password Pa$word reaches the backend as "Pa". A `$`
+    # that is part of a value is written `$$` here (see backend/.env.example).
     env_file:
       - ./backend/.env
     container_name: pathology-backend
     restart: unless-stopped
+    logging: *logging
     ports:
-      - "8000:8000"
+      # BACKEND_PORT in the root .env; frontend/.env's VITE_API_BASE_URL has
+      # to name the same port.
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       # Every uploaded image and file (gross/cyto/microscopic photos, request
       # forms, consult PDFs, logos). The code writes to `uploads/` under
@@ -69,6 +91,12 @@ services:
       # A named volume, not a host bind mount: the backend runs as uid 1001
       # and a bind-mounted host directory is root-owned on Linux.
       - uploads_data:/app/uploads
+      # Whole-slide images, read in place from the folder the scanner writes
+      # to. Set WSI_HOST_PATH in the root .env to that folder (an absolute
+      # path), then give /wsi as the WSI Root Path in System Settings → WSI
+      # Settings. Unset, an empty volume stands in and the viewer finds nothing.
+      # Read-only: the viewer never writes to the scanner's folder.
+      - ${WSI_HOST_PATH:-wsi_unset}:/wsi:ro
     depends_on:
       db:
         condition: service_healthy
@@ -83,16 +111,22 @@ services:
     build: ./frontend
     container_name: pathology-frontend
     restart: unless-stopped
+    logging: *logging
     ports:
-      - "3000:80"
+      # FRONTEND_PORT in the root .env; backend/.env's ALLOWED_ORIGINS has to
+      # name the same port (http://<server-ip>:<port>).
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
 
   # --- ฐานข้อมูล PostgreSQL ---
   db:
+    # Pinned to the major version on purpose: minor releases are drop-in, but
+    # a new major cannot read this data directory without pg_upgrade.
     image: postgres:15-alpine
     container_name: pathology-db
     restart: unless-stopped
+    logging: *logging
     # 🔒 SECURITY: DB port is NOT published to the host in production.
     # The backend reaches it over the internal Docker network. The dev
     # override re-publishes 5432:5432 for local debugging.
@@ -118,6 +152,12 @@ services:
       # Runs once on first volume creation to provision the lis_app_rw role.
       - ./backend/db/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
 
+# Compose names these <project>_postgres_data and so on, and the project name
+# defaults to the folder this file is in: rename or move the folder and the
+# next `up` starts on new, empty volumes. COMPOSE_PROJECT_NAME in the root .env
+# fixes the name; see .env.example.
 volumes:
   postgres_data:
   uploads_data:
+  # Stand-in for WSI_HOST_PATH when no scanner folder is configured.
+  wsi_unset:

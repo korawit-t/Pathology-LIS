@@ -5,7 +5,7 @@
 # (Docker Compose loads docker-compose.override.yml automatically). Provides
 # safe-to-commit dev defaults so a fresh clone needs only backend/.env:
 #
-#   git clone ... && cd Pathology_LIS
+#   git clone https://github.com/korawit-t/Pathology-LIS.git && cd Pathology-LIS
 #   cp backend/.env.example backend/.env    # then set SECRET_KEY in it
 #   docker compose up -d --build
 #
@@ -14,8 +14,9 @@
 #
 # What this override does (vs the production baseline):
 #   - hardcodes a dev DB password / user / db name so no root .env is needed
-#   - publishes 5432:5432 so you can connect a DB client from the host
-#   - builds the frontend against http://localhost:8000
+#   - publishes the DB on port 5432 (DB_PORT in a root .env) so you can
+#     connect a DB client from the host
+#   - builds the frontend against http://localhost:8000 (BACKEND_PORT)
 #   - re-runs seed_data.py on every backend start so the dev admin user,
 #     templates, and reference data exist (idempotent — see seed_data.py)
 #   - drops `restart: unless-stopped` so dev failures are visible
@@ -23,9 +24,17 @@
 #
 # The schema comes from Alembic (the `migrate` service), as in production —
 # not from create_tables.py, which leaves no alembic_version behind and so
-# could never take a later migration. A dev database created by an older
-# version of this file has that problem: reset it once with
-#   docker compose down -v && docker compose up -d --build
+# could never take a later migration. A dev database created by a version of
+# this file before 3.1.0 has that problem (`migrate` fails with DuplicateTable
+# or "type ... already exists"). Empty it once, then start again:
+#   docker compose up -d db
+#   docker compose exec db psql -U pathology_dev -d pathology_lis -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+#   docker compose up -d --build
+# That deletes every row in the dev database and nothing else; uploads stay.
+# It logs in as the dev account, which a production database does not have,
+# so pointed at production it fails instead of deleting anything. Do NOT use
+# `docker compose down -v` for this: it also deletes the uploads volume, and
+# on a production server it would delete the real database and every upload.
 #
 # 🔒 NEVER copy these defaults into a production environment. The seeded
 # admin uses `admin/admin1234` (marked as a temporary password — first
@@ -71,13 +80,15 @@ services:
     build:
       args:
         # Baked into the bundle at build time — see frontend/Dockerfile.
-        VITE_API_BASE_URL: http://localhost:8000
+        VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
 
   db:
     restart: "no"
     # Publish DB port to the host for local debugging (psql, DBeaver, etc.).
+    # DB_PORT in a root .env moves it off 5432, e.g. when a PostgreSQL
+    # installed on the host already listens there.
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=pathology_dev
       - POSTGRES_PASSWORD=dev_password_change_me

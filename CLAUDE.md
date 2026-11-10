@@ -59,7 +59,7 @@ docker compose -f docker-compose.yml up -d --build     # production — never om
 docker compose -f docker-compose.yml run --rm migrate  # apply migrations on their own (every `up` already runs the one-shot `migrate` service first)
 ```
 
-Docker reads three env files: root `.env` (DB container creds, `.env.example`), `backend/.env` (everything the backend reads — compose sets nothing over it, ENVIRONMENT included), `frontend/.env` (`VITE_API_BASE_URL`, baked in at build time). `migrate` runs Alembic as the DB owner so `backend/.env` may use the least-privilege `lis_app_rw`. Every DB session is set to Asia/Bangkok in `app/db/database.py` — naive DateTime columns defaulting to `now()` depend on it.
+Docker reads three env files: root `.env` (DB container creds plus the per-site knobs `COMPOSE_PROJECT_NAME`, `FRONTEND_PORT`/`BACKEND_PORT`, `WSI_HOST_PATH` — `.env.example`; site settings go there, never into a local edit of `docker-compose.yml`), `backend/.env` (everything the backend reads — compose sets nothing over it, ENVIRONMENT included; compose expands `$name` in its values, so a literal `$` is `$$` under Docker only), `frontend/.env` (`VITE_API_BASE_URL`, baked in at build time). `migrate` runs Alembic as the DB owner so `backend/.env` may use the least-privilege `lis_app_rw`. Every DB session is set to Asia/Bangkok in `app/db/database.py` — naive DateTime columns defaulting to `now()` depend on it. Never suggest `docker compose down -v` as a reset: it also deletes `uploads_data`, and on a prod box the real DB (the dev-only reset is in README 4A).
 
 ### CI
 
@@ -72,6 +72,8 @@ Docker reads three env files: root `.env` (DB container creds, `.env.example`), 
 Every domain (surgical case, gyne cytology, non-gyne cytology, outlab consult, WSI, etc.) gets its own file in each of `app/routers/`, `app/crud/`, `app/schemas/`, `app/models/` (~60 files each). Routers are thin HTTP glue only — they resolve auth/query params and call the matching `crud` function; business logic and query-building lives in `crud`; Pydantic `schemas` mediate request/response shape; SQLAlchemy `models` are the DB layer. When adding a feature, touch the same quartet of files following the naming convention of the domain you're extending (e.g. `nongyne_cyto_case.py` in all four dirs).
 
 Other backend dirs: `app/core/` (config, security/JWT, `roles.py` RBAC constants), `app/dependencies/auth.py` (`RoleChecker`, `get_current_user`), `app/middleware/audit_middleware.py`, `app/his_adapters/` (HOSxP/SSB HIS integration — see below), `app/services/`, `app/enums/`, `app/utils/`, `app/templates/reports/` (Jinja2 PDF templates).
+
+**Rate limits**: slowapi, in-process. Login stays keyed per client address (plus a per-(username, address) cap and per-account backoff in `auth.py`); every route behind a session keys on the token's user via `app/core/rate_limit.py` (`signed_in_user_key`, `refresh_token_user_key`), because Docker Desktop, NAT and an unlisted proxy give everyone one address. A new limited signed-in route takes `key_func=signed_in_user_key`.
 
 **RBAC**: role gates are declared once in `app/core/roles.py` as `RoleChecker([...])` constants (e.g. `CAN_ACCESS_PATIENT`, `CAN_WRITE_GYNE_CYTO_REPORT`, `CAN_APPROVE`) and applied as FastAPI `Depends(...)` at the router. Follow the existing naming pattern (`CAN_{ACCESS|READ|WRITE|APPROVE}_{DOMAIN}`) rather than inlining role lists in a router.
 
