@@ -1,12 +1,26 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, func
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, ForeignKey, UniqueConstraint, func
 from app.db.database import Base
 
 
 class LegacySurgicalReport(Base):
     __tablename__ = "legacy_surgical_reports"
+    __table_args__ = (
+        UniqueConstraint("source_system", "source_ref", name="uq_legacy_surgical_reports_source"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     case_id = Column(Integer, nullable=True)
+
+    # Set on rows brought in by the legacy import (app/models/legacy_import.py):
+    # the old system's name and its own id for the report. Unique together, so
+    # importing the same file again cannot create a row twice. Rows entered
+    # before the import existed have both NULL, which the constraint allows.
+    source_system = Column(String, nullable=True)
+    source_ref = Column(String, nullable=True)
+    # The batch that created the row; rolling that batch back deletes it.
+    import_batch_id = Column(
+        Integer, ForeignKey("legacy_import_batches.id", ondelete="SET NULL", name="fk_legacy_surgical_reports_import_batch_id"), nullable=True, index=True
+    )
 
     # Patient snapshot
     accession_no = Column(String, index=True, nullable=True)

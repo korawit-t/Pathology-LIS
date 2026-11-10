@@ -88,6 +88,12 @@ CAN_MANAGE_SYSTEM_SETTINGS = RoleChecker(["admin"])
 # 2b. Outbound HIS export log (view + manual retry)
 CAN_VIEW_HIS_EXPORT_LOG = RoleChecker(["admin"])
 
+# 2c. Importing reports from an old system into the legacy report tables.
+# A one-off data migration that writes patient reports in bulk (and can
+# delete a whole batch again), so admin only. Mirrored in the frontend as
+# PAGE_PERMISSIONS["legacy-import"].
+CAN_IMPORT_LEGACY_REPORT = RoleChecker(["admin"])
+
 # 3. WSI Viewer
 CAN_VIEW_WSI = RoleChecker(["admin", "lab_manager", "pathologist", "senior_pathologist", "histo"])
 

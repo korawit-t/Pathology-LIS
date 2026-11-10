@@ -94,6 +94,7 @@ const BillingHub = lazy(() => import("../Admin/Billing"));
 const AuditLogPage = lazy(() => import("../Admin/AuditLogPage"));
 const CriticalNotificationLogPage = lazy(() => import("../Admin/CriticalNotificationLogPage"));
 const HisExportLogPage = lazy(() => import("../Admin/HisExportLogPage"));
+const LegacyImportPage = lazy(() => import("../Admin/LegacyImport"));
 
 interface Props {
   currentView: string;
@@ -289,6 +290,7 @@ const VIEW_CONFIG: Record<
   "audit-log": { pageKey: "audit-log", component: AuditLogPage },
   "critical-notification-log": { pageKey: "audit-log", component: CriticalNotificationLogPage },
   "his-export-log": { pageKey: "his-export-log", component: HisExportLogPage },
+  "legacy-import": { pageKey: "legacy-import", component: LegacyImportPage },
   "slide-block-release": { pageKey: "slide-block-release", component: SlideBlockReleasePage },
   accession: { pageKey: "accession", component: UnifiedAccession },
 };

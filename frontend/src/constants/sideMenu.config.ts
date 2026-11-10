@@ -27,6 +27,7 @@ import {
   BankOutlined,
   CloudServerOutlined,
   CloudUploadOutlined,
+  ImportOutlined,
   HistoryOutlined,
   HomeOutlined,
 } from "@ant-design/icons";
@@ -451,6 +452,13 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         icon: CloudUploadOutlined,
         view: "his-export-log",
         roles: PAGE_PERMISSIONS["his-export-log"],
+      },
+      {
+        key: "legacy-import",
+        label: "Legacy Report Import",
+        icon: ImportOutlined,
+        view: "legacy-import",
+        roles: PAGE_PERMISSIONS["legacy-import"],
       },
     ],
   },
