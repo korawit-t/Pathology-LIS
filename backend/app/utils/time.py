@@ -1,7 +1,12 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-_TZ = ZoneInfo("Asia/Bangkok")
+# The one wall clock this app keeps. Every naive DateTime column holds a time on
+# it: Python writes local_now(), and app/db/database.py sets each PostgreSQL
+# session to the same zone so a column filled by the database's own now()
+# agrees with it.
+APP_TIMEZONE = "Asia/Bangkok"
+_TZ = ZoneInfo(APP_TIMEZONE)
 
 
 def local_now() -> datetime:

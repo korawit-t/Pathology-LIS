@@ -55,9 +55,11 @@ npm run coverage
 
 ```bash
 docker compose up -d --build                          # dev (auto-loads docker-compose.override.yml: dev DB password, seed_data.py on every start, admin/admin1234)
-docker compose -f docker-compose.yml up -d --build     # production — never omit -f in prod, the override has insecure defaults
-docker compose exec backend alembic upgrade head       # apply migrations
+docker compose -f docker-compose.yml up -d --build     # production — never omit -f in prod, the override has insecure defaults; needs root .env (POSTGRES_*)
+docker compose -f docker-compose.yml run --rm migrate  # apply migrations on their own (every `up` already runs the one-shot `migrate` service first)
 ```
+
+Docker reads three env files: root `.env` (DB container creds, `.env.example`), `backend/.env` (everything the backend reads — compose sets nothing over it, ENVIRONMENT included), `frontend/.env` (`VITE_API_BASE_URL`, baked in at build time). `migrate` runs Alembic as the DB owner so `backend/.env` may use the least-privilege `lis_app_rw`. Every DB session is set to Asia/Bangkok in `app/db/database.py` — naive DateTime columns defaulting to `now()` depend on it.
 
 ### CI
 

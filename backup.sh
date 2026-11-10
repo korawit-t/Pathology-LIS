@@ -27,8 +27,36 @@ ENV_FILE="$(dirname "$0")/backend/.env"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "[ERROR] ไม่พบ $ENV_FILE" >&2; exit 1
 fi
-# shellcheck disable=SC1090
-set -a; source "$ENV_FILE"; set +a
+
+# Read only the keys this script uses, the way python-dotenv and docker compose
+# read them. backend/.env is not a shell script: `source` ran an unquoted value
+# with spaces, such as `HOSXP_FORM_GYNE=PAP smear, liquid based ...` from
+# .env.example, as a command, and under `set -e` that ended the script right
+# there, before any CSV row or Slack alert, so the backup stopped silently.
+env_get() {
+  local line value quote
+  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" "$ENV_FILE" | tail -n 1 || true)
+  [[ -z "$line" ]] && return 0
+  value="${line#*=}"
+  value="${value%$'\r'}"                      # a file last saved on Windows
+  value="${value#"${value%%[![:space:]]*}"}"  # leading whitespace
+  quote="${value:0:1}"
+  if [[ "$quote" == '"' || "$quote" == "'" ]]; then
+    value="${value:1}"
+    value="${value%%"$quote"*}"               # up to the closing quote
+  else
+    value="${value%%[[:space:]]#*}"           # an inline ` # comment`
+    value="${value%"${value##*[![:space:]]}"}" # trailing whitespace
+  fi
+  printf '%s' "$value"
+}
+
+DATABASE_URL="$(env_get DATABASE_URL)"
+BACKUP_ROOT="$(env_get BACKUP_ROOT)"
+DB_CONTAINER="$(env_get DB_CONTAINER)"
+BACKEND_CONTAINER="$(env_get BACKEND_CONTAINER)"
+SLACK_BACKUP_WEBHOOK="$(env_get SLACK_BACKUP_WEBHOOK)"
+BACKUP_KEEP="$(env_get BACKUP_KEEP)"
 
 # --- required ---
 if [[ -z "${DATABASE_URL:-}" ]]; then

@@ -1,0 +1,12 @@
+# The image runs its own `npm install` for Linux. A host node_modules copied in
+# afterwards by `COPY . .` would lay the host's packages, native bindings
+# included (e.g. @rolldown/binding-darwin-arm64), over the ones just installed.
+node_modules/
+dist/
+coverage/
+.pytest_cache/
+.DS_Store
+
+# .env is deliberately NOT ignored: Vite reads VITE_API_BASE_URL from it during
+# `npm run build`. It holds only VITE_* values, which end up in the public
+# bundle anyway.

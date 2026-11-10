@@ -3,20 +3,29 @@
 #
 # Auto-merged with docker-compose.yml when you run `docker compose up`
 # (Docker Compose loads docker-compose.override.yml automatically). Provides
-# safe-to-commit dev defaults so a fresh clone "just works":
+# safe-to-commit dev defaults so a fresh clone needs only backend/.env:
 #
-#   git clone ... && cd Pathology_LIS && docker compose up -d --build
+#   git clone ... && cd Pathology_LIS
+#   cp backend/.env.example backend/.env    # then set SECRET_KEY in it
+#   docker compose up -d --build
 #
 # Production deploys MUST skip this file:
 #   docker compose -f docker-compose.yml up -d --build
 #
 # What this override does (vs the production baseline):
-#   - hardcodes a dev DB password / user / db name so no shell env is needed
+#   - hardcodes a dev DB password / user / db name so no root .env is needed
 #   - publishes 5432:5432 so you can connect a DB client from the host
+#   - builds the frontend against http://localhost:8000
 #   - re-runs seed_data.py on every backend start so the dev admin user,
 #     templates, and reference data exist (idempotent — see seed_data.py)
 #   - drops `restart: unless-stopped` so dev failures are visible
 #   - sets EXPOSE_DOCS=true so /docs and /redoc are available in dev
+#
+# The schema comes from Alembic (the `migrate` service), as in production —
+# not from create_tables.py, which leaves no alembic_version behind and so
+# could never take a later migration. A dev database created by an older
+# version of this file has that problem: reset it once with
+#   docker compose down -v && docker compose up -d --build
 #
 # 🔒 NEVER copy these defaults into a production environment. The seeded
 # admin uses `admin/admin1234` (marked as a temporary password — first
@@ -24,6 +33,14 @@
 # =============================================================================
 
 services:
+  migrate:
+    environment:
+      # The dev DB owner — matches the `db` service below.
+      - DATABASE_URL=postgresql+psycopg2://pathology_dev:dev_password_change_me@db:5432/pathology_lis
+    volumes:
+      # Migrations from the working tree, not the ones baked into the image.
+      - ./backend:/app
+
   backend:
     restart: "no"
     environment:
@@ -35,24 +52,26 @@ services:
       # browsable schema is the point of a dev stack. Production skips this
       # file, so it stays off there unless backend/.env asks for it.
       - EXPOSE_DOCS=true
-    # Override the production CMD to also run the seed on first start.
+    # Override the production CMD to also run the seed on every start.
     # `seed_data.py` is idempotent: it skips records that already exist.
+    # The `migrate` service has already brought the schema to head.
     command: >
-      sh -c "python create_tables.py
-      && python seed_data.py
+      sh -c "python seed_data.py
       && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       # Live-reload backend code in dev (uvicorn --reload picks up changes).
+      # Uploads stay in the base file's uploads_data volume, mounted over
+      # /app/uploads: a host directory bind-mounted there is owned by the
+      # host user (or by root, if Docker creates it), and the backend runs as
+      # uid 1001, so on Linux every upload would fail with permission denied.
       - ./backend:/app
-      # Keep dev uploads in the host's backend/uploads, as a non-Docker run
-      # does. Same container path, so this replaces the base file's
-      # uploads_data volume.
-      - ./backend/uploads:/app/uploads
 
   frontend:
     restart: "no"
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000
+    build:
+      args:
+        # Baked into the bundle at build time — see frontend/Dockerfile.
+        VITE_API_BASE_URL: http://localhost:8000
 
   db:
     restart: "no"

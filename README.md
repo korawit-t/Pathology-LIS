@@ -91,18 +91,27 @@ cd Pathology_LIS
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
+cp .env.example .env            # Docker production only — the database container's credentials
 ```
 
 ### 3. Configure environment variables
+
+**`.env`** (repo root, Docker production only) — the PostgreSQL container's own
+credentials. docker compose reads it by itself; the dev override doesn't need it.
+
+| Variable | What to set |
+|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | The database owner and database name. Letters and digits only for the password (`openssl rand -hex 24`) — compose builds a connection URL from it. Without these, the database container refuses to start. |
+| `LIS_APP_PASSWORD` | Optional. Creates the least-privilege role `lis_app_rw` when the database volume is first created; `backend/.env` can then connect as it while migrations keep running as the owner. |
 
 **`backend/.env`** — required changes:
 
 | Variable | What to set |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string (use service name `db` inside Docker) |
+| `DATABASE_URL` | PostgreSQL connection string. In Docker use the service name `db`, and the user, password and database from the root `.env` — or `lis_app_rw` with `LIS_APP_PASSWORD`. Without Docker it must be the database owner, since it also runs the migrations. |
 | `SECRET_KEY` | Random secret — generate with `openssl rand -hex 32` |
 | `MFA_ENCRYPTION_KEY` | Encrypts stored TOTP secrets. See **[docs/mfa-setup.md](./docs/mfa-setup.md)**. Only needed once MFA is enabled; the backend boots without it. **Must not be the same value as `SECRET_KEY`** - a signing key and an encryption key should be separate, and tying TOTP secrets to `SECRET_KEY` would make it impossible to rotate without locking out every enrolled user. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Accepts a comma-separated list to rotate: new key first, old key kept until nothing needs it. |
-| `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. |
+| `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. Docker reads it from this file too. |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins (scheme + host + port). In `production` **all must be `https://`**; in `development` `http://` is allowed. |
 | `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
 | `TRUSTED_PROXY_IPS` | IP/CIDR of the reverse proxy directly in front of the backend (e.g. `127.0.0.1`). Drives the audit-log client IP **and** both login rate limits — set it correctly or every request looks like it came from the proxy: audit rows all record the proxy's address, and the per-IP cap becomes one shared bucket for everyone. Login still works in that state, because the per-username cap and the per-account failure backoff do the account-level work, but the audit trail is useless for tracing an incident. |
@@ -119,7 +128,7 @@ cp frontend/.env.example frontend/.env
 |---|---|---|
 | Auth cookies | plain (work over HTTP) | `Secure` (HTTPS only) |
 | CORS | allows `http://` origins | rejects non-`https://`; **refuses to boot** on http/localhost origins |
-| Swagger `/docs` | enabled | disabled |
+| Swagger `/docs` | off unless `EXPOSE_DOCS=true` | off unless `EXPOSE_DOCS=true` |
 | Use for | local dev, **hospital LAN over plain HTTP** | internet-facing / any HTTPS deployment |
 
 > ⚠️ If you serve over plain HTTP but set `ENVIRONMENT=production`, the backend refuses to start with `ALLOWED_ORIGINS contains plaintext origin ... but ENVIRONMENT=production`. Either keep `development`, or put HTTPS in front and switch the origins to `https://`.
@@ -139,7 +148,8 @@ cp frontend/.env.example frontend/.env
 
 ### 4A. Development mode
 
-Auto-loads `docker-compose.override.yml` which sets dev defaults automatically:
+Auto-loads `docker-compose.override.yml` which sets dev defaults automatically.
+Only `backend/.env` is needed (with a real `SECRET_KEY`); no root `.env`:
 
 ```bash
 docker compose up -d --build
@@ -148,14 +158,20 @@ docker compose up -d --build
 What the override does:
 - Uses a default DB password (`dev_password_change_me`) — no manual DB setup needed
 - Exposes port `5432` for direct DB access (psql / DBeaver / DataGrip)
+- Builds the frontend against `http://localhost:8000`
 - Runs `seed_data.py` on every backend start
 - Creates default admin account: **username `admin`, password `admin1234`**
   - 🔒 System forces a password change on first login (minimum 8 characters)
 
+The schema comes from Alembic, through the same one-shot `migrate` service as
+production. A dev database created before 3.1.0 was built by `create_tables.py`,
+which records no Alembic revision, so `migrate` fails on it with
+`DuplicateTable`. Reset it once: `docker compose down -v && docker compose up -d --build`.
+
 ### 4B. Production mode
 
 ```bash
-# 1. Set all required variables in backend/.env and frontend/.env
+# 1. Set all required variables in .env (repo root), backend/.env and frontend/.env
 
 # 2. Start without the dev override:
 docker compose -f docker-compose.yml up -d --build
@@ -167,6 +183,19 @@ docker compose -f docker-compose.yml run --rm backend python seed_data.py
 ```
 
 > ⚠️ Never run `docker compose up` (without `-f`) on production — it auto-loads the dev override with insecure defaults.
+
+`up` starts the services in order: `db` (once it answers `pg_isready`), then
+`migrate`, which runs `alembic upgrade head` as the database owner and exits,
+then `backend`. If `migrate` fails, the backend is not started —
+`docker compose -f docker-compose.yml logs migrate` says why.
+
+`VITE_API_BASE_URL` is baked into the frontend image when it is built; the
+build stops with a message if `frontend/.env` doesn't set it. After changing
+it, run `up -d --build` again.
+
+The backend container keeps Asia/Bangkok time (`TZ`), and every database
+session it opens is set to Asia/Bangkok whatever the server's own `timezone`
+is, so times written by PostgreSQL and by the app agree.
 
 ### 4C. Cloud deployment (e.g. Railway) as two separate services
 
@@ -414,6 +443,12 @@ disagree. Then collect the entries for CHANGELOG.md:
 git log v2.0.0..HEAD --format='- %s' --no-merges
 ```
 
+and add the admin's summary of them at the top of
+`frontend/src/constants/releaseNotes.ts`. That is what **System Settings →
+About** shows under **Release notes** — bundled with the build, so a server
+with no internet access has it too. `ReleaseNotes.test.tsx` fails while its
+newest entry isn't the version in `package.json`.
+
 Commit and merge the PR. **Only after the merge**, tag the merge commit on
 `main` — a tag made before it lands on the commit that still carries the old
 number:
@@ -435,10 +470,12 @@ gh release create v2.1.0 --verify-tag --latest --title v2.1.0 --notes-file notes
 
 ## Database Migrations
 
-Migrations are managed with Alembic. After pulling updates that include model changes:
+Migrations are managed with Alembic. Under Docker they run by themselves:
+every `docker compose -f docker-compose.yml up -d --build` starts the one-shot
+`migrate` service first, and the backend waits for it. To run them on their own:
 
 ```bash
-docker compose exec backend alembic upgrade head
+docker compose -f docker-compose.yml run --rm migrate
 ```
 
 Or locally (inside the backend virtualenv):

@@ -1,9 +1,14 @@
 # =============================================================================
 # Production baseline.
 #
-# This file ships ZERO secrets and ZERO weak defaults. It must be combined
-# with environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
-# DATABASE_URL) supplied either via shell env or a root-level .env file.
+# This file ships ZERO secrets and ZERO weak defaults. It reads three files:
+#
+#   .env           (repo root)  POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB /
+#                               LIS_APP_PASSWORD — the database container's own
+#                               credentials. Copy .env.example to start one.
+#   backend/.env                everything the backend reads, DATABASE_URL and
+#                               ENVIRONMENT included.
+#   frontend/.env               VITE_API_BASE_URL, baked into the frontend build.
 #
 # Local development uses docker-compose.override.yml (auto-loaded by
 # `docker compose up`) which provides safe-to-commit DEV defaults and
@@ -20,11 +25,38 @@
 # =============================================================================
 
 services:
+  # --- Database migrations (one-shot) ---
+  # Runs `alembic upgrade head` as the database OWNER, then exits; the backend
+  # starts only after it succeeds. Migrations need to create and alter tables,
+  # which the least-privilege lis_app_rw role (init-db.sh) is not allowed to
+  # do, so backend/.env can point DATABASE_URL at lis_app_rw while this
+  # service keeps the owner account. The owner password stays in this
+  # short-lived container and never reaches the long-running backend.
+  #
+  # The URL is assembled from the root .env, so POSTGRES_PASSWORD must be
+  # URL-safe (letters and digits — `openssl rand -hex 24` gives one).
+  migrate:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
   # --- Backend (FastAPI) ---
   backend:
     build: ./backend
+    # SECRET_KEY, DATABASE_URL, ALLOWED_ORIGINS, ENVIRONMENT, etc. ENVIRONMENT
+    # is deliberately NOT set here: a value in `environment:` would override
+    # backend/.env, and a LAN install over plain HTTP has to run with
+    # ENVIRONMENT=development (see backend/.env.example). Unset, the backend
+    # itself defaults to production (fail-closed).
     env_file:
-      - ./backend/.env # SECRET_KEY, ALLOWED_ORIGINS, etc.
+      - ./backend/.env
     container_name: pathology-backend
     restart: unless-stopped
     ports:
@@ -37,23 +69,22 @@ services:
       # A named volume, not a host bind mount: the backend runs as uid 1001
       # and a bind-mounted host directory is root-owned on Linux.
       - uploads_data:/app/uploads
-    environment:
-      # DATABASE_URL is supplied via env_file (./backend/.env) — no duplication here.
-      # ENVIRONMENT defaults to "production" (fail-closed); override sets "development".
-      - ENVIRONMENT=${ENVIRONMENT:-production}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   # --- Frontend (React/Vite) ---
+  # VITE_API_BASE_URL is read from frontend/.env at BUILD time (Vite bakes it
+  # into the bundle; nginx never reads it), so the file is part of the build
+  # context rather than an env_file here. Change it, then rebuild.
   frontend:
     build: ./frontend
-    env_file:
-      - ./frontend/.env
     container_name: pathology-frontend
     restart: unless-stopped
     ports:
       - "3000:80"
-    # VITE_API_BASE_URL is supplied via env_file (./frontend/.env).
     depends_on:
       - backend
 
@@ -65,7 +96,7 @@ services:
     # 🔒 SECURITY: DB port is NOT published to the host in production.
     # The backend reaches it over the internal Docker network. The dev
     # override re-publishes 5432:5432 for local debugging.
-    # 🔒 PRODUCTION: set these via shell env or a root .env file before running
+    # 🔒 PRODUCTION: set these in the root .env (copy .env.example) before
     #   docker compose -f docker-compose.yml up -d --build
     # The dev override (docker-compose.override.yml) supplies safe dev defaults.
     environment:
@@ -75,6 +106,13 @@ services:
       # Password for the least-privilege app role provisioned by init-db.sh.
       # Leave empty in dev (init-db.sh skips role creation gracefully).
       - LIS_APP_PASSWORD=${LIS_APP_PASSWORD:-}
+    healthcheck:
+      # $$ = evaluated inside the container, where the variables are set.
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Runs once on first volume creation to provision the lis_app_rw role.
