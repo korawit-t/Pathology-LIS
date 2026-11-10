@@ -5,8 +5,12 @@ FROM python:3.14-slim
 WORKDIR /app
 
 # ป้องกันการสร้างไฟล์ .pyc และให้ Log แสดงผลทันที
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# The app keeps naive Asia/Bangkok wall-clock times (app/utils/time.py), and a
+# container's clock is UTC unless told otherwise: date.today() in an age
+# calculation would otherwise roll over at 07:00 local time.
+ENV TZ=Asia/Bangkok
 
 # 🌟 ติดตั้ง Dependencies สำหรับ:
 # 1. PostgreSQL (gcc, libpq-dev)

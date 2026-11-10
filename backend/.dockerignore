@@ -2,3 +2,22 @@
 # the image. A local uploads/ would otherwise be baked in, then copied into a
 # fresh volume the first time it is mounted.
 uploads/
+
+# Secrets. docker-compose.yml hands backend/.env to the container at run time
+# (env_file); baked into an image layer, SECRET_KEY, the HIS database password
+# and the API keys would travel with the image to wherever it is pushed or
+# saved, and outlive every later edit of the file.
+.env
+*.env
+!.env.example
+
+# Local virtualenvs (hundreds of MB of host-built packages the image never
+# uses — it installs its own from requirements.txt) and tool caches.
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
