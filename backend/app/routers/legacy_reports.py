@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Optional
 from app.db.database import get_db
+from app.crud import legacy_report as legacy_report_crud
 from app.models.legacy_surgical_report import LegacySurgicalReport
 from app.models.legacy_gyne_cyto_report import LegacyGyneCytoReport
 from app.models.legacy_nongyne_cyto_report import LegacyNongyneCytoReport
@@ -127,52 +128,15 @@ def _build_legacy_pdf_data(report, db: Session) -> dict:
 def search_legacy_reports(
     q: Optional[str] = Query(None),
     hospital_id: Optional[int] = Query(None),
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=0),
     db: Session = Depends(get_db),
 ):
     if q and len(q) < 3:
         return {"items": [], "total": 0}
-
-    results = []
-    for model, case_type in [
-        (LegacySurgicalReport, "SURGICAL"),
-        (LegacyGyneCytoReport, "GYNE"),
-        (LegacyNongyneCytoReport, "NONGYNE"),
-    ]:
-        mq = db.query(model).filter(model.status == "published")
-        if q:
-            mq = mq.filter(_search_filter(model, q))
-        if hospital_id is not None:
-            mq = mq.filter(model.hospital_id == hospital_id)
-        for r in mq.all():
-            results.append({
-                "id": r.id,
-                "case_type": case_type,
-                "accession_no": r.accession_no,
-                "patient_hn": r.patient_hn,
-                "patient_title": r.patient_title,
-                "patient_name": r.patient_name,
-                "patient_ln": r.patient_ln,
-                "status": "published",
-                "published_at": r.published_at,
-                "reported_at": r.reported_at,
-                "registered_at": getattr(r, "registered_at", r.reported_at),
-                "clinician_name": r.clinician_name,
-                "pathologist_name": r.pathologist_name,
-                "hospital_name": r.hospital_name,
-                "is_read": r.is_read,
-                "read_at": r.read_at,
-                "report_id": r.id,
-                "is_pending": getattr(r, "is_pending", False) or False,
-            })
-
-    results.sort(
-        key=lambda x: x.get("published_at") or x.get("reported_at") or "",
-        reverse=True,
+    return legacy_report_crud.search_legacy_reports(
+        db, q=q, hospital_id=hospital_id, skip=skip, limit=limit,
     )
-    total = len(results)
-    return {"items": results[skip: skip + limit], "total": total}
 
 
 # ── Surgical ─────────────────────────────────────────────────────────────────
