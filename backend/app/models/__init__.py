@@ -79,6 +79,7 @@ from .critical_notification_log import CriticalNotificationLog
 from .legacy_surgical_report import LegacySurgicalReport
 from .legacy_gyne_cyto_report import LegacyGyneCytoReport
 from .legacy_nongyne_cyto_report import LegacyNongyneCytoReport
+from .legacy_import import LegacyImportProfile, LegacyImportBatch
 from .llm_profile import LlmProfile
 from .tumor_registry import TumorRegistry
 from .wsi_setting import WsiScannerProfile, WsiSetting
@@ -187,6 +188,8 @@ __all__ = [
     "LegacySurgicalReport",
     "LegacyGyneCytoReport",
     "LegacyNongyneCytoReport",
+    "LegacyImportProfile",
+    "LegacyImportBatch",
     "LlmProfile",
     "TumorRegistry",
     "WsiScannerProfile",

@@ -257,6 +257,7 @@ from app.routers import version as version_router_module
 from app.routers import critical_notification_log as critical_notification_log_router
 from app.routers import his_export_log as his_export_log_router
 from app.routers import legacy_reports as legacy_reports_router
+from app.routers import legacy_import as legacy_import_router
 from app.routers import wsi_viewer
 from app.routers import wsi_settings as wsi_settings_router
 from app.routers import wsi_links as wsi_links_router
@@ -342,6 +343,7 @@ app.include_router(version_router_module.router)
 app.include_router(critical_notification_log_router.router, dependencies=_INTERNAL_ONLY)
 app.include_router(his_export_log_router.router, dependencies=_INTERNAL_ONLY)
 app.include_router(legacy_reports_router.router)
+app.include_router(legacy_import_router.router, dependencies=_INTERNAL_ONLY)
 app.include_router(wsi_viewer.router, dependencies=_INTERNAL_ONLY)
 app.include_router(wsi_settings_router.router, dependencies=_INTERNAL_ONLY)
 app.include_router(wsi_links_router.router, dependencies=_INTERNAL_ONLY)
