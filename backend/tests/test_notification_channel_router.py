@@ -72,6 +72,18 @@ class TestTestChannel:
             r = admin_client.post(f"/notification-channels/{channel.id}/test")
         assert r.status_code == 400
 
+    def test_moph_notify_base_url_off_moph_go_th_is_a_400_without_sending(self, db, admin_client):
+        """Not mocked: the real sender must refuse before any request leaves."""
+        channel = create_channel(db, NotificationChannelCreate(**_channel_in(
+            platform="moph_notify",
+            credentials={"client_key": "ck", "secret_key": "sk", "base_url": "https://evil.example"},
+        )))
+        with patch("app.services.notification_service.httpx.AsyncClient") as mock_client:
+            r = admin_client.post(f"/notification-channels/{channel.id}/test")
+        assert r.status_code == 400
+        assert "moph.go.th" in r.json()["detail"]
+        mock_client.assert_not_called()
+
     def test_other_exception_becomes_502(self, db, admin_client):
         channel = create_channel(db, NotificationChannelCreate(**_channel_in()))
         with patch.object(notification_channel_router, "send_test_notification", side_effect=RuntimeError("network down")):

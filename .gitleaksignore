@@ -1,0 +1,7 @@
+# gitleaks findings confirmed as false positives: commit:file:rule:line.
+# Each entry matches one finding in one commit, nothing else.
+
+# Fake MOPH Notify test key ("ck-hospital-1") in the first commit of PR #360;
+# replaced with a short value in the next commit. The scan covers every
+# commit in a PR, so the later fix alone cannot clear it.
+f1643178f8d1d23c1f3faf8420a23b16c29cae95:backend/tests/test_notification_service.py:generic-api-key:258

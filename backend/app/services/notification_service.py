@@ -1,16 +1,36 @@
 """
 Notification Service
-Handles sending messages to external channels (Line, Slack, etc.)
+Handles sending messages to external channels (Line, Slack, MOPH Notify, etc.)
 """
 
 import httpx
+import logging
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from app.utils.network_security import assert_public_https_url as _assert_public_https_url
 
+logger = logging.getLogger(__name__)
+
 _TZ_BANGKOK = ZoneInfo("Asia/Bangkok")
+
+# MOPH Notify (หมอพร้อม bot in a LINE group), per MOPH's "API Document MOPH
+# Notify". Not MOPH Alert — that one (morpromt2c, /alert/v3.1/messages)
+# pushes to one person by CID and cannot reach a group.
+MOPH_NOTIFY_DEFAULT_BASE_URL = "https://morpromt2f.moph.go.th"
+_MOPH_NOTIFY_SEND_PATH = "/api/notify/send"
+
+# Every reply is {"message": ..., "message_code": ...}; only 200 is a send.
+# The document lists the failures under message_code 401 without saying
+# which HTTP status carries them, so the body decides, not the status alone.
+_MOPH_NOTIFY_ERROR_HINTS = {
+    "unauthorized": "client-key or secret-key is wrong",
+    "messages error": "the message is not in a format LINE accepts",
+    "send messages error": "MOPH Notify could not deliver the message",
+    "require messages": "the request had no messages",
+}
 
 # Dummy data for test messages
 DUMMY_DATA = {
@@ -85,6 +105,81 @@ async def send_slack_message(credentials: Dict[str, Any], message: str) -> Dict:
         }
 
 
+def _moph_notify_request(credentials: Dict[str, Any], message: str) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
+    """(url, headers, body) for one MOPH Notify send.
+
+    The keys come from the หน่วยบริการ menu of the MOPH Notify CMS. The
+    request names no group: which LINE group gets the message is decided on
+    MOPH's side by those keys. `base_url` is optional (MOPH also runs a UAT
+    host); it must stay on moph.go.th — the keys ride on every request and
+    must never go anywhere else.
+    """
+    client_key = credentials.get("client_key")
+    secret_key = credentials.get("secret_key")
+    if not client_key or not secret_key:
+        raise ValueError("MOPH Notify credentials must have 'client_key' and 'secret_key'")
+
+    base_url = str(credentials.get("base_url") or MOPH_NOTIFY_DEFAULT_BASE_URL).rstrip("/")
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
+    # "@" and "\" are refused outright: urlparse and httpx can disagree on
+    # which host "https://evil.example\@x.moph.go.th" names.
+    if (
+        parsed.scheme != "https"
+        or "@" in parsed.netloc
+        or "\\" in base_url
+        or not (host == "moph.go.th" or host.endswith(".moph.go.th"))
+    ):
+        raise ValueError("MOPH Notify base_url must be an https URL on moph.go.th")
+
+    headers = {
+        "Content-Type": "application/json",
+        "client-key": str(client_key),
+        "secret-key": str(secret_key),
+    }
+    body = {"messages": [{"type": "text", "text": message}]}
+    return f"{base_url}{_MOPH_NOTIFY_SEND_PATH}", headers, body
+
+
+def _moph_notify_failure(resp) -> str:
+    """Why a MOPH Notify reply is not a successful send, or "" if it is one."""
+    try:
+        reply = resp.json()
+    except ValueError:
+        reply = None
+    if not isinstance(reply, dict):
+        reply = {}
+    code = reply.get("message_code")
+    if 200 <= resp.status_code < 300 and str(code) == "200":
+        return ""
+    text = str(reply.get("message") or resp.text[:300]).strip()
+    detail = f"{text} (message_code={code}, HTTP {resp.status_code})"
+    hint = _MOPH_NOTIFY_ERROR_HINTS.get(text.lower())
+    return f"{detail}: {hint}" if hint else detail
+
+
+async def send_moph_notify_message(credentials: Dict[str, Any], message: str) -> Dict:
+    """Send a message to a LINE group through MOPH Notify (หมอพร้อม bot)."""
+    url, headers, body = _moph_notify_request(credentials, message)
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(url, headers=headers, json=body, timeout=10.0)
+    failure = _moph_notify_failure(resp)
+    if failure:
+        raise RuntimeError(f"MOPH Notify refused the message: {failure}")
+    return {"status": "sent", "platform": "moph_notify", "response_code": resp.status_code}
+
+
+async def _send_via_platform(platform: str, credentials: Dict[str, Any], message: str) -> Dict:
+    if platform == "line":
+        return await send_line_message(credentials, message)
+    if platform == "slack":
+        return await send_slack_message(credentials, message)
+    if platform == "moph_notify":
+        return await send_moph_notify_message(credentials, message)
+    raise ValueError(f"Unsupported platform: {platform}")
+
+
 async def send_test_notification(platform: str, credentials: Dict[str, Any]) -> Dict:
     """
     Send a test notification using dummy data.
@@ -96,13 +191,7 @@ async def send_test_notification(platform: str, credentials: Dict[str, Any]) -> 
         "🔔 [TEST] การแจ้งเตือนทดสอบจากระบบ Pathology LIS\nHN: {hn}\nชื่อ: {name}\nแพทย์: {clinician}\nCase: {id_case}",
     )
     message = _fill_template(template, DUMMY_DATA)
-
-    if platform == "line":
-        return await send_line_message(credentials, message)
-    elif platform == "slack":
-        return await send_slack_message(credentials, message)
-    else:
-        raise ValueError(f"Unsupported platform: {platform}")
+    return await _send_via_platform(platform, credentials, message)
 
 
 def to_bangkok_str(dt) -> str:
@@ -271,6 +360,20 @@ def _send_slack_sync(credentials: Dict[str, Any], message: str) -> None:
         client.post(webhook_url, json={"text": message}, timeout=5)
 
 
+def _send_moph_notify_sync(credentials: Dict[str, Any], message: str) -> None:
+    try:
+        url, headers, body = _moph_notify_request(credentials, message)
+    except ValueError:
+        return  # incomplete keys or a base_url off moph.go.th — never send the keys
+    with httpx.Client() as client:
+        resp = client.post(url, headers=headers, json=body, timeout=5)
+    failure = _moph_notify_failure(resp)
+    if failure:
+        # This path is fire-and-forget, so a refused send would otherwise
+        # vanish without a trace. Never log the headers — they carry the keys.
+        logger.warning("MOPH Notify refused the message: %s", failure)
+
+
 def notify_event(db, event_key: str, data: Dict[str, Any], default_template: str = None) -> None:
     """Sync fire-and-forget: send a notification for the given event_key via all active channels."""
     try:
@@ -301,6 +404,8 @@ def notify_event(db, event_key: str, data: Dict[str, Any], default_template: str
                     _send_line_sync(ch.credentials, message)
                 elif ch.platform == "slack":
                     _send_slack_sync(ch.credentials, message)
+                elif ch.platform == "moph_notify":
+                    _send_moph_notify_sync(ch.credentials, message)
             except Exception:
                 pass
     except Exception:
@@ -342,10 +447,4 @@ async def send_real_notification(
         "🔔 แจ้งเตือนจากระบบ Pathology LIS\nHN: {hn}\nชื่อ: {name}\nแพทย์: {clinician}\nCase: {id_case}",
     )
     message = _fill_template(template, data)
-
-    if platform == "line":
-        return await send_line_message(credentials, message)
-    elif platform == "slack":
-        return await send_slack_message(credentials, message)
-    else:
-        raise ValueError(f"Unsupported platform: {platform}")
+    return await _send_via_platform(platform, credentials, message)
