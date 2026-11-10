@@ -20,6 +20,14 @@ _TZ_BANGKOK = ZoneInfo("Asia/Bangkok")
 # MOPH Notify (หมอพร้อม bot in a LINE group), per MOPH's "API Document MOPH
 # Notify". Not MOPH Alert — that one (morpromt2c, /alert/v3.1/messages)
 # pushes to one person by CID and cannot reach a group.
+#
+# Known limitation: send-only. The bot is MOPH's LINE OA, so replies posted
+# in the group are delivered to MOPH's webhook, and the API offers nothing to
+# read them back — LIS cannot see a reply or who wrote it. Tracking who
+# acknowledged an alert would need either the hospital's own LINE OA with a
+# public webhook (matching `quotedMessageId` against the push's
+# `sentMessages[].id`; at odds with the LAN-only deployment) or a
+# "รับทราบ" link into LIS that records the signed-in user. Neither is built.
 MOPH_NOTIFY_DEFAULT_BASE_URL = "https://morpromt2f.moph.go.th"
 _MOPH_NOTIFY_SEND_PATH = "/api/notify/send"
 

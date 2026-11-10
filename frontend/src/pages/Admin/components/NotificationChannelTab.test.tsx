@@ -38,6 +38,8 @@ describe("NotificationChannelTab — MOPH Notify", () => {
     const dialog = await pickPlatform("MOPH Notify (LINE group, หมอพร้อม bot)");
 
     expect(await within(dialog).findByText("MOPH Notify setup")).toBeInTheDocument();
+    // The limitation an admin must know before relying on the group.
+    expect(within(dialog).getByText(/replies posted in the group go/)).toBeInTheDocument();
     const creds = within(dialog).getByLabelText("Credentials (JSON format)") as HTMLTextAreaElement;
     expect(JSON.parse(creds.value)).toEqual({
       client_key: "client-key-from-the-MOPH-Notify-CMS",
