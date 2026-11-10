@@ -255,7 +255,7 @@ def _mock_moph_async_client(json_body, status_code=200, text=""):
     return ctx, client
 
 
-_MOPH_KEYS = {"client_key": "ck-hospital-1", "secret_key": "sk-hospital-1"}
+_MOPH_KEYS = {"client_key": "ck-test", "secret_key": "sk-test"}
 # The replies listed in MOPH's "API Document MOPH Notify".
 _MOPH_OK = {"message": "Success", "message_code": 200}
 _MOPH_UNAUTHORIZED = {"message": "Unauthorized", "message_code": 401}
@@ -276,8 +276,8 @@ class TestSendMophNotifyMessage:
 
         args, kwargs = client.post.call_args
         assert args[0] == "https://morpromt2f.moph.go.th/api/notify/send"
-        assert kwargs["headers"]["client-key"] == "ck-hospital-1"
-        assert kwargs["headers"]["secret-key"] == "sk-hospital-1"
+        assert kwargs["headers"]["client-key"] == "ck-test"
+        assert kwargs["headers"]["secret-key"] == "sk-test"
         assert kwargs["json"] == {"messages": [{"type": "text", "text": "hello"}]}
         assert result == {"status": "sent", "platform": "moph_notify", "response_code": 200}
 
@@ -368,7 +368,7 @@ class TestSendMophNotifySync:
 
         args, kwargs = client.post.call_args
         assert args[0] == "https://morpromt2f.moph.go.th/api/notify/send"
-        assert kwargs["headers"]["secret-key"] == "sk-hospital-1"
+        assert kwargs["headers"]["secret-key"] == "sk-test"
 
     def test_bad_base_url_or_missing_keys_send_nothing(self, monkeypatch):
         sync_client = MagicMock()
@@ -399,8 +399,8 @@ class TestSendMophNotifySync:
 
         assert "Unauthorized" in caplog.text
         assert "message_code=401" in caplog.text
-        assert "sk-hospital-1" not in caplog.text
-        assert "ck-hospital-1" not in caplog.text
+        assert "sk-test" not in caplog.text
+        assert "ck-test" not in caplog.text
 
     def test_notify_event_dispatches_a_moph_notify_channel(self, db):
         channel = create_channel(
