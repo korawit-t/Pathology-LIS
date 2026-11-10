@@ -75,16 +75,26 @@ Before installing or using this software, please read:
 
 ### System Requirements
 
-- Docker & Docker Compose v2
+- Docker & Docker Compose v2 — for a production server, Docker Engine on
+  Linux. Docker Desktop (Windows, macOS) does not pass the client's address
+  through to the containers, so every request looks as if it came from one
+  machine: the audit log records the same IP for everyone, and the per-address
+  login limit is shared by the whole hospital (signed-in limits are per user
+  and unaffected).
 - RAM ≥ 8 GB, CPU ≥ 4 cores
 - Storage for image files (gross photos, microscopic images)
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/Pathology_LIS.git
-cd Pathology_LIS
+git clone https://github.com/korawit-t/Pathology-LIS.git
+cd Pathology-LIS
 ```
+
+Keep the folder where it is, under this name. Docker names the database and
+uploads volumes after it (`pathology-lis_postgres_data`, …), so a renamed or
+moved folder starts on new, empty volumes — the root `.env` from
+`.env.example` pins the name with `COMPOSE_PROJECT_NAME` (step 3).
 
 ### 2. Create environment files
 
@@ -101,8 +111,11 @@ credentials. docker compose reads it by itself; the dev override doesn't need it
 
 | Variable | What to set |
 |---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | The database owner and database name. Letters and digits only for the password (`openssl rand -hex 24`) — compose builds a connection URL from it. Without these, the database container refuses to start. |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | The database owner and database name. Letters and digits only for the password (`openssl rand -hex 24`) — compose builds a connection URL from it. Without these, the database container refuses to start. They take effect when the database volume is first created; changing them afterwards changes nothing in the database. |
 | `LIS_APP_PASSWORD` | Optional. Creates the least-privilege role `lis_app_rw` when the database volume is first created; `backend/.env` can then connect as it while migrations keep running as the owner. |
+| `COMPOSE_PROJECT_NAME` | `pathology-lis` in `.env.example`. Names the volumes, so the data stays put if the folder is renamed or moved. An install that is already running keeps the name it has: `<name>` from `<name>_postgres_data` in `docker volume ls`. |
+| `FRONTEND_PORT` / `BACKEND_PORT` | Optional, default `3000` / `8000`. If you change one, change the matching entry too: `FRONTEND_PORT` in `ALLOWED_ORIGINS`, `BACKEND_PORT` in `VITE_API_BASE_URL`. |
+| `WSI_HOST_PATH` | Optional. The scanner's folder on this server, for the WSI viewer — see [WSI under Docker](#whole-slide-image-wsi-viewer--optional-setup). |
 
 **`backend/.env`** — required changes:
 
@@ -112,13 +125,19 @@ credentials. docker compose reads it by itself; the dev override doesn't need it
 | `SECRET_KEY` | Random secret — generate with `openssl rand -hex 32` |
 | `MFA_ENCRYPTION_KEY` | Encrypts stored TOTP secrets. See **[docs/mfa-setup.md](./docs/mfa-setup.md)**. Only needed once MFA is enabled; the backend boots without it. **Must not be the same value as `SECRET_KEY`** - a signing key and an encryption key should be separate, and tying TOTP secrets to `SECRET_KEY` would make it impossible to rotate without locking out every enrolled user. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Accepts a comma-separated list to rotate: new key first, old key kept until nothing needs it. |
 | `ENVIRONMENT` | `development` (plain HTTP) or `production` (HTTPS). See **Environment modes** below. Defaults to `production`. Docker reads it from this file too. |
-| `ALLOWED_ORIGINS` | Comma-separated frontend origins (scheme + host + port). In `production` **all must be `https://`**; in `development` `http://` is allowed. |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins, exactly as the address bar shows them: scheme + host + port. Under Docker that is `http://<server-ip>:3000` — without `:3000` every login fails with a CORS error. In `production` **all must be `https://`**; in `development` `http://` is allowed. |
 | `COOKIE_SAMESITE` | `lax` (default — frontend & backend on the same site) or `none` (genuinely different sites, e.g. two Railway domains). `none` requires `ENVIRONMENT=production`. |
 | `TRUSTED_PROXY_IPS` | IP/CIDR of the reverse proxy directly in front of the backend (e.g. `127.0.0.1`). Drives the audit-log client IP **and** both login rate limits — set it correctly or every request looks like it came from the proxy: audit rows all record the proxy's address, and the per-IP cap becomes one shared bucket for everyone. Login still works in that state, because the per-username cap and the per-account failure backoff do the account-level work, but the audit trail is useless for tracing an incident. |
 | `COOKIE_DOMAIN` | Only when frontend/backend are on different subdomains of one custom domain (e.g. `.yourdomain.com`). Leave blank otherwise. |
 | `HIS_TYPE` | `hosxp`, `custom` (any other HIS, via your own SQL files — see [backend/app/his_adapters/README.md](./backend/app/his_adapters/README.md)), or leave blank to disable HIS |
 | `HIS_DISPLAY_NAME` | Optional. The name of your HIS program as staff know it (e.g. `SSB`, `Hospital OS`) — shown on the HIS button and search screen. Defaults to `HOSxP` for `hosxp` and `HIS` for `custom`. |
 | `HIS_DATABASE_URL` | HIS database connection string (if using HIS integration). Any SQLAlchemy URL works once its driver is installed. |
+
+> ⚠️ **Docker: write a `$` in `backend/.env` as `$$`.** docker compose reads
+> the file itself and treats `$name` in a value as a variable, so a HIS
+> password `Pa$word9` reaches the backend as `Pa` — the only sign is a
+> `The "word9" variable is not set` warning from `docker compose up`. Write
+> `Pa$$word9`. Without Docker, write `$` as it is.
 
 #### Environment modes
 
@@ -166,7 +185,22 @@ What the override does:
 The schema comes from Alembic, through the same one-shot `migrate` service as
 production. A dev database created before 3.1.0 was built by `create_tables.py`,
 which records no Alembic revision, so `migrate` fails on it with
-`DuplicateTable`. Reset it once: `docker compose down -v && docker compose up -d --build`.
+`DuplicateTable` or `type ... already exists`. Empty the dev database once and
+start again:
+
+```bash
+docker compose up -d db
+docker compose exec db psql -U pathology_dev -d pathology_lis -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose up -d --build
+```
+
+That deletes every row in the **dev** database and nothing else — uploads
+stay. It signs in with the dev account, which a production database does not
+have, so on a production server it fails without touching anything.
+
+> ⚠️ Don't reach for `docker compose down -v` instead (3.1.0's notes did): it
+> deletes the uploads volume too, and on a production server it permanently
+> deletes the real database and every uploaded file.
 
 ### 4B. Production mode
 
@@ -196,6 +230,49 @@ it, run `up -d --build` again.
 The backend container keeps Asia/Bangkok time (`TZ`), and every database
 session it opens is set to Asia/Bangkok whatever the server's own `timezone`
 is, so times written by PostgreSQL and by the app agree.
+
+The server's address has to agree in two files. If users open
+`http://192.168.1.100:3000`, then `backend/.env` has
+`ALLOWED_ORIGINS=http://192.168.1.100:3000` (port included) and
+`frontend/.env` has `VITE_API_BASE_URL=http://192.168.1.100:8000`.
+
+Container logs rotate: five 20 MB files per service, read with
+`docker compose -f docker-compose.yml logs`. The backend's access log has
+request URLs in it, HNs and patient-name searches among them, so access to
+Docker on the server is access to patient identifiers.
+
+#### Upgrading
+
+Read the new version's upgrade notes first (its
+[GitHub Release](https://github.com/korawit-t/Pathology-LIS/releases) or
+[CHANGELOG.md](./CHANGELOG.md)), then:
+
+```bash
+./backup.sh                                    # see Backup and Restore
+git pull
+docker compose -f docker-compose.yml up -d --build
+docker image prune -f                          # the images the rebuild replaced
+```
+
+`up -d --build` rebuilds both images, runs the new migrations through
+`migrate`, and recreates the containers; the database and uploads volumes are
+kept. Afterwards **System Settings → About** should show the new number for
+both frontend and backend. `docker image prune -f` removes only untagged
+images; without it every upgrade leaves the previous ~1 GB backend image
+behind.
+
+If `git pull` refuses because `docker-compose.yml` has local changes, move
+what has a root `.env` setting there (ports, the WSI folder) and carry the
+rest across with `git stash`, `git pull`, `git stash pop`.
+
+#### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Login fails; the browser console shows a CORS error (preflight `400`) | `ALLOWED_ORIGINS` lacks the exact address users open, port included (`http://<server-ip>:3000`). Fix it, then `up -d`. |
+| `up` warns `The "…" variable is not set. Defaulting to a blank string.` | A `$` in `backend/.env` was read as a variable: write it `$$`. In the root `.env`, use letters and digits only. |
+| `migrate` exits with `password authentication failed` | The root `.env` password is not the one the database volume was created with; `POSTGRES_*` only count when the volume is first created. |
+| `docker compose logs db` shows `/bin/bash^M: bad interpreter`, and `lis_app_rw` does not exist | A Windows checkout gave the shell scripts CRLF line endings (prevented from 3.1.1 by `.gitattributes`). Delete `backend/db/init-db.sh` and `backup.sh`, `git checkout -- backend/db/init-db.sh backup.sh`, then create the role with `docker exec pathology-db bash /docker-entrypoint-initdb.d/init-db.sh`. |
 
 ### 4C. Cloud deployment (e.g. Railway) as two separate services
 
@@ -256,8 +333,8 @@ curl.exe -k "https://<host>/api/system-settings/public?slug=master"
 
 | Service | URL |
 |---|---|
-| Web application | `http://<server-ip>:3000` |
-| API documentation | `http://<server-ip>:8000/docs` (development only) |
+| Web application | `http://<server-ip>:3000` (`FRONTEND_PORT`) |
+| API documentation | `http://<server-ip>:8000/docs` — only with `EXPOSE_DOCS=true` in `backend/.env` (on in the dev override, off by default; see `backend/.env.example`) |
 
 ### 6. Firewall / Network
 
@@ -265,9 +342,9 @@ Open inbound rules on the server firewall:
 
 | Port | Purpose |
 |---|---|
-| `3000` | Frontend (web browser access) |
-| `8000` | Backend API |
-| `5432` | PostgreSQL — **internal only, do not expose publicly** |
+| `3000` (`FRONTEND_PORT`) | Frontend (web browser access) |
+| `8000` (`BACKEND_PORT`) | Backend API — the browser calls it directly, so it must be reachable from every client |
+| `5432` | PostgreSQL — not published by the production compose file; **do not open it** |
 
 ### 7. Backup
 
@@ -536,7 +613,10 @@ procedure names who is contactable out of hours.
 
 `backup.ps1` (Windows, native PostgreSQL) and `backup.sh` (Linux, PostgreSQL in
 Docker) each take a compressed `pg_dump` of the database plus an archive of the
-uploads directory. Both read all their configuration from `backend/.env` —
+uploads directory. There is no PowerShell version for a Docker install; on
+Windows with Docker Desktop, `backup.sh` should run from a WSL shell, with
+`BACKUP_ROOT` as a WSL path such as `/mnt/d/pathology_backup` (not yet tested
+there — run one by hand and restore it before relying on it). Both read all their configuration from `backend/.env` —
 `BACKUP_ROOT`, `BACKUP_PG_BIN` and `STORAGE_DIR` (Windows), `DB_CONTAINER` and
 `BACKEND_CONTAINER` (Linux), `BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
 On Windows the uploads archived are `STORAGE_DIR` if set, else `UPLOAD_ROOT`
@@ -593,11 +673,71 @@ of contents and should report roughly one line per table:
 pg_restore -l /path/to/db_<timestamp>.dump | grep -c "TABLE DATA"
 ```
 
+Under Docker the same check runs inside the database container, beside the
+live database:
+
+```bash
+docker cp /path/to/db_<timestamp>.dump pathology-db:/tmp/check.dump
+docker exec pathology-db createdb -U <POSTGRES_USER> lis_restore_check
+docker exec pathology-db pg_restore -U <POSTGRES_USER> -d lis_restore_check --no-owner --no-privileges /tmp/check.dump
+docker exec pathology-db psql -U <POSTGRES_USER> -d lis_restore_check -tAc "select count(*) from surgical_cases"
+docker exec pathology-db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -tAc "select count(*) from surgical_cases"
+docker exec pathology-db dropdb -U <POSTGRES_USER> lis_restore_check
+docker exec pathology-db rm /tmp/check.dump
+```
+
+`<POSTGRES_USER>` and `<POSTGRES_DB>` are the values in the root `.env`.
+
 ### Restoring for real
 
 Restore into a **new** database first and inspect it. Never restore straight
 over a live one — if the dump turns out to be older or thinner than expected,
 you have then lost the current state as well.
+
+### Restoring a Docker install
+
+Onto a new server, or one whose volumes are gone. Restore **before** the first
+`up` of the whole stack: `migrate` would otherwise create an empty schema, and
+the dump does not load over it.
+
+1. Clone the repository and put back the old server's `.env` files: the root
+   `.env` (the same `POSTGRES_*` and `LIS_APP_PASSWORD`), `frontend/.env`,
+   and above all `backend/.env` — its `MFA_ENCRYPTION_KEY` decrypts the stored
+   authenticator secrets, and with a different key nobody enrolled in
+   two-factor sign-in can log in.
+2. Start the database on its own and load the dump into it:
+
+   ```bash
+   docker compose -f docker-compose.yml up -d --wait db
+   docker cp /path/to/db_<timestamp>.dump pathology-db:/tmp/restore.dump
+   docker exec pathology-db pg_restore -U <POSTGRES_USER> -d <POSTGRES_DB> --no-owner --no-privileges --single-transaction /tmp/restore.dump
+   docker exec pathology-db rm /tmp/restore.dump
+   ```
+
+   `--single-transaction` loads all of it or nothing. `--no-owner
+   --no-privileges` keeps the restore independent of which roles the old
+   server had; `lis_app_rw`, where this server has it, gets its access from
+   the default privileges `init-db.sh` set up.
+3. Put the uploads back into their volume, where `/path/to/backups` is the
+   folder holding the archive (e.g. `D:\pathology_backup` on Windows):
+
+   ```bash
+   docker compose -f docker-compose.yml run --rm --no-deps -v /path/to/backups:/backup:ro backend tar -xzf /backup/storage_<timestamp>.tar.gz -C /app
+   ```
+
+4. Start everything with `docker compose -f docker-compose.yml up -d --build`.
+   A dump from an older version is brought up to date by `migrate`.
+
+If `pg_restore` stops with `already exists`, the stack was started before the
+restore and the database already has an empty schema. Nothing was loaded
+(`--single-transaction`); empty the database, then repeat step 2 from
+`docker cp`:
+
+```bash
+docker compose -f docker-compose.yml stop backend
+docker exec pathology-db psql -U <POSTGRES_USER> -d postgres -c "DROP DATABASE <POSTGRES_DB> WITH (FORCE)" -c "CREATE DATABASE <POSTGRES_DB>"
+docker exec pathology-db bash /docker-entrypoint-initdb.d/init-db.sh
+```
 
 ---
 
@@ -644,6 +784,21 @@ python seed_accession_start.py S26-01500
 ## Whole Slide Image (WSI) Viewer — Optional Setup
 
 The WSI viewer allows pathologists to open whole slide scan files (.svs, .ndpi, .tiff, etc.) directly in the browser. It requires the **OpenSlide** native library to be installed on the backend server.
+
+### Under Docker
+
+OpenSlide is already in the backend image: skip Steps 1 and 2. The backend
+reads the slides where the scanner leaves them, through a read-only mount:
+
+1. In the root `.env`, set `WSI_HOST_PATH` to the scanner's folder on the
+   server, as an absolute path (`/mnt/scanner`, or `D:/WSI_Storage` on
+   Windows). A network share has to be mounted on a Linux server first (cifs
+   in `/etc/fstab`); Docker Desktop on Windows cannot bind a `\\server\share`
+   path or a mapped drive.
+2. `docker compose -f docker-compose.yml up -d`, then check the files are
+   visible: `docker exec pathology-backend ls /wsi`.
+3. In Step 3 below, set **WSI Root Path** to `/wsi` — the path inside the
+   container, not the one on the server.
 
 ### Step 1 — Install OpenSlide (system library)
 
@@ -740,6 +895,6 @@ Under **Master Data → Report Templates**:
 - [ ] Set primary accent color for report branding
 
 *(Optional)* Under **System Settings → WSI Settings** (if using whole slide scanner):
-- [ ] Install OpenSlide on the backend server (see [WSI Viewer Setup](#whole-slide-image-wsi-viewer--optional-setup))
-- [ ] Set WSI Root Path to the folder where scanner saves files
+- [ ] Install OpenSlide on the backend server (see [WSI Viewer Setup](#whole-slide-image-wsi-viewer--optional-setup)) — under Docker, set `WSI_HOST_PATH` instead
+- [ ] Set WSI Root Path to the folder where scanner saves files (`/wsi` under Docker)
 - [ ] Add scanner profile(s) with filename pattern matching your scanner
