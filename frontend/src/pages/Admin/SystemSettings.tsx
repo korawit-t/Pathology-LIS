@@ -33,6 +33,7 @@ import GrossingAssistTab from "./components/GrossingAssistTab";
 import WsiTab from "./components/WsiTab";
 import LatestRelease from "./components/LatestRelease";
 import UpdateNoticeSettings from "./components/UpdateNoticeSettings";
+import ReleaseNotes from "./components/ReleaseNotes";
 
 const { Title, Text } = Typography;
 const { Sider, Content } = Layout;
@@ -156,6 +157,7 @@ const SystemSettings: React.FC = () => {
               <UpdateNoticeSettings
                 onChange={(key) => key === "notify_new_release" && loadUpdateStatus()}
               />
+              <ReleaseNotes />
             </div>
           )}
         </Content>

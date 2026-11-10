@@ -443,6 +443,12 @@ disagree. Then collect the entries for CHANGELOG.md:
 git log v2.0.0..HEAD --format='- %s' --no-merges
 ```
 
+and add the admin's summary of them at the top of
+`frontend/src/constants/releaseNotes.ts`. That is what **System Settings →
+About** shows under **Release notes** — bundled with the build, so a server
+with no internet access has it too. `ReleaseNotes.test.tsx` fails while its
+newest entry isn't the version in `package.json`.
+
 Commit and merge the PR. **Only after the merge**, tag the merge commit on
 `main` — a tag made before it lands on the commit that still carries the old
 number:
