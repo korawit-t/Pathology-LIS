@@ -19,6 +19,47 @@ before the server starts.
 Entries below are the `feat:` and `fix:` commits of each release. Commits
 touching only tests or CI are left out.
 
+## [3.1.1] — 2026-11-10
+
+Fixes found by installing 3.1.0 under Docker the way another site would: login
+from a second machine, a checkout made on Windows, a backup restored onto an
+empty server, the database restarting under a running backend. Two of them
+also reach an on-premise Windows install: colleagues behind one address no
+longer sign each other out, and the first requests after a database restart no
+longer fail.
+
+### Upgrade notes
+
+Nothing is required. Worth checking on a Docker install:
+
+- **Never run `docker compose down -v` on a production server.** 3.1.0's notes
+  — in **System Settings → About** as well as here — suggested it for resetting
+  a dev database. It permanently deletes the database volume and every
+  uploaded file. [README → 4A](./README.md#4a-development-mode) now has
+  commands that empty only the dev database.
+- **A `$` in `backend/.env` has to be written `$$`.** Compose expands `$name`
+  in that file's values, so a password containing `$` (a HIS password, say)
+  reached the backend cut short, with only a `variable is not set` warning
+  from `docker compose up`. An install without Docker is unaffected.
+- **New optional settings in the root `.env`:** `COMPOSE_PROJECT_NAME`,
+  `FRONTEND_PORT`, `BACKEND_PORT`, `WSI_HOST_PATH`, and `DB_PORT` for the dev
+  override. Unset, everything behaves as before. If an existing install sets
+  `COMPOSE_PROJECT_NAME`, it must be the name its volumes already carry
+  (`<name>_postgres_data` in `docker volume ls`), or the next `up` starts on
+  empty volumes.
+
+### Fixed
+
+- **auth** — limit token refresh, password changes and MFA per user, not per client address
+- **db** — test a pooled connection before handing it out, so a database restart costs no 500s
+- **docker** — rotate container logs instead of keeping every line forever
+- **docker** — take the ports, the project name and the WSI scanner folder from the root .env
+- **docker** — check shell scripts out with LF line endings on Windows, so init-db.sh runs
+- **docker** — pin the backend base image to Debian trixie
+- **docker** — put the frontend's port in the ALLOWED_ORIGINS example, so login works from another machine
+- **docker** — replace the `down -v` dev reset with commands that cannot touch production
+- **docs** — Docker upgrade, restore, backup check, WSI and troubleshooting steps; the real clone URL; `$$` in backend/.env
+
 ## [3.1.0] — 2026-11-10
 
 Three features and a round of fixes, most of them to the Docker install, which
@@ -58,8 +99,11 @@ so a hospital without internet access can still read what changed.
   before the backend starts. `backend/.env` may now point `DATABASE_URL` at the
   least-privilege `lis_app_rw` role, which used to break the first migration.
 - **A dev database made by the old override has no Alembic revision**, so the
-  new `migrate` service stops on it with `DuplicateTable`. Reset it once with
-  `docker compose down -v`; it holds only seed data.
+  new `migrate` service stops on it with `DuplicateTable`. Empty it once with
+  the commands in [README → 4A](./README.md#4a-development-mode); it holds only
+  seed data. *(This note first said `docker compose down -v`, which also
+  deletes the uploads volume and, run on a production server, the real
+  database. Corrected in 3.1.1.)*
 
 **New settings (all optional)**
 
