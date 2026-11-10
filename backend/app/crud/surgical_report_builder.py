@@ -11,6 +11,7 @@ from app.utils.time import local_now
 from app.utils.storage_paths import find_for_report, resolve_stored_file
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
+from app.utils.report_round_heading import round_heading_html, round_label
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 from app.models.surgical_case import SurgicalCase
@@ -389,29 +390,16 @@ def _get_diagnosis_html_summary(
             continue
 
         first_diag = diags_in_order[0]
-        entry_label = "DIAGNOSIS"
         all_types = [d.entry_type for d in diags_in_order if d.entry_type]
-        for t in ["Revised", "Corrected", "Addendum"]:
-            if t in all_types:
-                entry_label = t.upper()
-                break
-
-        fmt_date = (first_diag.diagnosis_at or local_now()).strftime(
-            "%d/%m/%Y %H:%M"
-        )
-        reason_inline = (
-            f" ({first_diag.entry_type} Reason: {first_diag.revision_reason})"
-            if (
-                first_diag.entry_type in ["Revised", "Corrected"]
-                and first_diag.revision_reason
-            )
-            else ""
-        )
+        entry_label = round_label(all_types)
 
         diag_texts.append(
-            f"<div style='margin-top: 12px; margin-bottom: 6px;'>"
-            f"<b style='font-size: 13px;'>{entry_label} REPORT</b> "
-            f"<small style='color: #666;'>(Dated: {fmt_date})</small>{reason_inline}</div>"
+            round_heading_html(
+                all_types,
+                first_diag.diagnosis_at or local_now(),
+                first_diag.entry_type,
+                first_diag.revision_reason,
+            )
         )
 
         all_available_labels = sorted(
