@@ -18,6 +18,7 @@ interface DispatchRunItem {
   id: number;
   case_type: string;
   remark?: string;
+  slide_count?: number | null;
   surgical_case?: { accession_no?: string; specimens?: { id?: number; blocks?: SpecimenBlock[] }[] };
   gyne_cyto_case?: { accession_no?: string };
   nongyne_cyto_case?: { accession_no?: string };
@@ -28,6 +29,8 @@ interface DispatchRun {
   dispatch_no: string;
   sent_at: string;
   total_cases: number;
+  // null = saved before slide counts were recorded
+  total_slides?: number | null;
   remark?: string;
   pathologist?: { full_name?: string; username?: string };
   sender?: { full_name?: string; username?: string };
@@ -40,6 +43,7 @@ type PrintCase = {
   specimens?: { id?: number; blocks?: SpecimenBlock[] }[];
   case_type?: string;
   item_remark?: string;
+  slide_count?: number | null;
 };
 
 interface Props {
@@ -108,6 +112,7 @@ const MySlideDispatches: React.FC<Props> = ({ pathologistId }) => {
           ...targetCase,
           case_type: it.case_type,
           item_remark: it.remark,
+          slide_count: it.slide_count,
         };
       }),
       pathologistName:
@@ -133,6 +138,12 @@ const MySlideDispatches: React.FC<Props> = ({ pathologistId }) => {
       title: "Total Cases",
       dataIndex: "total_cases",
       render: (count: number) => <Tag color="purple">{count} Cases</Tag>,
+    },
+    {
+      title: "Total Slides",
+      dataIndex: "total_slides",
+      render: (count?: number | null) =>
+        count == null ? "-" : <Tag color="geekblue">{count} Slides</Tag>,
     },
     {
       title: "Sender",
@@ -204,6 +215,12 @@ const MySlideDispatches: React.FC<Props> = ({ pathologistId }) => {
                       </Space>
                     );
                   },
+                },
+                {
+                  title: "Slides",
+                  dataIndex: "slide_count",
+                  align: "center" as const,
+                  render: (count?: number | null) => count ?? "-",
                 },
                 {
                   title: "Type",

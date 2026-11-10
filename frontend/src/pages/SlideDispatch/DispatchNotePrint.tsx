@@ -10,6 +10,9 @@ interface ScannedCase {
   id: number;
   accession_no?: string;
   remark?: string;
+  // Stained slides handed over for this case. null/undefined = a note saved
+  // before the backend started snapshotting it (count unknown).
+  slide_count?: number | null;
   specimens?: DispatchSpecimen[];
   surgical_case?: { accession_no?: string; specimens?: DispatchSpecimen[] };
   nongyne_cyto_case?: { accession_no?: string };
@@ -24,6 +27,13 @@ interface Props {
   remark?: string;
 }
 
+/** Sum of every case's slide count, or null when any case's count is unknown —
+ * a partial sum would undercount what the pathologist signs for. */
+export const totalSlides = (cases: Pick<ScannedCase, "slide_count">[]): number | null =>
+  cases.every((c) => typeof c.slide_count === "number")
+    ? cases.reduce((sum, c) => sum + (c.slide_count as number), 0)
+    : null;
+
 export const DispatchNotePrint = forwardRef<HTMLDivElement, Props>(
   (props, ref) => {
     const {
@@ -34,6 +44,8 @@ export const DispatchNotePrint = forwardRef<HTMLDivElement, Props>(
       dispatchNo,
       remark,
     } = props;
+
+    const slideTotal = totalSlides(scannedCases);
 
     return (
       <div style={{ display: "none" }}>
@@ -90,6 +102,9 @@ export const DispatchNotePrint = forwardRef<HTMLDivElement, Props>(
             <Col span={10} style={{ textAlign: "right" }}>
               <Text strong>Total Cases: </Text>
               <Text>{scannedCases.length} Item(s)</Text>
+              <br />
+              <Text strong>Total Slides: </Text>
+              <Text>{slideTotal ?? "-"}</Text>
             </Col>
           </Row>
           {remark && (
@@ -118,6 +133,7 @@ export const DispatchNotePrint = forwardRef<HTMLDivElement, Props>(
                 <th style={tableHeaderStyle}>No.</th>
                 <th style={tableHeaderStyle}>Accession No.</th>
                 <th style={tableHeaderStyle}>Block List</th>
+                <th style={tableHeaderStyle}>Slides</th>
                 <th style={tableHeaderStyle}>Remarks</th>
               </tr>
             </thead>
@@ -150,11 +166,26 @@ export const DispatchNotePrint = forwardRef<HTMLDivElement, Props>(
                     <td style={{ ...tableCellStyle, textAlign: "left" }}>
                       {allBlockCodes}
                     </td>
+                    <td style={tableCellStyle}>{item.slide_count ?? "-"}</td>
                     <td style={tableCellStyle}>{item.remark || ""}</td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td
+                  colSpan={3}
+                  style={{ ...tableCellStyle, textAlign: "right", fontWeight: "bold" }}
+                >
+                  Total: {scannedCases.length} case(s)
+                </td>
+                <td style={{ ...tableCellStyle, fontWeight: "bold" }}>
+                  {slideTotal ?? "-"}
+                </td>
+                <td style={tableCellStyle} />
+              </tr>
+            </tfoot>
           </table>
 
           {/* Signature Section */}

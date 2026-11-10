@@ -56,6 +56,7 @@ interface DispatchedCase {
   case_type: string;
   scannedAt: string;
   specimens?: { id?: number; blocks?: SpecimenBlock[] }[];
+  slide_count?: number | null;
 }
 
 interface PendingCase {
@@ -67,6 +68,12 @@ interface PendingCase {
 }
 
 type DispatchCaseType = "SURGICAL" | "GYNE_CYTO" | "NONGYNE_CYTO";
+
+interface SavedDispatchItem {
+  case_id: number;
+  case_type: string;
+  slide_count?: number | null;
+}
 
 interface CreateSlideDispatchRunProps {
   onBack: () => void;
@@ -225,9 +232,22 @@ const CreateSlideDispatchRun: React.FC<CreateSlideDispatchRunProps> = ({
 
       // 🚩 Call API to create SlideDispatchRun
       const res = await SlideDispatchService.bulkDispatch(payload);
+      // Print the slide counts the server just saved, not a client-side guess,
+      // so this note and any later reprint show the same numbers.
+      const savedSlideCounts = new Map<string, number | null>(
+        (res.items || []).map((it: SavedDispatchItem): [string, number | null] => [
+          `${it.case_type}_${it.case_id}`,
+          it.slide_count ?? null,
+        ]),
+      );
       setPrintData({
         dispatchNo: res.dispatch_no,
-        cases: [...scannedCases].sort((a, b) =>
+        cases: scannedCases
+          .map((c) => ({
+            ...c,
+            slide_count: savedSlideCounts.get(`${c.case_type}_${c.id}`) ?? null,
+          }))
+          .sort((a, b) =>
           a.accession_no.localeCompare(b.accession_no, undefined, { numeric: true, sensitivity: "base" }),
         ),
         pathologistName: selectedPathologistName,

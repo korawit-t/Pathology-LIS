@@ -44,6 +44,7 @@ class SlideDispatchItemResponse(BaseModel):
     case_id: int
     case_type: str
     status: str
+    slide_count: Optional[int] = None
     # ดึงข้อมูลเคสแบบ Nested
     surgical_case: Optional[CaseInfoResponse] = None
     gyne_cyto_case: Optional[CaseInfoResponse] = None
@@ -62,6 +63,7 @@ class SlideDispatchRunResponse(BaseModel):
     pathologist_id: int
     remark: Optional[str] = None
     total_cases: int
+    total_slides: Optional[int] = None
     sent_at: datetime
 
     # ข้อมูลความสัมพันธ์

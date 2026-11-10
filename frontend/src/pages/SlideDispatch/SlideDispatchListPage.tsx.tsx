@@ -26,7 +26,9 @@ interface DispatchRunItem {
   id: number;
   case_type: string;
   remark?: string;
+  slide_count?: number | null;
   surgical_case?: { accession_no?: string; specimens?: { id?: number; blocks?: SpecimenBlock[] }[] };
+  nongyne_cyto_case?: { accession_no?: string };
 }
 
 interface DispatchRun {
@@ -34,6 +36,8 @@ interface DispatchRun {
   dispatch_no: string;
   sent_at: string;
   total_cases: number;
+  // null = saved before slide counts were recorded
+  total_slides?: number | null;
   remark?: string;
   pathologist?: { full_name?: string; username?: string };
   pathologist_id?: number;
@@ -47,6 +51,7 @@ type PrintCase = {
   specimens?: { id?: number; blocks?: SpecimenBlock[] }[];
   case_type?: string;
   item_remark?: string;
+  slide_count?: number | null;
 };
 
 type DispatchCaseType = "SURGICAL" | "GYNE_CYTO" | "NONGYNE_CYTO";
@@ -143,12 +148,14 @@ const SlideDispatchListPage = ({ currentView }: { currentView?: string }) => {
   const onPrintClick = (record: DispatchRun) => {
     setPrintData({
       cases: record.items.map((it): PrintCase => {
-        const targetCase = it.surgical_case;
+        const targetCase =
+          it.case_type === "NONGYNE_CYTO" ? it.nongyne_cyto_case : it.surgical_case;
         return {
           id: it.id,
           ...targetCase, // Send case data (accession_no, specimens etc.)
           case_type: it.case_type,
           item_remark: it.remark,
+          slide_count: it.slide_count,
         };
       }),
       pathologistName:
@@ -220,7 +227,9 @@ const SlideDispatchListPage = ({ currentView }: { currentView?: string }) => {
                 {
                   title: "Accession No.",
                   render: (item: DispatchRunItem) => {
-                    const accNo = item.surgical_case?.accession_no;
+                    const accNo =
+                      item.surgical_case?.accession_no ||
+                      item.nongyne_cyto_case?.accession_no;
                     return (
                       <Text strong color="blue">
                         {accNo || "-"}
@@ -243,6 +252,12 @@ const SlideDispatchListPage = ({ currentView }: { currentView?: string }) => {
                       </Space>
                     );
                   },
+                },
+                {
+                  title: "Slides",
+                  dataIndex: "slide_count",
+                  align: "center",
+                  render: (count?: number | null) => count ?? "-",
                 },
                 {
                   title: "Type",
@@ -273,6 +288,12 @@ const SlideDispatchListPage = ({ currentView }: { currentView?: string }) => {
             title: "Total Cases",
             dataIndex: "total_cases",
             render: (count) => <Tag color="purple">{count} Cases</Tag>,
+          },
+          {
+            title: "Total Slides",
+            dataIndex: "total_slides",
+            render: (count?: number | null) =>
+              count == null ? "-" : <Tag color="geekblue">{count} Slides</Tag>,
           },
           {
             title: "Receiving Pathologist",
