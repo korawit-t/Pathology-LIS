@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   Table,
   Button,
   Space,
@@ -34,6 +35,7 @@ const NotificationChannelTab: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const selectedPlatform = Form.useWatch("platform", form);
 
   const fetchChannels = async () => {
     setLoading(true);
@@ -158,6 +160,14 @@ const NotificationChannelTab: React.FC = () => {
       null,
       2,
     ),
+    moph_notify: JSON.stringify(
+      {
+        client_key: "client-key-from-the-MOPH-Notify-CMS",
+        secret_key: "secret-key-from-the-MOPH-Notify-CMS",
+      },
+      null,
+      2,
+    ),
     discord: JSON.stringify(
       { webhook_url: "https://discord.com/api/webhooks/XXX/YYY" },
       null,
@@ -185,6 +195,7 @@ const NotificationChannelTab: React.FC = () => {
         let color = "default";
         if (text === "line") color = "green";
         if (text === "slack") color = "purple";
+        if (text === "moph_notify") color = "cyan";
         if (text === "discord") color = "blue";
         return <Tag color={color}>{text.toUpperCase()}</Tag>;
       },
@@ -309,10 +320,40 @@ const NotificationChannelTab: React.FC = () => {
             >
               <Option value="line">Line Messaging API</Option>
               <Option value="slack">Slack (Incoming Webhook)</Option>
+              <Option value="moph_notify">
+                MOPH Notify (LINE group, หมอพร้อม bot)
+              </Option>
               <Option value="discord">Discord (Webhook)</Option>
               <Option value="custom">Custom Webhook</Option>
             </Select>
           </Form.Item>
+
+          {selectedPlatform === "moph_notify" && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="MOPH Notify setup"
+              description={
+                <ol style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>
+                    Name the LINE group so it ends with HC + your 5-digit
+                    hospital code, before inviting the bot
+                  </li>
+                  <li>Invite the หมอพร้อม bot into the group</li>
+                  <li>
+                    Your hospital&apos;s MOPH Notify admin approves the group
+                    in the MOPH Notify CMS
+                  </li>
+                  <li>
+                    Copy client-key and secret-key from the หน่วยบริการ menu
+                    of the MOPH Notify CMS here, then press Test. The keys
+                    decide which group receives the message.
+                  </li>
+                </ol>
+              }
+            />
+          )}
 
           <Form.Item
             name="credentials"

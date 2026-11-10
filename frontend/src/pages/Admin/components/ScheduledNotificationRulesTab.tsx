@@ -32,6 +32,7 @@ interface RuleRow extends ScheduledNotificationRule {
 const PLATFORM_COLOR: Record<string, string> = {
   line: "green",
   slack: "purple",
+  moph_notify: "cyan",
   discord: "blue",
   custom: "default",
 };
