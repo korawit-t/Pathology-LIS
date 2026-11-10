@@ -18,7 +18,12 @@ if not SQLALCHEMY_DATABASE_URL:
 # 3. สร้าง Engine
 # หมายเหตุ: SQLAlchemy รุ่นใหม่ๆ รองรับ postgresql:// ปกติ
 # แต่ถ้าใช้ driver เฉพาะ อาจต้องใช้ postgresql+psycopg2:// ตามใน .env ของคุณ
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+#
+# pool_pre_ping: a pooled connection is tested before it is handed out, and a
+# dead one is replaced. Without it, every connection the pool held when
+# PostgreSQL restarted (an update, a reboot, the database container restarting)
+# was handed to a request as-is, and that request failed with a 500.
+engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
 
 
 # Every session runs on APP_TIMEZONE. Most DateTime columns are naive and
