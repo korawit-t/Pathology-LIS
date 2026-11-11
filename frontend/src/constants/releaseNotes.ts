@@ -22,6 +22,33 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "3.2.0",
+    date: "2026-11-11",
+    summary:
+      "ระบบบันทึกได้ว่าผล IHC ออกเมื่อไหร่ และใช้เวลานานเท่าไหร่ (หน้า IHC TAT ใน Report Analytics ทั้ง surgical และ non-gyne) ส่งแจ้งเตือนเข้ากลุ่ม LINE ผ่านหมอพร้อมได้ และนำเข้ารายงานจากระบบเดิมได้",
+    upgrade: [
+      "backup ฐานข้อมูลก่อนอัปเกรด: migration ชุดนี้เติมเวลาย้อนหลังให้สไลด์ย้อมเพิ่มที่มีอยู่ (เวลาพร้อมอ่าน, เวลา sign, เวลา publish) และเปลี่ยนสไลด์ IHC ที่ค้างสถานะ stained หลัง sign-off แล้ว (พิมพ์ผลในช่อง diagnosis เอง) เป็น completed รายการ \"awaiting review\" จึงจะสั้นลง",
+      "แจ้งพยาธิแพทย์: ตอน sign-off ถ้าเลือก \"Yes, Signed Off\" ระบบจะนับ IHC / special stain ที่พร้อมอ่านทุกตัวของเคสว่าผลออกแล้ว ถ้าเลือก \"No, Pending\" จะนับเฉพาะตัวที่ review แล้ว หน้า sign-off แสดงรายการทั้งสองแบบ และรายการที่ยังไม่กลับ ถ้าผู้อนุมัติตีกลับรายงาน รายการเหล่านั้นจะรอนับใหม่ตอน sign ครั้งถัดไป",
+      "ตั้งเป้าหมาย TAT ของ IHC ได้ที่ System Settings → Workflow → Turnaround Time (ค่าเริ่มต้น 10 วันทำการ นับจากสั่ง IHC ถึงผลออก)",
+      "ถ้าจะส่งแจ้งเตือนผ่านหมอพร้อม (MOPH Notify): เพิ่ม notification channel แล้วใส่ client-key และ secret-key จากเมนูหน่วยบริการใน MOPH Notify CMS",
+    ],
+    added: [
+      "หน้า IHC TAT ใน Report Analytics (Surgical และ Non-Gyne Cyto): เวลาตั้งแต่สั่งถึงผลออก, % ที่อยู่ในเป้า, เวลาที่ outlab, เวลาอ่านและรออนุมัติ, และรายการ IHC ที่ยังไม่ออก",
+      "บันทึกเวลาที่ผล IHC / special stain ออก ตอนพยาธิแพทย์ sign-off โดยไม่ต้องกรอก IHC panel และเวลาที่ถึงมือแพทย์ผู้ส่ง (ตอน publish หรือตอนอนุมัติ)",
+      "หน้า sign-off ของ surgical และ non-gyne แสดง IHC / special stain ที่รอ review และที่ยังไม่กลับ",
+      "ตั้งเป้าหมาย TAT ของ IHC ในหน้า Workflow",
+      "ส่งแจ้งเตือนเข้ากลุ่ม LINE ผ่านหมอพร้อม (MOPH Notify) และตัวแปร {name_short} / {clinician_short} สำหรับข้อความที่ไม่ต้องการชื่อเต็ม",
+      "นำเข้ารายงานจากระบบเดิม (.xlsx / .csv) ที่เมนู IT Administration → Legacy Report Import ย้อนกลับ (rollback) เป็นรอบได้",
+      "ใบส่งสไลด์แสดงจำนวนสไลด์ของแต่ละเคสและยอดรวม",
+    ],
+    fixed: [
+      "กล่อง \"stains awaiting review\" ในหน้า sign-off แสดง IHC / special stain จริงแล้ว (เดิมดึงมาแต่ H&E จึงไม่เคยแสดง)",
+      "รายงาน non-gyne ที่มีหลายรอบมีหัวข้อพร้อมวันเวลาแบบเดียวกับ surgical และแสดงเวลาของ Collected / Received",
+      "รายการค่าตรวจ Surgical ในหน้า gross เรียงตามรหัส CGD",
+      "ค้นหารายงานเก่า (legacy) ได้เร็วขึ้นเมื่อมีข้อมูลนำเข้าจำนวนมาก",
+    ],
+  },
+  {
     version: "3.1.1",
     date: "2026-11-10",
     summary:
