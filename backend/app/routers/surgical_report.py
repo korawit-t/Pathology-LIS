@@ -2,7 +2,7 @@ from app.schemas.surgical_bulk import BulkSaveDraft
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import List, Optional
 import traceback
 import logging
 
@@ -23,6 +23,8 @@ from app.crud.surgical_report import (
 )
 from app.crud.surgical_report_builder import prepare_report_data
 from app.crud.surgical_statistics import get_surgical_statistics, get_lab_tech_statistics, get_staff_registration_stats, get_staff_gross_stats, get_tissue_process_stats, get_storage_stats, get_outlab_stats
+from app.crud.ihc_tat import get_ihc_tat, get_ihc_outstanding
+from app.schemas.ihc_tat import IhcTatResponse, IhcOutstandingCase
 from app.schemas.surgical_report import (
     SurgicalReportResponse,
     SurgicalReportPagination,
@@ -33,7 +35,7 @@ from app.dependencies.auth import InternalStaffOnly, get_current_user, get_scope
 from app.models.user import User
 from app.crud.system_setting import get_settings as get_system_settings
 from app.models.surgical_report import SurgicalReport, ReportStatus
-from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT
+from app.core.roles import CAN_WRITE_REPORT, CAN_READ_REPORT, CAN_READ_IHC_TAT
 from app.crud.report_archive import get_surgical_archive
 from app.schemas.archive import ArchivePage
 from app.dependencies.step_up import require_step_up
@@ -159,6 +161,31 @@ def read_outlab_stats(
     db: Session = Depends(get_db),
 ):
     return get_outlab_stats(db=db, start_date=start_date, end_date=end_date)
+
+
+@router.get(
+    "/ihc-tat",
+    response_model=IhcTatResponse,
+    dependencies=[Depends(CAN_READ_IHC_TAT)],
+)
+def read_ihc_tat(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    """IHC requests that went out (signed off) in the period, with their
+    order → outlab → out timeline in working days."""
+    return get_ihc_tat(db, start_date, end_date)
+
+
+@router.get(
+    "/ihc-tat/outstanding",
+    response_model=List[IhcOutstandingCase],
+    dependencies=[Depends(CAN_READ_IHC_TAT)],
+)
+def read_ihc_outstanding(db: Session = Depends(get_db)):
+    """Cases whose IHC hasn't gone out yet, oldest order first."""
+    return get_ihc_outstanding(db)
 
 
 @router.get(

@@ -1,4 +1,4 @@
-from pydantic import ConfigDict, BaseModel
+from pydantic import ConfigDict, BaseModel, Field
 from typing import List, Optional
 
 
@@ -57,6 +57,9 @@ class SystemSettingBase(BaseModel):
     surgical_express_tat_days: Optional[int] = None
     non_gyne_express_tat_days: Optional[int] = None
     gyne_express_tat_days: Optional[int] = None
+
+    # IHC: order → result out (sign-off), working days
+    ihc_tat_days: Optional[int] = None
 
     # --- Scheduled Notification Check Times ---
     scheduled_notification_times: Optional[List[str]] = None
@@ -152,6 +155,10 @@ class SystemSettingUpdate(SystemSettingBase):
     surgical_express_tat_days: Optional[int] = None
     non_gyne_express_tat_days: Optional[int] = None
     gyne_express_tat_days: Optional[int] = None
+
+    # IHC: order → result out (sign-off), working days. ge=1: a 0-day target
+    # would mark every request late.
+    ihc_tat_days: Optional[int] = Field(default=None, ge=1)
 
     # 🚩 เพิ่มส่วน Default IDs ใน Update Schema
     default_gyne_test_id: Optional[int] = None

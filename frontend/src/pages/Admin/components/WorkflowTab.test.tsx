@@ -1,0 +1,43 @@
+/**
+ * The IHC TAT target (system_settings.ihc_tat_days) is edited here, next to
+ * the other turnaround targets, and read by Report Analytics → IHC TAT. Pin
+ * that it loads into the form and goes back out on save.
+ */
+
+import React from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import WorkflowTab from "./WorkflowTab";
+import SystemSettingService from "../../../services/systemSettingService";
+
+vi.mock("../../../services/systemSettingService", () => ({
+  default: { getSettings: vi.fn(), updateSettings: vi.fn() },
+}));
+vi.mock("../../../services/anatomicalTestService", () => ({
+  default: { getAllTests: vi.fn().mockResolvedValue({ data: [] }) },
+}));
+
+it("loads the IHC TAT target and saves it with the other settings", async () => {
+  vi.mocked(SystemSettingService.getSettings).mockResolvedValue({
+    surgical_tat_days: 10,
+    surgical_express_tat_days: 3,
+    ihc_tat_days: 7,
+  } as never);
+  vi.mocked(SystemSettingService.updateSettings).mockResolvedValue({} as never);
+
+  const { container } = render(<WorkflowTab />);
+
+  expect(await screen.findByText("Immunohistochemistry (IHC)")).toBeInTheDocument();
+  const input = container.querySelector<HTMLInputElement>("#ihc_tat_days")!;
+  await waitFor(() => expect(input.value).toBe("7"));
+
+  fireEvent.change(input, { target: { value: "8" } });
+  fireEvent.blur(input);
+
+  const save = screen.getByRole("button", { name: /Save Settings/ });
+  await waitFor(() => expect(save).not.toHaveClass("ant-btn-loading"));
+  fireEvent.click(save);
+
+  await waitFor(() => expect(SystemSettingService.updateSettings).toHaveBeenCalled());
+  expect(vi.mocked(SystemSettingService.updateSettings).mock.calls[0][0]).toMatchObject({ ihc_tat_days: 8 });
+});

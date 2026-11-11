@@ -276,3 +276,68 @@ export interface OutlabStats {
   outlab_consult: OutlabConsultWorkloadRow[];
 }
 
+
+// --- IHC TAT dashboard (GET /surgical-reports/ihc-tat[/outstanding]) ---
+// An IHC request = a case's IHC slides that went out at one sign-off (same
+// reported_at). Days are working days, as on the surgical TAT dashboard.
+
+export type IhcTatBucket = "lt3" | "t3_5" | "t5_10" | "gt10";
+
+export interface IhcTatRequest {
+  case_id: number;
+  accession_no: string | null;
+  patient_title: string | null;
+  patient_name: string | null;
+  patient_ln: string | null;
+  markers: string[];
+  slides: number;
+  source: "outlab" | "in-house";
+  lab: string | null;
+  ordered_at: string;
+  sent_at: string | null;
+  ready_at: string | null;
+  reported_at: string;
+  total_days: number;
+  outlab_days: number | null;
+  reading_days: number | null;
+  bucket: IhcTatBucket;
+  // total_days within the IHC target (Admin → Workflow → ihc_tat_days)
+  on_time: boolean;
+}
+
+export interface IhcTatStats {
+  summary: {
+    requests: number;
+    slides: number;
+    outlab_requests: number;
+    inhouse_requests: number;
+    median_total_days: number | null;
+    median_outlab_days: number | null;
+    median_reading_days: number | null;
+    target_days: number;
+    on_time_count: number;
+    on_time_pct: number | null;
+  };
+  distribution: Record<IhcTatBucket, number>;
+  monthly: { month: string; requests: number; median_total_days: number | null; on_time_pct: number | null }[];
+  by_lab: { lab: string; requests: number; median_outlab_days: number | null; max_outlab_days: number }[];
+  requests: IhcTatRequest[];
+}
+
+export type IhcOutstandingStage = "pending" | "sent" | "stained" | "completed";
+
+export interface IhcOutstandingCase {
+  case_id: number;
+  accession_no: string | null;
+  patient_title: string | null;
+  patient_name: string | null;
+  patient_ln: string | null;
+  markers: { name: string | null; status: string; is_external: boolean }[];
+  stage: IhcOutstandingStage;
+  ordered_at: string;
+  sent_at: string | null;
+  lab: string | null;
+  age_days: number;
+  // Waited longer than the IHC target already
+  overdue: boolean;
+}
