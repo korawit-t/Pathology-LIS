@@ -44,6 +44,7 @@ import dayjs, { Dayjs } from "dayjs";
 import SurgicalReportService from "../../services/surgicalReportService";
 import { exportToCsv } from "../../utils/exportCsv";
 import type {
+  IhcCaseType,
   IhcOutstandingCase,
   IhcOutstandingStage,
   IhcTatBucket,
@@ -145,7 +146,13 @@ const requestColumns: ColumnsType<IhcTatRequest> = [
   },
 ];
 
-const IhcTatDashboard: React.FC = () => {
+interface IhcTatDashboardProps {
+  /** Surgical (default) or non-gyne cell block IHC. Non-gyne has no outlab step. */
+  caseType?: IhcCaseType;
+}
+
+const IhcTatDashboard: React.FC<IhcTatDashboardProps> = ({ caseType = "surgical" }) => {
+  const hasOutlab = caseType === "surgical";
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(2, "month").startOf("month"),
     dayjs().endOf("month"),
@@ -160,8 +167,8 @@ const IhcTatDashboard: React.FC = () => {
     setLoading(true);
     try {
       const [stats, open] = await Promise.all([
-        SurgicalReportService.getIhcTat(dateRange[0].format("YYYY-MM-DD"), dateRange[1].format("YYYY-MM-DD")),
-        SurgicalReportService.getIhcOutstanding(),
+        SurgicalReportService.getIhcTat(dateRange[0].format("YYYY-MM-DD"), dateRange[1].format("YYYY-MM-DD"), caseType),
+        SurgicalReportService.getIhcOutstanding(caseType),
       ]);
       setData(stats);
       setOutstanding(open);
@@ -170,7 +177,7 @@ const IhcTatDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [dateRange, caseType]);
 
   useEffect(() => {
     load();
@@ -188,13 +195,22 @@ const IhcTatDashboard: React.FC = () => {
     return counts;
   }, [outstanding]);
 
+  const title = caseType === "nongyne" ? "Non-Gyne IHC Turnaround (TAT)" : "IHC Turnaround (TAT)";
+  // Non-gyne IHC is never sent out, so a slide at "pending" just isn't stained yet.
+  const stages = hasOutlab
+    ? STAGES
+    : (Object.fromEntries(
+        Object.entries(STAGES)
+          .filter(([k]) => k !== "sent")
+          .map(([k, v]) => [k, k === "pending" ? { ...v, label: "Not stained yet" } : v]),
+      ) as Partial<typeof STAGES>);
   const shownOutstanding = stageFilter === "all" ? outstanding : outstanding.filter((o) => o.stage === stageFilter);
   const bucketRequests = bucketOpen && data ? data.requests.filter((r) => r.bucket === bucketOpen) : [];
 
   const handleExport = () => {
     if (!data) return;
     exportToCsv(
-      `ihc-tat_${dateRange[0].format("YYYYMMDD")}-${dateRange[1].format("YYYYMMDD")}.csv`,
+      `ihc-tat_${caseType}_${dateRange[0].format("YYYYMMDD")}-${dateRange[1].format("YYYYMMDD")}.csv`,
       data.requests as unknown as Record<string, unknown>[],
       [
         { header: "Accession No.", key: "accession_no" },
@@ -216,7 +232,7 @@ const IhcTatDashboard: React.FC = () => {
       ],
       {
         preamble: [
-          ["IHC TAT", `${dateRange[0].format("DD/MM/YYYY")} - ${dateRange[1].format("DD/MM/YYYY")}`],
+          [title, `${dateRange[0].format("DD/MM/YYYY")} - ${dateRange[1].format("DD/MM/YYYY")}`],
           ["Requests", summary?.requests ?? 0, "Median total (working days)", summary?.median_total_days ?? "—"],
           ["Target (working days)", target ?? "—", "Within target", summary?.on_time_pct !== null && summary?.on_time_pct !== undefined ? `${summary.on_time_pct}%` : "—"],
         ],
@@ -246,7 +262,7 @@ const IhcTatDashboard: React.FC = () => {
       key: "stage",
       render: (s: IhcOutstandingStage, r) => (
         <Space size={4} direction="vertical">
-          <Tag color={STAGES[s].color}>{STAGES[s].label}</Tag>
+          <Tag color={(stages[s] ?? STAGES[s]).color}>{(stages[s] ?? STAGES[s]).label}</Tag>
           {s === "sent" && (r.lab || r.sent_at) && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {[r.lab, r.sent_at && `sent ${fmtDate(r.sent_at)}`].filter(Boolean).join(" · ")}
@@ -279,7 +295,7 @@ const IhcTatDashboard: React.FC = () => {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 12 }}>
         <Space align="center">
           <BgColorsOutlined style={{ fontSize: 24, color: "#722ed1" }} />
-          <Title level={3} style={{ margin: 0 }}>IHC Turnaround (TAT)</Title>
+          <Title level={3} style={{ margin: 0 }}>{title}</Title>
         </Space>
         <Space wrap>
           <Text type="secondary">Out (published):</Text>
@@ -329,14 +345,16 @@ const IhcTatDashboard: React.FC = () => {
               hint={summary ? `${summary.on_time_count} / ${summary.requests} requests` : undefined}
             />
           </Col>
-          <Col flex="1 1 220px">
-            <Kpi
-              icon={<SendOutlined />} color="#1890ff" background="#e6f4ff"
-              label="Median at outlab"
-              value={fmtDays(summary?.median_outlab_days)}
-              hint={summary ? `sent → back · ${summary.outlab_requests} outlab, ${summary.inhouse_requests} in-house` : undefined}
-            />
-          </Col>
+          {hasOutlab && (
+            <Col flex="1 1 220px">
+              <Kpi
+                icon={<SendOutlined />} color="#1890ff" background="#e6f4ff"
+                label="Median at outlab"
+                value={fmtDays(summary?.median_outlab_days)}
+                hint={summary ? `sent → back · ${summary.outlab_requests} outlab, ${summary.inhouse_requests} in-house` : undefined}
+              />
+            </Col>
+          )}
           <Col flex="1 1 220px">
             <Kpi
               icon={<ExperimentOutlined />} color="#13c2c2" background="#e6fffb"
@@ -447,8 +465,8 @@ const IhcTatDashboard: React.FC = () => {
               onChange={(v) => setStageFilter(v as IhcOutstandingStage | "all")}
               options={[
                 { label: `All (${stageCounts.all ?? 0})`, value: "all" },
-                ...(Object.keys(STAGES) as IhcOutstandingStage[]).map((s) => ({
-                  label: `${STAGES[s].label} (${stageCounts[s] ?? 0})`,
+                ...(Object.keys(stages) as IhcOutstandingStage[]).map((s) => ({
+                  label: `${stages[s]!.label} (${stageCounts[s] ?? 0})`,
                   value: s,
                 })),
               ]}

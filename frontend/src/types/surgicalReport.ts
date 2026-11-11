@@ -284,6 +284,10 @@ export interface OutlabStats {
 
 export type IhcTatBucket = "lt3" | "t3_5" | "t5_10" | "gt10";
 
+// Surgical (Report Analytics → Surgical → IHC TAT) or non-gyne cell block IHC
+// (→ Non-Gyne Cyto → IHC TAT)
+export type IhcCaseType = "surgical" | "nongyne";
+
 export interface IhcTatRequest {
   case_id: number;
   accession_no: string | null;

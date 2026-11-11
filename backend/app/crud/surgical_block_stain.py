@@ -26,21 +26,8 @@ from app.enums.case_states import (
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
-
-
-_READY_STATUSES = ("stained", "completed")
-
-
-def track_ready(stain: SurgicalBlockStain, at=None) -> None:
-    """Keep ready_at in step with status after it changes: stamped when the
-    slide becomes readable (unless it already was), cleared when it goes back
-    to pending/sent. Bulk status updates (stain_run.py) set the column in the
-    same UPDATE instead."""
-    if stain.status in _READY_STATUSES:
-        if stain.ready_at is None:
-            stain.ready_at = at or local_now()
-    else:
-        stain.ready_at = None
+from app.crud import stain_signoff
+from app.crud.stain_signoff import track_ready
 
 
 def _signoff_stains_query(db: Session, case_id: int, *entities):
@@ -118,46 +105,22 @@ def mark_case_stains_reported(
     revision 54bbe1c9fc1f applies the same rule to stains signed out before
     this existed.
 
-    Returns the number of stains stamped.
+    Returns the number of stains stamped. The rule itself lives in
+    crud.stain_signoff.mark_reported, shared with non-gyne.
     """
-    statuses = ["stained", "completed"] if include_unreviewed else ["completed"]
-    stain_ids = [
-        row.id
-        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
-        .filter(
-            SurgicalBlockStain.reported_at.is_(None),
-            SurgicalBlockStain.status.in_(statuses),
-        )
-        .all()
-    ]
-    if stain_ids:
-        db.query(SurgicalBlockStain).filter(
-            SurgicalBlockStain.id.in_(stain_ids)
-        ).update(
-            {"status": "completed", "reported_at": at},
-            synchronize_session=False,
-        )
-    return len(stain_ids)
+    return stain_signoff.mark_reported(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id),
+        at, include_unreviewed,
+    )
 
 
 def mark_case_stains_released(db: Session, case_id: int, at) -> int:
     """The signed report was published (straight away with the approve system
     off, else on approval): every stain it carried — reported, not yet
     released — reaches the clinician now. Does not commit."""
-    stain_ids = [
-        row.id
-        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
-        .filter(
-            SurgicalBlockStain.reported_at.isnot(None),
-            SurgicalBlockStain.released_at.is_(None),
-        )
-        .all()
-    ]
-    if stain_ids:
-        db.query(SurgicalBlockStain).filter(
-            SurgicalBlockStain.id.in_(stain_ids)
-        ).update({"released_at": at}, synchronize_session=False)
-    return len(stain_ids)
+    return stain_signoff.mark_released(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id), at
+    )
 
 
 def unmark_unreleased_stains(db: Session, case_id: int) -> int:
@@ -165,20 +128,9 @@ def unmark_unreleased_stains(db: Session, case_id: int) -> int:
     out, so stains signed but not yet released lose reported_at and wait for
     the next sign-off to stamp them again. Status is left alone — a slide the
     sign-off moved to "completed" still counts as reviewed. Does not commit."""
-    stain_ids = [
-        row.id
-        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
-        .filter(
-            SurgicalBlockStain.reported_at.isnot(None),
-            SurgicalBlockStain.released_at.is_(None),
-        )
-        .all()
-    ]
-    if stain_ids:
-        db.query(SurgicalBlockStain).filter(
-            SurgicalBlockStain.id.in_(stain_ids)
-        ).update({"reported_at": None}, synchronize_session=False)
-    return len(stain_ids)
+    return stain_signoff.unmark_unreleased(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
+    )
 
 
 def count_unkeyed_internal_stains(db: Session) -> int:

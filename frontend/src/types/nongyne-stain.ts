@@ -24,6 +24,11 @@ export interface NongyneCytologyStain {
   is_printed: boolean;
   printed_at?: string | null;
   printed_by_id?: number | null;
+  // Result timeline, as on surgical stains (backend app/crud/stain_signoff.py):
+  // slide readable → signed off → report published
+  ready_at?: string | null;
+  reported_at?: string | null;
+  released_at?: string | null;
   created_at: string;
   updated_at: string;
   accession_no?: string;

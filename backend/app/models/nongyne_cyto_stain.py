@@ -29,6 +29,14 @@ class NongyneCytologyStain(Base):
     printed_at = Column(DateTime, nullable=True)
     printed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # เวลาของผลย้อมเพิ่ม (IHC / special stain) — ความหมายเดียวกับ
+    # surgical_block_stains ดู app/crud/stain_signoff.py:
+    # ready_at = สไลด์พร้อมอ่าน, reported_at = พยาธิแพทย์ sign รายงานที่มีผลนี้,
+    # released_at = รายงานนั้นถูก publish (ปิดระบบ approve = ตอน sign)
+    ready_at = Column(DateTime, nullable=True)
+    reported_at = Column(DateTime, nullable=True)
+    released_at = Column(DateTime, nullable=True)
+
     # Relationships
     case = relationship("NongyneCytologyCase", back_populates="stains")
 

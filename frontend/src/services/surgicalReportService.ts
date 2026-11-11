@@ -63,6 +63,7 @@ import {
   OutlabStats,
   IhcTatStats,
   IhcOutstandingCase,
+  IhcCaseType,
 } from "../types/surgicalReport";
 import { BulkSaveDraft } from "../types/surgicalBulk";
 import { ArchiveItem } from "./archiveService";
@@ -322,17 +323,24 @@ const SurgicalReportService = {
     return response.data;
   },
 
-  // IHC requests that went out (signed off) in the period
-  getIhcTat: async (startDate: string, endDate: string): Promise<IhcTatStats> => {
+  // IHC requests that went out (published) in the period — surgical or
+  // non-gyne (the same endpoint serves both)
+  getIhcTat: async (
+    startDate: string,
+    endDate: string,
+    caseType: IhcCaseType = "surgical",
+  ): Promise<IhcTatStats> => {
     const response = await api.get<IhcTatStats>(`/surgical-reports/ihc-tat`, {
-      params: { start_date: startDate, end_date: endDate },
+      params: { start_date: startDate, end_date: endDate, case_type: caseType },
     });
     return response.data;
   },
 
   // Cases whose IHC hasn't gone out yet, oldest order first
-  getIhcOutstanding: async (): Promise<IhcOutstandingCase[]> => {
-    const response = await api.get<IhcOutstandingCase[]>(`/surgical-reports/ihc-tat/outstanding`);
+  getIhcOutstanding: async (caseType: IhcCaseType = "surgical"): Promise<IhcOutstandingCase[]> => {
+    const response = await api.get<IhcOutstandingCase[]>(`/surgical-reports/ihc-tat/outstanding`, {
+      params: { case_type: caseType },
+    });
     return response.data;
   },
 

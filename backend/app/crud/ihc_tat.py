@@ -1,7 +1,8 @@
-"""IHC turnaround — how long a surgical case's IHC takes from order until its
-result reaches the clinician.
+"""IHC turnaround — how long a case's IHC takes from order until its result
+reaches the clinician, for surgical and non-gyne cases (case_type).
 
-Three stamps on surgical_block_stains carry the timeline:
+Three stamps on the stain tables (surgical_block_stains, nongyne_cyto_stains;
+see crud.stain_signoff) carry the timeline:
 
 * ready_at — the slide became readable (outlab receive / stain run);
 * reported_at — the pathologist's sign-off that carried the result
@@ -21,12 +22,15 @@ measure as the surgical TAT dashboard (crud.surgical_case.get_tat_stats).
 from collections import defaultdict
 from datetime import date, datetime, time
 from statistics import median
+from typing import Literal
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.crud.surgical_case import _tat_bucket
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
+from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.patient import Patient
 from app.models.surgical_block import SurgicalBlock
 from app.models.surgical_block_stain import (
@@ -49,34 +53,50 @@ DEFAULT_IHC_TAT_DAYS = 10
 _STAGE_ORDER = ("pending", "sent", "stained", "completed", "signed")
 
 
-def _ihc_stains(db: Session, *filters):
+CaseType = Literal["surgical", "nongyne"]
+
+# Per case type: the stain model and the case model (for patients).
+_MODELS = {
+    "surgical": (SurgicalBlockStain, SurgicalCase),
+    "nongyne": (NongyneCytologyStain, NongyneCytologyCase),
+}
+
+
+def _ihc_stains(db: Session, case_type: CaseType, *filters):
     """(stain, case_id, test_name, is_external) for IHC slides on cases that
-    weren't cancelled. Recuts are re-cut sections, not new IHC orders."""
-    return (
-        db.query(
-            SurgicalBlockStain,
-            SurgicalCase.id,
-            AnatomicalPathologyTest.name,
-            AnatomicalPathologyTest.is_external,
+    weren't cancelled. `filters` are built on the case type's stain model."""
+    stain_model, case_model = _MODELS[case_type]
+    q = db.query(
+        stain_model,
+        case_model.id,
+        AnatomicalPathologyTest.name,
+        AnatomicalPathologyTest.is_external,
+    )
+    if case_type == "surgical":
+        q = (
+            q.join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
+            .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+            .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
+            # Recuts are re-cut sections, not new IHC orders.
+            .filter(SurgicalBlockStain.is_recut.isnot(True))
         )
-        .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
-        .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
-        .join(SurgicalCase, SurgicalCase.id == SurgicalSpecimen.case_id)
-        .join(AnatomicalPathologyTest, AnatomicalPathologyTest.id == SurgicalBlockStain.test_id)
+    else:
+        q = q.join(NongyneCytologyCase, NongyneCytologyCase.id == NongyneCytologyStain.case_id)
+    return (
+        q.join(AnatomicalPathologyTest, AnatomicalPathologyTest.id == stain_model.test_id)
         .filter(
             func.lower(AnatomicalPathologyTest.category) == "ihc",
-            SurgicalBlockStain.is_recut.isnot(True),
-            SurgicalCase.is_cancelled.isnot(True),
+            case_model.is_cancelled.isnot(True),
             *filters,
         )
         .all()
     )
 
 
-def _latest_outlab(db: Session, stain_ids: list[int]) -> dict[int, dict]:
+def _latest_outlab(db: Session, case_type: CaseType, stain_ids: list[int]) -> dict[int, dict]:
     """Per stain, its most recent outlab round (a redo is sent again): when it
-    went, when it came back, and where to."""
-    if not stain_ids:
+    went, when it came back, and where to. Non-gyne has no outlab step."""
+    if case_type != "surgical" or not stain_ids:
         return {}
     rows = (
         db.query(
@@ -96,13 +116,14 @@ def _latest_outlab(db: Session, stain_ids: list[int]) -> dict[int, dict]:
     return latest
 
 
-def _patients(db: Session, case_ids: set[int]) -> dict[int, dict]:
+def _patients(db: Session, case_type: CaseType, case_ids: set[int]) -> dict[int, dict]:
     if not case_ids:
         return {}
+    case_model = _MODELS[case_type][1]
     cases = (
-        db.query(SurgicalCase)
-        .join(Patient, Patient.id == SurgicalCase.patient_id)
-        .filter(SurgicalCase.id.in_(case_ids))
+        db.query(case_model)
+        .join(Patient, Patient.id == case_model.patient_id)
+        .filter(case_model.id.in_(case_ids))
         .all()
     )
     return {
@@ -138,23 +159,25 @@ def _days(start, end, holidays) -> float | None:
     return round(business_days_between(start, end, holidays), 1)
 
 
-def get_ihc_tat(db: Session, start_date: date, end_date: date) -> dict:
+def get_ihc_tat(db: Session, start_date: date, end_date: date, case_type: CaseType = "surgical") -> dict:
     """IHC requests that went out (released_at) between start_date and
     end_date, with their timeline and the summary the dashboard draws."""
     holidays = get_holiday_dates(db)
     target = get_ihc_target_days(db)
+    stain_model = _MODELS[case_type][0]
     rows = _ihc_stains(
         db,
-        SurgicalBlockStain.reported_at.isnot(None),
-        SurgicalBlockStain.released_at >= datetime.combine(start_date, time.min),
-        SurgicalBlockStain.released_at <= datetime.combine(end_date, time.max),
+        case_type,
+        stain_model.reported_at.isnot(None),
+        stain_model.released_at >= datetime.combine(start_date, time.min),
+        stain_model.released_at <= datetime.combine(end_date, time.max),
     )
-    outlab = _latest_outlab(db, [row[0].id for row in rows])
+    outlab = _latest_outlab(db, case_type, [row[0].id for row in rows])
 
     grouped: dict[tuple[int, datetime], list] = defaultdict(list)
     for stain, case_id, test_name, _ in rows:
         grouped[(case_id, stain.reported_at)].append((stain, test_name))
-    patients = _patients(db, {case_id for case_id, _ in grouped})
+    patients = _patients(db, case_type, {case_id for case_id, _ in grouped})
 
     requests = []
     for (case_id, signed_at), slides in grouped.items():
@@ -242,31 +265,33 @@ def get_ihc_tat(db: Session, start_date: date, end_date: date) -> dict:
     }
 
 
-def _stage(stain: SurgicalBlockStain) -> str:
+def _stage(stain) -> str:
     return "signed" if stain.reported_at else stain.status
 
 
-def get_ihc_outstanding(db: Session) -> list[dict]:
+def get_ihc_outstanding(db: Session, case_type: CaseType = "surgical") -> list[dict]:
     """IHC not out yet (not released), one row per case, oldest order first.
     Not limited to a period: an old open request is exactly what this list is
     for. Includes slides signed off but still waiting for approval."""
     holidays = get_holiday_dates(db)
     target = get_ihc_target_days(db)
     now = local_now()
+    stain_model = _MODELS[case_type][0]
     rows = _ihc_stains(
         db,
-        SurgicalBlockStain.released_at.is_(None),
+        case_type,
+        stain_model.released_at.is_(None),
         or_(
-            SurgicalBlockStain.reported_at.isnot(None),
-            SurgicalBlockStain.status.in_(_STAGE_ORDER[:-1]),
+            stain_model.reported_at.isnot(None),
+            stain_model.status.in_(_STAGE_ORDER[:-1]),
         ),
     )
-    outlab = _latest_outlab(db, [row[0].id for row in rows])
+    outlab = _latest_outlab(db, case_type, [row[0].id for row in rows])
 
     by_case: dict[int, list] = defaultdict(list)
     for stain, case_id, test_name, is_external in rows:
         by_case[case_id].append((stain, test_name, bool(is_external)))
-    patients = _patients(db, set(by_case))
+    patients = _patients(db, case_type, set(by_case))
 
     out = []
     for case_id, slides in by_case.items():

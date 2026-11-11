@@ -185,3 +185,20 @@ it("reloads both views for the picked period", async () => {
   await waitFor(() => expect(SurgicalReportService.getIhcTat).toHaveBeenCalledTimes(2));
   expect(SurgicalReportService.getIhcOutstanding).toHaveBeenCalledTimes(2);
 });
+
+it("serves non-gyne IHC without the outlab parts", async () => {
+  vi.mocked(SurgicalReportService.getIhcTat).mockResolvedValue(
+    stats({ by_lab: [], requests: [request({ source: "in-house", lab: null, outlab_days: null })] }),
+  );
+  vi.mocked(SurgicalReportService.getIhcOutstanding).mockResolvedValue([
+    openCase({ stage: "pending", markers: [{ name: "CK7", status: "pending", is_external: true }], sent_at: null, lab: null }),
+  ]);
+  render(<IhcTatDashboard caseType="nongyne" />);
+
+  expect(await screen.findByText("Non-Gyne IHC Turnaround (TAT)")).toBeInTheDocument();
+  expect(SurgicalReportService.getIhcTat).toHaveBeenCalledWith(expect.any(String), expect.any(String), "nongyne");
+  expect(SurgicalReportService.getIhcOutstanding).toHaveBeenCalledWith("nongyne");
+  expect(screen.queryByText("Median at outlab")).not.toBeInTheDocument();
+  expect(screen.queryByText(/At outlab \(/)).not.toBeInTheDocument();      // no "sent" stage filter
+  expect(await screen.findByText("Not stained yet")).toBeInTheDocument();  // never "Not sent"
+});

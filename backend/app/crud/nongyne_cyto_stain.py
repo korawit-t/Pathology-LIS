@@ -1,5 +1,10 @@
 import logging
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
+from app.crud import stain_signoff
+from app.crud.stain_signoff import track_ready
+from app.utils.stain_filters import SPECIAL_STAIN_CATEGORIES
+from app.utils.time import local_now
 from app.models.nongyne_cyto_stain import NongyneCytologyStain
 from app.models.anatomical_pathology_test import AnatomicalPathologyTest
 from app.schemas.nongyne_cyto_stain import NongyneStainCreate, NongyneStainUpdate
@@ -36,10 +41,75 @@ def update_stain(db: Session, stain_id: int, obj_in: NongyneStainUpdate):
     update_data = obj_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_obj, field, value)
+    if "status" in update_data:
+        track_ready(db_obj)
 
     db.commit()
     db.refresh(db_obj)
     return db_obj
+
+
+# Additional stains a non-gyne sign-off can report: IHC and special stains.
+# The routine cytology stains (Pap, Diff-Quik…) and Molecular orders aren't
+# results that "come out" on their own.
+_SIGNOFF_CATEGORIES = ("ihc",) + SPECIAL_STAIN_CATEGORIES
+
+
+def _signoff_stains_query(db: Session, case_id: int, *entities):
+    return (
+        db.query(*(entities or (NongyneCytologyStain,)))
+        .join(AnatomicalPathologyTest, AnatomicalPathologyTest.id == NongyneCytologyStain.test_id)
+        .filter(
+            NongyneCytologyStain.case_id == case_id,
+            func.lower(AnatomicalPathologyTest.category).in_(_SIGNOFF_CATEGORIES),
+        )
+    )
+
+
+def get_case_signoff_stains(db: Session, case_id: int) -> list[dict]:
+    """The non-gyne sign-off page's list: the same set a sign-off can stamp,
+    in slide order (shape shared with the surgical sign-off list)."""
+    stains = (
+        _signoff_stains_query(db, case_id)
+        .options(joinedload(NongyneCytologyStain.test))
+        .order_by(NongyneCytologyStain.slide_no, NongyneCytologyStain.id)
+        .all()
+    )
+    return [
+        {
+            "stain_id": s.id,
+            "block_code": None,
+            "test_name": s.test.name if s.test else None,
+            "category": s.test.category if s.test else None,
+            "status": s.status,
+            "is_external": bool(s.test and s.test.is_external),
+            "reported_at": s.reported_at,
+        }
+        for s in stains
+    ]
+
+
+def mark_case_stains_reported(db: Session, case_id: int, at, include_unreviewed: bool) -> int:
+    """At the pathologist's sign-off (publish_nongyne_report). Rule in
+    crud.stain_signoff.mark_reported. Does not commit."""
+    return stain_signoff.mark_reported(
+        db, NongyneCytologyStain, _signoff_stains_query(db, case_id, NongyneCytologyStain.id),
+        at, include_unreviewed,
+    )
+
+
+def mark_case_stains_released(db: Session, case_id: int, at) -> int:
+    """The signed report was published. Does not commit."""
+    return stain_signoff.mark_released(
+        db, NongyneCytologyStain, _signoff_stains_query(db, case_id, NongyneCytologyStain.id), at
+    )
+
+
+def unmark_unreleased_stains(db: Session, case_id: int) -> int:
+    """The approver sent the report back. Does not commit."""
+    return stain_signoff.unmark_unreleased(
+        db, NongyneCytologyStain, _signoff_stains_query(db, case_id, NongyneCytologyStain.id)
+    )
 
 
 def get_pending_print_stains(db: Session):
@@ -124,12 +194,14 @@ def create_stain_run(
         db.flush()
 
         # 2. สร้าง Details และ Update สถานะสไลด์
+        # The run is saved already completed, so the slides are readable now.
+        now = local_now()
         for s_id in stain_ids:
             detail = NongyneStainRunDetail(stain_run_id=db_run.id, stain_id=s_id)
             db.add(detail)
 
             db.query(NongyneCytologyStain).filter(NongyneCytologyStain.id == s_id).update(
-                {"status": "stained"}
+                {"status": "stained", "ready_at": now}
             )
 
         # Update parent case status so they appear in slide dispatch manual select
