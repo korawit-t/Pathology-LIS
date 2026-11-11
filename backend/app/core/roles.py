@@ -134,6 +134,15 @@ CAN_READ_CYTO_STATISTICS = RoleChecker(
     ["admin", "lab_manager", "histo", "gross", "immuno", "cytotechnologist", "register", "pathologist", "senior_pathologist"]
 )
 
+# --- IHC TAT (Report Analytics → Surgical → IHC TAT) ---
+# Lists every hospital's IHC requests with patient names, so — same reasoning
+# as CAN_READ_CYTO_STATISTICS — the Report Analytics page's internal roles
+# and no external one. CAN_READ_REPORT would have let clinician/hospital in
+# and kept immuno (the IHC bench) out.
+CAN_READ_IHC_TAT = RoleChecker(
+    ["admin", "lab_manager", "histo", "gross", "immuno", "cytotechnologist", "register", "pathologist", "senior_pathologist"]
+)
+
 # --- Removing a case (surgical, gyne, non-gyne) ---
 # Hard delete (a case still at registered) is admin's alone; cancelling a case
 # already in the workflow is admin's or the lab manager's.

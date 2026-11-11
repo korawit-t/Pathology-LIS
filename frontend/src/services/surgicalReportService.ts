@@ -61,6 +61,8 @@ import {
   TissueProcessStats,
   StorageStats,
   OutlabStats,
+  IhcTatStats,
+  IhcOutstandingCase,
 } from "../types/surgicalReport";
 import { BulkSaveDraft } from "../types/surgicalBulk";
 import { ArchiveItem } from "./archiveService";
@@ -317,6 +319,20 @@ const SurgicalReportService = {
       `/surgical-reports/outlab-stats`,
       { params: { start_date: startDate, end_date: endDate } },
     );
+    return response.data;
+  },
+
+  // IHC requests that went out (signed off) in the period
+  getIhcTat: async (startDate: string, endDate: string): Promise<IhcTatStats> => {
+    const response = await api.get<IhcTatStats>(`/surgical-reports/ihc-tat`, {
+      params: { start_date: startDate, end_date: endDate },
+    });
+    return response.data;
+  },
+
+  // Cases whose IHC hasn't gone out yet, oldest order first
+  getIhcOutstanding: async (): Promise<IhcOutstandingCase[]> => {
+    const response = await api.get<IhcOutstandingCase[]>(`/surgical-reports/ihc-tat/outstanding`);
     return response.data;
   },
 

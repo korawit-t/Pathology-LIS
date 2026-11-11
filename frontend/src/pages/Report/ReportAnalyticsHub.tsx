@@ -34,6 +34,7 @@ import CytoPathConcordanceReport from "./CytoPathConcordanceReport";
 import CytoWorkloadPage from "./CytoWorkloadPage";
 import CytoTATDashboard from "./CytoTATDashboard";
 import IHCStatPage from "./IHCStatPage";
+import IhcTatDashboard from "./IhcTatDashboard";
 import StaffRegistrationPage from "./StaffRegistrationPage";
 import StaffGrossPage from "./StaffGrossPage";
 import HistoPage from "./HistoPage";
@@ -97,6 +98,11 @@ const ReportAnalyticsHub: React.FC = () => {
                     key: "ihc",
                     label: <span><BgColorsOutlined style={{ marginRight: 6 }} />IHC Stats</span>,
                     children: <IHCStatPage />,
+                  },
+                  {
+                    key: "ihc-tat",
+                    label: <span><ClockCircleOutlined style={{ marginRight: 6 }} />IHC TAT</span>,
+                    children: <IhcTatDashboard />,
                   },
                   ...(canSearchDiagnoses ? [{
                     key: "diagnosis-search",
