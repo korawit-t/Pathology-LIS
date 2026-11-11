@@ -140,6 +140,47 @@ def mark_case_stains_reported(
     return len(stain_ids)
 
 
+def mark_case_stains_released(db: Session, case_id: int, at) -> int:
+    """The signed report was published (straight away with the approve system
+    off, else on approval): every stain it carried — reported, not yet
+    released — reaches the clinician now. Does not commit."""
+    stain_ids = [
+        row.id
+        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
+        .filter(
+            SurgicalBlockStain.reported_at.isnot(None),
+            SurgicalBlockStain.released_at.is_(None),
+        )
+        .all()
+    ]
+    if stain_ids:
+        db.query(SurgicalBlockStain).filter(
+            SurgicalBlockStain.id.in_(stain_ids)
+        ).update({"released_at": at}, synchronize_session=False)
+    return len(stain_ids)
+
+
+def unmark_unreleased_stains(db: Session, case_id: int) -> int:
+    """The approver sent the report back: the sign-off it carried didn't go
+    out, so stains signed but not yet released lose reported_at and wait for
+    the next sign-off to stamp them again. Status is left alone — a slide the
+    sign-off moved to "completed" still counts as reviewed. Does not commit."""
+    stain_ids = [
+        row.id
+        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
+        .filter(
+            SurgicalBlockStain.reported_at.isnot(None),
+            SurgicalBlockStain.released_at.is_(None),
+        )
+        .all()
+    ]
+    if stain_ids:
+        db.query(SurgicalBlockStain).filter(
+            SurgicalBlockStain.id.in_(stain_ids)
+        ).update({"reported_at": None}, synchronize_session=False)
+    return len(stain_ids)
+
+
 def count_unkeyed_internal_stains(db: Session) -> int:
     """In-house stains still waiting to be keyed into HosXP for billing.
     Mirrors isKeyableStain in the frontend's pages/Stain/stainFilters.ts."""

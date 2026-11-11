@@ -16,6 +16,7 @@ from app.models.surgical_diagnosis import (
 from app.enums.case_status import CaseStatus
 from app.crud import his_export_log as his_export_crud
 from app.crud.surgical_report import build_surgical_export_payload
+from app.crud.surgical_block_stain import mark_case_stains_released, unmark_unreleased_stains
 
 
 def process_report_approval(
@@ -71,6 +72,9 @@ def process_report_approval(
                 db_case.is_reported = True
                 db_case.report_at = now
 
+            # The stains this sign-off carried reach the clinician now.
+            mark_case_stains_released(db, db_report.case_id, now)
+
         his_export_crud.enqueue(
             db,
             resource_type="SurgicalReport",
@@ -100,6 +104,9 @@ def process_report_approval(
                 SurgicalDiagnosis.case_id == db_report.case_id,
                 SurgicalDiagnosis.status == "signed",
             ).update({"status": "draft", "diagnosis_at": None})
+
+            # The sign-off didn't go out: its stains wait for the next one.
+            unmark_unreleased_stains(db, db_report.case_id)
 
             # 🚩 จุดสำคัญ: ล้างการเซ็นในตาราง ReportSigner ของ Report ฉบับนี้
             # เพื่อให้หมอทุกคนต้องกลับมาเซ็นชื่อใหม่หลังจากแก้ไขผลแล้ว

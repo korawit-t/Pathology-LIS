@@ -44,6 +44,12 @@ class SurgicalBlockStain(Base):
     # ตั้งครั้งเดียว ไม่เขียนทับตอน sign Addendum — เก็บเวลาออกครั้งแรก
     reported_at = Column(DateTime, nullable=True)
 
+    # เวลาที่ผลนี้ถึงมือแพทย์ผู้ส่งจริง = ตอนรายงานที่ sign ไว้ถูก publish:
+    # ปิดระบบ approve → เท่ากับ reported_at, เปิด → ตอนผู้อนุมัติกด approve
+    # (crud.surgical_block_stain.mark_case_stains_released) ถ้าถูกตีกลับ
+    # reported_at ของสไลด์ที่ยังไม่ publish จะถูกล้างเพื่อรอ sign ใหม่
+    released_at = Column(DateTime, nullable=True)
+
     # การคีย์ค่าตรวจเข้า HosXP (งานย้อมภายในแล็บ)
     # Outlab stains track this on SurgicalOutlabRunDetail instead — internal
     # stains never get a run detail, so the flag lives on the stain itself.

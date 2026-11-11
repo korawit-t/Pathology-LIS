@@ -84,6 +84,9 @@ class StainResponse(StainBase):
     # When the result went out: the sign-off that carried it (read-only —
     # set by finalize, never through StainUpdate)
     reported_at: Optional[datetime] = None
+    # When that report was published to the clinician (approval, or the
+    # sign-off itself with the approve system off)
+    released_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 

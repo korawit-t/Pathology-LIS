@@ -20,11 +20,16 @@ class IhcTatRequest(BaseModel):
     ordered_at: datetime
     sent_at: Optional[datetime] = None
     ready_at: Optional[datetime] = None
-    reported_at: datetime
-    # Working days: order → out, at the outlab, slide ready → out
+    # The pathologist's sign-off (surgical_block_stains.reported_at)
+    signed_at: datetime
+    # Out: the report was published (= signed_at with the approve system off)
+    released_at: datetime
+    # Working days: order → out, at the outlab, slide ready → sign-off,
+    # sign-off → published (approval wait)
     total_days: float
     outlab_days: Optional[float] = None
     reading_days: Optional[float] = None
+    approval_days: Optional[float] = None
     bucket: Literal["lt3", "t3_5", "t5_10", "gt10"]
     # total_days within the IHC target (system_settings.ihc_tat_days)
     on_time: bool
@@ -38,6 +43,7 @@ class IhcTatSummary(BaseModel):
     median_total_days: Optional[float] = None
     median_outlab_days: Optional[float] = None
     median_reading_days: Optional[float] = None
+    median_approval_days: Optional[float] = None
     target_days: int
     on_time_count: int
     on_time_pct: Optional[float] = None
@@ -87,11 +93,13 @@ class IhcOutstandingCase(BaseModel):
     patient_ln: Optional[str] = None
     markers: List[IhcOutstandingMarker]
     # Least advanced slide: pending → sent (at outlab) → stained (ready to
-    # read) → completed (result entered, not signed out)
-    stage: Literal["pending", "sent", "stained", "completed"]
+    # read) → completed (result entered, not signed out) → signed (signed
+    # off, waiting for approval to publish it)
+    stage: Literal["pending", "sent", "stained", "completed", "signed"]
     ordered_at: datetime
     sent_at: Optional[datetime] = None
     lab: Optional[str] = None
+    signed_at: Optional[datetime] = None
     age_days: float
     # Waited longer than the IHC target already
     overdue: bool

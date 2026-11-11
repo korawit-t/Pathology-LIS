@@ -66,6 +66,7 @@ const STAGES: Record<IhcOutstandingStage, { label: string; color: string }> = {
   sent: { label: "At outlab", color: "blue" },
   stained: { label: "Ready to read", color: "gold" },
   completed: { label: "Result entered, not signed", color: "purple" },
+  signed: { label: "Signed, awaiting approval", color: "cyan" },
 };
 
 const MARKER_COLORS: Record<string, string> = {
@@ -73,6 +74,7 @@ const MARKER_COLORS: Record<string, string> = {
   sent: "blue",
   stained: "gold",
   completed: "purple",
+  signed: "cyan",
 };
 
 const patientName = (r: { patient_title: string | null; patient_name: string | null; patient_ln: string | null }) =>
@@ -129,10 +131,12 @@ const requestColumns: ColumnsType<IhcTatRequest> = [
     render: (_, r) => (r.source === "outlab" ? <Tag color="blue">{r.lab || "Outlab"}</Tag> : <Tag>In-house</Tag>),
   },
   { title: "Ordered", dataIndex: "ordered_at", key: "ordered_at", render: fmtDate },
-  { title: "Out", dataIndex: "reported_at", key: "reported_at", render: fmtDate },
+  { title: "Signed", dataIndex: "signed_at", key: "signed_at", render: fmtDate },
+  { title: "Out", dataIndex: "released_at", key: "released_at", render: fmtDate },
   { title: "Total", dataIndex: "total_days", key: "total_days", render: fmtDays },
   { title: "At outlab", dataIndex: "outlab_days", key: "outlab_days", render: fmtDays },
-  { title: "Ready → out", dataIndex: "reading_days", key: "reading_days", render: fmtDays },
+  { title: "Ready → signed", dataIndex: "reading_days", key: "reading_days", render: fmtDays },
+  { title: "Approval", dataIndex: "approval_days", key: "approval_days", render: fmtDays },
   {
     title: "Target",
     dataIndex: "on_time",
@@ -202,10 +206,12 @@ const IhcTatDashboard: React.FC = () => {
         { header: "Ordered", key: "ordered_at", render: (v) => fmtDate(v as string) },
         { header: "Sent", key: "sent_at", render: (v) => fmtDate(v as string | null) },
         { header: "Slide ready", key: "ready_at", render: (v) => fmtDate(v as string | null) },
-        { header: "Out (signed)", key: "reported_at", render: (v) => fmtDate(v as string) },
+        { header: "Signed", key: "signed_at", render: (v) => fmtDate(v as string) },
+        { header: "Out (published)", key: "released_at", render: (v) => fmtDate(v as string) },
         { header: "Total (working days)", key: "total_days" },
         { header: "At outlab (working days)", key: "outlab_days" },
-        { header: "Ready to out (working days)", key: "reading_days" },
+        { header: "Ready to signed (working days)", key: "reading_days" },
+        { header: "Signed to published (working days)", key: "approval_days" },
         { header: `Within target (${target ?? "—"} d)`, key: "on_time", render: (v) => (v ? "yes" : "no") },
       ],
       {
@@ -246,6 +252,9 @@ const IhcTatDashboard: React.FC = () => {
               {[r.lab, r.sent_at && `sent ${fmtDate(r.sent_at)}`].filter(Boolean).join(" · ")}
             </Text>
           )}
+          {s === "signed" && r.signed_at && (
+            <Text type="secondary" style={{ fontSize: 12 }}>signed {fmtDate(r.signed_at)}</Text>
+          )}
         </Space>
       ),
     },
@@ -273,7 +282,7 @@ const IhcTatDashboard: React.FC = () => {
           <Title level={3} style={{ margin: 0 }}>IHC Turnaround (TAT)</Title>
         </Space>
         <Space wrap>
-          <Text type="secondary">Signed out:</Text>
+          <Text type="secondary">Out (published):</Text>
           <RangePicker
             value={dateRange}
             onChange={(vals) => {
@@ -293,8 +302,9 @@ const IhcTatDashboard: React.FC = () => {
         </Space>
       </div>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        From IHC order to the sign-off that carries the result, in working days. One request is a case&apos;s IHC
-        slides signed out together.
+        From IHC order until the report carrying the result is published to the clinician (with the approve system
+        off, that is the sign-off itself), in working days. One request is a case&apos;s IHC slides signed off
+        together.
         {target !== undefined && ` Target: ${target} working days (Admin → Workflow → Turnaround Time).`}
       </Text>
 
@@ -330,9 +340,9 @@ const IhcTatDashboard: React.FC = () => {
           <Col flex="1 1 220px">
             <Kpi
               icon={<ExperimentOutlined />} color="#13c2c2" background="#e6fffb"
-              label="Median slide ready → out"
+              label="Median slide ready → signed"
               value={fmtDays(summary?.median_reading_days)}
-              hint="reading and sign-off"
+              hint={`reading · then approval ${fmtDays(summary?.median_approval_days)}`}
             />
           </Col>
           <Col flex="1 1 220px">
@@ -464,7 +474,7 @@ const IhcTatDashboard: React.FC = () => {
       >
         <Table
           size="small"
-          rowKey={(r) => `${r.case_id}-${r.reported_at}`}
+          rowKey={(r) => `${r.case_id}-${r.signed_at}`}
           dataSource={bucketRequests}
           columns={requestColumns}
           pagination={bucketRequests.length > 10 ? { pageSize: 10 } : false}

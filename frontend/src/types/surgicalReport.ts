@@ -278,8 +278,9 @@ export interface OutlabStats {
 
 
 // --- IHC TAT dashboard (GET /surgical-reports/ihc-tat[/outstanding]) ---
-// An IHC request = a case's IHC slides that went out at one sign-off (same
-// reported_at). Days are working days, as on the surgical TAT dashboard.
+// An IHC request = a case's IHC slides signed off together (same reported_at).
+// "Out" = that report published (released_at). Days are working days, as on
+// the surgical TAT dashboard.
 
 export type IhcTatBucket = "lt3" | "t3_5" | "t5_10" | "gt10";
 
@@ -296,10 +297,16 @@ export interface IhcTatRequest {
   ordered_at: string;
   sent_at: string | null;
   ready_at: string | null;
-  reported_at: string;
+  // The pathologist's sign-off
+  signed_at: string;
+  // Out: the report was published (= signed_at with the approve system off)
+  released_at: string;
   total_days: number;
   outlab_days: number | null;
+  // slide ready → sign-off
   reading_days: number | null;
+  // sign-off → published (approval wait)
+  approval_days: number | null;
   bucket: IhcTatBucket;
   // total_days within the IHC target (Admin → Workflow → ihc_tat_days)
   on_time: boolean;
@@ -314,6 +321,7 @@ export interface IhcTatStats {
     median_total_days: number | null;
     median_outlab_days: number | null;
     median_reading_days: number | null;
+    median_approval_days: number | null;
     target_days: number;
     on_time_count: number;
     on_time_pct: number | null;
@@ -324,7 +332,8 @@ export interface IhcTatStats {
   requests: IhcTatRequest[];
 }
 
-export type IhcOutstandingStage = "pending" | "sent" | "stained" | "completed";
+// "signed" = signed off, waiting for the approval that publishes it
+export type IhcOutstandingStage = "pending" | "sent" | "stained" | "completed" | "signed";
 
 export interface IhcOutstandingCase {
   case_id: number;
@@ -337,6 +346,8 @@ export interface IhcOutstandingCase {
   ordered_at: string;
   sent_at: string | null;
   lab: string | null;
+  // Set once signed off (stage "signed": waiting for approval)
+  signed_at: string | null;
   age_days: number;
   // Waited longer than the IHC target already
   overdue: boolean;
