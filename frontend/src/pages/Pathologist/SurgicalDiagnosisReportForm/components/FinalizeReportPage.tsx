@@ -32,6 +32,7 @@ import {
 } from "@ant-design/icons";
 import SurgicalReportService from "../../../../services/surgicalReportService";
 import SurgicalBlockStainService from "../../../../services/surgicalBlockStainService";
+import type { SignOffStain } from "../../../../types/stains";
 import logger from "../../../../utils/logger";
 import { usePdfBlobUrl } from "../../../../hooks/usePdfBlobUrl";
 import CriticalNotificationSection from "../../../../components/CriticalNotificationSection";
@@ -48,13 +49,11 @@ export interface FinalizeData {
   pending_reason?: string;
 }
 
-interface StainOrder {
-  stain_id: number;
-  block_code: string;
-  test_name: string;
-  status: string;
-  is_external: boolean;
-}
+/** Where a slide that isn't back yet is, for the "not back yet" list. */
+const notBackLabel = (s: SignOffStain): string => {
+  if (s.status === "sent") return "at outlab";
+  return s.is_external ? "not sent yet" : "not stained yet";
+};
 
 interface FinalizeReportPageProps {
   open: boolean;
@@ -99,7 +98,18 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
     pending_reason: "",
   });
 
-  const [unreviewedStains, setUnreviewedStains] = useState<StainOrder[]>([]);
+  const [signOffStains, setSignOffStains] = useState<SignOffStain[]>([]);
+  // Ready to read but not reviewed — a sign-off as complete records these as
+  // reported (backend mark_case_stains_reported).
+  const unreviewedStains = useMemo(
+    () => signOffStains.filter((s) => s.status === "stained" && !s.reported_at),
+    [signOffStains],
+  );
+  // Not back yet — no sign-off records these; the Addendum that carries them will.
+  const notBackStains = useMemo(
+    () => signOffStains.filter((s) => s.status === "pending" || s.status === "sent"),
+    [signOffStains],
+  );
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [outLabOpen, setOutLabOpen] = useState(false);
   const [outLabReason, setOutLabReason] = useState("");
@@ -157,23 +167,24 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
     onError: pdfOnError,
   });
 
-  // Fetch unreviewed stains
+  // The case's additional stains. This used the accession's stain-orders list,
+  // which only ever returns the routine H&E (it feeds the H&E sticker queue),
+  // and then dropped names containing "h&e" — so neither IHC nor special
+  // stains ever showed here.
   useEffect(() => {
-    if (!open || !accessionNo) { setUnreviewedStains([]); return; }
-    SurgicalBlockStainService.getStainOrdersByAccession(accessionNo)
-      .then((stains) => {
-        const typed = stains as unknown as StainOrder[];
-        setUnreviewedStains(typed.filter((s) => s.status === "stained" && !s.test_name?.toLowerCase().includes("h&e")));
-      })
-      .catch(() => setUnreviewedStains([]));
-  }, [open, accessionNo]);
+    if (!open || !caseId) { setSignOffStains([]); return; }
+    SurgicalBlockStainService.getSignOffStains(caseId)
+      .then(setSignOffStains)
+      .catch(() => setSignOffStains([]));
+  }, [open, caseId]);
 
   const handleMarkAllReviewed = async () => {
     setMarkingReviewed(true);
     try {
-      await Promise.all(unreviewedStains.map((s) => SurgicalBlockStainService.updateStain(s.stain_id, { status: "completed" })));
-      message.success(`${unreviewedStains.length} stain(s) marked as reviewed`);
-      setUnreviewedStains([]);
+      const ids = new Set(unreviewedStains.map((s) => s.stain_id));
+      await Promise.all([...ids].map((id) => SurgicalBlockStainService.updateStain(id, { status: "completed" })));
+      message.success(`${ids.size} stain(s) marked as reviewed`);
+      setSignOffStains((prev) => prev.map((s) => (ids.has(s.stain_id) ? { ...s, status: "completed" } : s)));
     } catch {
       message.error("Failed to mark stains as reviewed");
     } finally {
@@ -323,6 +334,35 @@ const FinalizeReportPage: React.FC<FinalizeReportPageProps> = ({
                       <Button size="small" icon={<CheckSquareOutlined />} loading={markingReviewed} onClick={handleMarkAllReviewed} style={{ color: "#52c41a", borderColor: "#52c41a" }}>
                         Mark All as Reviewed
                       </Button>
+                    </div>
+                  }
+                />
+              )}
+
+              {/* Stains not back yet — no sign-off records these, so a report
+                  signed as complete would otherwise go out without a word
+                  that they're still outstanding. Information only. */}
+              {notBackStains.length > 0 && (
+                <Alert
+                  type="info"
+                  showIcon
+                  icon={<ExperimentOutlined />}
+                  style={{ marginBottom: 16 }}
+                  message={`${notBackStains.length} stain${notBackStains.length > 1 ? "s" : ""} not back yet`}
+                  description={
+                    <div>
+                      <div style={{ marginBottom: 8, fontSize: 12, color: "#595959" }}>
+                        {notBackStains.map((s) => (
+                          <span key={s.stain_id} style={{ marginRight: 8 }}>
+                            {s.block_code} — {s.test_name} ({notBackLabel(s)})
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#595959" }}>
+                        {data.is_pending
+                          ? "These stay open until a later sign-off carries them."
+                          : 'These stay open until an Addendum carries them — toggle "No, Pending" if this report is waiting for them.'}
+                      </div>
                     </div>
                   }
                 />

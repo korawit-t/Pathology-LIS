@@ -5,6 +5,7 @@ import {
   StainingRunResponse,
   StainCategory,
   PendingStainNode,
+  SignOffStain,
 } from "../types/stains";
 
 export interface OutlabRunDetail {
@@ -171,7 +172,18 @@ const SurgicalBlockStainService = {
     return res.data;
   },
 
+  // The case's additional stains for the pathologist's sign-off page — the same
+  // set a sign-off can record as reported (backend get_case_signoff_stains).
+  getSignOffStains: async (caseId: number): Promise<SignOffStain[]> => {
+    const res = await api.get<SignOffStain[]>(
+      `/surgical-block-stains/sign-off/${caseId}`,
+    );
+    return res.data;
+  },
+
   // 12. 🚩 แก้ไข: ดึงคำสั่งย้อมตาม Accession No (ปรับ Type Return)
+  // Routine H&E only (HE_ROUTINE) — for the H&E sticker print queue. Not for
+  // listing IHC / special stains: use getSignOffStains.
   getStainOrdersByAccession: async (
     accessionNo: string,
   ): Promise<StainRequest[]> => {
