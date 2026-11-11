@@ -39,6 +39,10 @@ class NongyneStainResponse(BaseModel):
     status: str
     is_printed: bool
     printed_at: Optional[datetime] = None
+    # Result timeline (crud.stain_signoff) — read-only, never via NongyneStainUpdate
+    ready_at: Optional[datetime] = None
+    reported_at: Optional[datetime] = None
+    released_at: Optional[datetime] = None
 
     # 🚩 ข้อมูลจาก Master Data (ดึงผ่าน Relationship)
     test: Optional[APTestSimple] = None

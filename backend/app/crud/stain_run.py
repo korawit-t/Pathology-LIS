@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy.sql import func
 from app.utils.time import local_now
 from app.models.surgical_block_stain import (
     SurgicalBlockStain,
@@ -125,7 +124,12 @@ def update_run_status(db: Session, run_id: int, status: str):
     if db_run:
         db_run.status = status
         if status == "completed":
-            db_run.completed_at = func.now()
+            # local_now(), not func.now(): the run's start and the slides'
+            # ready_at come from local_now() too, and func.now() is the
+            # database clock — Asia/Bangkok only where the session is set to
+            # it (app/db/database.py), UTC on the CI database.
+            now = local_now()
+            db_run.completed_at = now
 
             # อัปเดตสถานะสไลด์ทุกใบที่ผูกกับ Run นี้ในตารางกลางให้เป็น 'stained'
             # 1. หา IDs ของสไลด์ใน Run นี้
@@ -140,6 +144,14 @@ def update_run_status(db: Session, run_id: int, status: str):
             db.query(SurgicalBlockStain).filter(
                 SurgicalBlockStain.id.in_(stain_ids)
             ).update({"status": "stained"}, synchronize_session=False)
+
+            # The run start already stamped ready_at; pressing Completed is
+            # the better "slide is readable" time, so it moves there — except
+            # on slides whose result has already gone out.
+            db.query(SurgicalBlockStain).filter(
+                SurgicalBlockStain.id.in_(stain_ids),
+                SurgicalBlockStain.reported_at.is_(None),
+            ).update({"ready_at": now}, synchronize_session=False)
 
             _sync_case_status_from_he_stains(db, stain_ids)
 
@@ -179,10 +191,13 @@ def create_stain_run(db: Session, obj_in: StainRunCreate, user_id: int):
             is_success=True,
         ))
 
+    now = local_now()
     db.query(SurgicalBlockStain).filter(
         SurgicalBlockStain.id.in_(obj_in.stain_ids)
     ).update(
-        {"status": "stained", "stained_by_id": user_id, "updated_at": local_now()},
+        # ready_at: the slides read as stained from the run's start; pressing
+        # Completed later moves it (update_run_status).
+        {"status": "stained", "stained_by_id": user_id, "updated_at": now, "ready_at": now},
         synchronize_session=False,
     )
 
@@ -272,10 +287,11 @@ def create_he_batch_run(db: Session, obj_in: dict, operator_id: int = None):
             db.add(detail)
 
         # 4. Bulk Update สถานะสไลด์เป็น 'stained'
+        now = local_now()
         db.query(SurgicalBlockStain).filter(
             SurgicalBlockStain.id.in_(stain_ids)
         ).update(
-            {"status": "stained", "updated_at": local_now()},
+            {"status": "stained", "updated_at": now, "ready_at": now},
             synchronize_session=False,
         )
 

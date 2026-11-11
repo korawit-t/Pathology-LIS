@@ -24,6 +24,7 @@ import base64
 import re
 from app.crud import his_export_log as his_export_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
+from app.crud import nongyne_cyto_stain as nongyne_stain_crud
 
 _BKK = ZoneInfo("Asia/Bangkok")
 
@@ -452,6 +453,14 @@ def publish_nongyne_report(
             current_diag.signers = diag_signers
             db.add(current_diag)
 
+    # "Result is out" for the case's IHC / special stains: this is the
+    # pathologist's sign-off — and the publish too when there's no approval
+    # step (process_nongyne_report_approval releases them otherwise).
+    signed_at = db_report.reported_at or local_now()
+    nongyne_stain_crud.mark_case_stains_reported(db, case_id, signed_at, include_unreviewed=not is_pending)
+    if not approve_enabled:
+        nongyne_stain_crud.mark_case_stains_released(db, case_id, db_report.published_at or signed_at)
+
     db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
     if db_case:
         db_case.is_reported = True
@@ -766,6 +775,8 @@ def process_nongyne_report_approval(
         )
 
         if db_report.case_id is not None:
+            # The stains this sign-off carried reach the clinician now.
+            nongyne_stain_crud.mark_case_stains_released(db, db_report.case_id, now)
             db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_report.case_id).first()
             if db_case:
                 db_case.status = "published"
@@ -784,6 +795,8 @@ def process_nongyne_report_approval(
         db_report.status = NongyneReportStatus.DRAFT
 
         if db_report.case_id is not None:
+            # The sign-off didn't go out: its stains wait for the next one.
+            nongyne_stain_crud.unmark_unreleased_stains(db, db_report.case_id)
             db_case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == db_report.case_id).first()
             if db_case:
                 db_case.status = "screened"

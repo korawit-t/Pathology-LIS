@@ -16,8 +16,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
+from app.crud.report_crud import process_report_approval
 from app.crud.surgical_block_stain import get_case_signoff_stains
 from app.crud.surgical_report import finalize_and_snapshot_orchestrator
+from app.schemas.report_approval import ReportApproveRequest
 from app.models.surgical_block_stain import (
     SurgicalBlockStain,
     SurgicalOutlabRun,
@@ -346,4 +348,116 @@ class TestBackfill:
             "already_stamped": ("completed", self.T0 + 9 * day),
             "still_at_outlab": ("sent", None),
             "routine_he": ("stained", None),
+        }
+
+
+class TestRelease:
+    """released_at — when the signed result reached the clinician: the
+    sign-off itself with the approve system off, else the approval."""
+
+    def _signed_case(self, db, registrar, pathologist):
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        stain = make_block_stain(db, block.id, _ihc_test(db).id, status="stained")
+        report = finalize_and_snapshot_orchestrator(
+            db, case.id, build_bulk_save_payload(case.id, specimen.id, pathologist.id), pathologist.id
+        )
+        return case, specimen, stain, report
+
+    def test_published_on_signing_releases_at_the_same_moment(self, db, admin_user, two_pathologists):
+        registrar, _ = admin_user
+        path1, _ = two_pathologists
+        case, _, stain, report = self._signed_case(db, registrar, path1)
+
+        assert report.status == ReportStatus.PUBLISHED
+        (stain,) = _reload(db, stain)
+        assert stain.reported_at == _signed_at(db, case.id)
+        assert stain.released_at == stain.reported_at
+
+    def test_with_approval_it_goes_out_when_approved(self, db, admin_user, two_pathologists):
+        make_system_setting(db, require_all_pathologists_sign=False, enable_approve_system=True)
+        registrar, _ = admin_user
+        path1, path2 = two_pathologists
+        case, _, stain, report = self._signed_case(db, registrar, path1)
+        assert report.status == ReportStatus.PENDING_APPROVAL
+        (stain,) = _reload(db, stain)
+        assert stain.reported_at is not None and stain.released_at is None
+
+        approved = process_report_approval(db, report.id, path2, ReportApproveRequest(action="APPROVE"))
+
+        (stain,) = _reload(db, stain)
+        assert stain.released_at == approved.published_at
+        assert stain.released_at >= stain.reported_at
+
+    def test_rejected_signoff_is_cleared_and_the_next_one_stamps_again(self, db, admin_user, two_pathologists):
+        make_system_setting(db, require_all_pathologists_sign=False, enable_approve_system=True)
+        registrar, _ = admin_user
+        path1, path2 = two_pathologists
+        case, specimen, stain, report = self._signed_case(db, registrar, path1)
+
+        process_report_approval(db, report.id, path2, ReportApproveRequest(action="REJECT"))
+
+        (stain,) = _reload(db, stain)
+        assert (stain.reported_at, stain.released_at) == (None, None)
+        assert stain.status == "completed"  # still reviewed
+
+        finalize_and_snapshot_orchestrator(
+            db, case.id, build_bulk_save_payload(case.id, specimen.id, path1.id), path1.id
+        )
+        (stain,) = _reload(db, stain)
+        assert stain.reported_at is not None and stain.released_at is None
+
+
+def _load_release_backfill_sql() -> str:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "alembic" / "versions" / "de5747bc1adb_add_released_at_to_surgical_block_stains.py"
+    )
+    spec = importlib.util.spec_from_file_location("rev_de5747bc1adb", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.BACKFILL_SQL
+
+
+class TestReleaseBackfill:
+    def test_first_published_report_after_the_signoff(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        block = make_block(db, specimen.id)
+        t = _ihc_test(db)
+        t0 = datetime(2020, 5, 4, 9)
+        day = timedelta(days=1)
+
+        def report(at, status=ReportStatus.PUBLISHED, published_at=None):
+            db.add(SurgicalReport(
+                case_id=case.id, hospital_id=case.hospital_id, status=status,
+                reported_at=at, published_at=published_at,
+            ))
+
+        report(t0, published_at=t0 + 2 * day)                        # approved two days after signing
+        report(t0 + 5 * day)                                          # published on signing
+        report(t0 + 8 * day, status=ReportStatus.PENDING_APPROVAL)    # not out yet
+
+        approved = make_block_stain(db, block.id, t.id, slide_no=1, status="completed")
+        approved.reported_at = t0
+        addendum = make_block_stain(db, block.id, t.id, slide_no=2, status="completed")
+        addendum.reported_at = t0 + 5 * day
+        awaiting = make_block_stain(db, block.id, t.id, slide_no=3, status="completed")
+        awaiting.reported_at = t0 + 8 * day
+        not_signed = make_block_stain(db, block.id, t.id, slide_no=4, status="stained")
+        db.commit()
+
+        seeded = {"approved": approved.id, "addendum": addendum.id, "awaiting": awaiting.id, "not_signed": not_signed.id}
+        try:
+            db.execute(text(_load_release_backfill_sql()))
+            db.expire_all()
+            got = {name: db.get(SurgicalBlockStain, i).released_at for name, i in seeded.items()}
+        finally:
+            db.rollback()
+
+        assert got == {
+            "approved": t0 + 2 * day,
+            "addendum": t0 + 5 * day,
+            "awaiting": None,
+            "not_signed": None,
         }

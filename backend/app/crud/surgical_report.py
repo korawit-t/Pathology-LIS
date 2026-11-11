@@ -1,7 +1,7 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
 from app.crud.surgical_report_builder import prepare_report_data, render_snapshot_images
 from app.crud.report_images import surgical_images_snapshot
-from app.crud.surgical_block_stain import mark_case_stains_reported
+from app.crud.surgical_block_stain import mark_case_stains_reported, mark_case_stains_released
 from app.schemas.surgical_bulk import BulkSaveDraft
 import logging
 from sqlalchemy.orm import Session, joinedload
@@ -495,6 +495,10 @@ def finalize_and_snapshot_orchestrator(
             else:
                 report.status = ReportStatus.PUBLISHED
                 db_case.status = CaseStatus.SIGNED_OUT.value
+                # Published on signing: the stains it carried go out now too.
+                # With the approve system on this waits for the approval
+                # (report_crud.process_report_approval).
+                mark_case_stains_released(db, case_id, now)
                 his_export_crud.enqueue(
                     db,
                     resource_type="SurgicalReport",

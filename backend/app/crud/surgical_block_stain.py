@@ -26,6 +26,8 @@ from app.enums.case_states import (
 from app.utils.patient_name import full_patient_name
 from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
+from app.crud import stain_signoff
+from app.crud.stain_signoff import track_ready
 
 
 def _signoff_stains_query(db: Session, case_id: int, *entities):
@@ -103,26 +105,32 @@ def mark_case_stains_reported(
     revision 54bbe1c9fc1f applies the same rule to stains signed out before
     this existed.
 
-    Returns the number of stains stamped.
+    Returns the number of stains stamped. The rule itself lives in
+    crud.stain_signoff.mark_reported, shared with non-gyne.
     """
-    statuses = ["stained", "completed"] if include_unreviewed else ["completed"]
-    stain_ids = [
-        row.id
-        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
-        .filter(
-            SurgicalBlockStain.reported_at.is_(None),
-            SurgicalBlockStain.status.in_(statuses),
-        )
-        .all()
-    ]
-    if stain_ids:
-        db.query(SurgicalBlockStain).filter(
-            SurgicalBlockStain.id.in_(stain_ids)
-        ).update(
-            {"status": "completed", "reported_at": at},
-            synchronize_session=False,
-        )
-    return len(stain_ids)
+    return stain_signoff.mark_reported(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id),
+        at, include_unreviewed,
+    )
+
+
+def mark_case_stains_released(db: Session, case_id: int, at) -> int:
+    """The signed report was published (straight away with the approve system
+    off, else on approval): every stain it carried — reported, not yet
+    released — reaches the clinician now. Does not commit."""
+    return stain_signoff.mark_released(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id), at
+    )
+
+
+def unmark_unreleased_stains(db: Session, case_id: int) -> int:
+    """The approver sent the report back: the sign-off it carried didn't go
+    out, so stains signed but not yet released lose reported_at and wait for
+    the next sign-off to stamp them again. Status is left alone — a slide the
+    sign-off moved to "completed" still counts as reviewed. Does not commit."""
+    return stain_signoff.unmark_unreleased(
+        db, SurgicalBlockStain, _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
+    )
 
 
 def count_unkeyed_internal_stains(db: Session) -> int:
@@ -245,6 +253,7 @@ def update_stain_status(db: Session, stain_id: int, status: str):
     db_obj = db.query(SurgicalBlockStain).get(stain_id)
     if db_obj:
         db_obj.status = status
+        track_ready(db_obj)
         db.commit()
         db.refresh(db_obj)
     return db_obj
@@ -259,6 +268,8 @@ def update_stain(db: Session, stain_id: int, obj_in: StainUpdate, user_id: int |
         setattr(db_obj, field, value)
     if update_data.get("status") == "stained" and user_id:
         db_obj.stained_by_id = user_id
+    if "status" in update_data:
+        track_ready(db_obj)
     db.commit()
     db.refresh(db_obj)
     return db_obj
@@ -563,6 +574,7 @@ def delete_staining_run(db: Session, run_id: int) -> bool:
                 # เปลี่ยนสถานะกลับเป็น pending เพื่อให้นำไปเข้า Run ใหม่ได้
                 detail.stain_order.status = "pending"
                 detail.stain_order.is_printed = False
+                track_ready(detail.stain_order)
 
         # 3. ลบตัว Run (Relationship details จะถูกลบตามถ้าตั้ง cascade ไว้)
         db.delete(db_run)
@@ -595,6 +607,7 @@ def create_outlab_run(db: Session, obj_in: OutlabRunCreate, user_id: int):
         stain_order = db.query(SurgicalBlockStain).get(stain_id)
         if stain_order:
             stain_order.status = "sent"
+            track_ready(stain_order)  # a redo sent out again isn't readable any more
 
         detail = SurgicalOutlabRunDetail(
             outlab_run_id=db_run.id,
@@ -791,6 +804,7 @@ def _receive_outlab_run_details(db: Session, run_id: int, user_id: int, detail_i
             detail.received_by_id = user_id
             if detail.stain_order and detail.stain_order.status == "sent":
                 detail.stain_order.status = "stained"
+                track_ready(detail.stain_order, at=now)
 
         _recompute_outlab_run_status(db_run)
         if db_run.status in ("partial", "received"):
@@ -865,6 +879,7 @@ def delete_outlab_run(db: Session, run_id: int) -> bool:
         for detail in db_run.details:
             if detail.stain_order:
                 detail.stain_order.status = "pending"
+                track_ready(detail.stain_order)
 
         db.delete(db_run)
         db.commit()

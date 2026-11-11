@@ -41,10 +41,12 @@ const request = (over: Partial<IhcTatRequest>): IhcTatRequest => ({
   ordered_at: "2026-10-01T09:00:00",
   sent_at: "2026-10-02T09:00:00",
   ready_at: "2026-10-14T09:00:00",
-  reported_at: "2026-10-15T09:00:00",
+  signed_at: "2026-10-15T09:00:00",
+  released_at: "2026-10-15T09:00:00",
   total_days: 10,
   outlab_days: 8,
   reading_days: 1,
+  approval_days: 0,
   bucket: "t5_10",
   on_time: false,
   ...over,
@@ -59,6 +61,7 @@ const stats = (over: Partial<IhcTatStats> = {}): IhcTatStats => ({
     median_total_days: 6,
     median_outlab_days: 8,
     median_reading_days: null,
+    median_approval_days: 1.5,
     target_days: 5,
     on_time_count: 1,
     on_time_pct: 50,
@@ -87,6 +90,7 @@ const openCase = (over: Partial<IhcOutstandingCase>): IhcOutstandingCase => ({
   ordered_at: "2026-10-20T09:00:00",
   sent_at: "2026-10-21T09:00:00",
   lab: "สถาบันพยาธิวิทยา",
+  signed_at: null,
   age_days: 14,
   overdue: true,
   ...over,
@@ -116,8 +120,11 @@ it("shows the medians in working days, and a missing median as a dash", async ()
   expect(screen.getByText("2 requests · 3 slides")).toBeInTheDocument();
   expect(screen.getAllByText("8 d").length).toBeGreaterThan(0);
   // median_reading_days is null: no reading time recorded, not zero
-  const readingCard = screen.getByText("Median slide ready → out").parentElement!;
+  const readingCard = screen.getByText("Median slide ready → signed").parentElement!;
   expect(within(readingCard).getByText("—")).toBeInTheDocument();
+  // ...and the approval wait (sign-off → published) rides along
+  expect(within(readingCard).getByText("reading · then approval 1.5 d")).toBeInTheDocument();
+  expect(screen.getByText(/published to the clinician/)).toBeInTheDocument();
   expect(screen.getByText("nothing outstanding")).toBeInTheDocument();
 });
 
@@ -143,9 +150,17 @@ it("flags old outstanding requests and filters them by stage", async () => {
       markers: [{ name: "ER", status: "stained", is_external: true }], stage: "stained",
       sent_at: null, lab: null, age_days: 3, overdue: false,
     }),
+    openCase({
+      case_id: 12, accession_no: "S26-00012", patient_name: "ชูใจ", patient_ln: "มีสุข",
+      markers: [{ name: "PR", status: "signed", is_external: true }], stage: "signed",
+      sent_at: null, lab: null, signed_at: "2026-11-02T09:00:00", age_days: 4, overdue: false,
+    }),
   ]);
 
-  expect(await screen.findByText("2 cases")).toBeInTheDocument();
+  expect(await screen.findByText("3 cases")).toBeInTheDocument();
+  // Signed off but not published yet: still not out to the clinician
+  expect(screen.getByText("Signed, awaiting approval")).toBeInTheDocument();
+  expect(screen.getByText("signed 02/11/2026")).toBeInTheDocument();
   expect(screen.getByText("1 past target (5 d) · oldest 14 d")).toBeInTheDocument();
   expect(screen.getByText("นาย มานะ ขยัน")).toBeInTheDocument();
   expect(screen.getByText("14 d").closest(".ant-typography")).toHaveClass("ant-typography-danger");
@@ -169,4 +184,21 @@ it("reloads both views for the picked period", async () => {
 
   await waitFor(() => expect(SurgicalReportService.getIhcTat).toHaveBeenCalledTimes(2));
   expect(SurgicalReportService.getIhcOutstanding).toHaveBeenCalledTimes(2);
+});
+
+it("serves non-gyne IHC without the outlab parts", async () => {
+  vi.mocked(SurgicalReportService.getIhcTat).mockResolvedValue(
+    stats({ by_lab: [], requests: [request({ source: "in-house", lab: null, outlab_days: null })] }),
+  );
+  vi.mocked(SurgicalReportService.getIhcOutstanding).mockResolvedValue([
+    openCase({ stage: "pending", markers: [{ name: "CK7", status: "pending", is_external: true }], sent_at: null, lab: null }),
+  ]);
+  render(<IhcTatDashboard caseType="nongyne" />);
+
+  expect(await screen.findByText("Non-Gyne IHC Turnaround (TAT)")).toBeInTheDocument();
+  expect(SurgicalReportService.getIhcTat).toHaveBeenCalledWith(expect.any(String), expect.any(String), "nongyne");
+  expect(SurgicalReportService.getIhcOutstanding).toHaveBeenCalledWith("nongyne");
+  expect(screen.queryByText("Median at outlab")).not.toBeInTheDocument();
+  expect(screen.queryByText(/At outlab \(/)).not.toBeInTheDocument();      // no "sent" stage filter
+  expect(await screen.findByText("Not stained yet")).toBeInTheDocument();  // never "Not sent"
 });

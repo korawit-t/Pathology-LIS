@@ -34,10 +34,17 @@ def _test(db, category="IHC", is_external=True):
     )
 
 
-def _stain(db, block, test, *, status, ordered_at, reported_at=None, is_recut=False, slide_no=1):
+_ON_SIGNING = object()
+
+
+def _stain(db, block, test, *, status, ordered_at, reported_at=None, released_at=_ON_SIGNING,
+           is_recut=False, slide_no=1):
+    """released_at defaults to reported_at: a report published on signing
+    (approve system off). Pass None for one still awaiting approval."""
     s = make_block_stain(db, block.id, test.id, slide_no=slide_no, status=status, is_recut=is_recut)
     s.created_at = ordered_at
     s.reported_at = reported_at
+    s.released_at = reported_at if released_at is _ON_SIGNING else released_at
     db.commit()
     return s
 
@@ -48,6 +55,8 @@ def _outlab(db, stains, sent_at, received_at, lab):
     db.flush()
     for s in stains:
         db.add(SurgicalOutlabRunDetail(outlab_run_id=run.id, stain_id=s.id, received_at=received_at))
+        if received_at:
+            s.ready_at = received_at  # as _receive_outlab_run_details does
     db.commit()
 
 
@@ -60,6 +69,7 @@ def _inhouse(db, stains, started_at, completed_at):
     db.flush()
     for s in stains:
         db.add(SurgicalStainRunDetail(stain_run_id=run.id, stain_id=s.id))
+        s.ready_at = completed_at or started_at  # as crud.stain_run does
     db.commit()
 
 
@@ -84,15 +94,19 @@ class TestIhcTat:
         ]
         _outlab(db, panel, sent_at=datetime(2021, 3, 2, 9), received_at=datetime(2021, 3, 12, 9), lab=lab)
 
-        # An in-house IHC on the same case, carried by the Addendum on Wed 17.
+        # An in-house IHC on the same case, carried by the Addendum signed Wed
+        # 17 and approved (published) Thu 18.
         addendum = _stain(
             db, block, _test(db, is_external=False), status="completed",
-            ordered_at=datetime(2021, 3, 15, 9), reported_at=datetime(2021, 3, 17, 9), slide_no=4,
+            ordered_at=datetime(2021, 3, 15, 9), reported_at=datetime(2021, 3, 17, 9),
+            released_at=datetime(2021, 3, 18, 9), slide_no=4,
         )
         _inhouse(db, [addendum], started_at=datetime(2021, 3, 16, 9), completed_at=datetime(2021, 3, 16, 13))
 
-        # Not counted: a special stain, a recut, an IHC out in another month,
-        # and an IHC on a cancelled case.
+        # Not counted: signed but still awaiting approval, a special stain, a
+        # recut, an IHC out in another month, and an IHC on a cancelled case.
+        _stain(db, block, _test(db), status="completed", ordered_at=ordered,
+               reported_at=datetime(2021, 3, 22, 9), released_at=None, slide_no=8)
         _stain(db, block, _test(db, category="Histochem", is_external=False), status="completed",
                ordered_at=ordered, reported_at=out, slide_no=5)
         _stain(db, block, _test(db), status="completed", ordered_at=ordered, reported_at=out,
@@ -111,23 +125,25 @@ class TestIhcTat:
             "slides": 4,
             "outlab_requests": 1,
             "inhouse_requests": 1,
-            "median_total_days": 6.0,    # median of 10.0 and 2.0
+            "median_total_days": 6.5,    # median of 10.0 and 3.0 (order → published)
             "median_outlab_days": 8.0,   # Tue 2 → Fri 12
-            "median_reading_days": 0.9,  # median of 1.0 and 0.8
+            "median_reading_days": 0.9,  # median of 1.0 and 0.8 (slide ready → signed)
+            "median_approval_days": 0.5,  # median of 0.0 (published on signing) and 1.0
             "target_days": 5,
-            "on_time_count": 1,          # the 2-day in-house request; the panel took 10
+            "on_time_count": 1,          # the 3-day in-house request; the panel took 10
             "on_time_pct": 50.0,
         }
-        assert data["distribution"] == {"lt3": 1, "t3_5": 0, "t5_10": 1, "gt10": 0}
+        assert data["distribution"] == {"lt3": 0, "t3_5": 1, "t5_10": 1, "gt10": 0}
         assert data["monthly"] == [
-            {"month": "2021-03", "requests": 2, "median_total_days": 6.0, "on_time_pct": 50.0}
+            {"month": "2021-03", "requests": 2, "median_total_days": 6.5, "on_time_pct": 50.0}
         ]
         assert data["by_lab"] == [{"lab": lab, "requests": 1, "median_outlab_days": 8.0, "max_outlab_days": 8.0}]
 
         newest, oldest = data["requests"]
-        assert (newest["source"], newest["slides"], newest["total_days"], newest["reading_days"]) == (
-            "in-house", 1, 2.0, 0.8,  # run logged Tue 16 13:00 → out Wed 17 09:00
-        )
+        assert (newest["source"], newest["slides"], newest["total_days"]) == ("in-house", 1, 3.0)
+        # run logged Tue 16 13:00 → signed Wed 17 09:00 → approved Thu 18 09:00
+        assert (newest["reading_days"], newest["approval_days"]) == (0.8, 1.0)
+        assert (newest["signed_at"], newest["released_at"]) == (datetime(2021, 3, 17, 9), datetime(2021, 3, 18, 9))
         assert newest["outlab_days"] is None
         assert newest["on_time"] is True
         assert newest["ready_at"] == datetime(2021, 3, 16, 13)
@@ -138,6 +154,7 @@ class TestIhcTat:
         assert (oldest["total_days"], oldest["outlab_days"], oldest["reading_days"], oldest["bucket"]) == (
             10.0, 8.0, 1.0, "t5_10",
         )
+        assert oldest["approval_days"] == 0.0
         assert oldest["on_time"] is False
 
     def test_empty_period(self, db):
@@ -166,6 +183,10 @@ class TestIhcOutstanding:
         _stain(db, b3, _test(db), status="completed", ordered_at=datetime(2021, 5, 3, 9),
                reported_at=datetime(2021, 5, 14, 9))
 
+        awaiting_case, b6 = _case(db, registrar.id)
+        _stain(db, b6, _test(db), status="completed", ordered_at=datetime(2021, 5, 5, 9),
+               reported_at=datetime(2021, 5, 17, 9), released_at=None)
+
         cancelled_case, b4 = _case(db, registrar.id)
         cancelled_case.is_cancelled = True
         db.commit()
@@ -185,6 +206,12 @@ class TestIhcOutstanding:
         assert sorted(m["status"] for m in r["markers"]) == ["sent", "stained"]
         assert r["age_days"] > 5 and r["overdue"] is True
         assert rows[unsigned_case.id]["stage"] == "completed"
+
+        # Signed off, still waiting for approval: not out to the clinician yet.
+        awaiting = rows[awaiting_case.id]
+        assert awaiting["stage"] == "signed"
+        assert awaiting["signed_at"] == datetime(2021, 5, 17, 9)
+        assert [m["status"] for m in awaiting["markers"]] == ["signed"]
 
         # Ordered just now: within a 5-working-day target.
         fresh_case, b5 = _case(db, registrar.id)

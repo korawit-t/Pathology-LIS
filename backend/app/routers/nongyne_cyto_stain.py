@@ -18,6 +18,7 @@ from app.schemas.nongyne_cyto_stain import (
 )
 from app.models.nongyne_cyto_stain import NongyneStainRun, NongyneStainRunDetail, NongyneCytologyStain
 from app.models.nongyne_cyto_case import NongyneCytologyCase
+from app.schemas.surgical_block_stain import SignOffStainResponse
 from app.schemas.nongyne_cyto_stain import (
     NongyneStainRunCreate,
     NongyneStainRunResponse,
@@ -56,6 +57,13 @@ def read_pending_print(db: Session = Depends(get_db)):
 @router.get("/case/{case_id}", response_model=List[NongyneStainResponse])
 def read_stains_by_case(case_id: int, db: Session = Depends(get_db)):
     return crud.get_stains_by_case(db, case_id=case_id)
+
+
+@router.get("/sign-off/{case_id}", response_model=List[SignOffStainResponse])
+def read_case_signoff_stains(case_id: int, db: Session = Depends(get_db)):
+    """The case's IHC / special stains as the non-gyne sign-off page lists
+    them: the same set a sign-off can stamp reported_at on."""
+    return crud.get_case_signoff_stains(db, case_id)
 
 
 # 4. สั่งย้อมเพิ่มเอง (Manual Add)

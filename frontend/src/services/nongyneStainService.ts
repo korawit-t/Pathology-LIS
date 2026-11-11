@@ -5,6 +5,7 @@ import {
   NongyneStainUpdate,
   NongyneStainRun,
 } from "../types/nongyne-stain";
+import type { SignOffStain } from "../types/stains";
 
 const NongyneStainService = {
   /**
@@ -14,6 +15,15 @@ const NongyneStainService = {
     const res = await api.get<NongyneCytologyStain[]>(
       `/nongyne-stains/case/${caseId}`,
     );
+    return res.data;
+  },
+
+  /**
+   * IHC / special stains for the sign-off page — the same set a sign-off can
+   * record as reported (backend crud.nongyne_cyto_stain.get_case_signoff_stains)
+   */
+  getSignOffStains: async (caseId: number): Promise<SignOffStain[]> => {
+    const res = await api.get<SignOffStain[]>(`/nongyne-stains/sign-off/${caseId}`);
     return res.data;
   },
 

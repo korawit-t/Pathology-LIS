@@ -44,6 +44,7 @@ import dayjs, { Dayjs } from "dayjs";
 import SurgicalReportService from "../../services/surgicalReportService";
 import { exportToCsv } from "../../utils/exportCsv";
 import type {
+  IhcCaseType,
   IhcOutstandingCase,
   IhcOutstandingStage,
   IhcTatBucket,
@@ -66,6 +67,7 @@ const STAGES: Record<IhcOutstandingStage, { label: string; color: string }> = {
   sent: { label: "At outlab", color: "blue" },
   stained: { label: "Ready to read", color: "gold" },
   completed: { label: "Result entered, not signed", color: "purple" },
+  signed: { label: "Signed, awaiting approval", color: "cyan" },
 };
 
 const MARKER_COLORS: Record<string, string> = {
@@ -73,6 +75,7 @@ const MARKER_COLORS: Record<string, string> = {
   sent: "blue",
   stained: "gold",
   completed: "purple",
+  signed: "cyan",
 };
 
 const patientName = (r: { patient_title: string | null; patient_name: string | null; patient_ln: string | null }) =>
@@ -129,10 +132,12 @@ const requestColumns: ColumnsType<IhcTatRequest> = [
     render: (_, r) => (r.source === "outlab" ? <Tag color="blue">{r.lab || "Outlab"}</Tag> : <Tag>In-house</Tag>),
   },
   { title: "Ordered", dataIndex: "ordered_at", key: "ordered_at", render: fmtDate },
-  { title: "Out", dataIndex: "reported_at", key: "reported_at", render: fmtDate },
+  { title: "Signed", dataIndex: "signed_at", key: "signed_at", render: fmtDate },
+  { title: "Out", dataIndex: "released_at", key: "released_at", render: fmtDate },
   { title: "Total", dataIndex: "total_days", key: "total_days", render: fmtDays },
   { title: "At outlab", dataIndex: "outlab_days", key: "outlab_days", render: fmtDays },
-  { title: "Ready → out", dataIndex: "reading_days", key: "reading_days", render: fmtDays },
+  { title: "Ready → signed", dataIndex: "reading_days", key: "reading_days", render: fmtDays },
+  { title: "Approval", dataIndex: "approval_days", key: "approval_days", render: fmtDays },
   {
     title: "Target",
     dataIndex: "on_time",
@@ -141,7 +146,13 @@ const requestColumns: ColumnsType<IhcTatRequest> = [
   },
 ];
 
-const IhcTatDashboard: React.FC = () => {
+interface IhcTatDashboardProps {
+  /** Surgical (default) or non-gyne cell block IHC. Non-gyne has no outlab step. */
+  caseType?: IhcCaseType;
+}
+
+const IhcTatDashboard: React.FC<IhcTatDashboardProps> = ({ caseType = "surgical" }) => {
+  const hasOutlab = caseType === "surgical";
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(2, "month").startOf("month"),
     dayjs().endOf("month"),
@@ -156,8 +167,8 @@ const IhcTatDashboard: React.FC = () => {
     setLoading(true);
     try {
       const [stats, open] = await Promise.all([
-        SurgicalReportService.getIhcTat(dateRange[0].format("YYYY-MM-DD"), dateRange[1].format("YYYY-MM-DD")),
-        SurgicalReportService.getIhcOutstanding(),
+        SurgicalReportService.getIhcTat(dateRange[0].format("YYYY-MM-DD"), dateRange[1].format("YYYY-MM-DD"), caseType),
+        SurgicalReportService.getIhcOutstanding(caseType),
       ]);
       setData(stats);
       setOutstanding(open);
@@ -166,7 +177,7 @@ const IhcTatDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [dateRange, caseType]);
 
   useEffect(() => {
     load();
@@ -184,13 +195,22 @@ const IhcTatDashboard: React.FC = () => {
     return counts;
   }, [outstanding]);
 
+  const title = caseType === "nongyne" ? "Non-Gyne IHC Turnaround (TAT)" : "IHC Turnaround (TAT)";
+  // Non-gyne IHC is never sent out, so a slide at "pending" just isn't stained yet.
+  const stages = hasOutlab
+    ? STAGES
+    : (Object.fromEntries(
+        Object.entries(STAGES)
+          .filter(([k]) => k !== "sent")
+          .map(([k, v]) => [k, k === "pending" ? { ...v, label: "Not stained yet" } : v]),
+      ) as Partial<typeof STAGES>);
   const shownOutstanding = stageFilter === "all" ? outstanding : outstanding.filter((o) => o.stage === stageFilter);
   const bucketRequests = bucketOpen && data ? data.requests.filter((r) => r.bucket === bucketOpen) : [];
 
   const handleExport = () => {
     if (!data) return;
     exportToCsv(
-      `ihc-tat_${dateRange[0].format("YYYYMMDD")}-${dateRange[1].format("YYYYMMDD")}.csv`,
+      `ihc-tat_${caseType}_${dateRange[0].format("YYYYMMDD")}-${dateRange[1].format("YYYYMMDD")}.csv`,
       data.requests as unknown as Record<string, unknown>[],
       [
         { header: "Accession No.", key: "accession_no" },
@@ -202,15 +222,17 @@ const IhcTatDashboard: React.FC = () => {
         { header: "Ordered", key: "ordered_at", render: (v) => fmtDate(v as string) },
         { header: "Sent", key: "sent_at", render: (v) => fmtDate(v as string | null) },
         { header: "Slide ready", key: "ready_at", render: (v) => fmtDate(v as string | null) },
-        { header: "Out (signed)", key: "reported_at", render: (v) => fmtDate(v as string) },
+        { header: "Signed", key: "signed_at", render: (v) => fmtDate(v as string) },
+        { header: "Out (published)", key: "released_at", render: (v) => fmtDate(v as string) },
         { header: "Total (working days)", key: "total_days" },
         { header: "At outlab (working days)", key: "outlab_days" },
-        { header: "Ready to out (working days)", key: "reading_days" },
+        { header: "Ready to signed (working days)", key: "reading_days" },
+        { header: "Signed to published (working days)", key: "approval_days" },
         { header: `Within target (${target ?? "—"} d)`, key: "on_time", render: (v) => (v ? "yes" : "no") },
       ],
       {
         preamble: [
-          ["IHC TAT", `${dateRange[0].format("DD/MM/YYYY")} - ${dateRange[1].format("DD/MM/YYYY")}`],
+          [title, `${dateRange[0].format("DD/MM/YYYY")} - ${dateRange[1].format("DD/MM/YYYY")}`],
           ["Requests", summary?.requests ?? 0, "Median total (working days)", summary?.median_total_days ?? "—"],
           ["Target (working days)", target ?? "—", "Within target", summary?.on_time_pct !== null && summary?.on_time_pct !== undefined ? `${summary.on_time_pct}%` : "—"],
         ],
@@ -240,11 +262,14 @@ const IhcTatDashboard: React.FC = () => {
       key: "stage",
       render: (s: IhcOutstandingStage, r) => (
         <Space size={4} direction="vertical">
-          <Tag color={STAGES[s].color}>{STAGES[s].label}</Tag>
+          <Tag color={(stages[s] ?? STAGES[s]).color}>{(stages[s] ?? STAGES[s]).label}</Tag>
           {s === "sent" && (r.lab || r.sent_at) && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {[r.lab, r.sent_at && `sent ${fmtDate(r.sent_at)}`].filter(Boolean).join(" · ")}
             </Text>
+          )}
+          {s === "signed" && r.signed_at && (
+            <Text type="secondary" style={{ fontSize: 12 }}>signed {fmtDate(r.signed_at)}</Text>
           )}
         </Space>
       ),
@@ -270,10 +295,10 @@ const IhcTatDashboard: React.FC = () => {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 12 }}>
         <Space align="center">
           <BgColorsOutlined style={{ fontSize: 24, color: "#722ed1" }} />
-          <Title level={3} style={{ margin: 0 }}>IHC Turnaround (TAT)</Title>
+          <Title level={3} style={{ margin: 0 }}>{title}</Title>
         </Space>
         <Space wrap>
-          <Text type="secondary">Signed out:</Text>
+          <Text type="secondary">Out (published):</Text>
           <RangePicker
             value={dateRange}
             onChange={(vals) => {
@@ -293,8 +318,9 @@ const IhcTatDashboard: React.FC = () => {
         </Space>
       </div>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        From IHC order to the sign-off that carries the result, in working days. One request is a case&apos;s IHC
-        slides signed out together.
+        From IHC order until the report carrying the result is published to the clinician (with the approve system
+        off, that is the sign-off itself), in working days. One request is a case&apos;s IHC slides signed off
+        together.
         {target !== undefined && ` Target: ${target} working days (Admin → Workflow → Turnaround Time).`}
       </Text>
 
@@ -319,20 +345,22 @@ const IhcTatDashboard: React.FC = () => {
               hint={summary ? `${summary.on_time_count} / ${summary.requests} requests` : undefined}
             />
           </Col>
-          <Col flex="1 1 220px">
-            <Kpi
-              icon={<SendOutlined />} color="#1890ff" background="#e6f4ff"
-              label="Median at outlab"
-              value={fmtDays(summary?.median_outlab_days)}
-              hint={summary ? `sent → back · ${summary.outlab_requests} outlab, ${summary.inhouse_requests} in-house` : undefined}
-            />
-          </Col>
+          {hasOutlab && (
+            <Col flex="1 1 220px">
+              <Kpi
+                icon={<SendOutlined />} color="#1890ff" background="#e6f4ff"
+                label="Median at outlab"
+                value={fmtDays(summary?.median_outlab_days)}
+                hint={summary ? `sent → back · ${summary.outlab_requests} outlab, ${summary.inhouse_requests} in-house` : undefined}
+              />
+            </Col>
+          )}
           <Col flex="1 1 220px">
             <Kpi
               icon={<ExperimentOutlined />} color="#13c2c2" background="#e6fffb"
-              label="Median slide ready → out"
+              label="Median slide ready → signed"
               value={fmtDays(summary?.median_reading_days)}
-              hint="reading and sign-off"
+              hint={`reading · then approval ${fmtDays(summary?.median_approval_days)}`}
             />
           </Col>
           <Col flex="1 1 220px">
@@ -437,8 +465,8 @@ const IhcTatDashboard: React.FC = () => {
               onChange={(v) => setStageFilter(v as IhcOutstandingStage | "all")}
               options={[
                 { label: `All (${stageCounts.all ?? 0})`, value: "all" },
-                ...(Object.keys(STAGES) as IhcOutstandingStage[]).map((s) => ({
-                  label: `${STAGES[s].label} (${stageCounts[s] ?? 0})`,
+                ...(Object.keys(stages) as IhcOutstandingStage[]).map((s) => ({
+                  label: `${stages[s]!.label} (${stageCounts[s] ?? 0})`,
                   value: s,
                 })),
               ]}
@@ -464,7 +492,7 @@ const IhcTatDashboard: React.FC = () => {
       >
         <Table
           size="small"
-          rowKey={(r) => `${r.case_id}-${r.reported_at}`}
+          rowKey={(r) => `${r.case_id}-${r.signed_at}`}
           dataSource={bucketRequests}
           columns={requestColumns}
           pagination={bucketRequests.length > 10 ? { pageSize: 10 } : false}

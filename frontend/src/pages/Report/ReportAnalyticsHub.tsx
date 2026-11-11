@@ -160,6 +160,11 @@ const ReportAnalyticsHub: React.FC = () => {
                     label: <span><ClockCircleOutlined style={{ marginRight: 6 }} />TAT</span>,
                     children: <CytoTATDashboard type="nongyne" />,
                   },
+                  {
+                    key: "nongyne-ihc-tat",
+                    label: <span><ClockCircleOutlined style={{ marginRight: 6 }} />IHC TAT</span>,
+                    children: <IhcTatDashboard caseType="nongyne" />,
+                  },
                 ]}
               />
             ),

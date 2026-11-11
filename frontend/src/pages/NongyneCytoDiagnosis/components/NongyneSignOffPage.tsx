@@ -9,11 +9,16 @@ import {
   SendOutlined,
 } from "@ant-design/icons";
 import NongyneDiagnosisService from "../../../services/nongyneDiagnosisService";
+import NongyneStainService from "../../../services/nongyneStainService";
 import CriticalNotificationSection from "../../../components/CriticalNotificationSection";
+import SignOffStainNotices from "../../../components/SignOffStainNotices";
 import type { NongyneCytologyCase } from "../../../types/nongyne";
 import logger from "../../../utils/logger";
 
 const { Text } = Typography;
+
+// A stable reference for SignOffStainNotices' effect deps.
+const markStainReviewed = (stainId: number) => NongyneStainService.update(stainId, { status: "completed" });
 
 const QUALITY_OPTIONS = [
   { value: "good",  tag: "success" as const, label: "Good" },
@@ -196,6 +201,17 @@ const NongyneSignOffPage: React.FC<NongyneSignOffPageProps> = ({
           <Text type="secondary" style={{ fontSize: 12 }}>
             Results cannot be edited after sign-off. Please verify the accuracy of the report before confirming.
           </Text>
+
+          {/* IHC / special stains: what this sign-off records as out, and
+              what isn't stained yet (shared with surgical FinalizeReportPage) */}
+          <SignOffStainNotices
+            open={open}
+            caseId={caseId ? Number(caseId) : undefined}
+            isPending={isCasePending}
+            fetchStains={NongyneStainService.getSignOffStains}
+            markReviewed={markStainReviewed}
+            hasOutlab={false}
+          />
 
           {/* Slide Quality */}
           <div>

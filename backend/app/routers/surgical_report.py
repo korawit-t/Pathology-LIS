@@ -2,7 +2,7 @@ from app.schemas.surgical_bulk import BulkSaveDraft
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Literal, Optional
 import traceback
 import logging
 
@@ -171,11 +171,13 @@ def read_outlab_stats(
 def read_ihc_tat(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    case_type: Literal["surgical", "nongyne"] = Query("surgical"),
     db: Session = Depends(get_db),
 ):
-    """IHC requests that went out (signed off) in the period, with their
-    order → outlab → out timeline in working days."""
-    return get_ihc_tat(db, start_date, end_date)
+    """IHC requests that went out (published) in the period, with their
+    order → outlab → signed → published timeline in working days. Also
+    serves Report Analytics → Non-Gyne Cyto → IHC TAT (case_type=nongyne)."""
+    return get_ihc_tat(db, start_date, end_date, case_type)
 
 
 @router.get(
@@ -183,9 +185,12 @@ def read_ihc_tat(
     response_model=List[IhcOutstandingCase],
     dependencies=[Depends(CAN_READ_IHC_TAT)],
 )
-def read_ihc_outstanding(db: Session = Depends(get_db)):
+def read_ihc_outstanding(
+    case_type: Literal["surgical", "nongyne"] = Query("surgical"),
+    db: Session = Depends(get_db),
+):
     """Cases whose IHC hasn't gone out yet, oldest order first."""
-    return get_ihc_outstanding(db)
+    return get_ihc_outstanding(db, case_type)
 
 
 @router.get(

@@ -20,9 +20,14 @@ export interface StainRequest {
   is_printed: boolean;
   printed_at?: string;
   created_at: string;
+  // When the slide became readable (backend crud.surgical_block_stain.track_ready)
+  ready_at?: string | null;
   // When the result went out — the pathologist's sign-off that carried it
   // (backend crud.surgical_block_stain.mark_case_stains_reported)
   reported_at?: string | null;
+  // When that report was published (approval, or the sign-off itself with
+  // the approve system off)
+  released_at?: string | null;
   is_recut?: boolean;
   recut_note?: string | null;
   // Molecular-category orders only — assisting/requesting pathologist for
