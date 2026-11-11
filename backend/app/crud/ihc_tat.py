@@ -28,8 +28,6 @@ from app.models.surgical_block_stain import (
     SurgicalBlockStain,
     SurgicalOutlabRun,
     SurgicalOutlabRunDetail,
-    SurgicalStainRun,
-    SurgicalStainRunDetail,
 )
 from app.models.surgical_case import SurgicalCase
 from app.models.surgical_specimen import SurgicalSpecimen
@@ -92,24 +90,6 @@ def _latest_outlab(db: Session, stain_ids: list[int]) -> dict[int, dict]:
     return latest
 
 
-def _inhouse_ready(db: Session, stain_ids: list[int]) -> dict[int, datetime]:
-    """Per stain, when its in-house stain run was logged: completed, else
-    started (staff often press Completed straight away, so the two match)."""
-    if not stain_ids:
-        return {}
-    rows = (
-        db.query(
-            SurgicalStainRunDetail.stain_id,
-            func.max(func.coalesce(SurgicalStainRun.completed_at, SurgicalStainRun.started_at)),
-        )
-        .join(SurgicalStainRun, SurgicalStainRun.id == SurgicalStainRunDetail.stain_run_id)
-        .filter(SurgicalStainRunDetail.stain_id.in_(stain_ids))
-        .group_by(SurgicalStainRunDetail.stain_id)
-        .all()
-    )
-    return {stain_id: at for stain_id, at in rows if at is not None}
-
-
 def _patients(db: Session, case_ids: set[int]) -> dict[int, dict]:
     if not case_ids:
         return {}
@@ -163,7 +143,6 @@ def get_ihc_tat(db: Session, start_date: date, end_date: date) -> dict:
     )
     stain_ids = [row[0].id for row in rows]
     outlab = _latest_outlab(db, stain_ids)
-    inhouse = _inhouse_ready(db, stain_ids)
 
     grouped: dict[tuple[int, datetime], list] = defaultdict(list)
     for stain, case_id, test_name, _ in rows:
@@ -172,7 +151,8 @@ def get_ihc_tat(db: Session, start_date: date, end_date: date) -> dict:
 
     requests = []
     for (case_id, reported_at), slides in grouped.items():
-        sents, receiveds, readies, labs = [], [], [], []
+        sents, receiveds, labs = [], [], []
+        readies = [stain.ready_at for stain, _ in slides if stain.ready_at]
         for stain, _ in slides:
             o = outlab.get(stain.id)
             if o:
@@ -180,11 +160,8 @@ def get_ihc_tat(db: Session, start_date: date, end_date: date) -> dict:
                     sents.append(o["sent_at"])
                 if o["received_at"]:
                     receiveds.append(o["received_at"])
-                    readies.append(o["received_at"])
                 if o["lab"]:
                     labs.append(o["lab"])
-            elif stain.id in inhouse:
-                readies.append(inhouse[stain.id])
         ordered_at = min((stain.created_at for stain, _ in slides if stain.created_at), default=reported_at)
         sent_at = min(sents) if sents else None
         received_at = max(receiveds) if receiveds else None

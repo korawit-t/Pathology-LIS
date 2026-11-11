@@ -79,6 +79,8 @@ class StainResponse(StainBase):
     recut_note: Optional[str] = None
     is_hosxp_keyed: bool = False
     hosxp_keyed_at: Optional[datetime] = None
+    # When the slide became readable (crud.surgical_block_stain.track_ready)
+    ready_at: Optional[datetime] = None
     # When the result went out: the sign-off that carried it (read-only —
     # set by finalize, never through StainUpdate)
     reported_at: Optional[datetime] = None

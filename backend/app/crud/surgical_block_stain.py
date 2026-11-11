@@ -28,6 +28,21 @@ from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
 
 
+_READY_STATUSES = ("stained", "completed")
+
+
+def track_ready(stain: SurgicalBlockStain, at=None) -> None:
+    """Keep ready_at in step with status after it changes: stamped when the
+    slide becomes readable (unless it already was), cleared when it goes back
+    to pending/sent. Bulk status updates (stain_run.py) set the column in the
+    same UPDATE instead."""
+    if stain.status in _READY_STATUSES:
+        if stain.ready_at is None:
+            stain.ready_at = at or local_now()
+    else:
+        stain.ready_at = None
+
+
 def _signoff_stains_query(db: Session, case_id: int, *entities):
     """The case's additional stains a sign-off can report: everything but the
     routine H&E, recuts and Molecular orders (which report through their own
@@ -245,6 +260,7 @@ def update_stain_status(db: Session, stain_id: int, status: str):
     db_obj = db.query(SurgicalBlockStain).get(stain_id)
     if db_obj:
         db_obj.status = status
+        track_ready(db_obj)
         db.commit()
         db.refresh(db_obj)
     return db_obj
@@ -259,6 +275,8 @@ def update_stain(db: Session, stain_id: int, obj_in: StainUpdate, user_id: int |
         setattr(db_obj, field, value)
     if update_data.get("status") == "stained" and user_id:
         db_obj.stained_by_id = user_id
+    if "status" in update_data:
+        track_ready(db_obj)
     db.commit()
     db.refresh(db_obj)
     return db_obj
@@ -563,6 +581,7 @@ def delete_staining_run(db: Session, run_id: int) -> bool:
                 # เปลี่ยนสถานะกลับเป็น pending เพื่อให้นำไปเข้า Run ใหม่ได้
                 detail.stain_order.status = "pending"
                 detail.stain_order.is_printed = False
+                track_ready(detail.stain_order)
 
         # 3. ลบตัว Run (Relationship details จะถูกลบตามถ้าตั้ง cascade ไว้)
         db.delete(db_run)
@@ -595,6 +614,7 @@ def create_outlab_run(db: Session, obj_in: OutlabRunCreate, user_id: int):
         stain_order = db.query(SurgicalBlockStain).get(stain_id)
         if stain_order:
             stain_order.status = "sent"
+            track_ready(stain_order)  # a redo sent out again isn't readable any more
 
         detail = SurgicalOutlabRunDetail(
             outlab_run_id=db_run.id,
@@ -791,6 +811,7 @@ def _receive_outlab_run_details(db: Session, run_id: int, user_id: int, detail_i
             detail.received_by_id = user_id
             if detail.stain_order and detail.stain_order.status == "sent":
                 detail.stain_order.status = "stained"
+                track_ready(detail.stain_order, at=now)
 
         _recompute_outlab_run_status(db_run)
         if db_run.status in ("partial", "received"):
@@ -865,6 +886,7 @@ def delete_outlab_run(db: Session, run_id: int) -> bool:
         for detail in db_run.details:
             if detail.stain_order:
                 detail.stain_order.status = "pending"
+                track_ready(detail.stain_order)
 
         db.delete(db_run)
         db.commit()

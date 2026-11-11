@@ -141,6 +141,14 @@ def update_run_status(db: Session, run_id: int, status: str):
                 SurgicalBlockStain.id.in_(stain_ids)
             ).update({"status": "stained"}, synchronize_session=False)
 
+            # The run start already stamped ready_at; pressing Completed is
+            # the better "slide is readable" time, so it moves there — except
+            # on slides whose result has already gone out.
+            db.query(SurgicalBlockStain).filter(
+                SurgicalBlockStain.id.in_(stain_ids),
+                SurgicalBlockStain.reported_at.is_(None),
+            ).update({"ready_at": func.now()}, synchronize_session=False)
+
             _sync_case_status_from_he_stains(db, stain_ids)
 
         db.commit()
@@ -179,10 +187,13 @@ def create_stain_run(db: Session, obj_in: StainRunCreate, user_id: int):
             is_success=True,
         ))
 
+    now = local_now()
     db.query(SurgicalBlockStain).filter(
         SurgicalBlockStain.id.in_(obj_in.stain_ids)
     ).update(
-        {"status": "stained", "stained_by_id": user_id, "updated_at": local_now()},
+        # ready_at: the slides read as stained from the run's start; pressing
+        # Completed later moves it (update_run_status).
+        {"status": "stained", "stained_by_id": user_id, "updated_at": now, "ready_at": now},
         synchronize_session=False,
     )
 
@@ -272,10 +283,11 @@ def create_he_batch_run(db: Session, obj_in: dict, operator_id: int = None):
             db.add(detail)
 
         # 4. Bulk Update สถานะสไลด์เป็น 'stained'
+        now = local_now()
         db.query(SurgicalBlockStain).filter(
             SurgicalBlockStain.id.in_(stain_ids)
         ).update(
-            {"status": "stained", "updated_at": local_now()},
+            {"status": "stained", "updated_at": now, "ready_at": now},
             synchronize_session=False,
         )
 

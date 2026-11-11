@@ -48,6 +48,8 @@ def _outlab(db, stains, sent_at, received_at, lab):
     db.flush()
     for s in stains:
         db.add(SurgicalOutlabRunDetail(outlab_run_id=run.id, stain_id=s.id, received_at=received_at))
+        if received_at:
+            s.ready_at = received_at  # as _receive_outlab_run_details does
     db.commit()
 
 
@@ -60,6 +62,7 @@ def _inhouse(db, stains, started_at, completed_at):
     db.flush()
     for s in stains:
         db.add(SurgicalStainRunDetail(stain_run_id=run.id, stain_id=s.id))
+        s.ready_at = completed_at or started_at  # as crud.stain_run does
     db.commit()
 
 

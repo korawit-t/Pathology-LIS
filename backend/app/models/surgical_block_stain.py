@@ -32,6 +32,11 @@ class SurgicalBlockStain(Base):
     # ผู้ดำเนินการย้อม
     stained_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # เวลาที่สไลด์ "พร้อมอ่าน" — ตั้งทุกจุดที่สถานะขึ้นเป็น stained:
+    # รับกลับจาก outlab, สร้าง/ปิดรอบย้อมในแล็บ (ปิดรอบเขียนทับเวลาเริ่ม),
+    # PATCH เป็น stained — และล้างทิ้งเมื่อถอยกลับเป็น pending/sent
+    ready_at = Column(DateTime, nullable=True)
+
     # เวลาที่ผลย้อมนี้ "ออก" = ตอนพยาธิแพทย์ sign รายงานที่รวมผลนี้ไว้
     # (crud.surgical_block_stain.mark_case_stains_reported, เรียกจาก finalize)
     # ไม่ผูกกับ IHC panel เพราะพยาธิแพทย์บางคนพิมพ์ผลใน diagnosis เอง
