@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
+from app.crud.surgical_block_stain import get_case_signoff_stains
 from app.crud.surgical_report import finalize_and_snapshot_orchestrator
 from app.models.surgical_block_stain import (
     SurgicalBlockStain,
@@ -184,6 +185,56 @@ class TestStampAtSignOff:
         (ready,) = _reload(db, ready)
         assert ready.status == "completed"
         assert ready.reported_at == _signed_at(db, case.id)
+
+
+class TestSignOffList:
+    """GET /surgical-block-stains/sign-off/{case_id} — what the sign-off page
+    lists. It must be exactly the set a sign-off can stamp, so the page never
+    promises to record a slide that signing then skips (or the reverse)."""
+
+    def _case(self, db, registrar_id):
+        case, specimen = make_signable_case(db, registrar_id=registrar_id)
+        return case, make_block(db, specimen.id)
+
+    def test_lists_the_stains_a_signoff_can_report(self, db, admin_user):
+        registrar, _ = admin_user
+        case, block = self._case(db, registrar.id)
+        ihc = _ihc_test(db)
+        he = make_anatomical_pathology_test(db, category="Histochem", system_code="HE_ROUTINE", name="H&E")
+        molecular = make_anatomical_pathology_test(db, category="Molecular", name=f"MOL-{uuid.uuid4().hex[:8]}")
+
+        ready = make_block_stain(db, block.id, ihc.id, slide_no=1, status="stained")
+        at_outlab = make_block_stain(db, block.id, ihc.id, slide_no=2, status="sent")
+        reported = make_block_stain(db, block.id, ihc.id, slide_no=3, status="completed")
+        reported.reported_at = datetime(2026, 11, 1, 10, 0)
+        db.commit()
+        make_block_stain(db, block.id, he.id, slide_no=4, status="stained")
+        make_block_stain(db, block.id, molecular.id, slide_no=5, status="pending")
+        make_block_stain(db, block.id, ihc.id, slide_no=6, status="stained", is_recut=True)
+
+        rows = get_case_signoff_stains(db, case.id)
+
+        assert [r["stain_id"] for r in rows] == [ready.id, at_outlab.id, reported.id]
+        assert rows[0] == {
+            "stain_id": ready.id,
+            "block_code": "A1",
+            "test_name": ihc.name,
+            "category": "IHC",
+            "status": "stained",
+            "is_external": True,
+            "reported_at": None,
+        }
+        assert rows[2]["reported_at"] == datetime(2026, 11, 1, 10, 0)
+
+    def test_route_serves_the_list(self, db, admin_user, pathologist_client):
+        registrar, _ = admin_user
+        case, block = self._case(db, registrar.id)
+        ready = make_block_stain(db, block.id, _ihc_test(db).id, status="stained")
+
+        r = pathologist_client.get(f"/surgical-block-stains/sign-off/{case.id}")
+
+        assert r.status_code == 200, r.text
+        assert [(s["stain_id"], s["status"], s["reported_at"]) for s in r.json()] == [(ready.id, "stained", None)]
 
 
 def _load_backfill_sql() -> str:

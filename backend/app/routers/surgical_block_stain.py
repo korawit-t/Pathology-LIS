@@ -16,6 +16,7 @@ from app.schemas.surgical_block_stain import (
     StainCreate,
     StainUpdate,
     StainShortResponse,
+    SignOffStainResponse,
     StainingRunResponse,
     OutlabRunCreate,
     OutlabRunUpdate,
@@ -77,6 +78,13 @@ def read_additional_stains_by_case(
 ):
     """All non-HE stains (IHC / Special stain) grouped by case, all statuses."""
     return crud.get_additional_stains_by_case(db, pathologist_id=pathologist_id)
+
+
+@router.get("/sign-off/{case_id}", response_model=List[SignOffStainResponse])
+def read_case_signoff_stains(case_id: int, db: Session = Depends(get_db)):
+    """The case's additional stains as the pathologist's sign-off page lists
+    them: the same set a sign-off can stamp reported_at on."""
+    return crud.get_case_signoff_stains(db, case_id)
 
 
 # 2. API ดึงรายการ Run (รอบการย้อม)

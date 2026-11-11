@@ -85,6 +85,18 @@ class StainResponse(StainBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SignOffStainResponse(BaseModel):
+    """One row of the sign-off page's stain list
+    (crud.surgical_block_stain.get_case_signoff_stains)."""
+    stain_id: int
+    block_code: Optional[str] = None
+    test_name: Optional[str] = None
+    category: Optional[str] = None
+    status: str
+    is_external: bool = False
+    reported_at: Optional[datetime] = None
+
+
 class StainShortResponse(BaseModel):
     id: int
     test_id: Optional[int] = None

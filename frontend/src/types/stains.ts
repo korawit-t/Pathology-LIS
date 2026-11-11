@@ -31,6 +31,19 @@ export interface StainRequest {
   assist_pathologist_id?: number | null;
 }
 
+// --- One row of the sign-off page's stain list ---
+// GET /surgical-block-stains/sign-off/{case_id}: the case's additional stains
+// (no routine H&E, recuts or Molecular) — the same set a sign-off can stamp.
+export interface SignOffStain {
+  stain_id: number;
+  block_code: string | null;
+  test_name: string | null;
+  category: string | null;
+  status: "pending" | "sent" | "stained" | "completed" | string;
+  is_external: boolean;
+  reported_at: string | null;
+}
+
 // --- สำหรับการสร้างรอบการย้อม (Create Payload) ---
 export interface HEStainItem {
   block_id: number;

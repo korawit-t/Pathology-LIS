@@ -28,6 +28,57 @@ from app.utils.time import local_now
 from app.schemas.surgical_block_stain import OutlabRunCreate
 
 
+def _signoff_stains_query(db: Session, case_id: int, *entities):
+    """The case's additional stains a sign-off can report: everything but the
+    routine H&E, recuts and Molecular orders (which report through their own
+    M- case). Shared by mark_case_stains_reported and the sign-off page's list
+    (get_case_signoff_stains), so the page shows exactly what signing stamps.
+    """
+    return (
+        db.query(*(entities or (SurgicalBlockStain,)))
+        .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
+        .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
+        .join(
+            AnatomicalPathologyTest,
+            AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
+        )
+        .filter(
+            SurgicalSpecimen.case_id == case_id,
+            SurgicalBlockStain.is_recut.isnot(True),
+            is_not_he_base_test(),
+            func.lower(func.coalesce(AnatomicalPathologyTest.category, "")) != "molecular",
+        )
+    )
+
+
+def get_case_signoff_stains(db: Session, case_id: int) -> list[dict]:
+    """Every stain the sign-off page needs to talk about, with its status and
+    reported_at, in block order. The page splits it into slides this sign-off
+    will record ("stained", not yet reported) and slides not back yet
+    ("pending" / "sent")."""
+    stains = (
+        _signoff_stains_query(db, case_id)
+        .options(
+            joinedload(SurgicalBlockStain.test),
+            joinedload(SurgicalBlockStain.block).joinedload(SurgicalBlock.specimen),
+        )
+        .order_by(SurgicalBlock.id, SurgicalBlockStain.slide_no, SurgicalBlockStain.id)
+        .all()
+    )
+    return [
+        {
+            "stain_id": s.id,
+            "block_code": s.block_code,
+            "test_name": s.test_name,
+            "category": s.test_category,
+            "status": s.status,
+            "is_external": bool(s.test and s.test.is_external),
+            "reported_at": s.reported_at,
+        }
+        for s in stains
+    ]
+
+
 def mark_case_stains_reported(
     db: Session, case_id: int, at, include_unreviewed: bool
 ) -> int:
@@ -57,20 +108,10 @@ def mark_case_stains_reported(
     statuses = ["stained", "completed"] if include_unreviewed else ["completed"]
     stain_ids = [
         row.id
-        for row in db.query(SurgicalBlockStain.id)
-        .join(SurgicalBlock, SurgicalBlock.id == SurgicalBlockStain.block_id)
-        .join(SurgicalSpecimen, SurgicalSpecimen.id == SurgicalBlock.specimen_id)
-        .join(
-            AnatomicalPathologyTest,
-            AnatomicalPathologyTest.id == SurgicalBlockStain.test_id,
-        )
+        for row in _signoff_stains_query(db, case_id, SurgicalBlockStain.id)
         .filter(
-            SurgicalSpecimen.case_id == case_id,
             SurgicalBlockStain.reported_at.is_(None),
             SurgicalBlockStain.status.in_(statuses),
-            SurgicalBlockStain.is_recut.isnot(True),
-            is_not_he_base_test(),
-            func.lower(func.coalesce(AnatomicalPathologyTest.category, "")) != "molecular",
         )
         .all()
     ]
