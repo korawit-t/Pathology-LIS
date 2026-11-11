@@ -19,10 +19,12 @@ from app.models.surgical_block_stain import (
 )
 
 from tests.factories import (
+    clear_system_settings,
     make_anatomical_pathology_test,
     make_block,
     make_block_stain,
     make_signable_case,
+    make_system_setting,
 )
 
 
@@ -68,6 +70,7 @@ def _case(db, registrar_id):
 
 class TestIhcTat:
     def test_groups_slides_by_signoff_and_measures_working_days(self, db, admin_user):
+        make_system_setting(db, ihc_tat_days=5)
         registrar, _ = admin_user
         case, block = _case(db, registrar.id)
         lab = f"Lab-{uuid.uuid4().hex[:6]}"
@@ -111,9 +114,14 @@ class TestIhcTat:
             "median_total_days": 6.0,    # median of 10.0 and 2.0
             "median_outlab_days": 8.0,   # Tue 2 → Fri 12
             "median_reading_days": 0.9,  # median of 1.0 and 0.8
+            "target_days": 5,
+            "on_time_count": 1,          # the 2-day in-house request; the panel took 10
+            "on_time_pct": 50.0,
         }
         assert data["distribution"] == {"lt3": 1, "t3_5": 0, "t5_10": 1, "gt10": 0}
-        assert data["monthly"] == [{"month": "2021-03", "requests": 2, "median_total_days": 6.0}]
+        assert data["monthly"] == [
+            {"month": "2021-03", "requests": 2, "median_total_days": 6.0, "on_time_pct": 50.0}
+        ]
         assert data["by_lab"] == [{"lab": lab, "requests": 1, "median_outlab_days": 8.0, "max_outlab_days": 8.0}]
 
         newest, oldest = data["requests"]
@@ -121,6 +129,7 @@ class TestIhcTat:
             "in-house", 1, 2.0, 0.8,  # run logged Tue 16 13:00 → out Wed 17 09:00
         )
         assert newest["outlab_days"] is None
+        assert newest["on_time"] is True
         assert newest["ready_at"] == datetime(2021, 3, 16, 13)
         assert oldest["case_id"] == case.id
         assert oldest["accession_no"] == case.accession_no
@@ -129,16 +138,19 @@ class TestIhcTat:
         assert (oldest["total_days"], oldest["outlab_days"], oldest["reading_days"], oldest["bucket"]) == (
             10.0, 8.0, 1.0, "t5_10",
         )
+        assert oldest["on_time"] is False
 
     def test_empty_period(self, db):
         data = get_ihc_tat(db, datetime(2021, 6, 1).date(), datetime(2021, 6, 30).date())
         assert data["summary"]["requests"] == 0
         assert data["summary"]["median_total_days"] is None
+        assert data["summary"]["on_time_pct"] is None
         assert data["requests"] == [] and data["monthly"] == [] and data["by_lab"] == []
 
 
 class TestIhcOutstanding:
     def test_lists_cases_not_out_yet_with_their_least_advanced_stage(self, db, admin_user):
+        make_system_setting(db, ihc_tat_days=5)
         registrar, _ = admin_user
         lab = f"Lab-{uuid.uuid4().hex[:6]}"
 
@@ -171,8 +183,14 @@ class TestIhcOutstanding:
         assert r["ordered_at"] == datetime(2021, 5, 3, 9)
         assert (r["sent_at"], r["lab"]) == (datetime(2021, 5, 4, 9), lab)
         assert sorted(m["status"] for m in r["markers"]) == ["sent", "stained"]
-        assert r["age_days"] > 0
+        assert r["age_days"] > 5 and r["overdue"] is True
         assert rows[unsigned_case.id]["stage"] == "completed"
+
+        # Ordered just now: within a 5-working-day target.
+        fresh_case, b5 = _case(db, registrar.id)
+        make_block_stain(db, b5.id, _test(db).id, status="pending")
+        fresh = next(r for r in get_ihc_outstanding(db) if r["case_id"] == fresh_case.id)
+        assert fresh["overdue"] is False
 
 
 class TestRoutes:
@@ -206,3 +224,21 @@ class TestRoutes:
     def test_lab_staff_get_in(self, staff_client):
         # histo sends and receives the outlab slides; CAN_READ_REPORT left it out.
         assert staff_client.get("/surgical-reports/ihc-tat/outstanding").status_code == 200
+
+
+class TestTarget:
+    def test_defaults_to_ten_working_days_without_a_settings_row(self, db):
+        clear_system_settings(db)
+        data = get_ihc_tat(db, datetime(2021, 8, 1).date(), datetime(2021, 8, 31).date())
+        assert data["summary"]["target_days"] == 10
+
+    def test_admin_sets_it_and_zero_is_refused(self, db, admin_client):
+        make_system_setting(db, hospital_slug="master")
+
+        r = admin_client.patch("/system-settings/update", json={"ihc_tat_days": 7})
+        assert r.status_code == 200, r.text
+        assert r.json()["ihc_tat_days"] == 7
+        data = get_ihc_tat(db, datetime(2021, 8, 1).date(), datetime(2021, 8, 31).date())
+        assert data["summary"]["target_days"] == 7
+
+        assert admin_client.patch("/system-settings/update", json={"ihc_tat_days": 0}).status_code == 422

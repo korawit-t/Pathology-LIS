@@ -32,6 +32,9 @@ export interface SystemSetting {
   non_gyne_express_tat_days: number;
   gyne_express_tat_days: number;
 
+  // IHC: order → result out at sign-off (Report Analytics → IHC TAT)
+  ihc_tat_days?: number;
+
   // --- Session / Security ---
   idle_timeout_minutes?: number;
 

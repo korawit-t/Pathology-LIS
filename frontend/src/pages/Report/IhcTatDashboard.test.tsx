@@ -46,6 +46,7 @@ const request = (over: Partial<IhcTatRequest>): IhcTatRequest => ({
   outlab_days: 8,
   reading_days: 1,
   bucket: "t5_10",
+  on_time: false,
   ...over,
 });
 
@@ -58,15 +59,18 @@ const stats = (over: Partial<IhcTatStats> = {}): IhcTatStats => ({
     median_total_days: 6,
     median_outlab_days: 8,
     median_reading_days: null,
+    target_days: 5,
+    on_time_count: 1,
+    on_time_pct: 50,
   },
   distribution: { lt3: 1, t3_5: 0, t5_10: 1, gt10: 0 },
-  monthly: [{ month: "2026-10", requests: 2, median_total_days: 6 }],
+  monthly: [{ month: "2026-10", requests: 2, median_total_days: 6, on_time_pct: 50 }],
   by_lab: [{ lab: "สถาบันพยาธิวิทยา", requests: 1, median_outlab_days: 8, max_outlab_days: 8 }],
   requests: [
     request({}),
     request({
       case_id: 2, accession_no: "S26-00002", patient_name: "สมชาย", patient_ln: "รักดี", markers: ["p53"],
-      slides: 1, source: "in-house", lab: null, total_days: 2, outlab_days: null, bucket: "lt3",
+      slides: 1, source: "in-house", lab: null, total_days: 2, outlab_days: null, bucket: "lt3", on_time: true,
     }),
   ],
   ...over,
@@ -84,6 +88,7 @@ const openCase = (over: Partial<IhcOutstandingCase>): IhcOutstandingCase => ({
   sent_at: "2026-10-21T09:00:00",
   lab: "สถาบันพยาธิวิทยา",
   age_days: 14,
+  overdue: true,
   ...over,
 });
 
@@ -99,6 +104,12 @@ const renderPage = (s: IhcTatStats, open: IhcOutstandingCase[]) => {
 
 it("shows the medians in working days, and a missing median as a dash", async () => {
   renderPage(stats(), []);
+
+  // The target comes from Admin → Workflow (ihc_tat_days), via the backend
+  expect(await screen.findByText("Within target (≤ 5 d)")).toBeInTheDocument();
+  expect(screen.getByText("50%")).toBeInTheDocument();
+  expect(screen.getByText("1 / 2 requests")).toBeInTheDocument();
+  expect(screen.getByText(/Target: 5 working days/)).toBeInTheDocument();
 
   expect(await screen.findByText("Median order → out")).toBeInTheDocument();
   expect(screen.getByText("6 d")).toBeInTheDocument();
@@ -119,6 +130,7 @@ it("drills a distribution bucket down to its requests, with full patient names",
   expect(within(dialog).getByText("S26-00001")).toBeInTheDocument();
   expect(within(dialog).getByText("นาง สมศรี ใจดี")).toBeInTheDocument();
   expect(within(dialog).queryByText("S26-00002")).not.toBeInTheDocument();
+  expect(within(dialog).getByText("Late")).toBeInTheDocument();
   // An empty bucket isn't clickable
   expect(screen.queryByRole("button", { name: "3–5 days: 0 requests" })).not.toBeInTheDocument();
 });
@@ -129,12 +141,12 @@ it("flags old outstanding requests and filters them by stage", async () => {
     openCase({
       case_id: 11, accession_no: "S26-00011", patient_name: "ปิติ", patient_ln: "ยินดี",
       markers: [{ name: "ER", status: "stained", is_external: true }], stage: "stained",
-      sent_at: null, lab: null, age_days: 3,
+      sent_at: null, lab: null, age_days: 3, overdue: false,
     }),
   ]);
 
   expect(await screen.findByText("2 cases")).toBeInTheDocument();
-  expect(screen.getByText("1 waiting > 10 d · oldest 14 d")).toBeInTheDocument();
+  expect(screen.getByText("1 past target (5 d) · oldest 14 d")).toBeInTheDocument();
   expect(screen.getByText("นาย มานะ ขยัน")).toBeInTheDocument();
   expect(screen.getByText("14 d").closest(".ant-typography")).toHaveClass("ant-typography-danger");
   expect(screen.getByText("3 d").closest(".ant-typography")).not.toHaveClass("ant-typography-danger");

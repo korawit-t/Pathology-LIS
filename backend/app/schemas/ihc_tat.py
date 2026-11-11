@@ -26,6 +26,8 @@ class IhcTatRequest(BaseModel):
     outlab_days: Optional[float] = None
     reading_days: Optional[float] = None
     bucket: Literal["lt3", "t3_5", "t5_10", "gt10"]
+    # total_days within the IHC target (system_settings.ihc_tat_days)
+    on_time: bool
 
 
 class IhcTatSummary(BaseModel):
@@ -36,6 +38,9 @@ class IhcTatSummary(BaseModel):
     median_total_days: Optional[float] = None
     median_outlab_days: Optional[float] = None
     median_reading_days: Optional[float] = None
+    target_days: int
+    on_time_count: int
+    on_time_pct: Optional[float] = None
 
 
 class IhcTatDistribution(BaseModel):
@@ -49,6 +54,7 @@ class IhcTatMonth(BaseModel):
     month: str
     requests: int
     median_total_days: Optional[float] = None
+    on_time_pct: Optional[float] = None
 
 
 class IhcTatLab(BaseModel):
@@ -87,3 +93,5 @@ class IhcOutstandingCase(BaseModel):
     sent_at: Optional[datetime] = None
     lab: Optional[str] = None
     age_days: float
+    # Waited longer than the IHC target already
+    overdue: bool

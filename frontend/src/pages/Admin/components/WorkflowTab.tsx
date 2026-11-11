@@ -413,6 +413,20 @@ const WorkflowTab: React.FC = () => {
                 </Form.Item>
               </Space>
             </SettingRow>
+
+            <SettingRow
+              title="Immunohistochemistry (IHC)"
+              description="Target from IHC order to the sign-off that carries the result — used by Report Analytics → IHC TAT"
+              icon={null}
+            >
+              <Form.Item
+                name="ihc_tat_days"
+                label="Target"
+                style={{ marginBottom: 0 }}
+              >
+                <InputNumber min={1} style={{ width: 100 }} addonAfter="d" />
+              </Form.Item>
+            </SettingRow>
           </div>
         </div>
 

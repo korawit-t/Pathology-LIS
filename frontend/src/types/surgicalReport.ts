@@ -301,6 +301,8 @@ export interface IhcTatRequest {
   outlab_days: number | null;
   reading_days: number | null;
   bucket: IhcTatBucket;
+  // total_days within the IHC target (Admin → Workflow → ihc_tat_days)
+  on_time: boolean;
 }
 
 export interface IhcTatStats {
@@ -312,9 +314,12 @@ export interface IhcTatStats {
     median_total_days: number | null;
     median_outlab_days: number | null;
     median_reading_days: number | null;
+    target_days: number;
+    on_time_count: number;
+    on_time_pct: number | null;
   };
   distribution: Record<IhcTatBucket, number>;
-  monthly: { month: string; requests: number; median_total_days: number | null }[];
+  monthly: { month: string; requests: number; median_total_days: number | null; on_time_pct: number | null }[];
   by_lab: { lab: string; requests: number; median_outlab_days: number | null; max_outlab_days: number }[];
   requests: IhcTatRequest[];
 }
@@ -333,4 +338,6 @@ export interface IhcOutstandingCase {
   sent_at: string | null;
   lab: string | null;
   age_days: number;
+  // Waited longer than the IHC target already
+  overdue: boolean;
 }

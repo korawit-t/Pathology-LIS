@@ -35,6 +35,9 @@ class SystemSetting(Base):
     surgical_express_tat_days = Column(Integer, default=3)  # ปกติด่วนมักจะ 1-2 วัน
     non_gyne_express_tat_days = Column(Integer, default=3)
     gyne_express_tat_days = Column(Integer, default=3)
+    # IHC: เป้าหมายวันทำการ ตั้งแต่สั่ง IHC จนถึงตอนพยาธิแพทย์ sign รายงานที่มีผลนั้น
+    # (surgical_block_stains.reported_at) — ใช้ในหน้า Report Analytics → IHC TAT
+    ihc_tat_days = Column(Integer, default=10, server_default="10")
 
     # --- Scheduled Notification Check Times ---
     # Specific times of day (HH:MM, Asia/Bangkok) the scheduled_notifications

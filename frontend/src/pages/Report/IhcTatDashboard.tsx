@@ -21,6 +21,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import {
   BgColorsOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
   ExperimentOutlined,
@@ -33,6 +34,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -72,9 +74,6 @@ const MARKER_COLORS: Record<string, string> = {
   stained: "gold",
   completed: "purple",
 };
-
-// An outstanding request older than this (working days) is flagged.
-const OVERDUE_DAYS = 10;
 
 const patientName = (r: { patient_title: string | null; patient_name: string | null; patient_ln: string | null }) =>
   [r.patient_title, r.patient_name, r.patient_ln].filter(Boolean).join(" ");
@@ -134,6 +133,12 @@ const requestColumns: ColumnsType<IhcTatRequest> = [
   { title: "Total", dataIndex: "total_days", key: "total_days", render: fmtDays },
   { title: "At outlab", dataIndex: "outlab_days", key: "outlab_days", render: fmtDays },
   { title: "Ready → out", dataIndex: "reading_days", key: "reading_days", render: fmtDays },
+  {
+    title: "Target",
+    dataIndex: "on_time",
+    key: "on_time",
+    render: (v: boolean) => (v ? <Tag color="green">On time</Tag> : <Tag color="red">Late</Tag>),
+  },
 ];
 
 const IhcTatDashboard: React.FC = () => {
@@ -168,8 +173,9 @@ const IhcTatDashboard: React.FC = () => {
   }, [load]);
 
   const summary = data?.summary;
+  const target = summary?.target_days;
   const totalDist = data ? BUCKETS.reduce((n, b) => n + data.distribution[b.key], 0) : 0;
-  const overdueCount = outstanding.filter((o) => o.age_days > OVERDUE_DAYS).length;
+  const overdueCount = outstanding.filter((o) => o.overdue).length;
   const oldest = outstanding.reduce((m, o) => Math.max(m, o.age_days), 0);
 
   const stageCounts = useMemo(() => {
@@ -200,11 +206,13 @@ const IhcTatDashboard: React.FC = () => {
         { header: "Total (working days)", key: "total_days" },
         { header: "At outlab (working days)", key: "outlab_days" },
         { header: "Ready to out (working days)", key: "reading_days" },
+        { header: `Within target (${target ?? "—"} d)`, key: "on_time", render: (v) => (v ? "yes" : "no") },
       ],
       {
         preamble: [
           ["IHC TAT", `${dateRange[0].format("DD/MM/YYYY")} - ${dateRange[1].format("DD/MM/YYYY")}`],
           ["Requests", summary?.requests ?? 0, "Median total (working days)", summary?.median_total_days ?? "—"],
+          ["Target (working days)", target ?? "—", "Within target", summary?.on_time_pct !== null && summary?.on_time_pct !== undefined ? `${summary.on_time_pct}%` : "—"],
         ],
       },
     );
@@ -247,8 +255,8 @@ const IhcTatDashboard: React.FC = () => {
       dataIndex: "age_days",
       key: "age_days",
       sorter: (a, b) => a.age_days - b.age_days,
-      render: (v: number) => (
-        <Text strong={v > OVERDUE_DAYS} type={v > OVERDUE_DAYS ? "danger" : undefined}>
+      render: (v: number, r) => (
+        <Text strong={r.overdue} type={r.overdue ? "danger" : undefined}>
           {v} d
         </Text>
       ),
@@ -287,13 +295,15 @@ const IhcTatDashboard: React.FC = () => {
       <Text type="secondary" style={{ fontSize: 12 }}>
         From IHC order to the sign-off that carries the result, in working days. One request is a case&apos;s IHC
         slides signed out together.
+        {target !== undefined && ` Target: ${target} working days (Admin → Workflow → Turnaround Time).`}
       </Text>
 
       <Divider style={{ margin: "12px 0 20px" }} />
 
       <Spin spinning={loading}>
+        {/* Five cards: flex columns wrap on narrow screens instead of a 24-grid split */}
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col flex="1 1 220px">
             <Kpi
               icon={<ClockCircleOutlined />} color="#722ed1" background="#f9f0ff"
               label="Median order → out"
@@ -301,7 +311,15 @@ const IhcTatDashboard: React.FC = () => {
               hint={summary ? `${summary.requests} requests · ${summary.slides} slides` : undefined}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col flex="1 1 220px">
+            <Kpi
+              icon={<CheckCircleOutlined />} color="#52c41a" background="#f6ffed"
+              label={`Within target${target !== undefined ? ` (≤ ${target} d)` : ""}`}
+              value={summary?.on_time_pct !== null && summary?.on_time_pct !== undefined ? `${summary.on_time_pct}%` : "—"}
+              hint={summary ? `${summary.on_time_count} / ${summary.requests} requests` : undefined}
+            />
+          </Col>
+          <Col flex="1 1 220px">
             <Kpi
               icon={<SendOutlined />} color="#1890ff" background="#e6f4ff"
               label="Median at outlab"
@@ -309,7 +327,7 @@ const IhcTatDashboard: React.FC = () => {
               hint={summary ? `sent → back · ${summary.outlab_requests} outlab, ${summary.inhouse_requests} in-house` : undefined}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col flex="1 1 220px">
             <Kpi
               icon={<ExperimentOutlined />} color="#13c2c2" background="#e6fffb"
               label="Median slide ready → out"
@@ -317,12 +335,16 @@ const IhcTatDashboard: React.FC = () => {
               hint="reading and sign-off"
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col flex="1 1 220px">
             <Kpi
               icon={<WarningOutlined />} color={overdueCount ? "#f5222d" : "#52c41a"} background={overdueCount ? "#fff1f0" : "#f6ffed"}
               label="Not out yet"
               value={`${outstanding.length} cases`}
-              hint={outstanding.length ? `${overdueCount} waiting > ${OVERDUE_DAYS} d · oldest ${oldest} d` : "nothing outstanding"}
+              hint={
+                outstanding.length
+                  ? `${overdueCount} past target${target !== undefined ? ` (${target} d)` : ""} · oldest ${oldest} d`
+                  : "nothing outstanding"
+              }
             />
           </Col>
         </Row>
@@ -372,6 +394,12 @@ const IhcTatDashboard: React.FC = () => {
                       <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
                       <Bar yAxisId="left" dataKey="requests" name="Requests" fill="#d3adf7" radius={[3, 3, 0, 0]} />
                       <Line yAxisId="right" type="monotone" dataKey="median_total_days" name="Median (working days)" stroke="#722ed1" strokeWidth={2.5} dot={{ r: 4 }} />
+                      {target !== undefined && (
+                        <ReferenceLine
+                          yAxisId="right" y={target} stroke="#f5222d" strokeDasharray="4 4"
+                          label={{ value: `Target ${target} d`, position: "insideTopRight", fontSize: 11, fill: "#f5222d" }}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 ) : (
