@@ -19,6 +19,60 @@ before the server starts.
 Entries below are the `feat:` and `fix:` commits of each release. Commits
 touching only tests or CI are left out.
 
+## [3.2.0] — 2026-11-11
+
+The lab can now see when an IHC result went out, and how long it took. A
+stain's result counts as out when the pathologist signs off the report that
+carries it, whether or not the IHC panel was filled in, since some pathologists
+type IHC results straight into the diagnosis. With the approve system on, it
+reaches the clinician when the report is approved. Report Analytics gets an
+IHC TAT tab for surgical and for non-gyne cases.
+
+Also: notifications to LINE groups through the หมอพร้อม bot (MOPH Notify),
+importing reports from an old system, and slide counts on the dispatch note.
+
+### Upgrade notes
+
+Nothing to run by hand: `alembic upgrade head` applies the six new
+migrations and their backfills. Worth doing:
+
+- **Back up the database first.** Three of the migrations rewrite existing
+  stain rows. They fill in when each slide was ready, when its result was
+  signed off, and when it was published, working from the stain runs, outlab
+  receipts and past reports. A ready IHC or special stain still at "stained"
+  after a complete sign-off (its result typed into the diagnosis) moves to
+  "completed". That drops it from the pathologists' "awaiting review" lists.
+- **Tell the pathologists about the sign-off page.** Signing off as complete
+  ("Yes, Signed Off") now records every ready IHC / special stain on the case
+  as reported. Signing off as "No, Pending" records only the ones already
+  reviewed. The page lists both, plus the stains not back yet. If an approver
+  rejects the report, those stains wait for the next sign-off.
+- **Set the IHC target** under **System Settings → Workflow → Turnaround
+  Time**. It defaults to 10 working days from order to result out.
+- **To use MOPH Notify**, add a notification channel with the client-key and
+  secret-key from the หน่วยบริการ menu of the MOPH Notify CMS.
+
+### Added
+
+- **stains** — record when an IHC / special stain result goes out: at the pathologist's sign-off, independent of the IHC panel
+- **stains** — record when it reaches the clinician: on publish, which is the approval when the approve system is on
+- **stains** — record when a slide becomes readable (outlab receive, stain run)
+- **report** — IHC TAT dashboard in Report Analytics, for surgical and non-gyne cases, with an IHC TAT target setting
+- **nongyne** — IHC / special stain sign-off notices and result timeline for non-gyne cases
+- **notifications** — send to LINE groups through MOPH Notify (the หมอพร้อม bot)
+- **notifications** — {name_short} and {clinician_short} template variables
+- **legacy-import** — import old-system reports into the legacy report tables (IT Administration → Legacy Report Import)
+- **slide-dispatch** — show slides per case and the total on the dispatch note
+
+### Fixed
+
+- **sign-off** — list the case's IHC / special stains (the list only ever loaded the routine H&E), and those not back yet
+- **report** — give non-gyne report rounds surgical's dated headings
+- **report** — show the time on non-gyne Collected and Received
+- **gross** — list test fees by CGD code, not by name
+- **legacy-reports** — page the legacy report search in the database, so it stays fast once imports land
+- **stain-run** — stamp a stain run's completion with the app's clock, not the database's
+
 ## [3.1.1] — 2026-11-10
 
 Fixes found by installing 3.1.0 under Docker the way another site would: login
@@ -446,3 +500,6 @@ Initial public release.
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 [2.0.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v2.0.0
 [3.0.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.0.0
+[3.1.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.1.0
+[3.1.1]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.1.1
+[3.2.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.2.0
