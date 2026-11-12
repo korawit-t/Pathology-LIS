@@ -387,11 +387,13 @@ def delete_block_refusal(block: SurgicalBlock):
     """
     code = block.block_code
     if block.status != "grossed":
-        return f"Block {code} อยู่ขั้นตอน {block.status} แล้ว ลบไม่ได้"
+        # "embedded" -> "Embedded", as the Grossing page's stage tag shows it
+        stage = (block.status or "").replace("_", " ").title()
+        return f"Block {code} is already {stage} and can't be deleted."
     if block.processing_record is not None:
-        return f"Block {code} ถูกส่งเข้า Tissue Processing แล้ว ลบไม่ได้"
+        return f"Block {code} is already in a Tissue Processing run and can't be deleted."
     if any(stain.is_printed for stain in block.stains):
-        return f"พิมพ์สติกเกอร์สไลด์ของ block {code} แล้ว ลบไม่ได้"
+        return f"A slide sticker for block {code} has been printed, so it can't be deleted."
     return None
 
 
