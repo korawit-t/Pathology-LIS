@@ -618,7 +618,8 @@ Windows with Docker Desktop, `backup.sh` should run from a WSL shell, with
 `BACKUP_ROOT` as a WSL path such as `/mnt/d/pathology_backup` (not yet tested
 there — run one by hand and restore it before relying on it). Both read all their configuration from `backend/.env` —
 `BACKUP_ROOT`, `BACKUP_PG_BIN` and `STORAGE_DIR` (Windows), `DB_CONTAINER` and
-`BACKEND_CONTAINER` (Linux), `BACKUP_KEEP`, and an optional `SLACK_BACKUP_WEBHOOK`.
+`BACKEND_CONTAINER` and `BACKUP_SKIP_DISK_CHECK` (Linux), `BACKUP_KEEP`, and an
+optional `SLACK_BACKUP_WEBHOOK`.
 On Windows the uploads archived are `STORAGE_DIR` if set, else `UPLOAD_ROOT`
 (where the backend keeps them), else `backend\uploads`.
 
@@ -641,6 +642,13 @@ good copy.
 The dump is checked with `pg_restore -l` before it is renamed into place. A
 run that fails partway leaves a discarded `.part` file and the previous
 backups untouched.
+
+`backup.sh` also stops, and sends the failure alert, when `BACKUP_ROOT` is on
+the system disk or the Docker data disk. That is what an unmounted backup drive
+looks like: its mount point is left behind as an ordinary folder, so the backup
+would otherwise go onto the disk it should survive and report a success. Set
+`BACKUP_SKIP_DISK_CHECK=true` when that disk is where the backups are meant to
+go.
 
 > On Windows, `Compress-Archive` cannot produce a valid zip beyond 2 GB. The
 > script uses 7-Zip automatically when it is installed, warns from 1.5 GB, and

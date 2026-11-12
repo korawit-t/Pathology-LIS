@@ -9,6 +9,8 @@
 #   DB_CONTAINER          pathology-db         (optional, default: pathology-db)
 #   BACKEND_CONTAINER     pathology-backend    (optional, default: pathology-backend)
 #   SLACK_BACKUP_WEBHOOK  https://hooks.slack.com/...  (optional)
+#   BACKUP_SKIP_DISK_CHECK true  (optional — only when BACKUP_ROOT is meant to
+#                         be on the system or Docker disk, see step 0 below)
 #
 # วิธีใช้:
 #   chmod +x backup.sh && ./backup.sh
@@ -57,6 +59,7 @@ DB_CONTAINER="$(env_get DB_CONTAINER)"
 BACKEND_CONTAINER="$(env_get BACKEND_CONTAINER)"
 SLACK_BACKUP_WEBHOOK="$(env_get SLACK_BACKUP_WEBHOOK)"
 BACKUP_KEEP="$(env_get BACKUP_KEEP)"
+BACKUP_SKIP_DISK_CHECK="$(env_get BACKUP_SKIP_DISK_CHECK)"
 
 # --- required ---
 if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -78,12 +81,6 @@ DB_CONTAINER="${DB_CONTAINER:-pathology-db}"
 SLACK_BACKUP_WEBHOOK="${SLACK_BACKUP_WEBHOOK:-}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-pathology-backend}"
 LOG_CSV="$BACKUP_ROOT/backup_log.csv"
-
-# ตรวจสอบว่า BACKUP_ROOT เข้าถึงได้จริง (HDD mount แล้วหรือยัง)
-if ! mkdir -p "$BACKUP_ROOT" 2>/dev/null; then
-  echo "[ERROR] ไม่สามารถสร้าง BACKUP_ROOT: $BACKUP_ROOT (HDD อาจยังไม่ได้ mount)" >&2
-  exit 1
-fi
 
 # ---------------------------------------------------------------------------
 # INTERNAL
@@ -139,11 +136,46 @@ fail() {
   log_result; notify_slack; exit 1
 }
 
+# For a BACKUP_ROOT that is not usable: alert, but write no CSV row, since the
+# CSV lives in BACKUP_ROOT and would land in the wrong place too.
+fail_backup_root() {
+  STATUS="FAILED"; DETAIL="$1"
+  echo "[ERROR] $1" >&2
+  notify_slack; exit 1
+}
+
+# Device number of the filesystem a path is on (GNU stat, then BSD stat).
+fs_id() { stat -L -c %d "$1" 2>/dev/null || stat -L -f %d "$1" 2>/dev/null || true; }
+
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 
 echo "=== Pathology LIS Backup: $DATE_LABEL ==="
+
+# 0. BACKUP_ROOT has to be on the backup disk itself.
+# An unmounted HDD leaves its mount point behind as an ordinary folder on the
+# system disk. This check used to be only `mkdir -p`, which succeeds there when
+# cron runs as root (as it does to use docker), so the backup was written to
+# the disk it exists to survive and reported as a success. BACKUP_ROOT, by its
+# nearest existing parent so nothing is created first, may not share a
+# filesystem with / or with the Docker data root, where postgres_data lives.
+if [[ "${BACKUP_SKIP_DISK_CHECK:-}" != "true" ]]; then
+  probe="$BACKUP_ROOT"
+  while [[ ! -e "$probe" ]]; do probe="$(dirname "$probe")"; done
+  backup_fs="$(fs_id "$probe")"
+  docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+  for disk in / "$docker_root"; do
+    # Docker Desktop reports a path inside its VM, not one on this host.
+    [[ -n "$disk" && -d "$disk" ]] || continue
+    if [[ -n "$backup_fs" && "$backup_fs" == "$(fs_id "$disk")" ]]; then
+      fail_backup_root "BACKUP_ROOT ($BACKUP_ROOT) อยู่บน disk เดียวกับ $disk — HDD อาจยังไม่ได้ mount (ถ้าตั้งใจเก็บไว้บน disk นี้ ให้ตั้ง BACKUP_SKIP_DISK_CHECK=true)"
+    fi
+  done
+fi
+if ! mkdir -p "$BACKUP_ROOT" 2>/dev/null; then
+  fail_backup_root "ไม่สามารถสร้าง BACKUP_ROOT: $BACKUP_ROOT (HDD อาจยังไม่ได้ mount)"
+fi
 
 # 1. Backup Database (ทับไฟล์เดิม)
 echo "[1/3] Dumping PostgreSQL..."
