@@ -1,10 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Button, DatePicker, Modal, Space, Spin, Typography, Upload, message } from "antd";
 import type { UploadFile } from "antd";
-import { DeleteOutlined, ExclamationCircleOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  InboxOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import StyledCard from "../Layout/StyledCard";
 import PdfPageSelector from "../PdfPageSelector/PdfPageSelector";
+import {
+  ConsultCaseType,
+  OutlabConsultRound,
+  OutlabConsultService,
+  currentRound,
+} from "../../services/outlabConsultService";
 
 const { Text } = Typography;
 
@@ -26,6 +38,17 @@ export interface ConsultPdfPanelProps {
   panelTitle?: string;
   emptyStateMessage?: string;
   receivedStateMessage?: string;
+  /** Turns on the consult round's number, approval state and Approve button.
+   * A consult round can't be released on a report until its PDF is approved
+   * (the approver's name is printed on the cover), so the cytology pages,
+   * which have no consult modal of their own, approve here. Left out for
+   * reuse that isn't a consult round (e.g. Molecular). */
+  consultCaseType?: ConsultCaseType;
+}
+
+function errorDetail(err: unknown): string | undefined {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof detail === "string" ? detail : undefined;
 }
 
 /**
@@ -50,6 +73,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
   panelTitle = "Out-Lab Consult PDF",
   emptyStateMessage = "This case has been sent for external consultation. Please upload the consult report PDF once received.",
   receivedStateMessage = "Consult report PDF received.",
+  consultCaseType,
 }) => {
   const [sourcePdfFile, setSourcePdfFile] = useState<File | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -65,6 +89,30 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
   const [justUploaded, setJustUploaded] = useState(false);
 
   const hasPdf = justUploaded || !!consultPdfPath;
+
+  const [round, setRound] = useState<OutlabConsultRound | undefined>();
+  const [approving, setApproving] = useState(false);
+  const [roundVersion, setRoundVersion] = useState(0);
+
+  useEffect(() => {
+    if (!consultCaseType || !caseId || !isOutLabConsult) {
+      setRound(undefined);
+      return;
+    }
+    let cancelled = false;
+    OutlabConsultService.listForCase(consultCaseType, caseId)
+      .then((rounds) => {
+        if (!cancelled) setRound(currentRound(rounds));
+      })
+      .catch(() => {
+        if (!cancelled) setRound(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [consultCaseType, caseId, isOutLabConsult, consultPdfPath, consultStatus, justUploaded, roundVersion]);
+
+  const isApproved = round?.status === "approved" || round?.status === "reported";
 
   useEffect(() => {
     if (consultPdfPath) setJustUploaded(false);
@@ -109,6 +157,21 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
     }
   };
 
+  const handleApprove = async () => {
+    if (!round) return;
+    setApproving(true);
+    try {
+      await OutlabConsultService.approve(round.id);
+      message.success("Consult PDF reviewed and approved");
+      setRoundVersion((v) => v + 1);
+      onRefresh();
+    } catch (err) {
+      message.error(errorDetail(err) ?? "Failed to record consult approval");
+    } finally {
+      setApproving(false);
+    }
+  };
+
   const handleDelete = () => {
     Modal.confirm({
       title: "Delete Consult PDF",
@@ -140,6 +203,9 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
         <Text strong style={{ color: "#722ed1" }}>
           {panelTitle}
         </Text>
+        {round && (
+          <Text style={{ fontSize: 12, color: "#722ed1" }}>{round.consult_no}</Text>
+        )}
         {consultStatus && (
           <Text type="secondary" style={{ fontSize: 12 }}>
             ({consultStatus})
@@ -249,7 +315,37 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
               <Text type="secondary">Preview unavailable</Text>
             )}
           </div>
-          {!readOnly && (
+          {consultCaseType && round && (
+            isApproved ? (
+              <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+                <CheckCircleOutlined style={{ color: "#52c41a", marginRight: 6 }} />
+                Approved by {round.approved_by_name || "—"}
+                {round.approved_at && ` on ${dayjs(round.approved_at).format("DD/MM/YYYY HH:mm")}`}
+              </Text>
+            ) : (
+              <>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="Approve this consult PDF before signing off — the report can't be released until it is."
+                  style={{ marginBottom: 12 }}
+                />
+                {!readOnly && (
+                  <Button
+                    type="primary"
+                    icon={<CheckCircleOutlined />}
+                    onClick={handleApprove}
+                    loading={approving}
+                    style={{ backgroundColor: "#722ed1", borderColor: "#722ed1", marginBottom: 8 }}
+                    block
+                  >
+                    Approve Consult PDF
+                  </Button>
+                )}
+              </>
+            )
+          )}
+          {!readOnly && round?.status !== "reported" && (
             <Button danger icon={<DeleteOutlined />} onClick={handleDelete} loading={deleting} block>
               Delete PDF
             </Button>

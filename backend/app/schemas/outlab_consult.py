@@ -39,6 +39,10 @@ class OutlabConsultRunDetailResponse(BaseModel):
     # (also attached at query time) — lets the UI offer "View PDF" instead of
     # only "Upload PDF" once a report has come back for this case.
     consult_pdf_uploaded: bool = False
+    consult_id: Optional[int] = None
+    # The consult round this line belongs to (S26-01234-C1) — attached with
+    # the live status above.
+    consult_no: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

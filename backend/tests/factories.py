@@ -265,3 +265,59 @@ def make_pending_nongyne_report(db, registrar_id: int, pathologist_id: int, hosp
     )
     db.refresh(case)
     return case, report
+
+
+def make_consult(
+    db,
+    case_type: str,
+    case,
+    *,
+    status: str = "sent",
+    result_pdf_path: str | None = None,
+    approved_by_id: int | None = None,
+    reason: str | None = "Need subspecialty opinion",
+):
+    """An out-lab consult round in a given state, with the case's cached
+    consult_* columns synced the way the app writes them."""
+    from app.crud import outlab_consult_request as consult_crud
+    from app.models.outlab_consult_request import OutlabConsultRequest
+    from app.utils.time import local_now
+
+    consult = consult_crud.open_consult(db, case_type, case, reason=reason)
+    consult.status = status
+    consult.result_pdf_path = result_pdf_path
+    if result_pdf_path:
+        consult.result_received_at = local_now()
+    if approved_by_id:
+        consult.approved_by_id = approved_by_id
+        consult.approved_at = local_now()
+    consult_crud.sync_case_summary(db, case_type, case)
+    db.commit()
+    db.refresh(consult)
+    assert isinstance(consult, OutlabConsultRequest)
+    return consult
+
+
+MINIMAL_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< >>\nendobj\n%%EOF"
+
+
+def attach_consult_result(db, case_type: str, case, tmp_path, monkeypatch):
+    """The external lab's PDF arrives for the case's open consult — a real
+    file under a temporary UPLOAD_ROOT, as the upload endpoint leaves it."""
+    import app.core.config
+    from app.crud import outlab_consult_request as consult_crud
+    from app.utils.time import local_now
+
+    monkeypatch.setattr(app.core.config.settings, "UPLOAD_ROOT", tmp_path)
+    pdf = tmp_path / "consults" / f"consult_{case_type}_{case.id}.pdf"
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    pdf.write_bytes(MINIMAL_PDF)
+
+    consult = consult_crud.get_active(db, case_type, case.id)
+    consult.result_pdf_path = str(pdf)
+    consult.result_received_at = local_now()
+    consult.status = "result_received"
+    consult_crud.sync_case_summary(db, case_type, case)
+    db.commit()
+    db.refresh(consult)
+    return consult

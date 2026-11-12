@@ -1,47 +1,36 @@
-import os
-import uuid
-from datetime import datetime
-
+"""The per-case /consult-pdf endpoints (surgical, gyne, non-gyne), kept for
+the pages that still address the consult by case. They act on the case's
+open consult round — see crud.outlab_consult_request, which owns the state."""
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.utils import storage_paths
-from app.utils.file_handler import validate_and_sanitize
-from app.utils.storage_paths import resolve_stored_file
-from app.utils.time import local_now
+from app.crud import outlab_consult_request as consult_crud
 
 
-def save_consult_pdf(db: Session, case, case_type: str, file: UploadFile, received_at: str | None) -> None:
-    """Validate + store a consult PDF against `case`, shared by Surgical and
-    NonGyne (both models expose the same consult_pdf_path/consult_pdf_received_at columns)."""
-    data, ext = validate_and_sanitize(file, allowed="pdf")
-
-    old_file = resolve_stored_file(case.consult_pdf_path)
-    if old_file:
-        os.remove(old_file)
-
-    unique_filename = f"consult_{case_type}_{case.id}_{uuid.uuid4()}.{ext}"
-    file_path = storage_paths.save(f"consults/{unique_filename}", data)
-
-    case.consult_pdf_path = str(file_path)
-    case.consult_pdf_received_at = (
-        datetime.fromisoformat(received_at) if received_at else local_now()
-    )
-    db.commit()
+def save_consult_pdf(
+    db: Session,
+    case,
+    case_type: str,
+    file: UploadFile,
+    received_at: str | None,
+    user_id: int | None = None,
+) -> None:
+    """A case that was never flagged (consult arranged outside the app) gets
+    its round 1 opened here, as this endpoint always accepted any case."""
+    if consult_crud.get_latest(db, case_type, case.id) is None:
+        consult = consult_crud.open_consult(db, case_type, case, reason=None, user_id=user_id)
+    else:
+        consult = consult_crud.consult_for_case_endpoint(db, case_type, case.id)
+    consult_crud.upload_result_pdf(db, consult, file, received_at, user_id)
 
 
-def clear_consult_pdf(db: Session, case) -> None:
-    old_file = resolve_stored_file(case.consult_pdf_path)
-    if old_file:
-        os.remove(old_file)
-    case.consult_pdf_path = None
-    case.consult_pdf_approved_by_id = None
-    case.consult_pdf_approved_at = None
-    db.commit()
+def clear_consult_pdf(db: Session, case, case_type: str) -> None:
+    consult = consult_crud.consult_for_case_endpoint(db, case_type, case.id)
+    consult_crud.delete_result_pdf(db, consult)
 
 
-def approve_consult_pdf(db: Session, case, approved_by_id: int) -> None:
+def approve_consult_pdf(db: Session, case, approved_by_id: int, case_type: str = "surgical") -> None:
     """Record who reviewed/signed off on the uploaded consult PDF, and when."""
-    case.consult_pdf_approved_by_id = approved_by_id
-    case.consult_pdf_approved_at = local_now()
-    db.commit()
+    consult = consult_crud.consult_for_case_endpoint(db, case_type, case.id)
+    consult_crud.approve_consult(db, consult, approved_by_id)
+    db.refresh(case)

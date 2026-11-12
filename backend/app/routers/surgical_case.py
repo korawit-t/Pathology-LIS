@@ -45,6 +45,7 @@ from app.schemas.surgical_case import (
     OutLabConsultStateResponse,
 )
 from app.core.roles import (
+    CAN_UPLOAD_OUTLAB_RESULT,
     CAN_APPROVE_OUTLAB_RESULT,
     CAN_CANCEL_CASE,
     CAN_DELETE_CASE,
@@ -571,7 +572,7 @@ def update_case(
         assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
     # 2. เรียกใช้ฟังก์ชัน Update ที่เราเขียนไว้ใน CRUD
-    return crud_case.update_case(db, db_obj=db_case, obj_in=case_in)
+    return crud_case.update_case(db, db_obj=db_case, obj_in=case_in, user_id=current_user.id)
 
 
 # --- 📂 Specimen Storage Endpoints ---
@@ -771,14 +772,14 @@ async def upload_consult_pdf(
     file: UploadFile = File(...),
     received_at: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(CAN_UPLOAD_OUTLAB_RESULT),
 ):
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    save_consult_pdf(db, case, "surgical", file, received_at)
+    save_consult_pdf(db, case, "surgical", file, received_at, current_user.id)
 
     return {"message": "Uploaded successfully"}
 
@@ -786,14 +787,14 @@ async def upload_consult_pdf(
 def delete_consult_pdf(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(CAN_UPLOAD_OUTLAB_RESULT)
 ):
     case = crud_case.get_case(db=db, case_id=case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    clear_consult_pdf(db, case)
+    clear_consult_pdf(db, case, "surgical")
     return {"message": "Consult PDF removed successfully"}
 
 @router.get("/{case_id}/consult-pdf")
@@ -859,7 +860,7 @@ def request_outlab_consult(
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    return crud_case.request_out_lab_consult(db, db_obj=case, reason=payload.reason)
+    return crud_case.request_out_lab_consult(db, db_obj=case, reason=payload.reason, user_id=current_user.id)
 
 
 @router.delete("/{case_id}/outlab-consult", response_model=OutLabConsultStateResponse)
@@ -873,7 +874,7 @@ def cancel_outlab_consult(
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    return crud_case.cancel_out_lab_consult(db, db_obj=case)
+    return crud_case.cancel_out_lab_consult(db, db_obj=case, user_id=current_user.id)
 
 
 # --- ฟังก์ชันสำหรับยกเลิก (Soft Delete) สำหรับเคสที่สถานะเลย Registered ไปแล้ว ---

@@ -46,6 +46,16 @@ class OutlabConsultRunDetail(Base):
     block_code = Column(String, nullable=True)
     report_out_at = Column(DateTime, nullable=True)
 
+    # The consult round this shipment line belongs to. A consult can span
+    # several runs (more material sent later); NULL only on rows from before
+    # the outlab_consult_requests table existed and the migration couldn't match.
+    consult_id = Column(
+        Integer,
+        ForeignKey("outlab_consult_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     remark = Column(String, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
@@ -54,4 +64,5 @@ class OutlabConsultRunDetail(Base):
     block_returned_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     run = relationship("OutlabConsultRun", back_populates="details")
+    consult = relationship("OutlabConsultRequest")
     block_returned_by = relationship("User", foreign_keys=[block_returned_by_id])

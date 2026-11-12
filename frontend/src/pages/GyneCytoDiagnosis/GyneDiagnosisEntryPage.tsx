@@ -462,6 +462,7 @@ const GyneDiagnosisEntryPage: React.FC<GyneDiagnosisEntryPageProps> = (
         {caseData?.is_out_lab_consult && (
           <div style={{ marginBottom: 16 }}>
             <ConsultPdfPanel
+              consultCaseType="gyne"
               caseId={Number(caseId)}
               isOutLabConsult={!!caseData?.is_out_lab_consult}
               consultPdfPath={caseData?.consult_pdf_path}

@@ -98,27 +98,35 @@ class TestReceiveConsultRun:
 
 
 class TestGetConsultRunsLiveStatus:
-    def test_detail_case_consult_status_reflects_live_value_not_snapshot(self, db, admin_user, surgical_case):
+    def test_detail_status_follows_its_own_consult_round(self, db, admin_user, surgical_case):
+        """A run line belongs to one consult round. Once that round is
+        released and the case opens the next one, the case-level status
+        describes the new round — the old run's line must still read received."""
+        from app.crud import outlab_consult_request as consult_crud
+        from app.models.outlab_consult_request import OutlabConsultRequest
+
         user, _ = admin_user
         run = _create_run_for(db, user.id, surgical_case)
 
-        # Bypass the run entirely and flip the case's own status directly —
-        # simulates the pathologist finishing sign-off independently of the
-        # run ever being marked "received".
-        db.query(SurgicalCase).filter(SurgicalCase.id == surgical_case.id).update(
-            {"consult_status": "received"}
-        )
+        first = db.query(OutlabConsultRequest).filter_by(case_type="surgical", case_id=surgical_case.id).one()
+        first.status = "reported"
+        consult_crud.open_consult(db, "surgical", surgical_case, reason="Second opinion", user_id=user.id)
         db.commit()
+        db.refresh(surgical_case)
+        assert surgical_case.consult_status == "pending"  # the case is on round 2 now
 
         runs = get_consult_runs(db, skip=0, limit=500)
         matching = next(r for r in runs if r.id == run.id)
         detail = next(d for d in matching.details if d.case_id == surgical_case.id)
 
         assert detail.case_consult_status == "received"
+        assert detail.consult_no == f"{surgical_case.accession_no}-C1"
         # The run's own status is untouched by the case-level change.
         assert matching.status == "sent"
 
-    def test_consult_pdf_uploaded_reflects_consult_pdf_path_presence(self, db, admin_user, surgical_case):
+    def test_consult_pdf_uploaded_reflects_the_rounds_result(self, db, admin_user, surgical_case):
+        from app.models.outlab_consult_request import OutlabConsultRequest
+
         user, _ = admin_user
         run = _create_run_for(db, user.id, surgical_case)
 
@@ -127,9 +135,8 @@ class TestGetConsultRunsLiveStatus:
         detail = next(d for d in matching.details if d.case_id == surgical_case.id)
         assert detail.consult_pdf_uploaded is False
 
-        db.query(SurgicalCase).filter(SurgicalCase.id == surgical_case.id).update(
-            {"consult_pdf_path": "/tmp/fake-consult.pdf"}
-        )
+        consult = db.query(OutlabConsultRequest).filter_by(case_type="surgical", case_id=surgical_case.id).one()
+        consult.result_pdf_path = "/tmp/fake-consult.pdf"
         db.commit()
 
         runs = get_consult_runs(db, skip=0, limit=500)

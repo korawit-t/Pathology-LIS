@@ -76,6 +76,10 @@ class GyneCytoReport(Base):
     # รูปที่ออกไปกับฉบับนี้ [{image_url, description}] — ดู app/crud/report_images.py
     # NULL = ฉบับที่ออกก่อนมีคอลัมน์นี้ (ใช้รูปปัจจุบันของเคสแทน)
     images_snapshot = Column(JSON, nullable=True)
+    # outlab_consult_requests.id of every consult printed as a cover on this
+    # round, in seq order. NULL = issued before that table existed — the PDF
+    # then falls back to the consult_pdf_*_snapshot columns (surgical only).
+    consult_ids_snapshot = Column(JSON, nullable=True)
 
     # --- Footer & Identity Snapshots ---
     lab_name_snapshot = Column(String, nullable=True)

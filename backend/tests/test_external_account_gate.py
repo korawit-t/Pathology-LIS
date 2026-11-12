@@ -253,11 +253,18 @@ class TestThePortalStillWorks:
 
 class TestConsultPdfApproval:
     @pytest.fixture
-    def case(self, db, admin_user):
+    def case(self, db, admin_user, tmp_path, monkeypatch):
+        import app.core.config
+        from tests.factories import make_consult
+
+        monkeypatch.setattr(app.core.config.settings, "UPLOAD_ROOT", tmp_path)
+        pdf = tmp_path / "consults" / "test.pdf"
+        pdf.parent.mkdir(parents=True)
+        pdf.write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< >>\nendobj\n%%EOF")
+
         registrar, _ = admin_user
         case = make_bare_case(db, registrar_id=registrar.id, hospital=make_hospital(db))
-        case.consult_pdf_path = "uploads/consult/test.pdf"
-        db.commit()
+        make_consult(db, "surgical", case, status="result_received", result_pdf_path=str(pdf))
         return case
 
     def test_patch_cannot_name_an_approver(self, client, db, case, pathologist_user):

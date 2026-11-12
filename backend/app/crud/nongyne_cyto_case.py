@@ -48,6 +48,8 @@ def create_nongyne_case(db: Session, obj_in: NongyneCytologyCaseCreate, registra
     try:
         new_accession_no = _get_next_nongyne_accession_no(db)
         case_data = obj_in.model_dump(exclude={"accession_no", "registrar_id", "num_slides"})
+        # Owned by the consult rows — a flag at registration opens round 1.
+        flag_consult = case_data.pop("is_out_lab_consult", False)
 
         db_obj = NongyneCytologyCase(
             **case_data,
@@ -57,6 +59,10 @@ def create_nongyne_case(db: Session, obj_in: NongyneCytologyCaseCreate, registra
         )
 
         db.add(db_obj)
+        if flag_consult:
+            from app.crud import outlab_consult_request as consult_crud
+            db.flush()
+            consult_crud.open_consult(db, "nongyne", db_obj, reason=None, user_id=registrar_id)
         db.commit()
 
         # Query ดึงข้อมูลใหม่พร้อมโหลดตารางที่เกี่ยวข้อง (Eager Loading)
@@ -305,18 +311,21 @@ def get_nongyne_cases(
 
 
 def update_nongyne_case(
-    db: Session, db_obj: NongyneCytologyCase, obj_in: NongyneCytologyCaseUpdate
+    db: Session,
+    db_obj: NongyneCytologyCase,
+    obj_in: NongyneCytologyCaseUpdate,
+    user_id: int | None = None,
 ):
     update_data = obj_in.model_dump(exclude_unset=True)
 
     readonly_fields = ["id", "accession_no", "registrar_id", "registered_at"]
 
+    from app.crud import outlab_consult_request as consult_crud
+    consult_crud.apply_case_patch(db, "nongyne", db_obj, update_data, user_id)
+
     for field in update_data:
         if field not in readonly_fields and hasattr(db_obj, field):
             setattr(db_obj, field, update_data[field])
-
-    if update_data.get("is_out_lab_consult") and db_obj.consult_status is None:
-        db_obj.consult_status = "pending"
 
     try:
         db.add(db_obj)

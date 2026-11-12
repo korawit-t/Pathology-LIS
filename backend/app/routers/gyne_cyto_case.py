@@ -27,6 +27,7 @@ from app.dependencies.auth import (
     get_scoped_hospital_ids,
 )
 from app.core.roles import (
+    CAN_UPLOAD_OUTLAB_RESULT,
     CAN_APPROVE_OUTLAB_RESULT,
     CAN_CANCEL_CASE,
     CAN_DELETE_CASE,
@@ -537,14 +538,14 @@ async def upload_consult_pdf(
     file: UploadFile = File(...),
     received_at: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(CAN_UPLOAD_OUTLAB_RESULT),
 ):
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    save_consult_pdf(db, case, "gyne", file, received_at)
+    save_consult_pdf(db, case, "gyne", file, received_at, current_user.id)
 
     return {"message": "Uploaded successfully"}
 
@@ -553,14 +554,14 @@ async def upload_consult_pdf(
 def delete_consult_pdf(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(CAN_UPLOAD_OUTLAB_RESULT),
 ):
     case = db.query(GyneCytologyCase).filter(GyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    clear_consult_pdf(db, case)
+    clear_consult_pdf(db, case, "gyne")
     return {"message": "Consult PDF removed successfully"}
 
 

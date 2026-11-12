@@ -24,6 +24,7 @@ from app.crud import nongyne_cyto_case as crud
 from app.crud.consult_pdf import save_consult_pdf, clear_consult_pdf
 from app.schemas.cyto_path_correlation import SendToPathologistRequest
 from app.core.roles import (
+    CAN_UPLOAD_OUTLAB_RESULT,
     CAN_CANCEL_CASE,
     CAN_DELETE_CASE,
     CAN_MANAGE_NONGYNE_SPECIMEN_STORAGE,
@@ -367,7 +368,7 @@ def update_case_info(
     if case_in.hospital_id is not None:
         assert_hospital_scoped_access(current_user, case_in.hospital_id)
 
-    return crud.update_nongyne_case(db=db, db_obj=db_case, obj_in=case_in)
+    return crud.update_nongyne_case(db=db, db_obj=db_case, obj_in=case_in, user_id=current_user.id)
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -495,14 +496,14 @@ async def upload_consult_pdf(
     file: UploadFile = File(...),
     received_at: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(CAN_UPLOAD_OUTLAB_RESULT),
 ):
     case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    save_consult_pdf(db, case, "nongyne", file, received_at)
+    save_consult_pdf(db, case, "nongyne", file, received_at, current_user.id)
 
     return {"message": "Uploaded successfully"}
 
@@ -511,14 +512,14 @@ async def upload_consult_pdf(
 def delete_consult_pdf(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(CAN_UPLOAD_OUTLAB_RESULT),
 ):
     case = db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     assert_hospital_scoped_access(current_user, case.hospital_id)
 
-    clear_consult_pdf(db, case)
+    clear_consult_pdf(db, case, "nongyne")
     return {"message": "Consult PDF removed successfully"}
 
 

@@ -9,7 +9,7 @@ could only be set as a side effect of finalize (see test_surgical_consult_finali
 
 import pytest
 
-from tests.factories import make_bare_case
+from tests.factories import make_bare_case, make_consult
 
 
 @pytest.fixture
@@ -77,9 +77,7 @@ class TestRequestOutLabConsult:
         assert surgical_case.consult_status == "pending"
 
     def test_conflicts_once_dispatched(self, pathologist_client, db, surgical_case):
-        surgical_case.is_out_lab_consult = True
-        surgical_case.consult_status = "processing"
-        db.commit()
+        make_consult(db, "surgical", surgical_case, status="sent")
 
         r = pathologist_client.post(
             f"/surgical-cases/{surgical_case.id}/outlab-consult",
@@ -116,9 +114,7 @@ class TestCancelOutLabConsult:
         assert surgical_case.consult_reason is None
 
     def test_conflicts_once_dispatched(self, pathologist_client, db, surgical_case):
-        surgical_case.is_out_lab_consult = True
-        surgical_case.consult_status = "processing"
-        db.commit()
+        make_consult(db, "surgical", surgical_case, status="sent")
 
         r = pathologist_client.delete(f"/surgical-cases/{surgical_case.id}/outlab-consult")
         assert r.status_code == 409

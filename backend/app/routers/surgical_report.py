@@ -375,13 +375,14 @@ def preview_report_pdf(case_id: int, payload: dict, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Case not found")
 
     # 2. ส่งข้อมูลให้ PDF Service เพื่อสร้างไฟล์ Binary
-    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
+    from app.services.pdf_service import generate_pdf_blob
+    from app.services.consult_cover import prepend_consult_covers
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
     pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=True)
-    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
+    pdf_blob = prepend_consult_covers(db, pdf_blob, report_data, case_type="surgical", case_id=case_id)
 
     # 3. ส่งกลับเป็น StreamingResponse เพื่อให้หน้าบ้านเปิดดูได้
     return StreamingResponse(
@@ -433,7 +434,8 @@ def get_latest_finalized_report_pdf(
 
     report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
 
-    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
+    from app.services.pdf_service import generate_pdf_blob
+    from app.services.consult_cover import prepend_consult_covers
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
@@ -443,7 +445,7 @@ def get_latest_finalized_report_pdf(
         template_name=active_template,
         is_preview=False,
     )
-    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
+    pdf_blob = prepend_consult_covers(db, pdf_blob, report_data, case_type="surgical", case_id=case_id)
 
     return StreamingResponse(
         io.BytesIO(pdf_blob),
@@ -503,13 +505,16 @@ def get_historical_report_pdf(
     report_data["preview_date"] = local_now().strftime("%d/%m/%Y %H:%M")
 
     # 4. ส่งให้ PDF Service
-    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
+    from app.services.pdf_service import generate_pdf_blob
+    from app.services.consult_cover import prepend_consult_covers
 
     resolve_report_logo(report_data, db)
     sys_settings = get_system_settings(db)
     active_template = f"reports/{sys_settings.surgical_report_template or 'surgical_report_template.html'}"
     pdf_blob = generate_pdf_blob(report_data, template_name=active_template, is_preview=is_preview_mode)
-    pdf_blob = prepend_consult_cover(pdf_blob, report_data)
+    pdf_blob = prepend_consult_covers(
+        db, pdf_blob, report_data, case_type="surgical", case_id=report.case_id
+    )
 
     return StreamingResponse(
         io.BytesIO(pdf_blob),

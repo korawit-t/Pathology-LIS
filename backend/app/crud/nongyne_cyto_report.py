@@ -23,6 +23,7 @@ from typing import List
 import base64
 import re
 from app.crud import his_export_log as his_export_crud
+from app.crud import outlab_consult_request as consult_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
 from app.crud import nongyne_cyto_stain as nongyne_stain_crud
 
@@ -302,6 +303,8 @@ def prepare_nongyne_report_data(db: Session, case_id: int):
     return {
         "case_id": db_case.id,
         "accession_no": db_case.accession_no,
+        # Consult covers this round prints (rendered from the consult rows).
+        "consult_ids_snapshot": consult_crud.printable_consult_ids(db, "nongyne", db_case.id),
         "patient_title": patient.title.title if patient and patient.title else None,
         "patient_name": patient.name if patient else "Unknown",
         "patient_ln": patient.ln if patient else None,
@@ -370,6 +373,10 @@ def publish_nongyne_report(
     # Judged on the signatures on record, not the ones the request claims.
     signers = _verified_signers(db, case_id, signers, current_user_id)
     _reject_if_signatures_outstanding(db, signers, current_user_id)
+
+    # Nothing goes out while a consult is out of the lab or its result hasn't
+    # been approved — the approver signs the printed cover.
+    consult_crud.assert_releasable(db, "nongyne", case_id)
 
     existing_count = db.query(NongyneCytoReport).filter(NongyneCytoReport.case_id == case_id).count()
     report_data["version_no"] = existing_count + 1
@@ -469,20 +476,15 @@ def publish_nongyne_report(
         db_case.report_at = local_now()
         db_case.status = "published" if not approve_enabled else "pending_approval"
 
-        # Captured before this block's own mutations below — resolves round 2
-        # (already flagged, already "processing"/"received") while leaving
-        # round 1 (a fresh flag here would only just become "pending") alone.
-        was_consult_dispatched = (
-            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
-        )
-        if is_out_lab_consult is not None:
-            db_case.is_out_lab_consult = is_out_lab_consult
-            if is_out_lab_consult and db_case.consult_status is None:
-                db_case.consult_status = "pending"
-        if consult_reason is not None:
-            db_case.consult_reason = consult_reason
-        if was_consult_dispatched:
-            db_case.consult_status = "received"
+        if is_out_lab_consult is not None or consult_reason is not None:
+            consult_crud.apply_case_flag(
+                db, "nongyne", db_case,
+                flag=is_out_lab_consult, reason=consult_reason, user_id=current_user_id,
+            )
+        # Every approved consult goes out on this round — it's already in the
+        # snapshot's consult_ids_snapshot. A flag raised just now opens round 1
+        # as "requested", which this leaves alone.
+        consult_crud.mark_released(db, "nongyne", case_id, db_report.id)
 
         if not approve_enabled:
             his_export_crud.enqueue(
@@ -691,7 +693,10 @@ def get_nongyne_report_pdf(db: Session, report: NongyneCytoReport) -> bytes:
     data = get_nongyne_snapshot_pdf_data(db, report)
     settings = get_system_settings(db)
     active_template = f"reports/{settings.nongyne_report_template or 'nongyne_cyto_report_template.html'}"
-    return pdf_service.generate_pdf_blob(data, template_name=active_template, is_preview=False)
+    pdf_blob = pdf_service.generate_pdf_blob(data, template_name=active_template, is_preview=False)
+    from app.services.consult_cover import prepend_consult_covers
+
+    return prepend_consult_covers(db, pdf_blob, data, case_type="nongyne", case_id=report.case_id)
 
 
 def prepare_nongyne_report_pdf_data(db: Session, case_id: int):
