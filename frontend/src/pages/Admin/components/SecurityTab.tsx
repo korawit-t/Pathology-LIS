@@ -137,12 +137,12 @@ const SecurityTab: React.FC = () => {
           <div style={{ background: "#fafafa", padding: "0 20px", borderRadius: 8 }}>
             <SettingRow
               title="Minimum Password Length"
-              description="Minimum number of characters required for all user passwords"
+              description="Minimum number of characters required for all user passwords, including ones set in User Management. Never below 8."
               icon={<ControlOutlined style={{ color: "#1890ff" }} />}
             >
               <Space>
                 <Form.Item name="password_min_length" noStyle>
-                  <InputNumber min={6} max={32} style={{ width: 100 }} />
+                  <InputNumber min={8} max={32} style={{ width: 100 }} />
                 </Form.Item>
                 <Text type="secondary">chars</Text>
               </Space>

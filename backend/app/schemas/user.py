@@ -2,6 +2,13 @@ from pydantic import ConfigDict, BaseModel, EmailStr, Field
 from typing import List
 from datetime import datetime
 
+# The floor every password has to clear whatever the Security tab says. The
+# configured policy (system_settings.password_min_length) can only raise it:
+# app/crud/user.py password_min_length() and the routers that set a password
+# check against the larger of the two.
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+
 
 class UserBase(BaseModel):
     username: str
@@ -20,7 +27,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     email: EmailStr | None = None  # validate format on create
     # 🔒 SECURITY: minimum length enforced server-side.
-    password: str = Field(..., min_length=8, max_length=128)
+    password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     is_temporary_password: bool = True
 
 
@@ -34,7 +41,7 @@ class UserUpdate(BaseModel):
     roles: List[str] | None = None
     status: bool | None = None
     # 🔒 SECURITY: minimum length enforced server-side when present.
-    password: str | None = Field(default=None, min_length=8, max_length=128)
+    password: str | None = Field(default=None, min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     is_temporary_password: bool | None = None
 
 
@@ -57,4 +64,4 @@ class PasswordUpdate(BaseModel):
     # 🔒 SECURITY: enforce a minimum length server-side. The frontend also
     # validates this, but the server is the source of truth. Bump higher
     # (12+) if you can tolerate the UX cost.
-    new_password: str = Field(..., min_length=8, max_length=128)
+    new_password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)

@@ -28,6 +28,7 @@ import { ROLE_OPTIONS } from "../constants/roles.constants";
 import UserService from "../services/userService";
 import StepUpModal, { isStepUpRequired } from "./auth/StepUpModal";
 import PositionService from "../services/positionService";
+import SystemSettingService from "../services/systemSettingService";
 import HospitalService from "../services/hospitalService";
 import { User } from "../types/user";
 import { Hospital } from "../types/hospital";
@@ -35,7 +36,27 @@ import PageContainer from "./Layout/PageContainer";
 import logger from "../utils/logger";
 import { useAuth } from "../hooks/useAuth";
 import { hasRole } from "../utils/hasRole";
+import { getValidationErrors } from "../utils/errorHandler";
 
+// 🔒 SECURITY: must match PASSWORD_MIN_LENGTH/PASSWORD_MAX_LENGTH in
+// backend/app/schemas/user.py. The floor only: the Security tab's Minimum
+// Password Length can raise it, and the server holds this form to the larger
+// of the two (app/crud/user.py password_min_length). Without a client rule a
+// short password only came back as a 422 the form could not explain.
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+
+// Labels for the fields a 422 can name, so the toast says which one is wrong.
+const FIELD_LABELS: Record<string, string> = {
+  username: "Username",
+  email: "Email",
+  full_name: "ชื่อ-นามสกุล",
+  report_name: "Report Name",
+  hospital_ids: "Hospital(s)",
+  position_id: "Position",
+  roles: "Roles",
+  password: "Password",
+};
 
 interface Position {
   id: number;
@@ -57,6 +78,7 @@ const UserManager: React.FC = () => {
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [passwordMinLength, setPasswordMinLength] = useState<number>(PASSWORD_MIN_LENGTH);
 
   const [searchText, setSearchText] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -96,8 +118,23 @@ const UserManager: React.FC = () => {
     }
   };
 
+  // Kept out of fetchData's Promise.all: failing to read the policy must not
+  // empty the user table. The floor stays in force and the server still
+  // refuses anything shorter than the real setting.
+  const fetchPasswordPolicy = async () => {
+    try {
+      const settings = await SystemSettingService.getPublicSettings();
+      setPasswordMinLength(
+        Math.max(PASSWORD_MIN_LENGTH, settings?.password_min_length ?? 0),
+      );
+    } catch (err) {
+      logger.error("Password policy load error:", err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchPasswordPolicy();
   }, []);
 
   // --- 4. Handle Submit ---
@@ -135,9 +172,28 @@ const UserManager: React.FC = () => {
       fetchData();
     } catch (err: any) {
       logger.error(err);
+      // A 422 carries a list of field errors, not a string: mark each field
+      // on the form and name them in the toast instead of showing nothing.
+      const fieldErrors = getValidationErrors(err);
+      if (fieldErrors.length > 0) {
+        form.setFields(
+          fieldErrors
+            .filter((e) => e.field && e.field in FIELD_LABELS)
+            .map((e) => ({ name: e.field as keyof User, errors: [e.message] })),
+        );
+        message.error(
+          "บันทึกข้อมูลไม่สำเร็จ — " +
+            fieldErrors
+              .map((e) =>
+                e.field ? `${FIELD_LABELS[e.field] ?? e.field}: ${e.message}` : e.message,
+              )
+              .join(" "),
+        );
+        return;
+      }
       // แสดง Error message จาก Backend ถ้ามี
-      const errorMsg = err.response?.data?.detail || "บันทึกข้อมูลไม่สำเร็จ";
-      message.error(errorMsg);
+      const detail = err.response?.data?.detail;
+      message.error(typeof detail === "string" ? detail : "บันทึกข้อมูลไม่สำเร็จ");
     }
   };
 
@@ -469,7 +525,18 @@ const UserManager: React.FC = () => {
                 ? "New Password (Leave blank to keep current)"
                 : "Password"
             }
-            rules={[{ required: !editingId }]}
+            extra={`At least ${passwordMinLength} characters`}
+            rules={[
+              { required: !editingId, message: "Please enter a password." },
+              {
+                min: passwordMinLength,
+                message: `Password must be at least ${passwordMinLength} characters long.`,
+              },
+              {
+                max: PASSWORD_MAX_LENGTH,
+                message: `Password must be at most ${PASSWORD_MAX_LENGTH} characters long.`,
+              },
+            ]}
           >
             <Input.Password />
           </Form.Item>

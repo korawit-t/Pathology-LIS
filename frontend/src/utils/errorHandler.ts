@@ -3,9 +3,54 @@ import type { FormInstance } from "antd";
 import { AxiosError } from "axios";
 import logger from "./logger";
 
-interface ApiError {
-  detail?: string | { msg: string }[];
+interface PydanticError {
+  type?: string;
+  loc?: (string | number)[];
+  msg: string;
+  ctx?: { min_length?: number; max_length?: number };
 }
+
+interface ApiError {
+  detail?: string | PydanticError[];
+}
+
+export interface ValidationError {
+  /** The request-body field the error is about, when there is one. */
+  field?: string;
+  message: string;
+}
+
+/** FastAPI answers a request body that fails its schema with 422 and a list
+ * of Pydantic errors instead of a string, so `getErrorDetail` finds nothing
+ * and a caller passing `detail` straight to `message.error` shows nothing
+ * readable. Returns one entry per error (empty if this isn't such a response),
+ * with the body field it belongs to so a form can mark that field. */
+export const getValidationErrors = (err: unknown): ValidationError[] => {
+  const detail = (err as AxiosError<ApiError> | undefined)?.response?.data
+    ?.detail;
+  if (!Array.isArray(detail)) return [];
+
+  return detail
+    .filter((e): e is PydanticError => typeof e?.msg === "string")
+    .map((e) => {
+      const loc = e.loc ?? [];
+      const last = loc[loc.length - 1];
+      const field =
+        loc[0] === "body" && loc.length > 1 && typeof last === "string"
+          ? last
+          : undefined;
+
+      // Pydantic's own wording ("String should have at least 8 characters")
+      // reads like a type error; say it the way the rest of the UI does.
+      let message = e.msg;
+      if (e.type === "string_too_short" && e.ctx?.min_length != null) {
+        message = `Must be at least ${e.ctx.min_length} characters long.`;
+      } else if (e.type === "string_too_long" && e.ctx?.max_length != null) {
+        message = `Must be at most ${e.ctx.max_length} characters long.`;
+      }
+      return { field, message };
+    });
+};
 
 /** Extracts the FastAPI `detail` string from a caught error, or undefined
  * if there isn't one — leaves the fallback message up to the caller so

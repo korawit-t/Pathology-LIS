@@ -4,9 +4,19 @@ from app.utils.time import local_now
 
 from app.models.user import User
 from app.models.organization import Hospital
-from app.schemas.user import UserCreate, UserUpdate
+from app.models.system_setting import SystemSetting
+from app.schemas.user import PASSWORD_MIN_LENGTH, UserCreate, UserUpdate
 
 from app.core.security import get_password_hash
+
+
+def password_min_length(db: Session) -> int:
+    """The length a new password has to reach: the Security tab's Minimum
+    Password Length, never below the floor the schemas enforce on their own
+    (a setting of 6 would otherwise promise something nothing honours)."""
+    settings = db.query(SystemSetting).first()
+    configured = settings.password_min_length if settings else None
+    return max(PASSWORD_MIN_LENGTH, configured or 0)
 
 
 # 1. เพิ่มฟังก์ชันดึง User ทีละคน
