@@ -45,6 +45,7 @@ import {
   isSpecialStainCategory,
   isSpecialStainOrder,
 } from "./stainFilters";
+import { compareSpecimenLabels, formatBlockCode } from "../../utils/blockLabel";
 
 const { Text, Title } = Typography;
 
@@ -461,7 +462,7 @@ const StainManagement = ({ onNavigate }) => {
     try {
       const blob = await SurgicalBlockStainService.printHEStickerQuick(ids);
       executePrint(blob);
-      message.success(`Printing ${ids.length} sticker(s) for ${block.specimen_label}${block.block_no}`);
+      message.success(`Printing ${ids.length} sticker(s) for ${formatBlockCode(block)}`);
     } catch { message.error("Failed to print stickers"); }
   };
 
@@ -783,7 +784,7 @@ const StainManagement = ({ onNavigate }) => {
         <div>
           {[...(detailCase.caseBlocks ?? [])]
             .sort((a, b) =>
-              (a.specimen_label || "").localeCompare(b.specimen_label || "") ||
+              compareSpecimenLabels(a.specimen_label, b.specimen_label) ||
               Number(a.block_no) - Number(b.block_no)
             )
             .map((block, idx) => (

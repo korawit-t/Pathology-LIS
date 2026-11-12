@@ -46,6 +46,7 @@ class SurgicalBlockResponse(SurgicalBlockBase):
     id: int
     specimen_label: str
     block_code: str
+    case_block_seq: Optional[int] = None
     accession_no: Optional[str] = None
     specimen_name: Optional[str] = None
     # ❌ ลบหรือ Comment บรรทัดนี้ออกเพื่อตัดวงจร Loop

@@ -245,6 +245,9 @@ export interface SurgicalBlock {
   specimen_label: string;
   block_no: string;
   block_code?: string;
+  /** Case-wide block letter as a number (1 = A) in the specimen 1 / block A
+   *  label scheme; null for the default A1 scheme. See utils/blockLabel.ts. */
+  case_block_seq?: number | null;
   accession_no?: string;
   status: string;
   is_fixing: boolean;

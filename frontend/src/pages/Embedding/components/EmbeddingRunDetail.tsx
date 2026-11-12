@@ -8,6 +8,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import EmbeddingService from "../../../services/embeddingService";
+import { formatBlockCode } from "../../../utils/blockLabel";
 
 const { Text } = Typography;
 
@@ -76,7 +77,7 @@ const EmbeddingRunDetail: React.FC<Props> = ({ runId }) => {
         const code =
           r.block?.block_code ||
           (r.block?.specimen_label && r.block?.block_no
-            ? `${r.block.specimen_label}${r.block.block_no}`
+            ? formatBlockCode(r.block)
             : null);
         return (
           <Space size={4}>

@@ -15,6 +15,7 @@ from app.models.patient import Patient
 from app.models.slide_block_release import SlideBlockRelease
 from app.models.system_setting import SystemSetting
 from app.schemas.slide_block_release import SlideBlockReleaseCreate
+from app.utils.surgical_labels import label_sort_key
 
 def _full_patient_name(patient) -> str:
     if not patient:
@@ -87,7 +88,7 @@ def verify_accession_for_release(db: Session, accession_no: str) -> dict:
                     for block in sorted(spec.blocks, key=lambda b: b.block_no)
                 ],
             }
-            for spec in sorted(surgical.specimens, key=lambda s: s.specimen_label)
+            for spec in sorted(surgical.specimens, key=lambda s: label_sort_key(s.specimen_label))
         ]
         return {
             "id": surgical.id,

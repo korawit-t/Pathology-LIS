@@ -30,6 +30,7 @@ import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageTh
 import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 import OutlabRegistrationModal from "./OutlabRegistrationModal";
 import ConsultRoundTag from "../../../components/OutlabConsult/ConsultRoundTag";
+import { formatBlockCode } from "../../../utils/blockLabel";
 
 const { Text, Title } = Typography;
 
@@ -240,7 +241,7 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
           try {
             const caseData = await SurgicalCaseService.getCaseById(c.id);
             blocks[c.id] = (caseData.specimens || []).flatMap(
-              (s) => (s.blocks || []).map((b) => b.block_code || `${s.specimen_label}${b.block_no}`)
+              (s) => (s.blocks || []).map((b) => formatBlockCode(b, s.specimen_label))
             );
           } catch {
             blocks[c.id] = [];

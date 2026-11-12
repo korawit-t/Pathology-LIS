@@ -149,6 +149,24 @@ class SystemSetting(Base):
     # On: block must pass Tissue Processing -> Embedding -> Sectioning before staining.
     # Off: block is stainable immediately after grossing; those 3 menu items are hidden.
     enable_tissue_processing_workflow = Column(Boolean, default=True, nullable=False, server_default="true")
+    # Surgical labels (app/utils/surgical_labels.py). "letter_number": specimens
+    # A, B, C with blocks A1, A2, B1 — what every case had before this setting.
+    # "number_letter": specimens 1, 2, 3 with blocks lettered A, B, C across the
+    # whole case — re-sorted while the case is in the gross room, fixed once it
+    # has left. Only decides how a case's first specimen is labelled; a case
+    # that already has specimens keeps its scheme whatever this says later.
+    surgical_label_scheme = Column(
+        String, default="letter_number", nullable=False, server_default="letter_number"
+    )
+    # Deleting a block from the middle: "renumber" closes the gap (the later
+    # blocks move down one — what deleting always did), "keep_gap" leaves it,
+    # so a cassette already printed is never renamed under it. Deleting the
+    # last block reuses its number/letter either way. For case-wide letters it
+    # applies once the case has left the gross room; before that they always
+    # re-sort (utils/surgical_labels.case_labels_fixed).
+    surgical_block_delete_mode = Column(
+        String, default="renumber", nullable=False, server_default="renumber"
+    )
     # 10% QC review: review every N-th NILM case per cytotechnologist (0 = disabled)
     nilm_review_every_n = Column(Integer, default=10)
     surgical_accession_prefix = Column(String, default="S", nullable=False)

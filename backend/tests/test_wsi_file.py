@@ -17,8 +17,10 @@ from app.crud.wsi_file import (
 from app.models.wsi_setting import WsiScannerProfile, WsiSetting
 from app.models.wsi_file import WsiFile
 from app.models.wsi_slide_link import WsiSlideLink
+from app.models.surgical_block import SurgicalBlock
+from app.models.surgical_specimen import SurgicalSpecimen
 
-from tests.factories import make_signable_case, make_block
+from tests.factories import make_bare_case, make_signable_case, make_block
 
 
 def _make_profile(db, pattern="{accession}_{block}", separator="_", extensions=None):
@@ -84,6 +86,72 @@ class TestParseFilename:
         accession, block, confidence = parse_filename("_A1.svs", profile)
         assert confidence == "low"
         assert accession is None
+
+
+class TestParseLetterBlocks:
+    """Specimen 1 / block A scheme: the block on the slide is a case-wide
+    letter. Accepted only when that scheme is switched on, so an A1-scheme
+    installation parses exactly as before."""
+
+    def test_letter_block_is_low_confidence_by_default(self, db):
+        profile = _make_profile(db)
+        accession, block, confidence = parse_filename("S26-001_G.svs", profile)
+        assert (block, confidence) == (None, "low")
+
+    def test_letter_block_accepted_when_scheme_is_on(self, db):
+        profile = _make_profile(db)
+        result = parse_filename("S26-001_g.svs", profile, allow_letter_blocks=True)
+        assert result == ("S26-001", "G", "high")
+
+    def test_long_word_is_still_not_a_block(self, db):
+        profile = _make_profile(db)
+        _, block, confidence = parse_filename("S26-001_notablock.svs", profile, allow_letter_blocks=True)
+        assert (block, confidence) == (None, "low")
+
+    def test_a1_still_parses_with_scheme_on(self, db):
+        profile = _make_profile(db)
+        assert parse_filename("S26-001_A1.svs", profile, allow_letter_blocks=True) == ("S26-001", "A1", "high")
+
+
+class TestAutoMatchLetterBlock:
+    def _number_letter_case(self, db, registrar_id):
+        case = make_bare_case(db, registrar_id=registrar_id)
+        s1 = SurgicalSpecimen(case_id=case.id, specimen_label="1", specimen_name="One")
+        s2 = SurgicalSpecimen(case_id=case.id, specimen_label="2", specimen_name="Two")
+        db.add_all([s1, s2])
+        db.flush()
+        blocks = [
+            SurgicalBlock(specimen_id=s1.id, block_no=1, case_block_seq=1),  # A
+            SurgicalBlock(specimen_id=s2.id, block_no=1, case_block_seq=2),  # B
+            SurgicalBlock(specimen_id=s1.id, block_no=2, case_block_seq=3),  # C
+        ]
+        db.add_all(blocks)
+        db.commit()
+        return case, blocks
+
+    def test_letter_matches_the_case_wide_block(self, db, admin_user):
+        registrar, _ = admin_user
+        case, blocks = self._number_letter_case(db, registrar.id)
+        wsi = _make_wsi_file(db, "x.svs", parsed_accession=case.accession_no, parsed_block="C", confidence="high")
+
+        assert auto_match_file(db, wsi) is True
+        link = db.query(WsiSlideLink).filter(WsiSlideLink.wsi_file_id == wsi.id).one()
+        assert link.surgical_block_id == blocks[2].id
+
+    def test_letter_never_matches_an_a1_case(self, db, admin_user):
+        registrar, _ = admin_user
+        case, specimen = make_signable_case(db, registrar_id=registrar.id)
+        make_block(db, specimen.id, block_no=1)
+        wsi = _make_wsi_file(db, "x.svs", parsed_accession=case.accession_no, parsed_block="A", confidence="high")
+
+        assert auto_match_file(db, wsi) is False
+
+    def test_letter_past_the_last_block_does_not_match(self, db, admin_user):
+        registrar, _ = admin_user
+        case, _ = self._number_letter_case(db, registrar.id)
+        wsi = _make_wsi_file(db, "x.svs", parsed_accession=case.accession_no, parsed_block="D", confidence="high")
+
+        assert auto_match_file(db, wsi) is False
 
 
 class TestAutoMatchFile:

@@ -20,6 +20,7 @@ from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
 from app.schemas.tumor_registry import TumorRegistryUpsert, TumorRegistryResponse
 from app.services.llm_service import call_llm, parse_json_response
+from app.utils.surgical_labels import label_order_by
 
 router = APIRouter(prefix="/tumor-registries", tags=["Tumor Registry"])
 
@@ -67,7 +68,7 @@ def _get_diagnosis_text(db: Session, case_id: int) -> str | None:
         base_q
         .filter(SurgicalDiagnosis.diagnosis_level == DiagnosisLevel.SPECIMEN)
         .join(SurgicalSpecimen, SurgicalDiagnosis.surgical_specimen_id == SurgicalSpecimen.id)
-        .order_by(SurgicalSpecimen.specimen_label, SurgicalDiagnosis.diagnosis_order.desc())
+        .order_by(*label_order_by(SurgicalSpecimen.specimen_label), SurgicalDiagnosis.diagnosis_order.desc())
         .with_entities(SurgicalSpecimen.specimen_label, SurgicalDiagnosis.diagnosis)
         .all()
     )

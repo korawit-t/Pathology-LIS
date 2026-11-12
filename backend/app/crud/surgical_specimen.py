@@ -1,10 +1,23 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.utils.time import local_now
 from fastapi import HTTPException
 from app.models.surgical_specimen import SurgicalSpecimen
 from app.schemas.surgical_specimen import SurgicalSpecimenUpdate, SurgicalSpecimenCreate
 from app.enums.case_states import surgical_past
+from app.models.surgical_block import SurgicalBlock
+from app.utils.surgical_labels import (
+    DELETE_RENUMBER,
+    SCHEME_NUMBER_LETTER,
+    case_label_scheme,
+    case_labels_fixed,
+    configured_delete_mode,
+    configured_scheme,
+    lock_case,
+    next_specimen_label,
+    resequence_case_blocks,
+    scheme_of_labels,
+    specimen_label_at,
+)
 
 
 def get_specimen(db: Session, specimen_id: int):
@@ -109,17 +122,16 @@ def update_specimen_gross_draft(
 
 
 def create_specimen(db: Session, obj_in: SurgicalSpecimenCreate, current_user_id: int):
-    # 1. หา Label ถัดไป
-    max_label = (
-        db.query(func.max(SurgicalSpecimen.specimen_label))
+    # 1. หา Label ถัดไป — แบบ (A, B, C หรือ 1, 2, 3) ตามชิ้นเนื้อที่เคสมีอยู่แล้ว
+    # setting ใช้เฉพาะชิ้นแรกของเคส จึงสลับ setting แล้วเคสเดิมไม่เปลี่ยน
+    existing_labels = [
+        row[0]
+        for row in db.query(SurgicalSpecimen.specimen_label)
         .filter(SurgicalSpecimen.case_id == obj_in.surgical_case_id)
-        .scalar()
-    )
-
-    if not max_label:
-        next_label = "A"
-    else:
-        next_label = chr(ord(max_label) + 1)
+        .all()
+    ]
+    scheme = scheme_of_labels(existing_labels) or configured_scheme(db)
+    next_label = next_specimen_label(existing_labels, scheme)
 
     # 2. สร้าง Object พร้อม Audit Field
     db_obj = SurgicalSpecimen(
@@ -145,6 +157,13 @@ def delete_specimen(db: Session, specimen_id: int, current_user_id: int):
         return None
 
     case_id = db_obj.case_id
+    scheme = case_label_scheme(db, case_id)
+    # ตัวอักษร block รันทั้งเคส: ยังอยู่ในห้อง gross ไหม — ต้องเช็กก่อนลบ
+    # (block ของชิ้นนี้อาจเป็นตัวเดียวที่พิมพ์สติกเกอร์ไปแล้ว)
+    in_gross_room = False
+    if scheme == SCHEME_NUMBER_LETTER:
+        lock_case(db, case_id)
+        in_gross_room = not case_labels_fixed(db, case_id)
 
     # 🛡️ บล็อกถ้าชิ้นเนื้อถูกส่งเข้า Lab แล้ว
     for block in db_obj.blocks:
@@ -167,9 +186,28 @@ def delete_specimen(db: Session, specimen_id: int, current_user_id: int):
         )
 
         for index, spec in enumerate(remaining_specs):
-            spec.specimen_label = chr(65 + index)
+            spec.specimen_label = specimen_label_at(index, scheme)
             spec.updated_by_id = current_user_id  # บันทึกว่าใครเป็นคนรันเลขใหม่
             db.add(spec)
+
+        # เคส block ตัวอักษรรันทั้งเคส: block ของชิ้นที่ลบหายไปด้วย
+        # ยังอยู่ในห้อง gross → เรียงตัวอักษรใหม่ทั้งเคสตามลำดับชิ้นเนื้อ
+        # ออกจากห้อง gross แล้ว → ตาม setting: เลื่อนปิดช่องตามลำดับเดิม หรือเว้นไว้
+        if in_gross_room:
+            resequence_case_blocks(db, case_id)
+        elif scheme == SCHEME_NUMBER_LETTER and configured_delete_mode(db) == DELETE_RENUMBER:
+            remaining_blocks = (
+                db.query(SurgicalBlock)
+                .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+                .filter(
+                    SurgicalSpecimen.case_id == case_id,
+                    SurgicalBlock.case_block_seq.isnot(None),
+                )
+                .order_by(SurgicalBlock.case_block_seq.asc())
+                .all()
+            )
+            for seq, block in enumerate(remaining_blocks, start=1):
+                block.case_block_seq = seq
 
         db.commit()
         return True

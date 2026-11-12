@@ -23,9 +23,11 @@ import {
   ExclamationCircleOutlined,
   SaveOutlined,
   ScissorOutlined,
+  TagsOutlined,
 } from "@ant-design/icons";
 import SystemSettingService from "../../../services/systemSettingService";
 import AnatomicalPathologyTestService, { AnatomicalPathologyTest } from "../../../services/anatomicalTestService";
+import SurgicalLabelHelp from "./SurgicalLabelHelp";
 
 const { Text, Title } = Typography;
 
@@ -327,6 +329,40 @@ const WorkflowTab: React.FC = () => {
               <Switch checkedChildren="ON" unCheckedChildren="OFF" />
             </Form.Item>
           </SettingRow>
+
+          <SettingRow
+            icon={<TagsOutlined style={{ color: "#fa8c16" }} />}
+            title="Specimen / Block Label"
+            description="A / A1: specimens A, B, C with blocks A1, A2, B1. 1 / A: specimens 1, 2, 3 with blocks lettered A, B, C across the whole case. Applies to new cases only — see the details below before changing it."
+          >
+            <Form.Item name="surgical_label_scheme" noStyle>
+              <Select
+                style={{ width: "100%", maxWidth: 300 }}
+                options={[
+                  { value: "letter_number", label: "A / A1, A2, B1 (default)" },
+                  { value: "number_letter", label: "1 / A, B, C (across the case)" },
+                ]}
+              />
+            </Form.Item>
+          </SettingRow>
+
+          <SettingRow
+            icon={<TagsOutlined style={{ color: "#fa8c16" }} />}
+            title="When a Block Is Deleted"
+            description="Renumber closes the gap left by a deleted block; Keep the gap renames nothing. With 1 / A labels it applies once the case has left the gross room — see the details below."
+          >
+            <Form.Item name="surgical_block_delete_mode" noStyle>
+              <Select
+                style={{ width: "100%", maxWidth: 300 }}
+                options={[
+                  { value: "renumber", label: "Renumber to close the gap (default)" },
+                  { value: "keep_gap", label: "Keep the gap" },
+                ]}
+              />
+            </Form.Item>
+          </SettingRow>
+
+          <SurgicalLabelHelp />
         </div>
 
         {/* Section 2: TAT SLA */}

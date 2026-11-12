@@ -29,6 +29,7 @@ from app.schemas.ihc import (
 )
 import app.crud.ihc as ihc_crud
 import app.crud.nongyne_ihc as nongyne_ihc_crud
+from app.utils.surgical_labels import label_order_by
 
 router = APIRouter(
     prefix="/ihc",
@@ -468,7 +469,7 @@ def get_ihc_case_list(
             func.date(SurgicalCase.registered_at) >= start,
             func.date(SurgicalCase.registered_at) <= end,
         )
-        .order_by(SurgicalCase.registered_at, SurgicalCase.accession_no, SurgicalSpecimen.specimen_label)
+        .order_by(SurgicalCase.registered_at, SurgicalCase.accession_no, *label_order_by(SurgicalSpecimen.specimen_label))
         .all()
     )
 

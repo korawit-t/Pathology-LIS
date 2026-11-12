@@ -12,6 +12,14 @@ from app.models.surgical_specimen import SurgicalSpecimen
 from app.models.wsi_file import WsiFile
 from app.models.wsi_setting import WsiScannerProfile, WsiSetting
 from app.models.wsi_slide_link import WsiSlideLink
+from app.utils.surgical_labels import (
+    SCHEME_NUMBER_LETTER,
+    configured_scheme,
+    letters_to_seq,
+)
+
+# A block printed as a case-wide letter: specimen 1 / block A scheme
+_LETTER_BLOCK_RE = r"^[A-Z]{1,3}$"
 
 _LINK_LOAD_OPTIONS = (
     selectinload(WsiFile.slide_links)
@@ -24,11 +32,16 @@ WSI_EXTENSIONS = {"svs", "ndpi", "tiff", "tif", "scn", "mrxs", "vms", "vmu", "bt
 
 
 def parse_filename(
-    filename: str, profile: WsiScannerProfile
+    filename: str, profile: WsiScannerProfile, allow_letter_blocks: bool = False
 ) -> Tuple[Optional[str], Optional[str], str]:
     """
     Returns (accession, block_code, confidence).
     confidence: 'high' | 'low' | 'failed'
+
+    allow_letter_blocks: also accept a block that is letters only ("G", "AB"),
+    as printed when System Settings labels specimens 1, 2, 3 and blocks
+    A, B, C across the case. Off, a letters-only block stays low confidence
+    exactly as before the setting existed.
     """
     stem = pathlib.Path(filename).stem
     pattern = profile.filename_pattern or ""
@@ -53,8 +66,12 @@ def parse_filename(
     accession = accession.strip()
     block_code = block_code.strip().upper()
 
-    # Validate block_code format: letter(s) + digit(s), e.g. "A1", "B12"
-    if not re.match(r"^[A-Z]+\d+$", block_code):
+    # Validate block_code format: letter(s) + digit(s), e.g. "A1", "B12" —
+    # or, in the specimen 1 / block A scheme, 1-3 letters, e.g. "G", "AB"
+    if not (
+        re.match(r"^[A-Z]+\d+$", block_code)
+        or (allow_letter_blocks and re.match(_LETTER_BLOCK_RE, block_code))
+    ):
         return accession or None, None, "low"
 
     if not accession:
@@ -97,6 +114,8 @@ def discover_and_upsert_files(
     updated = 0
     now = datetime.utcnow()
 
+    allow_letter_blocks = configured_scheme(db) == SCHEME_NUMBER_LETTER
+
     extensions = set()
     if profile and profile.file_extensions:
         extensions = {e.lower().lstrip(".") for e in profile.file_extensions}
@@ -120,7 +139,9 @@ def discover_and_upsert_files(
 
         accession, block_code, confidence = (None, None, "failed")
         if profile:
-            accession, block_code, confidence = parse_filename(entry.name, profile)
+            accession, block_code, confidence = parse_filename(
+                entry.name, profile, allow_letter_blocks=allow_letter_blocks
+            )
 
         if existing:
             existing.last_seen_at = now
@@ -164,14 +185,15 @@ def auto_match_file(db: Session, wsi_file: WsiFile) -> bool:
         return False
 
     block_code = wsi_file.parsed_block.upper()
+    # "G" / "AB": a case-wide block letter (specimen 1 / block A scheme)
+    case_block_seq = (
+        letters_to_seq(block_code) if re.match(_LETTER_BLOCK_RE, block_code) else None
+    )
     specimen_label = re.match(r"^([A-Z]+)", block_code)
     block_no_match = re.search(r"(\d+)$", block_code)
 
-    if not specimen_label or not block_no_match:
+    if case_block_seq is None and (not specimen_label or not block_no_match):
         return False
-
-    spec_label = specimen_label.group(1)
-    block_no = int(block_no_match.group(1))
 
     case = (
         db.query(SurgicalCase)
@@ -181,25 +203,41 @@ def auto_match_file(db: Session, wsi_file: WsiFile) -> bool:
     if not case:
         return False
 
-    specimen = (
-        db.query(SurgicalSpecimen)
-        .filter(
-            SurgicalSpecimen.case_id == case.id,
-            SurgicalSpecimen.specimen_label == spec_label,
+    if case_block_seq is not None:
+        # The letter belongs to the case, not to a specimen. A case in the A1
+        # scheme has no case_block_seq at all, so it can never match here.
+        block = (
+            db.query(SurgicalBlock)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .filter(
+                SurgicalSpecimen.case_id == case.id,
+                SurgicalBlock.case_block_seq == case_block_seq,
+            )
+            .first()
         )
-        .first()
-    )
-    if not specimen:
-        return False
+    else:
+        spec_label = specimen_label.group(1)
+        block_no = int(block_no_match.group(1))
 
-    block = (
-        db.query(SurgicalBlock)
-        .filter(
-            SurgicalBlock.specimen_id == specimen.id,
-            SurgicalBlock.block_no == block_no,
+        specimen = (
+            db.query(SurgicalSpecimen)
+            .filter(
+                SurgicalSpecimen.case_id == case.id,
+                SurgicalSpecimen.specimen_label == spec_label,
+            )
+            .first()
         )
-        .first()
-    )
+        if not specimen:
+            return False
+
+        block = (
+            db.query(SurgicalBlock)
+            .filter(
+                SurgicalBlock.specimen_id == specimen.id,
+                SurgicalBlock.block_no == block_no,
+            )
+            .first()
+        )
     if not block:
         return False
 

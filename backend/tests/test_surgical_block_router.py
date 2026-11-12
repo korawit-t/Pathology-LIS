@@ -4,6 +4,8 @@ wiring only."""
 
 import uuid
 
+import pytest
+
 from tests.factories import (
     make_signable_case,
     make_block,
@@ -34,7 +36,12 @@ class TestCrudWiring:
         assert updated.status_code == 200
         assert updated.json()["status"] == "embedded"
 
-        deleted = pathologist_client.delete(f"/surgical-blocks/{created['id']}")
+        # Past grossing a block is no longer deletable (see TestDeleteGuard)
+        refused = pathologist_client.delete(f"/surgical-blocks/{created['id']}")
+        assert refused.status_code == 400
+
+        fresh = pathologist_client.post("/surgical-blocks", json={"specimen_id": specimen.id, "block_no": 2}).json()
+        deleted = pathologist_client.delete(f"/surgical-blocks/{fresh['id']}")
         assert deleted.status_code == 200
 
     def test_filters_by_specimen_id(self, db, pathologist_client, admin_user):
@@ -366,3 +373,71 @@ class TestInternalStainCasePage:
 
     def test_clinician_cannot_read_the_worklist(self, clinician_client):
         assert clinician_client.get("/surgical-blocks/internal-stain-cases").status_code == 403
+
+
+class TestDeleteGuard:
+    """A block that has left the gross room cannot be deleted: deleting it
+    would cascade away its processing, embedding, sectioning, stain, slide
+    and storage records while the cassette and slides still exist."""
+
+    def _block(self, db, admin_user, status="grossed"):
+        registrar, _ = admin_user
+        _, specimen = make_signable_case(db, registrar_id=registrar.id)
+        return make_block(db, specimen.id, status=status)
+
+    def _exists(self, db, block_id):
+        from app.models.surgical_block import SurgicalBlock
+
+        db.expire_all()
+        return db.query(SurgicalBlock).filter(SurgicalBlock.id == block_id).first() is not None
+
+    def test_grossed_block_with_an_unprinted_stain_can_be_deleted(self, db, pathologist_client, admin_user):
+        block = self._block(db, admin_user)
+        make_block_stain(db, block.id, status="pending")
+
+        r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
+
+        assert r.status_code == 200
+        assert not self._exists(db, block.id)
+
+    @pytest.mark.parametrize("status", ["processing", "processed", "embedded", "sectioned", "stained"])
+    def test_block_past_grossing_is_refused(self, db, pathologist_client, admin_user, status):
+        block = self._block(db, admin_user, status=status)
+
+        r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
+
+        assert r.status_code == 400
+        assert status in r.json()["detail"]
+        assert self._exists(db, block.id)
+
+    def test_block_in_a_processing_run_is_refused(self, db, pathologist_client, admin_user):
+        from app.models.tissue_processing import TissueProcessingItem, TissueProcessingRun
+
+        registrar, _ = admin_user
+        block = self._block(db, admin_user)
+        run = TissueProcessingRun(
+            run_number=f"PR-{uuid.uuid4().hex[:8]}", processor_name="M1", program_name="P1",
+            created_by_id=registrar.id, block_in_total=1,
+        )
+        db.add(run)
+        db.flush()
+        db.add(TissueProcessingItem(run_id=run.id, block_id=block.id, status="in_machine"))
+        db.commit()
+
+        r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
+
+        assert r.status_code == 400
+        assert "Tissue Processing" in r.json()["detail"]
+        assert self._exists(db, block.id)
+
+    def test_block_with_a_printed_slide_sticker_is_refused(self, db, pathologist_client, admin_user):
+        block = self._block(db, admin_user)
+        stain = make_block_stain(db, block.id, status="pending")
+        stain.is_printed = True
+        db.commit()
+
+        r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
+
+        assert r.status_code == 400
+        assert "สติกเกอร์" in r.json()["detail"]
+        assert self._exists(db, block.id)

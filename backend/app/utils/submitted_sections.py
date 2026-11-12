@@ -10,7 +10,10 @@ def build_submitted_sections_text(label: str, is_entirely_submitted: bool, block
     prefix = "Entirely submitted" if is_entirely_submitted else "Representative sections are submitted"
     parts = []
     for b in blocks:
-        code = f"{label}{b['block_no']}"
+        # block_code is the block's printed label (A1, or a case-wide letter in
+        # the specimen 1 / block A scheme). Report snapshots taken before it was
+        # stored only have block_no, and were always the A1 scheme.
+        code = b.get("block_code") or f"{label}{b['block_no']}"
         desc = (b.get("tissue_description") or "").strip()
         tc = b.get("tissue_count")
         if b.get("is_tissue_uncountable"):
@@ -41,6 +44,7 @@ def fetch_blocks_by_specimen(db: Session, specimen_ids: list[int]) -> dict[int, 
     for b in blocks:
         result.setdefault(b.specimen_id, []).append({
             "block_no": b.block_no,
+            "block_code": b.block_code,
             "tissue_count": b.tissue_count,
             "tissue_description": b.tissue_description or "",
             "is_tissue_uncountable": bool(b.is_tissue_uncountable),

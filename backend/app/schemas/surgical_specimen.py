@@ -38,6 +38,7 @@ class BlockInSpecimen(BaseModel):
     id: int
     block_no: int
     block_code: str
+    case_block_seq: Optional[int] = None
     status: Optional[str] = None
     tissue_count: Optional[int] = None
     is_tissue_uncountable: Optional[bool] = False
