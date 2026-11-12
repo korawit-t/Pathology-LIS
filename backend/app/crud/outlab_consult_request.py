@@ -168,12 +168,14 @@ def sync_case_summary(db: Session, case_type: str, case) -> None:
     if latest is None:
         case.is_out_lab_consult = False
         case.consult_status = None
+        case.consult_no = None
         case.consult_reason = None
         case.consult_pdf_path = None
         case.consult_pdf_received_at = None
     else:
         case.is_out_lab_consult = True
         case.consult_status = _CASE_STATUS_FOR[latest.status]
+        case.consult_no = latest.consult_no
         case.consult_reason = latest.reason
         case.consult_pdf_path = latest.result_pdf_path
         case.consult_pdf_received_at = latest.result_received_at

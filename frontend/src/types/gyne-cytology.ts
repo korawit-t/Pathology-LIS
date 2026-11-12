@@ -62,6 +62,8 @@ export interface GyneCytologyCase {
   outlab_result_approved_at?: string | null;
   outlab_result_approver_name?: string | null;
   consult_status: "pending" | "processing" | "received" | string;
+  /** Latest out-lab consult round, e.g. "S26-01234-C2" — read-only cache. */
+  consult_no?: string | null;
   consult_pdf_path?: string | null;
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;

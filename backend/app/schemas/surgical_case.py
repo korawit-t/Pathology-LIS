@@ -126,6 +126,7 @@ class SurgicalCaseResponse(SurgicalCaseBase):
     pending_reason: Optional[str] = None
     is_out_lab_consult: bool = False
     consult_status: Optional[str] = None
+    consult_no: Optional[str] = None  # latest round, e.g. S26-01234-C2
     consult_pdf_path: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None
     consult_pdf_received_at: Optional[datetime] = None
@@ -211,6 +212,7 @@ class OutLabConsultRequest(BaseModel):
 class OutLabConsultStateResponse(BaseModel):
     is_out_lab_consult: bool
     consult_status: Optional[str] = None
+    consult_no: Optional[str] = None  # latest round, e.g. S26-01234-C2
     consult_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

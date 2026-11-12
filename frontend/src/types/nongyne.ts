@@ -78,6 +78,8 @@ export interface NongyneCytologyCase {
   is_out_lab: boolean;
   consult_status?: string | null;
   consult_pdf_path?: string | null;
+  /** Latest out-lab consult round, e.g. "S26-01234-C2" — read-only cache. */
+  consult_no?: string | null;
   consult_reason?: string | null;
   consult_pdf_received_at?: string | null;
   consult_report_out_at?: string | null;

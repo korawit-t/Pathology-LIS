@@ -87,6 +87,7 @@ class TestSecondRound:
         assert c2.consult_no == f"{case.accession_no}-C2"
         db.refresh(case)
         assert case.consult_status == "pending"
+        assert case.consult_no == f"{case.accession_no}-C2"
         assert case.consult_reason == "Second opinion"
         assert case.consult_pdf_path is None
 
@@ -127,6 +128,7 @@ class TestSecondRound:
         db.refresh(case)
         assert case.is_out_lab_consult is False
         assert case.consult_status is None
+        assert case.consult_no is None
 
         c2 = consult_crud.request_consult(
             db, "surgical", case.id, reason="Needed after all", destination_lab=None, user_id=registrar.id
@@ -450,3 +452,41 @@ class TestBackfill:
         assert db.get(type(unflagged), unflagged.id).is_out_lab_consult is True
         detail = db.query(OutlabConsultRunDetail).filter_by(run_id=run_id).one()
         assert detail.consult_id == round1("surgical", out).id
+
+
+class TestCaseListShowsRound:
+    def test_case_list_carries_the_latest_round_number(self, staff_client, db, admin_user):
+        """The External Consult tab shows which round a case is on next to its
+        accession, from the case list itself — no per-row lookup."""
+        registrar, _ = admin_user
+        case = make_bare_case(db, registrar_id=registrar.id)
+        make_consult(db, "surgical", case, status="reported")
+        make_consult(db, "surgical", case, status="sent")
+
+        r = staff_client.get("/surgical-cases", params={"search": case.accession_no, "is_out_lab_consult": True})
+
+        assert r.status_code == 200, r.text
+        [row] = [i for i in r.json()["items"] if i["id"] == case.id]
+        assert row["accession_no"] == case.accession_no
+        assert row["consult_no"] == f"{case.accession_no}-C2"
+        assert row["consult_status"] == "processing"
+
+    def test_backfill_fills_the_round_number(self, db, admin_user):
+        path = next(Path(__file__).resolve().parents[1].glob("alembic/versions/318aaf388aec_*.py"))
+        spec = importlib.util.spec_from_file_location("consult_no_migration", path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+
+        registrar, _ = admin_user
+        case = make_bare_gyne_case(db, registrar_id=registrar.id)
+        make_consult(db, "gyne", case, status="reported")
+        make_consult(db, "gyne", case, status="requested")
+        case.consult_no = None  # as left by 8f3638ca7ca8, before this column existed
+        db.commit()
+
+        for case_type, table in migration._CASE_TABLES:
+            db.execute(text(migration._backfill_sql(case_type, table)))
+        db.commit()
+
+        db.refresh(case)
+        assert case.consult_no == f"{case.accession_no}-C2"

@@ -154,6 +154,7 @@ class NongyneCytologyCaseResponse(NongyneCytologyBase):
     is_out_lab: bool = False
     out_lab_result_pdf_path: Optional[str] = None
     consult_status: Optional[str] = None
+    consult_no: Optional[str] = None  # latest round, e.g. S26-01234-C2
     consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None

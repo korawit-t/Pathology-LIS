@@ -94,6 +94,8 @@ export interface SurgicalCase {
   is_reported: boolean;
   is_out_lab_consult: boolean;
   consult_status: string;
+  /** Latest out-lab consult round, e.g. "S26-01234-C2" — read-only cache. */
+  consult_no?: string | null;
   consult_reason?: string | null;
   consult_pdf_path?: string;
   consult_report_out_at?: string | null;
