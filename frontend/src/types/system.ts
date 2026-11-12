@@ -37,6 +37,8 @@ export interface SystemSetting {
 
   // --- Session / Security ---
   idle_timeout_minutes?: number;
+  /** Security tab's Minimum Password Length. The server never goes below 8. */
+  password_min_length?: number;
 
   // --- Multi-Factor Authentication ---
   // Present only on the authenticated read; the public branding endpoint

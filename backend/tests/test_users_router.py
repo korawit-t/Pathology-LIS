@@ -8,6 +8,14 @@ wasn't admin *before* the update. The guard must also reject requests whose
 *incoming* roles include "admin" when the caller isn't already an admin.
 """
 
+import uuid
+
+import pytest
+
+import app.crud.user as user_crud
+from app.models.system_setting import SystemSetting
+from app.schemas.user import PASSWORD_MIN_LENGTH
+
 
 class TestUpdateUserAdminGuard:
     def test_lab_manager_cannot_grant_admin_role_to_self(self, lab_manager_client, lab_manager_user):
@@ -89,3 +97,92 @@ class TestUpdateMyPassword:
             json={"new_password": "BrandNewPass1!"},
         )
         assert response.status_code == 422
+
+
+class TestPasswordPolicyOnUserManagement:
+    """The Security tab's Minimum Password Length used to bind only when people
+    changed their own password: an administrator creating or resetting an
+    account was held to the schema's 8 alone."""
+
+    @pytest.fixture
+    def policy(self, db):
+        settings = db.query(SystemSetting).first()
+        if not settings:
+            # "master", like /system-settings/update would create — see
+            # test_auth_mfa_login.mfa_on for why any other slug leaks a row.
+            settings = SystemSetting(hospital_slug="master")
+            db.add(settings)
+        previous = settings.password_min_length
+
+        def set_to(length):
+            settings.password_min_length = length
+            db.commit()
+
+        yield set_to
+        # Commits outlive the test; put the policy back for whoever runs next.
+        settings.password_min_length = previous if previous is not None else 8
+        db.commit()
+
+    def _new_user(self, password):
+        return {
+            "username": f"new_{uuid.uuid4().hex[:12]}",
+            "full_name": "New User",
+            "roles": ["pathologist"],
+            "password": password,
+        }
+
+    def test_create_refuses_a_password_below_the_policy(self, admin_client, policy):
+        policy(12)
+
+        response = admin_client.post("/users", json=self._new_user("Short12345"))
+
+        assert response.status_code == 422
+        [error] = response.json()["detail"]
+        assert error["loc"] == ["body", "password"]
+        assert error["ctx"] == {"min_length": 12}
+
+    def test_create_accepts_a_password_meeting_the_policy(self, admin_client, policy):
+        policy(12)
+
+        response = admin_client.post("/users", json=self._new_user("LongEnough12"))
+
+        assert response.status_code == 200
+
+    def test_reset_refuses_a_password_below_the_policy(
+        self, admin_client, pathologist_user, policy
+    ):
+        target, _ = pathologist_user
+        policy(12)
+
+        response = admin_client.put(f"/users/{target.id}", json={"password": "Short12345"})
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "password"]
+
+    def test_edit_without_a_password_is_unaffected(
+        self, admin_client, pathologist_user, policy
+    ):
+        target, _ = pathologist_user
+        policy(12)
+
+        response = admin_client.put(f"/users/{target.id}", json={"full_name": "Renamed"})
+
+        assert response.status_code == 200
+
+    def test_a_policy_below_the_floor_does_not_lower_it(self, admin_client, db, policy):
+        policy(6)
+
+        assert user_crud.password_min_length(db) == PASSWORD_MIN_LENGTH
+        response = admin_client.post("/users", json=self._new_user("Seven77"))
+        assert response.status_code == 422
+
+    def test_own_password_change_uses_the_same_policy(self, pathologist_client, policy):
+        policy(12)
+
+        response = pathologist_client.put(
+            "/users/me/password",
+            json={"current_password": "PathPass1!", "new_password": "Short12345"},
+        )
+
+        assert response.status_code == 400
+        assert "12" in response.json()["detail"]

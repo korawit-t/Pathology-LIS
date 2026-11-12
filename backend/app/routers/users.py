@@ -26,6 +26,32 @@ from app.core.security import create_access_token, create_refresh_token, verify_
 from app.routers.auth import _set_auth_cookies, limiter
 
 
+def _require_policy_length(db: Session, password: str | None) -> None:
+    """Refuse a password shorter than the configured Minimum Password Length.
+
+    The schema already stops anything under PASSWORD_MIN_LENGTH; this adds the
+    Security tab's own (higher) setting, which used to bind only on
+    /me/password, so an administrator could hand out a password the policy
+    forbids. Answered in the same 422 shape as the schema's check, so the form
+    marks the Password field either way.
+    """
+    if password is None:
+        return
+    min_length = user_crud.password_min_length(db)
+    if len(password) < min_length:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=[
+                {
+                    "type": "string_too_short",
+                    "loc": ["body", "password"],
+                    "msg": f"Password must be at least {min_length} characters.",
+                    "ctx": {"min_length": min_length},
+                }
+            ],
+        )
+
+
 # Clinician and hospital accounts reach only the endpoints named here (what
 # the results portal calls); see InternalStaffOnly before adding one.
 router = APIRouter(
@@ -90,6 +116,7 @@ def create_new_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only an admin can grant the admin role.",
         )
+    _require_policy_length(db, data.password)
     # (Optional) ตรงนี้คุณอาจจะอยากเช็คว่า email ซ้ำไหมก่อน create
     return create_user(db, data)
 
@@ -123,6 +150,8 @@ def update_existing_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only an admin can grant the admin role.",
             )
+
+    _require_policy_length(db, data.password)
 
     updated = update_user(db, user_id, data)
     if not updated:
@@ -189,9 +218,7 @@ def update_my_password(
             detail="Current password is incorrect.",
         )
 
-    from app.models.system_setting import SystemSetting
-    settings = db.query(SystemSetting).first()
-    min_length = (settings.password_min_length or 8) if settings else 8
+    min_length = user_crud.password_min_length(db)
     if len(data.new_password) < min_length:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

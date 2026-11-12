@@ -4,12 +4,14 @@ import UserService from "../services/userService";
 import HospitalService from "../services/hospitalService";
 import PositionService from "../services/positionService";
 import AuthService from "../services/authService";
+import SystemSettingService from "../services/systemSettingService";
 import { ThemeProvider } from "../contexts/ThemeContext";
 
 vi.mock("../services/userService");
 vi.mock("../services/hospitalService");
 vi.mock("../services/positionService");
 vi.mock("../services/authService");
+vi.mock("../services/systemSettingService");
 
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: 1, username: "boss", roles: ["admin"] } }),
@@ -128,5 +130,128 @@ describe("UserManager — two-factor column and reset", () => {
 
     await waitFor(() => expect(mockedResetMfa).toHaveBeenCalled());
     expect(screen.queryByPlaceholderText("Code or password")).not.toBeInTheDocument();
+  });
+});
+
+describe("UserManager — password rules", () => {
+  const mockedCreateUser = UserService.createUser as unknown as ReturnType<typeof vi.fn>;
+  const mockedUpdateUser = UserService.updateUser as unknown as ReturnType<typeof vi.fn>;
+  const mockedPublicSettings =
+    SystemSettingService.getPublicSettings as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockedGetUsers.mockResolvedValue([{ ...notEnrolled, position_id: 1 }]);
+    (HospitalService.getHospitals as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (PositionService.getPositions as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, name: "Nurse" },
+    ]);
+    mockedPublicSettings.mockResolvedValue({ password_min_length: 8 });
+  });
+
+  const openCreate = async () => {
+    renderManager();
+    await screen.findByText("nurse");
+    fireEvent.click(screen.getByRole("button", { name: /Add New User/ }));
+    await screen.findByText("Create New User");
+  };
+
+  const passwordInput = () =>
+    document.querySelector<HTMLInputElement>('[role="dialog"] input#password')!;
+
+  it("says why a short password is refused before sending it", async () => {
+    renderManager();
+    await screen.findByText("nurse");
+
+    fireEvent.click(screen.getByRole("button", { name: /Add New User/ }));
+    await screen.findByText("Create New User");
+    expect(screen.getByText("At least 8 characters")).toBeInTheDocument();
+
+    fireEvent.change(passwordInput(), { target: { value: "1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create User" }));
+
+    expect(
+      await screen.findByText("Password must be at least 8 characters long."),
+    ).toBeInTheDocument();
+    expect(mockedCreateUser).not.toHaveBeenCalled();
+  });
+
+  it("holds the form to the Security tab's Minimum Password Length", async () => {
+    mockedPublicSettings.mockResolvedValue({ password_min_length: 12 });
+    await openCreate();
+
+    expect(await screen.findByText("At least 12 characters")).toBeInTheDocument();
+    fireEvent.change(passwordInput(), { target: { value: "ten_chars!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create User" }));
+
+    expect(
+      await screen.findByText("Password must be at least 12 characters long."),
+    ).toBeInTheDocument();
+    expect(mockedCreateUser).not.toHaveBeenCalled();
+  });
+
+  it("never asks for less than 8, whatever the setting says", async () => {
+    mockedPublicSettings.mockResolvedValue({ password_min_length: 6 });
+    await openCreate();
+
+    expect(await screen.findByText("At least 8 characters")).toBeInTheDocument();
+  });
+
+  it("keeps the floor and the user list when the policy cannot be read", async () => {
+    mockedPublicSettings.mockRejectedValue(new Error("offline"));
+    await openCreate();
+
+    expect(screen.getByText("At least 8 characters")).toBeInTheDocument();
+  });
+
+  it("marks the field a 422 names instead of showing nothing", async () => {
+    // FastAPI's schema errors arrive as a list, not a string; passing that
+    // list to message.error rendered no reason at all.
+    mockedUpdateUser.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            {
+              type: "string_too_short",
+              loc: ["body", "password"],
+              msg: "String should have at least 12 characters",
+              ctx: { min_length: 12 },
+            },
+          ],
+        },
+      },
+    });
+
+    renderManager();
+    await screen.findByText("nurse");
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".anticon-edit")!.closest("button")!);
+    await screen.findByText("Edit User");
+
+    fireEvent.change(passwordInput(), { target: { value: "longenough" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update User" }));
+
+    await waitFor(() => expect(mockedUpdateUser).toHaveBeenCalled());
+    expect(
+      await screen.findByText("Must be at least 12 characters long."),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Password: Must be at least 12 characters long\./),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves the password optional when editing", async () => {
+    mockedUpdateUser.mockResolvedValue({});
+
+    renderManager();
+    await screen.findByText("nurse");
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".anticon-edit")!.closest("button")!);
+    await screen.findByText("Edit User");
+    fireEvent.click(screen.getByRole("button", { name: "Update User" }));
+
+    await waitFor(() => expect(mockedUpdateUser).toHaveBeenCalled());
+    expect(mockedUpdateUser.mock.calls[0][1]).not.toHaveProperty("password");
   });
 });
