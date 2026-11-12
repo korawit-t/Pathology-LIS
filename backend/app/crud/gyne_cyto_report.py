@@ -22,6 +22,7 @@ from datetime import date
 from typing import List
 import base64
 from app.crud import his_export_log as his_export_crud
+from app.crud import outlab_consult_request as consult_crud
 from app.crud import cyto_path_correlation as cyto_path_qc
 from app.crud.gyne_qc_guard import QC_REVIEW_DENIED, assert_not_awaiting_qc, deny
 from app.core.roles import CAN_REVIEW_GYNE_QC
@@ -293,6 +294,8 @@ def prepare_gyne_report_data(db: Session, case_id: int):
     return {
         "case_id": db_case.id,
         "accession_no": db_case.accession_no,
+        # Consult covers this round prints (rendered from the consult rows).
+        "consult_ids_snapshot": consult_crud.printable_consult_ids(db, "gyne", db_case.id),
         "patient_title": patient.title.title if patient and patient.title else None,
         "patient_name": patient.name if patient else "Unknown",
         "patient_ln": patient.ln if patient else None,
@@ -397,6 +400,10 @@ def publish_gyne_report(
     signers = _verified_signers(db, case_id, signers, current_user_id)
     _reject_if_signatures_outstanding(db, signers, current_user_id)
 
+    # Nothing goes out while a consult is out of the lab or its result hasn't
+    # been approved — the approver signs the printed cover.
+    consult_crud.assert_releasable(db, "gyne", case_id)
+
     # 🚩 Safeguard: don't trust the client-sent is_abnormal flag alone. On a
     # re-publish (e.g. revising an already-abnormal, already-reviewed case),
     # a stale/wrong frontend flag must not let it slip into the random NILM
@@ -457,17 +464,14 @@ def publish_gyne_report(
         db_case.is_reported = True
         db_case.report_at = local_now()
 
-        was_consult_dispatched = (
-            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
-        )
-        if is_out_lab_consult is not None:
-            db_case.is_out_lab_consult = is_out_lab_consult
-            if is_out_lab_consult and db_case.consult_status is None:
-                db_case.consult_status = "pending"
-        if consult_reason is not None:
-            db_case.consult_reason = consult_reason
-        if was_consult_dispatched:
-            db_case.consult_status = "received"
+        if is_out_lab_consult is not None or consult_reason is not None:
+            consult_crud.apply_case_flag(
+                db, "gyne", db_case,
+                flag=is_out_lab_consult, reason=consult_reason, user_id=current_user_id,
+            )
+        # Every approved consult goes out on this round — it's already in the
+        # snapshot's consult_ids_snapshot.
+        consult_crud.mark_released(db, "gyne", case_id, db_report.id)
 
         settings = db.query(SystemSetting).first()
         qc_enabled = settings.enable_gyne_qc_system if settings else False
@@ -728,17 +732,15 @@ def complete_gyne_review(
         # Record the reviewer's actual signature time now — it was left null
         # when the cytotechnologist originally sent the case for review, so
         # the report doesn't show the pathologist as signing at send-time.
-        was_consult_dispatched = (
-            db_case.is_out_lab_consult and db_case.consult_status in ("processing", "received")
-        )
-        if is_out_lab_consult is not None:
-            db_case.is_out_lab_consult = is_out_lab_consult
-            if is_out_lab_consult and db_case.consult_status is None:
-                db_case.consult_status = "pending"
-        if consult_reason is not None:
-            db_case.consult_reason = consult_reason
-        if was_consult_dispatched:
-            db_case.consult_status = "received"
+        # The report being published here was snapshotted when it was sent
+        # for review, so only the consults it already carries went out — and
+        # publish_gyne_report released those then. A consult approved since
+        # waits for the next round, which will print it.
+        if is_out_lab_consult is not None or consult_reason is not None:
+            consult_crud.apply_case_flag(
+                db, "gyne", db_case,
+                flag=is_out_lab_consult, reason=consult_reason, user_id=reviewer_id,
+            )
 
         now = local_now()
         db_case.status = "published"
@@ -975,7 +977,9 @@ def get_gyne_report_pdf(
         template_name=active_template,
         is_preview=is_preview
     )
-    return pdf_blob
+    from app.services.consult_cover import prepend_consult_covers
+
+    return prepend_consult_covers(db, pdf_blob, report_data, case_type="gyne", case_id=case_id)
 
 
 def get_pending_cosign_worklist_gyne(

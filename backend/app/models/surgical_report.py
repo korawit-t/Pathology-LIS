@@ -87,6 +87,10 @@ class SurgicalReport(Base):
     # {"gross": [{image_url, label}], "micro": [{image_url, label, desc, mag, stain}]}
     # NULL = ฉบับที่ออกก่อนมีคอลัมน์นี้ (ใช้รูปปัจจุบันของเคสแทน)
     images_snapshot = Column(JSON, nullable=True)
+    # outlab_consult_requests.id of every consult printed as a cover on this
+    # round, in seq order. NULL = issued before that table existed — the PDF
+    # then falls back to the consult_pdf_*_snapshot columns (surgical only).
+    consult_ids_snapshot = Column(JSON, nullable=True)
     diagnosis_summary = Column(Text, nullable=True)  # ผลการวินิจฉัยทางพยาธิวิทยา (รวมทุกชิ้น)
     microscopic_summary = Column(Text, nullable=True)
     comment_summary = Column(Text, nullable=True)  # ความเห็นเพิ่มเติมหรือข้อแนะนำ

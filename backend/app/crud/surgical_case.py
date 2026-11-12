@@ -323,27 +323,31 @@ def cancel_surgical_case(db: Session, case_id: int, user_id: int, reason: str):
         raise e
 
 
-def request_out_lab_consult(db: Session, *, db_obj: SurgicalCase, reason: str):
+def request_out_lab_consult(db: Session, *, db_obj: SurgicalCase, reason: str, user_id: int | None = None):
     """Flag a case for out-lab consult without touching the report.
 
-    The sign-off path (bulk_save_draft_orchestrator) sets the same three fields,
-    but couples them to finalizing the report. This lets the pathologist queue a
-    case for dispatch while the diagnosis is still a draft — the case then shows
-    up in Out-Lab Consult → Send to Consult (which filters on
-    is_out_lab_consult + consult_status="pending"), no sign-off required.
+    The sign-off path (bulk_save_draft_orchestrator) can flag it too, but
+    coupled to finalizing the report. This lets the pathologist queue a case
+    for dispatch while the diagnosis is still a draft — it then shows up in
+    Out-Lab Consult → Send to Consult (is_out_lab_consult + consult_status
+    "pending"), no sign-off required. The first consult opens a round; once a
+    round has been released this asks for the next one (S26-01234-C2…).
     """
-    if db_obj.is_out_lab_consult and db_obj.consult_status in ("processing", "received"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Case has already been dispatched for out-lab consult.",
-        )
+    from app.crud import outlab_consult_request as consult_crud
 
-    db_obj.is_out_lab_consult = True
-    db_obj.consult_reason = reason
-    if db_obj.consult_status is None:
-        db_obj.consult_status = "pending"
-
+    active = consult_crud.get_active(db, "surgical", db_obj.id)
     try:
+        if active is not None and active.status == "requested":
+            # Still queued — the pathologist is only rewording the reason.
+            active.reason = reason
+            consult_crud.sync_case_summary(db, "surgical", db_obj)
+        elif active is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Case has already been dispatched for out-lab consult.",
+            )
+        else:
+            consult_crud.open_consult(db, "surgical", db_obj, reason=reason, user_id=user_id)
         db.commit()
         db.refresh(db_obj)
         return db_obj
@@ -352,34 +356,37 @@ def request_out_lab_consult(db: Session, *, db_obj: SurgicalCase, reason: str):
         raise
 
 
-def cancel_out_lab_consult(db: Session, *, db_obj: SurgicalCase):
-    """Clear the out-lab consult flag — only while the case is still queued.
+def cancel_out_lab_consult(db: Session, *, db_obj: SurgicalCase, user_id: int | None = None):
+    """Withdraw the consult — only while the case is still queued.
 
     Once a consult run has been created the case is physically out of the lab,
     so un-flagging is the Out-Lab module's job (cancelling the run), not this one.
+    Rounds already released stay on record.
     """
-    if db_obj.consult_status in ("processing", "received"):
+    from app.crud import outlab_consult_request as consult_crud
+
+    active = consult_crud.get_active(db, "surgical", db_obj.id)
+    if active is None or active.status != "requested":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Case has already been dispatched — cancel the consult run instead.",
+            detail="Case has already been dispatched — cancel the consult run instead."
+            if active is not None
+            else "Case has no queued out-lab consult to cancel.",
         )
-
-    db_obj.is_out_lab_consult = False
-    db_obj.consult_status = None
-    db_obj.consult_reason = None
-
     try:
-        db.commit()
+        consult_crud.cancel_consult(db, active, user_id=user_id, reason=None)
         db.refresh(db_obj)
         return db_obj
     except Exception:
         db.rollback()
         raise
 
-
-def update_case(db: Session, *, db_obj: SurgicalCase, obj_in: SurgicalCaseUpdate):
+def update_case(db: Session, *, db_obj: SurgicalCase, obj_in: SurgicalCaseUpdate, user_id: int | None = None):
     # ดึงเฉพาะฟิลด์ที่หน้าบ้านส่งมาจริงๆ
     update_data = obj_in.model_dump(exclude_unset=True)
+
+    from app.crud import outlab_consult_request as consult_crud
+    consult_crud.apply_case_patch(db, "surgical", db_obj, update_data, user_id)
 
     # รายการฟิลด์ที่ห้ามแก้เด็ดขาด
     readonly_fields = [

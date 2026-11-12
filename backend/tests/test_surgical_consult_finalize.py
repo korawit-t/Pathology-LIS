@@ -28,7 +28,9 @@ from app.crud.outlab_consult import create_consult_run
 from app.schemas.outlab_consult import OutlabConsultRunCreate, CaseSelection
 from app.models.surgical_report import ReportStatus
 
-from tests.factories import make_signable_case, build_bulk_save_payload as _build_payload, clear_system_settings
+from app.crud import outlab_consult_request as consult_crud
+from fastapi import HTTPException
+from tests.factories import attach_consult_result, make_signable_case, build_bulk_save_payload as _build_payload, clear_system_settings
 
 
 class TestRoundOneFinalize:
@@ -50,7 +52,7 @@ class TestRoundOneFinalize:
 
 
 class TestConsultRoundTrip:
-    def test_flag_dispatch_upload_and_second_finalize(self, db, admin_user, two_pathologists):
+    def test_flag_dispatch_upload_and_second_finalize(self, db, admin_user, two_pathologists, tmp_path, monkeypatch):
         clear_system_settings(db)
         registrar, _ = admin_user
         path1, path2 = two_pathologists
@@ -81,10 +83,17 @@ class TestConsultRoundTrip:
         db.refresh(case)
         assert case.consult_status == "processing"
 
-        # --- Upload the returned consult PDF (direct field set — upload
-        # endpoint itself is covered by test_consult_pdf.py) ---
-        case.consult_pdf_path = "/tmp/fake_consult.pdf"
-        db.commit()
+        # --- The consult PDF comes back (upload endpoint itself is covered
+        # by test_consult_pdf.py) ---
+        consult = attach_consult_result(db, "surgical", case, tmp_path, monkeypatch)
+
+        # Not reviewed yet: the approver signs the printed cover, so nothing goes out.
+        with pytest.raises(HTTPException) as exc_info:
+            finalize_and_snapshot_orchestrator(
+                db, case.id, _build_payload(case.id, specimen.id, path2.id, is_pending=False, pending_reason=None), path2.id
+            )
+        assert exc_info.value.status_code == 409
+        consult_crud.approve_consult(db, consult, path2.id)
 
         # --- Round 2: a DIFFERENT pathologist finalizes the consult round ---
         # is_pending=False here mirrors what the real Finalize modal now submits
@@ -112,3 +121,7 @@ class TestConsultRoundTrip:
         assert case.is_pending is False
         assert case.pending_reason is None
         assert case.consult_status == "received"
+        assert report2.consult_ids_snapshot == [consult.id]
+        db.refresh(consult)
+        assert consult.status == "reported"
+        assert consult.reported_in_report_id == report2.id

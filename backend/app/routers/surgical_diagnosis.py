@@ -178,7 +178,7 @@ def save_bulk_draft(
     """
     try:
         # เรียกใช้ Orchestrator ที่คุณเตรียมไว้
-        result = crud.bulk_save_draft_orchestrator(db, data)
+        result = crud.bulk_save_draft_orchestrator(db, data, current_user.id)
         return result
     except Exception as e:
         raise HTTPException(

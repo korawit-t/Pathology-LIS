@@ -26,6 +26,7 @@ from app.utils.storage_paths import get_upload_root
 from app.utils.time import local_now
 from tests.conftest import _make_user
 from tests.factories import (
+    make_consult,
     make_bare_case,
     make_bare_gyne_case,
     make_bare_nongyne_case,
@@ -41,6 +42,7 @@ CASE_TYPES = [
     pytest.param("/nongyne-cytology", make_bare_nongyne_case, id="nongyne"),
 ]
 CYTO_CASE_TYPES = CASE_TYPES[1:]
+_CASE_TYPE = {"/surgical-cases": "surgical", "/gyne-cytology": "gyne", "/nongyne-cytology": "nongyne"}
 
 
 @pytest.fixture
@@ -116,8 +118,8 @@ class TestStoredPathOutsideUploads:
     def test_consult_pdf_clear_does_not_delete_it(self, admin_client, db, admin_user, outside_file, prefix, make_case):
         registrar, _ = admin_user
         case = make_case(db, registrar_id=registrar.id)
-        case.consult_pdf_path = str(outside_file)
-        db.commit()
+        # The consult row is where the path lives now; the case only caches it.
+        make_consult(db, _CASE_TYPE[prefix], case, status="result_received", result_pdf_path=str(outside_file))
 
         r = admin_client.delete(f"{prefix}/{case.id}/consult-pdf")
 
@@ -130,8 +132,7 @@ class TestStoredPathOutsideUploads:
         # save_consult_pdf is shared by all three case types, so one is enough.
         registrar, _ = admin_user
         case = make_bare_case(db, registrar_id=registrar.id)
-        case.consult_pdf_path = str(outside_file)
-        db.commit()
+        make_consult(db, "surgical", case, status="result_received", result_pdf_path=str(outside_file))
 
         r = admin_client.post(
             f"/surgical-cases/{case.id}/consult-pdf",

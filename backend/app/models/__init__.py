@@ -54,6 +54,7 @@ from .scheduled_notification_state import ScheduledNotificationState
 from .block_storage import BlockStorageRun, BlockStorageDetail
 from .slide_storage import SlideStorageRun, SlideStorageDetail
 from .outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
+from .outlab_consult_request import OutlabConsultRequest
 from .slide_block_release import SlideBlockRelease
 from .specimen_disposal_batch import SpecimenDisposalBatch, SpecimenDisposalBatchItem
 from .nongyne_specimen_disposal_batch import (
@@ -162,6 +163,7 @@ __all__ = [
     "SlideStorageDetail",
     "OutlabConsultRun",
     "OutlabConsultRunDetail",
+    "OutlabConsultRequest",
     "SlideBlockRelease",
     "SpecimenDisposalBatch",
     "SpecimenDisposalBatchItem",

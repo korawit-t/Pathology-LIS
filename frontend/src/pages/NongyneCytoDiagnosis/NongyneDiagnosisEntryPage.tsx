@@ -681,6 +681,7 @@ const NongyneDiagnosisEntryPage: React.FC<NongyneDiagnosisEntryPageProps> = (
         {/* ── Out-Lab Consult PDF ───────────────────────────────────────── */}
         {caseData?.is_out_lab_consult && (
           <ConsultPdfPanel
+            consultCaseType="nongyne"
             caseId={Number(caseId)}
             isOutLabConsult={!!caseData?.is_out_lab_consult}
             consultPdfPath={caseData?.consult_pdf_path}

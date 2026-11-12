@@ -4,6 +4,7 @@ from app.utils.time import local_now
 
 from app.models.outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
 from app.schemas.outlab_consult import OutlabConsultRunCreate
+from app.crud import outlab_consult_request as consult_crud
 
 def _get_next_consult_run_no(db: Session) -> str:
     current_year_short = local_now().strftime("%y")
@@ -56,10 +57,21 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
                 gc = db.query(GyneCytologyCase.consult_report_out_at).filter(GyneCytologyCase.id == item.case_id).first()
                 report_out_at = gc.consult_report_out_at if gc else None
 
+            # The case's consult round goes out in this run (opened here if
+            # nobody flagged the case first).
+            consult = consult_crud.dispatch(
+                db,
+                item.case_type,
+                item.case_id,
+                destination_lab=obj_in.destination_lab,
+                user_id=operator_id,
+            )
+
             detail = OutlabConsultRunDetail(
                 run_id=db_run.id,
                 case_type=item.case_type,
                 case_id=item.case_id,
+                consult_id=consult.id,
                 accession_no=item.accession_no,
                 patient_name=item.patient_name,
                 block_code=item.block_code,
@@ -67,10 +79,7 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
             )
             db.add(detail)
 
-            # Update the original case
             if item.case_type == "surgical":
-                from app.models.surgical_case import SurgicalCase
-                db.query(SurgicalCase).filter(SurgicalCase.id == item.case_id).update({"consult_status": "processing"})
                 from app.models.surgical_specimen import SurgicalSpecimen
                 from app.models.surgical_block import SurgicalBlock
                 spec_ids = db.query(SurgicalSpecimen.id).filter(
@@ -79,13 +88,7 @@ def create_consult_run(db: Session, obj_in: OutlabConsultRunCreate, operator_id:
                 db.query(SurgicalBlock).filter(
                     SurgicalBlock.specimen_id.in_(spec_ids)
                 ).update({"status": "consult"}, synchronize_session=False)
-            elif item.case_type == "gyne":
-                from app.models.gyne_cyto_case import GyneCytologyCase
-                db.query(GyneCytologyCase).filter(GyneCytologyCase.id == item.case_id).update({"consult_status": "processing"})
-            elif item.case_type == "nongyne":
-                from app.models.nongyne_cyto_case import NongyneCytologyCase
-                db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == item.case_id).update({"consult_status": "processing"})
-            
+
         db.commit()
         db.refresh(db_run)
         return db_run
@@ -141,10 +144,28 @@ def _attach_live_case_consult_status(db: Session, runs: list["OutlabConsultRun"]
         status_by_type["nongyne"] = {r.id: r.consult_status for r in rows}
         pdf_by_type["nongyne"] = {r.id: r.consult_pdf_path is not None for r in rows}
 
+    # A line belongs to one consult round; once the case has moved on to a
+    # later round, the case-level status would describe that one instead.
+    consult_ids = {d.consult_id for run in runs for d in run.details if d.consult_id}
+    consults = {}
+    if consult_ids:
+        from app.models.outlab_consult_request import OutlabConsultRequest
+        consults = {
+            c.id: c
+            for c in db.query(OutlabConsultRequest).filter(OutlabConsultRequest.id.in_(consult_ids)).all()
+        }
+
     for run in runs:
         for detail in run.details:
+            consult = consults.get(detail.consult_id)
+            if consult is not None:
+                detail.case_consult_status = consult_crud.case_status_for(consult)
+                detail.consult_pdf_uploaded = bool(consult.result_pdf_path)
+                detail.consult_no = consult.consult_no
+                continue
             detail.case_consult_status = status_by_type.get(detail.case_type, {}).get(detail.case_id)
             detail.consult_pdf_uploaded = pdf_by_type.get(detail.case_type, {}).get(detail.case_id, False)
+            detail.consult_no = None
 
 def receive_consult_run(db: Session, run_id: int, user_id: int):
     db_run = db.query(OutlabConsultRun).filter(OutlabConsultRun.id == run_id).first()
@@ -200,17 +221,10 @@ def delete_consult_run(db: Session, run_id: int):
         )
     
     try:
-        # Revert cases before deleting
+        # Each consult goes back to the send queue — refused once its result
+        # is on file, since the run is then the record of how it went out.
         for detail in db_run.details:
-            if detail.case_type == "surgical":
-                from app.models.surgical_case import SurgicalCase
-                db.query(SurgicalCase).filter(SurgicalCase.id == detail.case_id).update({"consult_status": "pending"})
-            elif detail.case_type == "gyne":
-                from app.models.gyne_cyto_case import GyneCytologyCase
-                db.query(GyneCytologyCase).filter(GyneCytologyCase.id == detail.case_id).update({"consult_status": "pending"})
-            elif detail.case_type == "nongyne":
-                from app.models.nongyne_cyto_case import NongyneCytologyCase
-                db.query(NongyneCytologyCase).filter(NongyneCytologyCase.id == detail.case_id).update({"consult_status": "pending"})
+            consult_crud.withdraw_shipment(db, detail)
 
         db.delete(db_run)
         db.commit()

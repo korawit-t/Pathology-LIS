@@ -236,7 +236,7 @@ def validate_sign_off(diagnosis: SurgicalDiagnosis, update_data: dict):
             )
 
 
-def bulk_save_draft_orchestrator(db: Session, data: BulkSaveDraft):
+def bulk_save_draft_orchestrator(db: Session, data: BulkSaveDraft, current_user_id: int | None = None):
     try:
         # --- 1. Update Case Info & Specimen Gross ---
         surgical_case = (
@@ -272,14 +272,17 @@ def bulk_save_draft_orchestrator(db: Session, data: BulkSaveDraft):
         surgical_case.has_critical = data.has_critical
         surgical_case.is_pending = data.is_pending
         surgical_case.pending_reason = data.pending_reason if data.is_pending else None
-        if data.is_out_lab_consult is not None:
-            surgical_case.is_out_lab_consult = data.is_out_lab_consult
-            if data.is_out_lab_consult and surgical_case.consult_status is None:
-                surgical_case.consult_status = "pending"
-        if data.consult_reason is not None:
-            surgical_case.consult_reason = data.consult_reason
-        elif data.is_out_lab_consult is False:
-            surgical_case.consult_reason = None
+        if data.is_out_lab_consult is not None or data.consult_reason is not None:
+            from app.crud import outlab_consult_request as consult_crud
+
+            consult_crud.apply_case_flag(
+                db,
+                "surgical",
+                surgical_case,
+                flag=data.is_out_lab_consult,
+                reason=data.consult_reason,
+                user_id=current_user_id,
+            )
         if data.consult_report_out_at is not None:
             surgical_case.consult_report_out_at = data.consult_report_out_at
 

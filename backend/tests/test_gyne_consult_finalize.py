@@ -22,7 +22,8 @@ from app.schemas.outlab_consult import OutlabConsultRunCreate, CaseSelection
 from app.models.gyne_cyto_report import GyneCytoReport
 from fastapi import HTTPException
 
-from tests.factories import make_bare_gyne_case
+from app.crud import outlab_consult_request as consult_crud
+from tests.factories import attach_consult_result, make_bare_gyne_case
 from tests.conftest import _make_user
 
 
@@ -34,7 +35,7 @@ def two_pathologists(db):
 
 
 class TestGyneConsultRoundTrip:
-    def test_flag_dispatch_upload_and_second_finalize(self, db, admin_user, two_pathologists):
+    def test_flag_dispatch_upload_and_second_finalize(self, db, admin_user, two_pathologists, tmp_path, monkeypatch):
         registrar, _ = admin_user
         path1, path2 = two_pathologists
         case = make_bare_gyne_case(db, registrar_id=registrar.id)
@@ -73,11 +74,22 @@ class TestGyneConsultRoundTrip:
             create_initial_diagnosis(db, GyneDiagnosisCreate(case_id=case.id, interpretation="edit attempt"))
         assert exc_info.value.status_code == 423
 
-        # --- Upload the returned consult PDF (direct field set — upload
-        # endpoint itself shares app/crud/consult_pdf.py with Surgical/NonGyne,
-        # already covered by test_consult_pdf.py) ---
-        case.consult_pdf_path = "/tmp/fake_gyne_consult.pdf"
-        db.commit()
+        # --- The consult PDF comes back (upload endpoint itself is covered
+        # by test_consult_pdf.py) ---
+        consult = attach_consult_result(db, "gyne", case, tmp_path, monkeypatch)
+
+        # Not reviewed yet: the approver signs the printed cover, so nothing goes out.
+        with pytest.raises(HTTPException) as exc_info:
+            publish_gyne_report(
+                db,
+                case_id=case.id,
+                signers=[{"user_id": path2.id, "role": "primary"}],
+                current_user_id=path2.id,
+                is_abnormal=False,
+            )
+        assert exc_info.value.status_code == 409
+        db.rollback()
+        consult_crud.approve_consult(db, consult, path2.id)
 
         # --- Round 2: a DIFFERENT pathologist finalizes the consult round ---
         report2 = publish_gyne_report(
@@ -94,3 +106,7 @@ class TestGyneConsultRoundTrip:
 
         db.refresh(case)
         assert case.consult_status == "received"
+        assert report2.consult_ids_snapshot == [consult.id]
+        db.refresh(consult)
+        assert consult.status == "reported"
+        assert consult.reported_in_report_id == report2.id

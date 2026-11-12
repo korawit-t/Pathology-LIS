@@ -55,6 +55,7 @@ from app.routers import (
     gyne_case_image,
     his,
     outlab_consult,
+    outlab_consult_request,
     slide_block_release,
     specimen_disposal_batch,
     nongyne_specimen_disposal_batch,
@@ -320,6 +321,7 @@ app.include_router(nongyne_case_image.router, dependencies=_INTERNAL_ONLY)
 app.include_router(gyne_case_image.router, dependencies=_INTERNAL_ONLY)
 app.include_router(his.router, dependencies=_INTERNAL_ONLY)
 app.include_router(outlab_consult.router, dependencies=_INTERNAL_ONLY)
+app.include_router(outlab_consult_request.router, dependencies=_INTERNAL_ONLY)
 app.include_router(internal_consult.router, dependencies=_INTERNAL_ONLY)
 app.include_router(slide_block_release.router, dependencies=_INTERNAL_ONLY)
 app.include_router(specimen_disposal_batch.router, dependencies=_INTERNAL_ONLY)

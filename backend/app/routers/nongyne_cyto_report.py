@@ -225,6 +225,9 @@ def preview_report_pdf(
         template_name=f"reports/{get_system_settings(db).nongyne_report_template or 'nongyne_cyto_report_template.html'}",
         is_preview=True,
     )
+    from app.services.consult_cover import prepend_consult_covers
+
+    pdf_blob = prepend_consult_covers(db, pdf_blob, data, case_type="nongyne", case_id=case_id)
     return StreamingResponse(io.BytesIO(pdf_blob), media_type="application/pdf")
 
 
@@ -280,6 +283,9 @@ def get_report_pdf(
         template_name=f"reports/{get_system_settings(db).nongyne_report_template or 'nongyne_cyto_report_template.html'}",
         is_preview=False,
     )
+    from app.services.consult_cover import prepend_consult_covers
+
+    pdf_blob = prepend_consult_covers(db, pdf_blob, data, case_type="nongyne", case_id=report.case_id)
     return StreamingResponse(
         io.BytesIO(pdf_blob),
         media_type="application/pdf",

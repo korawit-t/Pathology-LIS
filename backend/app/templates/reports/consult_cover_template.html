@@ -104,6 +104,13 @@
         color: #1a202c;
         letter-spacing: 1px;
       }
+      .consult-meta {
+        flex: none;
+        text-align: center;
+        margin: -6px 0 10px;
+        font-size: 10.5px;
+        color: #475569;
+      }
       .consult-image {
         /* Takes whatever height the header and title leave. */
         flex: 1 1 0;
@@ -335,11 +342,19 @@
 
       {% if loop.first %}
       <div class="consult-title">
-        EXTERNAL CONSULT REPORT
+        EXTERNAL CONSULT REPORT{% if consult_no %} · {{ consult_no }}{% endif %}
         {% if consult_pdf_thumbnails|length > 1 %}
         ({{ consult_pdf_thumbnails|length }} pages)
         {% endif %}
       </div>
+      {% if consult_destination_lab or consult_external_ref or consult_external_pathologist or consult_result_received_at %}
+      <div class="consult-meta">
+        {% if consult_destination_lab %}{{ consult_destination_lab }}{% endif %}
+        {% if consult_external_ref %} · Ref: {{ consult_external_ref }}{% endif %}
+        {% if consult_external_pathologist %} · Read by: {{ consult_external_pathologist }}{% endif %}
+        {% if consult_result_received_at %} · Received: {{ consult_result_received_at.strftime('%d/%m/%Y') }}{% endif %}
+      </div>
+      {% endif %}
       {% endif %}
 
       <div class="consult-image">

@@ -2,6 +2,26 @@ import type React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ConsultPdfPanel from "./ConsultPdfPanel";
 import { ThemeProvider } from "../../contexts/ThemeContext";
+import { OutlabConsultService } from "../../services/outlabConsultService";
+
+vi.mock("../../services/outlabConsultService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../services/outlabConsultService")>();
+  return {
+    ...actual,
+    OutlabConsultService: { listForCase: vi.fn(), approve: vi.fn() },
+  };
+});
+
+const round = (overrides: Record<string, unknown> = {}) => ({
+  id: 7,
+  case_type: "gyne",
+  case_id: 1,
+  seq: 2,
+  consult_no: "C26-00001-C2",
+  status: "result_received",
+  has_result_pdf: true,
+  ...overrides,
+});
 
 beforeAll(() => {
   URL.createObjectURL = vi.fn(() => "blob:mock-url");
@@ -102,5 +122,57 @@ describe("ConsultPdfPanel", () => {
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(1));
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  describe("consult round approval (consultCaseType set)", () => {
+    const pdfProps = () => ({
+      ...baseProps,
+      onGetBlob: vi.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" })),
+      isOutLabConsult: true,
+      consultPdfPath: "/uploads/consults/c.pdf",
+      consultCaseType: "gyne" as const,
+    });
+
+    it("asks for approval and approves the open round", async () => {
+      vi.mocked(OutlabConsultService.listForCase).mockResolvedValue([
+        round({ id: 3, seq: 1, consult_no: "C26-00001-C1", status: "reported" }),
+        round(),
+      ] as never);
+      vi.mocked(OutlabConsultService.approve).mockResolvedValue(round({ status: "approved" }) as never);
+      const props = pdfProps();
+      renderPanel(props);
+
+      expect(await screen.findByText("C26-00001-C2")).toBeInTheDocument();
+      expect(screen.getByText(/can't be released until it is/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Approve Consult PDF/i }));
+
+      await waitFor(() => expect(OutlabConsultService.approve).toHaveBeenCalledWith(7));
+      expect(props.onRefresh).toHaveBeenCalled();
+      expect(OutlabConsultService.listForCase).toHaveBeenCalledWith("gyne", 1);
+    });
+
+    it("shows who approved instead of the button", async () => {
+      vi.mocked(OutlabConsultService.listForCase).mockResolvedValue([
+        round({ status: "approved", approved_by_name: "Dr. Somchai", approved_at: "2026-11-11T09:30:00" }),
+      ] as never);
+      renderPanel(pdfProps());
+
+      expect(await screen.findByText(/Approved by Dr. Somchai/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Approve Consult PDF/i })).not.toBeInTheDocument();
+    });
+
+    it("offers no delete once the round is released on a report", async () => {
+      vi.mocked(OutlabConsultService.listForCase).mockResolvedValue([round({ status: "reported" })] as never);
+      renderPanel(pdfProps());
+
+      expect(await screen.findByText(/Approved by/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Delete PDF/i })).not.toBeInTheDocument();
+    });
+
+    it("does not look up rounds when the panel isn't a consult round", async () => {
+      renderPanel({ ...pdfProps(), consultCaseType: undefined });
+      await screen.findByText("Consult report PDF received.");
+      expect(OutlabConsultService.listForCase).not.toHaveBeenCalled();
+    });
   });
 });

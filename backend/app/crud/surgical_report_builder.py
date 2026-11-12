@@ -1,14 +1,13 @@
 import os
 import base64
 import io
-import json
 import logging
 import re
 from PIL import Image
 from sqlalchemy.orm import Session
 from datetime import date
 from app.utils.time import local_now
-from app.utils.storage_paths import find_for_report, resolve_stored_file
+from app.utils.storage_paths import find_for_report
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
 from app.utils.report_round_heading import round_heading_html, round_label
@@ -644,8 +643,7 @@ def prepare_report_data(
     is_pending_val = overrides.get("is_pending", db_case.is_pending)
     pending_reason_val = overrides.get("pending_reason", db_case.pending_reason if db_case.is_pending else None)
 
-    consult_pdf = resolve_stored_file(db_case.consult_pdf_path)
-    consult_thumbnails = get_consult_pdf_thumbnails_base64(str(consult_pdf)) if consult_pdf else []
+    from app.crud.outlab_consult_request import printable_consult_ids
 
     return {
         "case_id": db_case.id,
@@ -694,10 +692,14 @@ def prepare_report_data(
         "version_no": next_version,
         "published_at": published_at_value,
         "reported_at": local_now(),
-        "consult_pdf_path_snapshot": db_case.consult_pdf_path,
-        "consult_pdf_thumbnail_snapshot": json.dumps(consult_thumbnails) if consult_thumbnails else None,
-        "consult_pdf_approved_by_snapshot": (db_case.consult_pdf_approver.report_name or db_case.consult_pdf_approver.full_name) if db_case.consult_pdf_approver else None,
-        "consult_pdf_approved_at_snapshot": db_case.consult_pdf_approved_at,
+        # Covers are rendered from the consult rows at print time (see
+        # services.consult_cover); the single-consult columns stay empty on
+        # new rounds and are read only for rounds issued before.
+        "consult_ids_snapshot": printable_consult_ids(db, "surgical", db_case.id),
+        "consult_pdf_path_snapshot": None,
+        "consult_pdf_thumbnail_snapshot": None,
+        "consult_pdf_approved_by_snapshot": None,
+        "consult_pdf_approved_at_snapshot": None,
         "primary_color": primary_color,
         "primary_color_dark": primary_color_dark,
         "show_icd_o_in_report": settings.show_icd_o_in_report if settings else False,

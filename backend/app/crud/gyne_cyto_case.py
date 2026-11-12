@@ -69,6 +69,8 @@ def create_gyne_case(db: Session, obj_in: GyneCytologyCaseCreate, registrar_id: 
     try:
         new_accession_no = _get_next_gyne_accession_no(db)
         case_data = obj_in.model_dump(exclude={"accession_no", "registrar_id"})
+        # Owned by the consult rows — a flag at registration opens round 1.
+        flag_consult = case_data.pop("is_out_lab_consult", False)
 
         db_obj = GyneCytologyCase(
             **case_data,
@@ -78,6 +80,10 @@ def create_gyne_case(db: Session, obj_in: GyneCytologyCaseCreate, registrar_id: 
         )
 
         db.add(db_obj)
+        if flag_consult:
+            from app.crud import outlab_consult_request as consult_crud
+            db.flush()
+            consult_crud.open_consult(db, "gyne", db_obj, reason=None, user_id=registrar_id)
         db.commit()
 
         # 🚩 หัวใจสำคัญอยู่ตรงนี้ครับ:
@@ -392,12 +398,12 @@ def update_gyne_case(
 
     readonly_fields = ["id", "accession_no", "registrar_id", "registered_at"]
 
+    from app.crud import outlab_consult_request as consult_crud
+    consult_crud.apply_case_patch(db, "gyne", db_obj, update_data, actor_id)
+
     for field in update_data:
         if field not in readonly_fields and hasattr(db_obj, field):
             setattr(db_obj, field, update_data[field])
-
-    if update_data.get("is_out_lab_consult") and db_obj.consult_status is None:
-        db_obj.consult_status = "pending"
 
     try:
         db.add(db_obj)

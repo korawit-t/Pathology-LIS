@@ -1,4 +1,5 @@
 from app.crud.surgical_diagnosis import bulk_save_draft_orchestrator
+from app.crud import outlab_consult_request as consult_crud
 from app.crud.surgical_report_builder import prepare_report_data, render_snapshot_images
 from app.crud.report_images import surgical_images_snapshot
 from app.crud.surgical_block_stain import mark_case_stains_reported, mark_case_stains_released
@@ -87,13 +88,16 @@ def get_surgical_report_pdf(db: Session, report: SurgicalReport) -> bytes:
     settings = get_system_settings(db)
     active_template = f"reports/{settings.surgical_report_template or 'surgical_report_template.html'}"
 
-    from app.services.pdf_service import generate_pdf_blob, prepend_consult_cover
+    from app.services.pdf_service import generate_pdf_blob
+    from app.services.consult_cover import prepend_consult_covers
     pdf_blob = generate_pdf_blob(
         report_data,
         template_name=active_template,
         is_preview=False,
     )
-    return prepend_consult_cover(pdf_blob, report_data)
+    return prepend_consult_covers(
+        db, pdf_blob, report_data, case_type="surgical", case_id=report.case_id
+    )
 
 
 def build_surgical_export_payload(report: SurgicalReport) -> dict:
@@ -314,6 +318,9 @@ def finalize_and_snapshot_orchestrator(
 ):
     try:
         db_case = db.query(SurgicalCase).filter(SurgicalCase.id == case_id).first()
+        # Nothing goes out while a consult is out of the lab or its result
+        # hasn't been approved — the approver signs the printed cover.
+        consult_crud.assert_releasable(db, "surgical", case_id)
         is_consult_dispatched = bool(
             db_case and
             db_case.is_out_lab_consult and
@@ -321,7 +328,7 @@ def finalize_and_snapshot_orchestrator(
         )
 
         if not is_consult_dispatched:
-            report_draft_result = bulk_save_draft_orchestrator(db, data)
+            report_draft_result = bulk_save_draft_orchestrator(db, data, current_user_id)
             db.flush()
             if isinstance(report_draft_result, dict):
                 current_order_no = report_draft_result.get("order")
@@ -507,8 +514,9 @@ def finalize_and_snapshot_orchestrator(
                     payload_snapshot=build_surgical_export_payload(report),
                 )
 
-            if is_consult_dispatched:
-                db_case.consult_status = "received"
+            # Every approved consult goes out on this round (it is already in
+            # the snapshot's consult_ids_snapshot above).
+            consult_crud.mark_released(db, "surgical", case_id, report.id)
         else:
             report = create_final_report_snapshot(db, case_id, report_id=report.id)
             report.status = ReportStatus.DRAFT
