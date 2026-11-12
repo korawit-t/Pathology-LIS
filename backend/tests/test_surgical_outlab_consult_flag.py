@@ -44,6 +44,7 @@ class TestRequestOutLabConsult:
         assert r.json() == {
             "is_out_lab_consult": True,
             "consult_status": "pending",
+            "consult_no": f"{surgical_case.accession_no}-C1",
             "consult_reason": "Complex case, need subspecialty",
         }
 
@@ -105,6 +106,7 @@ class TestCancelOutLabConsult:
         assert r.json() == {
             "is_out_lab_consult": False,
             "consult_status": None,
+            "consult_no": None,
             "consult_reason": None,
         }
 

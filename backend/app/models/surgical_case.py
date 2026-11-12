@@ -73,6 +73,9 @@ class SurgicalCase(Base):
     consult_status = Column(String, nullable=True, index=True)
     consult_pdf_path = Column(String, nullable=True)
     consult_reason = Column(Text, nullable=True)
+    # Latest consult round's number (S26-01234-C2) — cache, written only by
+    # crud.outlab_consult_request.sync_case_summary like the columns above.
+    consult_no = Column(String, nullable=True)
     consult_report_out_at = Column(DateTime, nullable=True)
     consult_pdf_received_at = Column(DateTime, nullable=True)
     consult_pdf_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)

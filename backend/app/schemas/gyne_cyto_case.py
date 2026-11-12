@@ -156,6 +156,7 @@ class GyneCytologyCaseResponse(GyneCytologyBase):
     outlab_result_approved_by_id: Optional[int] = None
     outlab_result_approved_at: Optional[datetime] = None
     consult_status: Optional[str] = None
+    consult_no: Optional[str] = None  # latest round, e.g. S26-01234-C2
     consult_pdf_path: Optional[str] = None
     consult_reason: Optional[str] = None
     consult_report_out_at: Optional[datetime] = None

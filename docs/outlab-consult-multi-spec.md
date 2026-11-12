@@ -184,9 +184,11 @@ SELECT 'nongyne', consult_status, (consult_pdf_path IS NOT NULL), count(*)
 ใน `ConsultPdfModal` ที่ approve ก่อน finalize อยู่แล้ว
 
 **เฟส 2 — UI**
+- ✅ เคสมีคอลัมน์ cache `consult_no` (รอบล่าสุด, migration `318aaf388aec`) และแท็บ External Consult
+  ของ My Worklist แสดงรอบเป็น tag `C2` ในช่อง Consult — ช่อง Accession No. คงเป็นเลขเคสเหมือนเดิม
 - ปุ่ม "ขอ consult อีกครั้ง" เมื่อรอบล่าสุดเป็น `reported` (backend พร้อมแล้ว)
 - panel ประวัติ consult ทุกรอบบนหน้า diagnosis
-- คิว Send to Consult และ run list แสดง `consult_no`
+- คิว Send to Consult และ run list แสดงรอบ (`consult_no` มีใน response แล้ว)
 - ช่องกรอก `external_ref` / `external_pathologist` / `concordance`
 
 **เฟส 3 — เก็บกวาด**
