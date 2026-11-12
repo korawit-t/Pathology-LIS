@@ -10,6 +10,7 @@ from app.utils.time import local_now
 from app.utils.storage_paths import find_for_report
 from app.utils.submitted_sections import build_submitted_sections_text as _build_submitted_text
 from app.utils.html_text import html_or_plain_text_to_lines, text_to_escaped_html_br
+from app.utils.surgical_labels import label_sort_key
 from app.utils.report_round_heading import round_heading_html, round_label
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
@@ -174,7 +175,7 @@ def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
     gross_images_payload = []
     micro_images_payload = []
 
-    sorted_specimens = sorted(db_case.specimens, key=lambda x: x.specimen_label or "")
+    sorted_specimens = sorted(db_case.specimens, key=lambda x: label_sort_key(x.specimen_label))
     active_specimens = [
         s for s in sorted_specimens
         if active_specimen_ids is None or s.id in active_specimen_ids
@@ -248,6 +249,7 @@ def _prepare_specimen_and_images(db: Session, db_case, active_specimen_ids):
             "blocks": [
                 {
                     "block_no": b.block_no,
+                    "block_code": b.block_code,
                     "tissue_count": b.tissue_count,
                     "tissue_description": b.tissue_description or "",
                     "is_tissue_uncountable": bool(b.is_tissue_uncountable),
@@ -382,7 +384,7 @@ def _get_diagnosis_html_summary(
         else:
             diags_in_order = sorted(
                 [d for d in raw_items if d.surgical_specimen_id is not None],
-                key=lambda x: x.specimen.specimen_label if x.specimen else "",
+                key=lambda x: label_sort_key(x.specimen.specimen_label if x.specimen else ""),
             )
 
         if not diags_in_order:

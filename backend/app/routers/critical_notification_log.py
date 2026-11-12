@@ -26,6 +26,7 @@ from app.services.notification_service import (
     to_bangkok_str,
 )
 from app.crud import notification_rule as crud_rule
+from app.utils.surgical_labels import label_order_by
 
 
 def _lookup_specimen(db: Session, case, case_type: str) -> str:
@@ -46,7 +47,7 @@ def _lookup_specimen(db: Session, case, case_type: str) -> str:
         rows = (
             db.query(SurgicalSpecimen.specimen_name)
             .filter(SurgicalSpecimen.case_id == case.id)
-            .order_by(SurgicalSpecimen.specimen_label)
+            .order_by(*label_order_by(SurgicalSpecimen.specimen_label))
             .all()
         )
         names = [r[0] for r in rows if r[0]]

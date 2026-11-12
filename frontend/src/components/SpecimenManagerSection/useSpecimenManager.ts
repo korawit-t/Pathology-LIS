@@ -5,6 +5,13 @@ import SpecimenTemplateService, {
 } from "../../services/specimenTemplateService";
 import SurgicalSpecimenService from "../../services/surgicalSpecimenService";
 import logger from "../../utils/logger";
+import SystemSettingService from "../../services/systemSettingService";
+import {
+  nextSpecimenLabel,
+  schemeOfLabels,
+  specimenLabelAt,
+  type SurgicalLabelScheme,
+} from "../../utils/blockLabel";
 import type { Specimen } from "./SpecimenManagerSection";
 
 export const useSpecimenManager = (
@@ -20,6 +27,23 @@ export const useSpecimenManager = (
     [],
   );
   const [newCustomName, setNewCustomName] = useState("");
+
+  // How a case's first specimen is labelled (A or 1) — System Settings. A case
+  // that already has specimens follows them, so it's only fetched when empty.
+  const [labelScheme, setLabelScheme] = useState<SurgicalLabelScheme>("letter_number");
+  const needsScheme = !specimens || specimens.length === 0;
+  useEffect(() => {
+    if (!needsScheme) return;
+    let cancelled = false;
+    SystemSettingService.getSettings()
+      .then((s) => {
+        if (!cancelled && s?.surgical_label_scheme) setLabelScheme(s.surgical_label_scheme);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [needsScheme]);
 
   // --- Template Logic ---
   const fetchTemplates = async () => {
@@ -97,11 +121,13 @@ export const useSpecimenManager = (
     try {
       setLoading(true);
       await SurgicalSpecimenService.deleteSpecimen(record.id);
+      // Same re-labelling the backend does: in the case's own scheme
+      const scheme = schemeOfLabels(specimens.map((s) => s.specimen_label)) ?? labelScheme;
       const updatedList = specimens
         .filter((_, i) => i !== index)
         .map((spec, i) => ({
           ...spec,
-          specimen_label: String.fromCharCode(65 + i),
+          specimen_label: specimenLabelAt(i, scheme),
         }));
       onSpecimensChange?.(updatedList);
       message.success("ลบชิ้นเนื้อสำเร็จ");
@@ -128,11 +154,8 @@ export const useSpecimenManager = (
     }
   };
 
-  const displayNextLabel = () => {
-    if (!specimens || specimens.length === 0) return "A";
-    const lastLabel = specimens[specimens.length - 1].specimen_label;
-    return String.fromCharCode(lastLabel.charCodeAt(0) + 1);
-  };
+  const displayNextLabel = () =>
+    nextSpecimenLabel((specimens || []).map((s) => s.specimen_label), labelScheme);
 
   return {
     newName,

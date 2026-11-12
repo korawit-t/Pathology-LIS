@@ -10,6 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from app.db.database import Base
+from app.utils.surgical_labels import seq_to_letters
 
 
 class SurgicalBlock(Base):
@@ -29,6 +30,10 @@ class SurgicalBlock(Base):
 
     # ข้อมูลพื้นฐานของ Block
     block_no = Column(Integer, nullable=False)  # เช่น 1, 2, 3
+    # ลำดับ block ทั้งเคส (1 = A, 2 = B …) ออกครั้งเดียวตอนสร้าง block เฉพาะเคสที่ใช้
+    # label แบบ number_letter (ชิ้นเนื้อ 1, 2, 3 / block A, B, C) — เคสแบบเดิม (A1)
+    # เป็น NULL เสมอ ดู app/utils/surgical_labels.py
+    case_block_seq = Column(Integer, nullable=True)
 
     status = Column(
         String, default="grossed", nullable=False, index=True
@@ -99,6 +104,8 @@ class SurgicalBlock(Base):
 
     @property
     def block_code(self):
+        if self.case_block_seq is not None:
+            return seq_to_letters(self.case_block_seq)
         return f"{self.specimen_label}{self.block_no}"
 
     def __repr__(self):

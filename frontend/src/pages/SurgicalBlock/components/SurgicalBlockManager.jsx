@@ -6,6 +6,8 @@ import SurgicalBlockService from "../../../services/surgicalBlockService";
 import { BlockTimelineService } from "../../../services/blockTimelineService";
 import SurgicalBlockStainService from "../../../services/surgicalBlockStainService";
 import BlockHistoryDrawer from "./BlockHistoryDrawer";
+import { formatBlockCode } from "../../../utils/blockLabel";
+import { getErrorDetail } from "../../../utils/errorHandler";
 
 const { Text } = Typography;
 
@@ -162,7 +164,7 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
       key: "block_code",
       render: (_, record) => (
         <Tag color="blue">
-          {record.block_code || `${record.specimen_label}${record.block_no}`}
+          {formatBlockCode(record)}
         </Tag>
       )
     },
@@ -228,7 +230,10 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
       await SurgicalBlockService.deleteBlock(id);
       message.success("ลบสำเร็จ");
       fetchData();
-    } catch { message.error("ลบไม่สำเร็จ"); }
+    } catch (err) {
+      // e.g. "Block A1 อยู่ขั้นตอน embedded แล้ว ลบไม่ได้" — say why, not just that it failed
+      message.error(getErrorDetail(err) || "ลบไม่สำเร็จ");
+    }
   };
 
   return (

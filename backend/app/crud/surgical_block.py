@@ -19,6 +19,27 @@ from app.utils.stain_filters import (
     is_in_house_stain,
     is_internal_stain_order,
 )
+from app.utils.surgical_labels import (
+    DELETE_KEEP_GAP,
+    case_labels_fixed,
+    configured_delete_mode,
+    is_numeric_label,
+    label_order_by,
+    lock_case,
+    resequence_case_blocks,
+)
+
+
+def _next_case_block_seq(db: Session, case_id: int) -> int:
+    """Letter after the last one in a number_letter case (as a number: 1 = A).
+    The caller holds the case row lock."""
+    highest = (
+        db.query(func.max(SurgicalBlock.case_block_seq))
+        .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+        .filter(SurgicalSpecimen.case_id == case_id)
+        .scalar()
+    )
+    return (highest or 0) + 1
 
 def create_block(db: Session, obj_in: SurgicalBlockCreate):
     # 1. เช็ค Block เดิม (Logic เดิมของคุณดีอยู่แล้ว)
@@ -38,8 +59,29 @@ def create_block(db: Session, obj_in: SurgicalBlockCreate):
     try:
         # 2. สร้าง Block ใหม่
         db_block = SurgicalBlock(**obj_in.model_dump())
+
+        # เคสที่ชิ้นเนื้อเป็นเลข (1, 2, 3) ใช้ block ตัวอักษรรันทั้งเคส (A, B, C …)
+        # lock แถวเคสไว้แบบเดียวกับการออกเลข accession กันสองคนเพิ่ม block พร้อมกัน
+        # ได้ตัวซ้ำ — ยังอยู่ในห้อง gross: เรียงตัวอักษรใหม่ตามลำดับชิ้นเนื้อ
+        # ออกจากห้อง gross แล้ว: ได้ตัวถัดจากตัวสุดท้ายในเคส ตัวเดิมไม่ขยับ
+        # เคสแบบเดิม (A1) ไม่ผ่านตรงนี้ case_block_seq เป็น NULL
+        specimen = (
+            db.query(SurgicalSpecimen)
+            .filter(SurgicalSpecimen.id == obj_in.specimen_id)
+            .first()
+        )
+        resequence_case_id = None
+        if specimen is not None and is_numeric_label(specimen.specimen_label):
+            lock_case(db, specimen.case_id)
+            fixed = case_labels_fixed(db, specimen.case_id)
+            db_block.case_block_seq = _next_case_block_seq(db, specimen.case_id)
+            if not fixed:
+                resequence_case_id = specimen.case_id
+
         db.add(db_block)
         db.flush()
+        if resequence_case_id is not None:
+            resequence_case_blocks(db, resequence_case_id)
 
         # 3. 🚩 ปรับปรุง: สร้าง H&E ใบแรกอัตโนมัติ โดยอ้างอิงจาก Master Data
         # ค้นหาด้วย system_code แทนการเขียนชื่อ "H&E" ตรงๆ
@@ -297,7 +339,7 @@ def list_internal_stain_cases(
                 ),
                 selectinload(SurgicalBlock.stains).joinedload(SurgicalBlockStain.test),
             )
-            .order_by(SurgicalSpecimen.specimen_label.asc(), SurgicalBlock.block_no.asc())
+            .order_by(*label_order_by(SurgicalSpecimen.specimen_label), SurgicalBlock.block_no.asc())
             .all()
         )
         for block, case_id in blocks:
@@ -334,13 +376,52 @@ def update_block(db: Session, block_id: int, data: SurgicalBlockUpdate):
     return block
 
 
+def delete_block_refusal(block: SurgicalBlock):
+    """Why a block may no longer be deleted, or None if it still may.
+
+    Deleting a block cascades to its processing item, embedding and sectioning
+    records, stains and slides, storage record and timeline — while the
+    cassette and slides it describes still exist in the lab. So once a block
+    has left the gross room it stays, as delete_specimen already refuses for
+    a specimen whose blocks went to processing.
+    """
+    code = block.block_code
+    if block.status != "grossed":
+        return f"Block {code} อยู่ขั้นตอน {block.status} แล้ว ลบไม่ได้"
+    if block.processing_record is not None:
+        return f"Block {code} ถูกส่งเข้า Tissue Processing แล้ว ลบไม่ได้"
+    if any(stain.is_printed for stain in block.stains):
+        return f"พิมพ์สติกเกอร์สไลด์ของ block {code} แล้ว ลบไม่ได้"
+    return None
+
+
 def delete_block(db: Session, block_id: int):
     block = get_block(db, block_id)
+    refusal = delete_block_refusal(block)
+    if refusal:
+        raise HTTPException(status_code=400, detail=refusal)
     specimen_id = block.specimen_id
     deleted_no = block.block_no
+    deleted_seq = block.case_block_seq
+    case_id = block.specimen.case_id if block.specimen else None
+
+    # Case-wide letters still in the gross room: nothing carries the letters
+    # yet, so close the gap and re-letter the whole case in specimen order,
+    # whatever the delete setting says.
+    in_gross_room = False
+    if deleted_seq is not None and case_id is not None:
+        lock_case(db, case_id)
+        in_gross_room = not case_labels_fixed(db, case_id)
 
     db.delete(block)
     db.flush()
+
+    # System Settings → keep_gap: leave the hole, so blocks whose cassettes are
+    # already printed keep their number/letter. renumber (the default, and what
+    # deleting always did) closes it.
+    if not in_gross_room and configured_delete_mode(db) == DELETE_KEEP_GAP:
+        db.commit()
+        return {"message": "Block deleted"}
 
     # Renumber all subsequent blocks in ascending order so the unique
     # constraint on (specimen_id, block_no) is never violated mid-flush
@@ -355,6 +436,24 @@ def delete_block(db: Session, block_id: int):
     )
     for b in later_blocks:
         b.block_no = b.block_no - 1
+
+    if in_gross_room:
+        resequence_case_blocks(db, case_id)
+    # Case-wide letters (specimen 1, 2 / block A, B …) after the gross room:
+    # every later letter in the case moves down one, whichever specimen it
+    # belongs to.
+    elif deleted_seq is not None and case_id is not None:
+        later_in_case = (
+            db.query(SurgicalBlock)
+            .join(SurgicalSpecimen, SurgicalBlock.specimen_id == SurgicalSpecimen.id)
+            .filter(
+                SurgicalSpecimen.case_id == case_id,
+                SurgicalBlock.case_block_seq > deleted_seq,
+            )
+            .all()
+        )
+        for b in later_in_case:
+            b.case_block_seq = b.case_block_seq - 1
 
     db.commit()
     return {"message": "Block deleted"}

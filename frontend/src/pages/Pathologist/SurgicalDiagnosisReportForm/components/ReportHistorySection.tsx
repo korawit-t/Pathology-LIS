@@ -13,6 +13,7 @@ import { SurgicalReport } from "../../../../types/surgicalReport";
 import SurgicalReportService from "../../../../services/surgicalReportService";
 import StyledCard from "../../../../components/Layout/StyledCard";
 import { openPdfBlobInNewWindow } from "../../../../hooks/usePdfBlobUrl";
+import { compareSpecimenLabels } from "../../../../utils/blockLabel";
 
 const { Text } = Typography;
 
@@ -128,9 +129,7 @@ const ReportHistorySection: React.FC<Props> = ({
                 const specB = specimens.find(
                   (s) => s.id === b.surgical_specimen_id,
                 );
-                return (specA?.specimen_label || "").localeCompare(
-                  specB?.specimen_label || "",
-                );
+                return compareSpecimenLabels(specA?.specimen_label, specB?.specimen_label);
               });
 
             if (sortedItems.length === 0) return null;
@@ -203,8 +202,8 @@ const ReportHistorySection: React.FC<Props> = ({
                             sortedItems[0].linked_specimen_ids?.includes(s.id),
                           )
                           .map((s) => s.specimen_label)
-                          .sort()
-                      : specimens.map((s) => s.specimen_label).sort();
+                          .sort(compareSpecimenLabels)
+                      : specimens.map((s) => s.specimen_label).sort(compareSpecimenLabels);
 
                     if (labels.length > 0) {
                       specTitle =

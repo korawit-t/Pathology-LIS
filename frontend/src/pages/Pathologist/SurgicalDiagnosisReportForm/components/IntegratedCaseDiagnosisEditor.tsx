@@ -18,6 +18,7 @@ import {
 import SimpleTiptapEditor from "../../../../components/Editors/SimpleTiptapEditor";
 import DiagnosticTemplateSystem from "../../SurgicalDiagnosticTemplate/DiagnosticTemplateSystem";
 import type { SurgicalCase } from "../../../../types/surgical";
+import { specimenRange } from "../../../../utils/blockLabel";
 
 const { Text } = Typography;
 
@@ -51,19 +52,8 @@ const IntegratedCaseDiagnosisEditor: React.FC<
     const specs = surgicalCase?.specimens || [];
     if (specs.length === 0) return "";
 
-    const labels = specs
-      .map((s) => s.specimen_label)
-      .sort((a, b) => a.localeCompare(b));
-
-    if (labels.length === 1) return labels[0];
-
-    const firstCode = labels[0].charCodeAt(0);
-    const lastCode = labels[labels.length - 1].charCodeAt(0);
-    const isSequential = lastCode - firstCode === labels.length - 1;
-
-    return isSequential
-      ? `${labels[0]}-${labels[labels.length - 1]}`
-      : labels.join(", ");
+    // "A-C" / "1-3" for a run without gaps, else "A, C" / "1, 3"
+    return specimenRange(specs.map((s) => s.specimen_label));
   }, [surgicalCase, isCleanMode]);
 
   const handleApplyTemplate = (

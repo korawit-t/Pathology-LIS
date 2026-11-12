@@ -34,6 +34,7 @@ import WsiSettingService from "../../services/wsiSettingService";
 import SurgicalCaseService from "../../services/surgicalCaseService";
 import type { WsiFile, WsiScanResult } from "../../types/system";
 import type { SurgicalCase } from "../../types/surgical";
+import { formatBlockCode } from "../../utils/blockLabel";
 
 const { Title, Text } = Typography;
 
@@ -613,7 +614,7 @@ const WsiFileListPage: React.FC<Props> = ({ onNavigate }) => {
                           {spec.blocks?.map((blk) => (
                             <div key={blk.id} style={{ paddingLeft: 16 }}>
                               <Radio value={blk.id} style={{ fontSize: 13 }}>
-                                Block {(blk as any).block_code ?? `${spec.specimen_label}${blk.block_no}`}
+                                Block {formatBlockCode(blk as any, spec.specimen_label)}
                               </Radio>
                             </div>
                           ))}

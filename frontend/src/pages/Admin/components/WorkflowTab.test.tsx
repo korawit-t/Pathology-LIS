@@ -41,3 +41,21 @@ it("loads the IHC TAT target and saves it with the other settings", async () => 
   await waitFor(() => expect(SystemSettingService.updateSettings).toHaveBeenCalled());
   expect(vi.mocked(SystemSettingService.updateSettings).mock.calls[0][0]).toMatchObject({ ihc_tat_days: 8 });
 });
+
+it("explains the specimen / block labels in a panel under the settings", async () => {
+  vi.mocked(SystemSettingService.getSettings).mockResolvedValue({
+    surgical_label_scheme: "number_letter",
+    surgical_block_delete_mode: "keep_gap",
+  } as never);
+
+  render(<WorkflowTab />);
+
+  const header = await screen.findByText(/รายละเอียด: label ชิ้นเนื้อและ block ทำงานอย่างไร/);
+  expect(screen.queryByText(/ระบบนับว่าเคส/)).not.toBeInTheDocument();
+
+  fireEvent.click(header);
+
+  expect(await screen.findByText(/ระบบนับว่าเคส/)).toBeInTheDocument();
+  expect(screen.getByText("1: A B C E, 2: D")).toBeInTheDocument();
+  expect(screen.getByText("พิมพ์สติกเกอร์สไลด์ของเคสไปแล้ว")).toBeInTheDocument();
+});

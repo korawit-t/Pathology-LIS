@@ -84,6 +84,11 @@ export interface SystemSetting {
   enable_non_gyne_approve_system: boolean;
   nongyne_slide_dispatch_enabled: boolean;
   enable_tissue_processing_workflow: boolean;
+  /** letter_number: specimen A / block A1 (default). number_letter: specimen
+   *  1 / block A, B, C across the case. Applies to cases with no specimen yet. */
+  surgical_label_scheme?: "letter_number" | "number_letter";
+  /** Deleting a middle block: renumber closes the gap, keep_gap leaves it. */
+  surgical_block_delete_mode?: "renumber" | "keep_gap";
   require_all_pathologists_sign: boolean;
   require_all_gyne_sign: boolean;
   require_all_non_gyne_sign: boolean;

@@ -1,5 +1,8 @@
 from pydantic import ConfigDict, BaseModel, Field
-from typing import List, Optional
+from typing import List, Literal, Optional
+
+LabelScheme = Literal["letter_number", "number_letter"]
+BlockDeleteMode = Literal["renumber", "keep_gap"]
 
 
 class SystemSettingBase(BaseModel):
@@ -39,6 +42,9 @@ class SystemSettingBase(BaseModel):
     enable_non_gyne_approve_system: bool = False
     nongyne_slide_dispatch_enabled: bool = True
     enable_tissue_processing_workflow: bool = True
+    # app/utils/surgical_labels.py — A1 (default) vs specimen 1 / block A
+    surgical_label_scheme: LabelScheme = "letter_number"
+    surgical_block_delete_mode: BlockDeleteMode = "renumber"
     nilm_review_every_n: Optional[int] = 10
     require_all_pathologists_sign: Optional[bool] = None
     require_all_gyne_sign: Optional[bool] = None
@@ -139,6 +145,8 @@ class SystemSettingUpdate(SystemSettingBase):
     enable_non_gyne_approve_system: Optional[bool] = None
     nongyne_slide_dispatch_enabled: Optional[bool] = None
     enable_tissue_processing_workflow: Optional[bool] = None
+    surgical_label_scheme: Optional[LabelScheme] = None
+    surgical_block_delete_mode: Optional[BlockDeleteMode] = None
     nilm_review_every_n: Optional[int] = None
     surgical_tat_days: Optional[int] = None
     non_gyne_tat_days: Optional[int] = None

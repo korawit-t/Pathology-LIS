@@ -15,6 +15,7 @@ import { SystemSetting } from "../../../types/system";
 import dayjs from "dayjs";
 import logger from "../../../utils/logger";
 import { isStepUpRefusal } from "../../../components/auth/StepUpModal";
+import { compareSpecimenLabels } from "../../../utils/blockLabel";
 
 export const useSurgicalReport = (
   caseId: string | undefined,
@@ -78,7 +79,7 @@ export const useSurgicalReport = (
       setPathologists(pathologistsRes);
       if (caseData.specimens) {
         caseData.specimens = [...caseData.specimens].sort((a, b) =>
-          (a.specimen_label ?? "").localeCompare(b.specimen_label ?? "", undefined, { sensitivity: "base" })
+          compareSpecimenLabels(a.specimen_label, b.specimen_label)
         );
       }
       setSurgicalCase(caseData);

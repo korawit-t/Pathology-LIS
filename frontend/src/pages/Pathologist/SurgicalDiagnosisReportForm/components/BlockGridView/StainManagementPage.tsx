@@ -40,6 +40,7 @@ import NotificationRuleService from "../../../../../services/notificationRuleSer
 import { SurgicalBlock } from "../../../../../types/surgical";
 import { BlockTimelineService, BlockTimelineEntry } from "../../../../../services/blockTimelineService";
 import ManageStainPanelsModal from "./ManageStainPanelsModal";
+import { formatBlockCode } from "../../../../../utils/blockLabel";
 
 const { Text } = Typography;
 const { Search } = Input;
@@ -244,7 +245,7 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
 
       const ihcItems = staged.filter((s) => s.category === "IHC");
       const specialItems = staged.filter((s) => s.category !== "IHC");
-      const baseInfo = { hn: caseInfo?.hn ?? "-", name: caseInfo?.name ?? "-", clinician: caseInfo?.clinician ?? "-", id_case: caseInfo?.accession_no ?? caseInfo?.id_case ?? "-", block: `${defaultLabel}${selectedBlock?.block_no ?? ""}` };
+      const baseInfo = { hn: caseInfo?.hn ?? "-", name: caseInfo?.name ?? "-", clinician: caseInfo?.clinician ?? "-", id_case: caseInfo?.accession_no ?? caseInfo?.id_case ?? "-", block: formatBlockCode(selectedBlock, defaultLabel) };
       const notifyTasks: Promise<unknown>[] = [];
       if (ihcItems.length > 0) notifyTasks.push(NotificationRuleService.triggerEvent("stain_order_ihc", { ...baseInfo, tests: ihcItems.map((s) => s.name).join(", "), count: String(ihcItems.length) }));
       if (specialItems.length > 0) notifyTasks.push(NotificationRuleService.triggerEvent("stain_order_special", { ...baseInfo, tests: specialItems.map((s) => s.name).join(", "), count: String(specialItems.length) }));
@@ -371,7 +372,7 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
           <span style={{ fontSize: 16, fontWeight: 600 }}>
             Stain Orders —{" "}
             {caseInfo?.accession_no && <Tag color="blue" style={{ fontSize: 14, marginRight: 6 }}>{caseInfo.accession_no}</Tag>}
-            <span style={{ color: "#1677ff" }}>{defaultLabel}{selectedBlock?.block_no}</span>
+            <span style={{ color: "#1677ff" }}>{formatBlockCode(selectedBlock, defaultLabel)}</span>
           </span>
         </Space>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
@@ -536,7 +537,7 @@ const StainManagementPage: React.FC<StainManagementPageProps> = ({
 
       {/* ── Block History Modal ── */}
       <Modal
-        title={<Space><ClockCircleOutlined style={{ color: "#8c8c8c" }} /><span>Block History — {defaultLabel}{selectedBlock?.block_no}</span></Space>}
+        title={<Space><ClockCircleOutlined style={{ color: "#8c8c8c" }} /><span>Block History — {formatBlockCode(selectedBlock, defaultLabel)}</span></Space>}
         open={isHistoryOpen}
         onCancel={() => setIsHistoryOpen(false)}
         footer={null}

@@ -119,6 +119,32 @@ class TestUpdateSettingsRouter:
         assert r.status_code == 200
         assert r.json()["lab_name_th"] == "Updated via API"
 
+    def test_label_scheme_defaults_to_a1_and_renumber(self, db):
+        clear_system_settings(db)
+        settings = get_settings(db)
+        assert settings.surgical_label_scheme == "letter_number"
+        assert settings.surgical_block_delete_mode == "renumber"
+
+    def test_admin_can_set_label_scheme(self, admin_client, db):
+        try:
+            r = admin_client.patch(
+                "/system-settings/update",
+                json={"surgical_label_scheme": "number_letter", "surgical_block_delete_mode": "keep_gap"},
+            )
+            assert r.status_code == 200
+            assert r.json()["surgical_label_scheme"] == "number_letter"
+            assert r.json()["surgical_block_delete_mode"] == "keep_gap"
+        finally:
+            # shared row: later tests must see the default scheme
+            admin_client.patch(
+                "/system-settings/update",
+                json={"surgical_label_scheme": "letter_number", "surgical_block_delete_mode": "renumber"},
+            )
+
+    def test_rejects_unknown_label_scheme(self, admin_client):
+        r = admin_client.patch("/system-settings/update", json={"surgical_label_scheme": "roman"})
+        assert r.status_code == 422
+
     def test_admin_can_toggle_tissue_processing_workflow(self, admin_client, db):
         clear_system_settings(db)
         r = admin_client.patch(

@@ -21,6 +21,7 @@ import {
 } from "@ant-design/icons";
 import SurgicalBlockService from "../../../../../services/surgicalBlockService";
 import { SurgicalBlock } from "../../../../../types/surgical";
+import { formatBlockCode } from "../../../../../utils/blockLabel";
 import SurgicalBlockStainService from "../../../../../services/surgicalBlockStainService";
 import StainManagementPage from "./StainManagementPage";
 import styles from "./BlockGridView.module.css";
@@ -139,7 +140,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
         is_recut: true,
         recut_note: recutNote || null,
       });
-      message.success(`Recut requested for block ${defaultLabel}${recutBlock.block_no}`);
+      message.success(`Recut requested for block ${formatBlockCode(recutBlock, defaultLabel)}`);
       setRecutBlock(null);
       setRecutNote("");
       fetchBlocks();
@@ -176,7 +177,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
       ? "Entirely submitted"
       : "Representative sections are submitted";
     const parts = sorted.map((b) => {
-      const code = `${defaultLabel}${b.block_no}`;
+      const code = formatBlockCode(b, defaultLabel);
       const desc = (b.tissue_description || "").trim();
       if (b.is_tissue_uncountable)
         return desc ? `${code}(multiple fragments, ${desc})` : `${code}(multiple fragments)`;
@@ -242,7 +243,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
                 const isProcessingDecal = block.is_decal && !block.decal_end_at;
                 const isFinishedDecal = block.is_decal && block.decal_end_at;
                 return (
-                  <Tooltip title={`Click to manage stains for ${defaultLabel}${block.block_no}`}>
+                  <Tooltip title={`Click to manage stains for ${formatBlockCode(block, defaultLabel)}`}>
                     <div
                       className={`
                         ${styles.blockItem}
@@ -252,7 +253,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
                       onClick={() => handleBlockClick(block)}
                     >
                       <span className={styles.blockText}>
-                        {defaultLabel}{block.block_no}
+                        {formatBlockCode(block, defaultLabel)}
                       </span>
                       {block.is_decal && (
                         <ExperimentOutlined className={styles.decalIconMini} />
@@ -432,7 +433,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
                   <div key={block.id} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                     <div style={{ minWidth: "35px", marginTop: "2px" }}>
                       <Text strong style={{ fontSize: "13px", color: "#434343" }}>
-                        {defaultLabel}{block.block_no}:
+                        {formatBlockCode(block, defaultLabel)}:
                       </Text>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
@@ -517,7 +518,7 @@ const BlockGridView: React.FC<BlockGridViewProps> = ({
         title={
           <Space>
             <ScissorOutlined style={{ color: "#ff4d4f" }} />
-            Request Recut — Block {defaultLabel}{recutBlock?.block_no}
+            Request Recut — Block {formatBlockCode(recutBlock, defaultLabel)}
           </Space>
         }
         open={!!recutBlock}

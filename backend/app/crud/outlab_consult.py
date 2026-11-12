@@ -5,6 +5,7 @@ from app.utils.time import local_now
 from app.models.outlab_consult import OutlabConsultRun, OutlabConsultRunDetail
 from app.schemas.outlab_consult import OutlabConsultRunCreate
 from app.crud import outlab_consult_request as consult_crud
+from app.utils.surgical_labels import label_order_by
 
 def _get_next_consult_run_no(db: Session) -> str:
     current_year_short = local_now().strftime("%y")
@@ -307,7 +308,7 @@ def get_outlab_registration_info(db: Session, case_type: str, case_id: int) -> d
                 .joinedload(SurgicalBlockStain.test)
             )
             .filter(SurgicalSpecimen.case_id == case_id)
-            .order_by(SurgicalSpecimen.specimen_label)
+            .order_by(*label_order_by(SurgicalSpecimen.specimen_label))
             .all()
         )
 

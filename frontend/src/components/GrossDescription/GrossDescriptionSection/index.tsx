@@ -9,6 +9,7 @@ import GrossTemplateSystem from "../../../pages/Gross/components/GrossTemplateSy
 import BlockTableForm from "../../../pages/Gross/components/BlockTableForm";
 import StyledCard from "../../Layout/StyledCard";
 import { SurgicalSpecimen, SurgicalBlock } from "../../../types/surgical";
+import { blockRunNumber, compareSpecimenLabels, formatBlockCode } from "../../../utils/blockLabel";
 
 interface GrossUser {
   id: number;
@@ -57,6 +58,22 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
   const bumpBlockRefresh = (specId: number) =>
     setBlockRefreshMap((prev) => ({ ...prev, [specId]: (prev[specId] ?? 0) + 1 }));
 
+  // Specimen 1 / block A scheme: letters run across the whole case, so adding
+  // or deleting a block can move the letters of blocks in the other specimens
+  // too (always while the case is in the gross room; on delete afterwards when
+  // System Settings renumbers). Each table loads its own blocks, so reload the
+  // others; the one that changed already reloads itself.
+  const handleBlocksAddedOrDeleted = (specId: number, changed: SurgicalBlock[]) => {
+    if (!changed.some((b) => b.case_block_seq != null)) return;
+    setBlockRefreshMap((prev) => {
+      const next = { ...prev };
+      specimens.forEach((s) => {
+        if (s.id !== specId) next[s.id] = (prev[s.id] ?? 0) + 1;
+      });
+      return next;
+    });
+  };
+
   const [blocksMap, setBlocksMap] = useState<Record<number, SurgicalBlock[]>>({});
 
   const buildSubmittedText = (specId: number, specLabel: string): string | null => {
@@ -73,12 +90,9 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
     });
 
     const parts = Array.from(groupMap.entries()).map(([desc, groupBlocks]) => {
-      // Sort by block_no numerically within each group
-      const sorted = [...groupBlocks].sort((a, b) => {
-        const na = parseInt(String(a.block_no), 10) || 0;
-        const nb = parseInt(String(b.block_no), 10) || 0;
-        return na - nb;
-      });
+      // Sort by block_no numerically within each group (by the case-wide
+      // letter in the specimen 1 / block A scheme)
+      const sorted = [...groupBlocks].sort((a, b) => blockRunNumber(a) - blockRunNumber(b));
 
       // Build code parts, collapsing consecutive TNTC runs into ranges
       const codeParts: string[] = [];
@@ -89,21 +103,27 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
           // Extend run while next block is also TNTC and has consecutive block_no
           let j = i + 1;
           while (j < sorted.length && sorted[j].is_tissue_uncountable) {
-            const prevNo = parseInt(String(sorted[j - 1].block_no), 10);
-            const currNo = parseInt(String(sorted[j].block_no), 10);
+            const prevNo = blockRunNumber(sorted[j - 1]);
+            const currNo = blockRunNumber(sorted[j]);
             if (currNo !== prevNo + 1) break;
             j++;
           }
           if (j - i > 1) {
-            // Range: A1-A2 (multiple fragments)
-            codeParts.push(`${specLabel}${sorted[i].block_no}-${sorted[j - 1].block_no} (multiple fragments)`);
+            const first = sorted[i];
+            const last = sorted[j - 1];
+            // Range: A1-2 (multiple fragments), or A-B with case-wide letters
+            codeParts.push(
+              first.case_block_seq != null
+                ? `${formatBlockCode(first, specLabel)}-${formatBlockCode(last, specLabel)} (multiple fragments)`
+                : `${specLabel}${first.block_no}-${last.block_no} (multiple fragments)`,
+            );
           } else {
             // Single TNTC block
-            codeParts.push(`${specLabel}${b.block_no} (multiple fragments)`);
+            codeParts.push(`${formatBlockCode(b, specLabel)} (multiple fragments)`);
           }
           i = j;
         } else {
-          const code = `${specLabel}${b.block_no}`;
+          const code = formatBlockCode(b, specLabel);
           if (b.tissue_count) codeParts.push(`${code}(${b.tissue_count})`);
           else codeParts.push(code);
           i++;
@@ -140,10 +160,7 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
 
   // เรียงลำดับชิ้นเนื้อตาม Label (A1, A2, B1...)
   const sortedSpecimens = [...specimens].sort((a, b) =>
-    a.specimen_label.localeCompare(b.specimen_label, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }),
+    compareSpecimenLabels(a.specimen_label, b.specimen_label),
   );
 
   if (sortedSpecimens.length === 0) {
@@ -309,6 +326,7 @@ const GrossDescriptionSection: React.FC<GrossDescriptionSectionProps> = ({
                 onBlocksChange={(blocks) =>
                   setBlocksMap((prev) => ({ ...prev, [spec.id]: blocks }))
                 }
+                onBlocksAddedOrDeleted={(changed) => handleBlocksAddedOrDeleted(spec.id, changed)}
               />
             </div>
           </div>

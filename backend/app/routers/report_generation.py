@@ -16,6 +16,7 @@ from app.crud import llm_profile as crud_llm
 from app.crud.system_setting import get_settings
 from app.services.llm_service import call_llm, parse_json_response
 from app.utils.submitted_sections import build_submitted_sections_text, fetch_blocks_by_specimen
+from app.utils.surgical_labels import label_order_by
 
 router = APIRouter(prefix="/surgical-cases", tags=["Report Generation"])
 
@@ -78,7 +79,7 @@ def _resolve_profile_and_settings(db, case_id):
     specimens = (
         db.query(SurgicalSpecimen)
         .filter(SurgicalSpecimen.case_id == case_id)
-        .order_by(SurgicalSpecimen.specimen_label)
+        .order_by(*label_order_by(SurgicalSpecimen.specimen_label))
         .all()
     )
     if not specimens:

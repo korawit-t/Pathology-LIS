@@ -30,6 +30,7 @@ import api from "../../../../services/httpClient";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { SurgicalBlock } from "../../../../types/surgical";
 import logger from "../../../../utils/logger";
+import { formatBlockCode } from "../../../../utils/blockLabel";
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -268,7 +269,7 @@ const DecalFormModal: React.FC<DecalFormModalProps> = ({
   const decalStatus = getDecalStatus(block);
   const fixStatus = getFixStatus(block);
 
-  const blockLabel = `${block.specimen_label}${block.block_no}`;
+  const blockLabel = formatBlockCode(block);
 
   // Determine modal title status (show fixing status if block is in fix flow, else decal)
   const titleStatus = block.is_fixing || block.fix_start_at ? fixStatus : decalStatus;

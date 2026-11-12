@@ -15,6 +15,7 @@ import DecalFormModal from "../../Gross/components/DecalFormModal";
 import { SurgicalBlock } from "../../../types/surgical";
 import { User } from "../../../types/user";
 import logger from "../../../utils/logger";
+import { formatBlockCode } from "../../../utils/blockLabel";
 
 const { Text } = Typography;
 
@@ -73,7 +74,7 @@ const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, onRefreshCount }
     if (!s) return list;
     return list.filter((b) => {
       const acc = b.accession_no?.toLowerCase() || "";
-      const code = `${b.specimen_label}${b.block_no}`.toLowerCase();
+      const code = formatBlockCode(b).toLowerCase();
       return acc.includes(s) || code.includes(s);
     });
   };
@@ -107,7 +108,7 @@ const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, onRefreshCount }
     {
       title: "Block",
       key: "block_code",
-      render: (_, r) => <Tag color="blue">{r.specimen_label}{r.block_no}</Tag>,
+      render: (_, r) => <Tag color="blue">{formatBlockCode(r)}</Tag>,
     },
     {
       title: "Status",
@@ -154,7 +155,7 @@ const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, onRefreshCount }
     {
       title: "Block",
       key: "block_code",
-      render: (_, r) => <Tag color="orange">{r.specimen_label}{r.block_no}</Tag>,
+      render: (_, r) => <Tag color="orange">{formatBlockCode(r)}</Tag>,
     },
     {
       title: "Status",
@@ -207,7 +208,7 @@ const DecalQueueManager: FC<DecalQueueManagerProps> = ({ users, onRefreshCount }
     {
       title: "Block",
       key: "block_code",
-      render: (_, r) => <Tag color={tagColor}>{r.specimen_label}{r.block_no}</Tag>,
+      render: (_, r) => <Tag color={tagColor}>{formatBlockCode(r)}</Tag>,
     },
     {
       title: "Started",
