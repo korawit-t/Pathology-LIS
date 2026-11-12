@@ -17,6 +17,7 @@ import {
   OutlabConsultService,
   currentRound,
 } from "../../services/outlabConsultService";
+import { getErrorDetail } from "../../utils/errorHandler";
 
 const { Text } = Typography;
 
@@ -46,10 +47,6 @@ export interface ConsultPdfPanelProps {
   consultCaseType?: ConsultCaseType;
 }
 
-function errorDetail(err: unknown): string | undefined {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  return typeof detail === "string" ? detail : undefined;
-}
 
 /**
  * Shared "out-lab subspecialty consult" PDF view/upload/delete panel — used
@@ -166,7 +163,7 @@ const ConsultPdfPanel: React.FC<ConsultPdfPanelProps> = ({
       setRoundVersion((v) => v + 1);
       onRefresh();
     } catch (err) {
-      message.error(errorDetail(err) ?? "Failed to record consult approval");
+      message.error(getErrorDetail(err) ?? "Failed to record consult approval");
     } finally {
       setApproving(false);
     }

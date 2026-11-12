@@ -146,4 +146,33 @@ describe("CaseFlagManager — Out-Lab Consult", () => {
     expect(screen.queryByRole("button", { name: /Cancel/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
   });
+
+  it("offers a new round once the latest one is released, with an empty reason", async () => {
+    const onRequestOutLabConsult = vi.fn().mockResolvedValue(undefined);
+    renderInForm(
+      {},
+      {
+        caseId: 1,
+        isOutLabConsult: true,
+        consultStatus: "received",
+        consultReason: "First opinion",
+        consultNo: "S26-02890-C1",
+        onRequestOutLabConsult,
+        onCancelOutLabConsult: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText("C1")).toBeInTheDocument();
+    const again = screen.getByRole("button", { name: /Send again/i });
+    expect(again).toBeEnabled();
+    fireEvent.click(again);
+
+    const dialog = await screen.findByRole("dialog");
+    const reason = within(dialog).getByRole("textbox");
+    expect(reason).toHaveValue("");
+    fireEvent.change(reason, { target: { value: "Second opinion" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send to Consult Queue/i }));
+
+    await waitFor(() => expect(onRequestOutLabConsult).toHaveBeenCalledWith("Second opinion"));
+  });
 });

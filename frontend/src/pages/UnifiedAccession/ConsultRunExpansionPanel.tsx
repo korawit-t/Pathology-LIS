@@ -9,6 +9,7 @@ import dayjs from "dayjs";
 import AccessionTag from "../../components/AccessionTag";
 import { TYPE_TAG } from "./constants";
 import type { OutlabConsultRunDetailResponse } from "../../services/outlabConsultRunService";
+import ConsultRoundTag from "../../components/OutlabConsult/ConsultRoundTag";
 
 const { Text } = Typography;
 
@@ -74,6 +75,7 @@ export const ConsultRunExpansionPanel: React.FC<ConsultRunExpansionPanelProps> =
                   {TYPE_TAG[first.case_type]?.label || first.case_type}
                 </Tag>
                 <AccessionTag value={acc} />
+                <ConsultRoundTag consultNo={first.consult_no} />
               </Space>
               <Text style={{ minWidth: 160, paddingTop: 2 }}>{first.patient_name || "—"}</Text>
               <Space wrap size={[8, 4]}>

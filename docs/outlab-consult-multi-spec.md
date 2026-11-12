@@ -183,13 +183,17 @@ SELECT 'nongyne', consult_status, (consult_pdf_path IS NOT NULL), count(*)
 (`consultCaseType` prop) เพราะ approve กลายเป็นเงื่อนไขบังคับ ส่วน surgical มีปุ่ม Sign Off
 ใน `ConsultPdfModal` ที่ approve ก่อน finalize อยู่แล้ว
 
-**เฟส 2 — UI**
+**เฟส 2 — UI (เสร็จ)**
 - ✅ เคสมีคอลัมน์ cache `consult_no` (รอบล่าสุด, migration `318aaf388aec`) และแท็บ External Consult
-  ของ My Worklist แสดงรอบเป็น tag `C2` ในช่อง Consult — ช่อง Accession No. คงเป็นเลขเคสเหมือนเดิม
-- ปุ่ม "ขอ consult อีกครั้ง" เมื่อรอบล่าสุดเป็น `reported` (backend พร้อมแล้ว)
-- panel ประวัติ consult ทุกรอบบนหน้า diagnosis
-- คิว Send to Consult และ run list แสดงรอบ (`consult_no` มีใน response แล้ว)
-- ช่องกรอก `external_ref` / `external_pathologist` / `concordance`
+  ของ My Worklist แสดงรอบเป็น tag `C2` ในช่อง Consult — ช่อง Accession No. คงเป็นเลขเคสเหมือนเดิม (#375)
+- ✅ ขอ consult รอบใหม่เมื่อรอบล่าสุดเป็น `reported`:
+  surgical ใช้ปุ่ม **Send again** ใน Case Actions (`CaseFlagManager`, เหตุผลเริ่มว่าง),
+  gyne/non-gyne ใช้ปุ่ม **Request another consult** ใน panel รอบ
+- ✅ `OutlabConsultRounds` — ตารางทุกรอบบนหน้า diagnosis ทั้ง 3 type (รอบ, สถานะ, lab ปลายทาง + ref,
+  ผู้ขอ/เหตุผล, วันรับผล/ผู้ approve, ผู้อ่าน + concordance, เปิด PDF ของแต่ละรอบ)
+  และ modal แก้ ref / ผู้อ่าน / concordance — รอบที่ปล่อยแล้วแก้ได้แค่ concordance
+- ✅ tag รอบ (`ConsultRoundTag`) ในคิว Send to Consult, ตาราง run, Block tracking, Case tracker
+  และ consult run ในหน้า Unified Accession
 
 **เฟส 3 — เก็บกวาด**
 - ย้าย frontend ไปอ่านจาก consult rows แล้ว drop คอลัมน์ consult บนเคส

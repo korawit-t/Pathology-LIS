@@ -33,6 +33,9 @@ export interface OutlabConsultRunDetailResponse {
   // Whether the underlying case already has a consult PDF uploaded — lets
   // the UI offer "View PDF" instead of only "Upload PDF".
   consult_pdf_uploaded?: boolean;
+  // The consult round this line belongs to (S26-01234-C1).
+  consult_id?: number | null;
+  consult_no?: string | null;
 }
 
 export interface OutlabConsultRunResponse {

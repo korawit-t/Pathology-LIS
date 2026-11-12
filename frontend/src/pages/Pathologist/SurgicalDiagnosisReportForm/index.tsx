@@ -45,6 +45,7 @@ import FinalizeReportPage from "./components/FinalizeReportPage";
 import ReportStationSettingsModal from "./components/ReportStationSettingsModal";
 import CaseFlagManager from "./components/CaseFlagManager";
 import ConsultPdfModal from "./components/ConsultPdfModal";
+import OutlabConsultRounds from "../../../components/OutlabConsult/OutlabConsultRounds";
 import CompletedCaseModal from "./components/CompletedCaseModal";
 import CytoHistoCorrelationCard from "./components/CytoHistoCorrelationCard";
 import SurgicalReportNavigator from "./components/SurgicalReportNavigator";
@@ -231,6 +232,7 @@ const handleOpenFinalizeModal = async () => {
               ...prev,
               is_out_lab_consult: state.is_out_lab_consult,
               consult_status: state.consult_status ?? "pending",
+              consult_no: state.consult_no ?? prev.consult_no,
               consult_reason: state.consult_reason ?? reason,
             }
           : prev,
@@ -975,12 +977,28 @@ const handleOpenFinalizeModal = async () => {
                           isOutLabConsult={!!surgicalCase?.is_out_lab_consult}
                           consultStatus={surgicalCase?.consult_status}
                           consultReason={surgicalCase?.consult_reason}
+                          consultNo={surgicalCase?.consult_no}
                           onRequestOutLabConsult={handleRequestOutLabConsult}
                           onCancelOutLabConsult={handleCancelOutLabConsult}
                         />
                       </div>
                     </Col>
                   </Row>
+
+                  {surgicalCase?.is_out_lab_consult && (
+                    <OutlabConsultRounds
+                      caseType="surgical"
+                      caseId={Number(caseId)}
+                      refreshKey={[
+                        surgicalCase.consult_status,
+                        surgicalCase.consult_no,
+                        surgicalCase.consult_pdf_path,
+                        surgicalCase.consult_pdf_approved_at,
+                      ].join("|")}
+                      onChanged={refresh}
+                      canRequestAnother={false}
+                    />
+                  )}
 
                   {surgicalCase?.patient_id && (
                     <CytoHistoCorrelationCard
