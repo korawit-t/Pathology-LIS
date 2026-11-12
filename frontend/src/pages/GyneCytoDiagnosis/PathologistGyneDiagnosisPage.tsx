@@ -21,6 +21,7 @@ import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/P
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
+import OutlabConsultRounds from "../../components/OutlabConsult/OutlabConsultRounds";
 import CytoCorrelationManager from "../../components/CytoCorrelationManager";
 import CytoPathConcordanceCard from "../../components/CytoPathConcordanceCard";
 import type { SurgicalCase } from "../../types/surgical";
@@ -569,6 +570,14 @@ const PathologistGyneDiagnosisPage: React.FC<
               onGetBlob={GyneCytologyCaseService.getConsultPdfBlob}
               onRefresh={fetchCaseData}
             />
+            <div style={{ marginTop: 12 }}>
+              <OutlabConsultRounds
+                caseType="gyne"
+                caseId={Number(caseId)}
+                refreshKey={[caseData?.consult_status, caseData?.consult_no, caseData?.consult_pdf_path].join("|")}
+                onChanged={fetchCaseData}
+              />
+            </div>
           </div>
         )}
 

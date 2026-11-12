@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import MyConsultCases, { consultRound } from "./MyConsultCases";
+import MyConsultCases from "./MyConsultCases";
+import { consultRound } from "../../../services/outlabConsultService";
 import { ThemeProvider } from "../../../contexts/ThemeContext";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 

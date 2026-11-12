@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Table, Tag, Input, Space, Button, Typography, message, Segmented, Tooltip,
+  Table, Tag, Input, Space, Button, Typography, message, Segmented,
 } from "antd";
 import {
   SearchOutlined, ReloadOutlined, ClockCircleOutlined,
@@ -10,6 +10,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import SurgicalCaseService from "../../../services/surgicalCaseService";
 import type { SurgicalCase } from "../../../types/surgical";
+import ConsultRoundTag from "../../../components/OutlabConsult/ConsultRoundTag";
 
 const { Text } = Typography;
 
@@ -42,10 +43,6 @@ const CONSULT_TAG: Record<string, { color: string; icon: React.ReactNode }> = {
   processing: { color: "processing", icon: <SyncOutlined /> },
   received:   { color: "success",    icon: <CheckCircleOutlined /> },
 };
-
-/** "S26-02890-C2" → "C2"; null when the case has no consult round. */
-export const consultRound = (consultNo?: string | null): string | null =>
-  consultNo?.match(/-(C\d+)$/)?.[1] ?? null;
 
 interface Props {
   pathologistId?: number;
@@ -130,14 +127,9 @@ const MyConsultCases: React.FC<Props> = ({ pathologistId, onSelectCase, onCountC
       width: 190,
       render: (v: string, r) => {
         const cfg = CONSULT_TAG[v] ?? { color: "default", icon: null };
-        const round = consultRound(r.consult_no);
         return (
           <Space size={4}>
-            {round && (
-              <Tooltip title={r.consult_no}>
-                <Tag color="purple" style={{ marginInlineEnd: 0 }}>{round}</Tag>
-              </Tooltip>
-            )}
+            <ConsultRoundTag consultNo={r.consult_no} />
             <Tag color={cfg.color} icon={cfg.icon}>
               {v || "—"}
             </Tag>

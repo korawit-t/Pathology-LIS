@@ -27,6 +27,7 @@ import {
 import ConsultRequestModal from "../../../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../../../components/InternalConsult/ConsultHistorySection";
 import StyledCard from "../../../../components/Layout/StyledCard";
+import ConsultRoundTag from "../../../../components/OutlabConsult/ConsultRoundTag";
 import TumorRegistryModal from "./TumorRegistryModal";
 
 const { Text, Title } = Typography;
@@ -43,6 +44,8 @@ interface CaseFlagManagerProps {
   isOutLabConsult?: boolean;
   consultStatus?: string | null;
   consultReason?: string | null;
+  /** Latest consult round, e.g. "S26-01234-C2" (shown as a "C2" tag). */
+  consultNo?: string | null;
   onRequestOutLabConsult?: (reason: string) => Promise<void>;
   onCancelOutLabConsult?: () => Promise<void>;
 }
@@ -66,6 +69,7 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   isOutLabConsult,
   consultStatus,
   consultReason,
+  consultNo,
   onRequestOutLabConsult,
   onCancelOutLabConsult,
 }) => {
@@ -98,6 +102,10 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   // Only a still-queued consult can be pulled back here — once dispatched, the
   // Out-Lab module owns the case (cancel the run there instead).
   const canCancelOutLab = isOutLabConsult && (consultStatus ?? "pending") === "pending";
+  // Once the latest round has been released the case can go out again — the
+  // server opens the next round (S26-01234-C2).
+  const isRoundReleased = isOutLabConsult && consultStatus === "received";
+  const canSendOutLab = !!caseId && (!isOutLabConsult || isRoundReleased);
 
   const handleOutLabConfirm = async () => {
     if (!outLabReason.trim()) {
@@ -358,6 +366,7 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
                     <Text strong style={{ color: "#722ed1", fontSize: "13px" }}>
                       Out-Lab Consult
                     </Text>
+                    {isOutLabConsult && <ConsultRoundTag consultNo={consultNo} />}
                     {outLabState && (
                       <Tag color={outLabState.color} style={{ margin: 0, fontSize: 11 }}>
                         {outLabState.label}
@@ -395,15 +404,15 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
                     ghost
                     type="primary"
                     icon={<SendOutlined />}
-                    disabled={!caseId || !!isOutLabConsult}
-                    style={
-                      caseId && !isOutLabConsult
-                        ? { color: "#722ed1", borderColor: "#722ed1" }
-                        : undefined
-                    }
-                    onClick={() => { setOutLabReason(consultReason || ""); setOutLabOpen(true); }}
+                    disabled={!canSendOutLab}
+                    style={canSendOutLab ? { color: "#722ed1", borderColor: "#722ed1" } : undefined}
+                    onClick={() => {
+                      // A new round starts with its own reason, not the last one's.
+                      setOutLabReason(isRoundReleased ? "" : consultReason || "");
+                      setOutLabOpen(true);
+                    }}
                   >
-                    Send
+                    {isRoundReleased ? "Send again" : "Send"}
                   </Button>
                 )}
               </div>

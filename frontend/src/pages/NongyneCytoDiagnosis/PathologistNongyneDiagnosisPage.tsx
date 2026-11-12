@@ -35,6 +35,7 @@ import PathologistDiagnosisManager from "../../components/PathologistDiagnosis/P
 import ConsultRequestModal from "../../components/InternalConsult/ConsultRequestModal";
 import ConsultHistorySection from "../../components/InternalConsult/ConsultHistorySection";
 import ConsultPdfPanel from "../../components/OutlabConsult/ConsultPdfPanel";
+import OutlabConsultRounds from "../../components/OutlabConsult/OutlabConsultRounds";
 import NongyneIHCResultPanel from "./components/NongyneIHCResultPanel";
 import DiagnosticFlagToggle from "./components/DiagnosticFlagToggle";
 import NongyneSpecimenFieldsCard from "./components/NongyneSpecimenFieldsCard";
@@ -501,17 +502,25 @@ const PathologistNongyneDiagnosisPage: React.FC<Props> = ({
       >
         {/* ── Out-Lab Consult PDF ───────────────────────────────────────── */}
         {caseData?.is_out_lab_consult && (
-          <ConsultPdfPanel
-            consultCaseType="nongyne"
-            caseId={Number(caseId)}
-            isOutLabConsult={!!caseData?.is_out_lab_consult}
-            consultPdfPath={caseData?.consult_pdf_path}
-            consultStatus={caseData?.consult_status}
-            onUpload={NongyneCytologyCaseService.uploadConsultPdf}
-            onDelete={NongyneCytologyCaseService.deleteConsultPdf}
-            onGetBlob={NongyneCytologyCaseService.getConsultPdfBlob}
-            onRefresh={fetchCaseData}
-          />
+          <>
+            <ConsultPdfPanel
+              consultCaseType="nongyne"
+              caseId={Number(caseId)}
+              isOutLabConsult={!!caseData?.is_out_lab_consult}
+              consultPdfPath={caseData?.consult_pdf_path}
+              consultStatus={caseData?.consult_status}
+              onUpload={NongyneCytologyCaseService.uploadConsultPdf}
+              onDelete={NongyneCytologyCaseService.deleteConsultPdf}
+              onGetBlob={NongyneCytologyCaseService.getConsultPdfBlob}
+              onRefresh={fetchCaseData}
+            />
+            <OutlabConsultRounds
+              caseType="nongyne"
+              caseId={Number(caseId)}
+              refreshKey={[caseData?.consult_status, caseData?.consult_no, caseData?.consult_pdf_path].join("|")}
+              onChanged={fetchCaseData}
+            />
+          </>
         )}
 
         {/* ── Finalized read-only view ── */}

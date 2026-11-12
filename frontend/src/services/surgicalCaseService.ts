@@ -16,6 +16,7 @@ interface CancelCasePayload {
 export interface OutLabConsultState {
   is_out_lab_consult: boolean;
   consult_status?: string | null;
+  consult_no?: string | null;
   consult_reason?: string | null;
 }
 

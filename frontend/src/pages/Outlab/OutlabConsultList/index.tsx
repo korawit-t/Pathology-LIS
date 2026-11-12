@@ -29,6 +29,7 @@ import { usePdfPageSelector } from "../../../components/PdfPageSelector/usePdfPa
 import PdfPageThumbnailStrip from "../../../components/PdfPageSelector/PdfPageThumbnailStrip";
 import PdfPagePreviewPane from "../../../components/PdfPageSelector/PdfPagePreviewPane";
 import OutlabRegistrationModal from "./OutlabRegistrationModal";
+import ConsultRoundTag from "../../../components/OutlabConsult/ConsultRoundTag";
 
 const { Text, Title } = Typography;
 
@@ -41,6 +42,7 @@ interface ConsultCase {
   patient_name: string;
   status?: string;
   consult_status?: string;
+  consult_no?: string | null;
 }
 
 interface ExternalLab { id: number; name: string }
@@ -135,6 +137,7 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
             patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "—",
             status: c.status,
             consult_status: c.consult_status,
+            consult_no: c.consult_no,
           })),
           total: r.total || 0,
         };
@@ -150,6 +153,7 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
             patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "—",
             status: c.status,
             consult_status: c.consult_status,
+            consult_no: c.consult_no,
           })),
           total: r.total || 0,
         };
@@ -165,6 +169,7 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
             patient_name: [c.patient?.title?.title, c.patient?.name, c.patient?.ln].filter(Boolean).join(" ") || "—",
             status: c.status,
             consult_status: c.consult_status,
+            consult_no: c.consult_no,
           })),
           total: r.total || 0,
         };
@@ -277,11 +282,14 @@ const SendTab: React.FC<{ onSent: () => void; onOpenRegistration: OpenRegistrati
     {
       title: "Consult",
       dataIndex: "consult_status",
-      width: 120,
-      render: (v) => (
-        <Tag color={v === "pending" ? "orange" : v === "processing" ? "blue" : "green"}>
-          {v || "—"}
-        </Tag>
+      width: 150,
+      render: (v, r) => (
+        <Space size={4}>
+          <ConsultRoundTag consultNo={r.consult_no} />
+          <Tag color={v === "pending" ? "orange" : v === "processing" ? "blue" : "green"}>
+            {v || "—"}
+          </Tag>
+        </Space>
       ),
     },
   ];
@@ -568,7 +576,17 @@ const ReportTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigge
                   width: 100,
                   render: (v) => <Tag color={TYPE_COLOR[v]}>{v.toUpperCase()}</Tag>,
                 },
-                { title: "Accession No.", dataIndex: "accession_no", width: 140 },
+                {
+                  title: "Accession No.",
+                  dataIndex: "accession_no",
+                  width: 160,
+                  render: (v, d) => (
+                    <Space size={4}>
+                      {v}
+                      <ConsultRoundTag consultNo={d.consult_no} />
+                    </Space>
+                  ),
+                },
                 { title: "Patient", dataIndex: "patient_name" },
                 {
                   title: "Block Code",
@@ -658,8 +676,13 @@ const BlockTrackingTab: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger
     {
       title: "Accession No.",
       dataIndex: "accession_no",
-      width: 140,
-      render: (v) => <Text strong style={{ color: "#1677ff" }}>{v || "—"}</Text>,
+      width: 160,
+      render: (v, d) => (
+        <Space size={4}>
+          <Text strong style={{ color: "#1677ff" }}>{v || "—"}</Text>
+          <ConsultRoundTag consultNo={d.consult_no} />
+        </Space>
+      ),
     },
     {
       title: "Patient",
@@ -940,12 +963,15 @@ const CaseTrackingTab: React.FC<{
     {
       title: "Accession No.",
       dataIndex: "accession_no",
-      width: 140,
+      width: 170,
       render: (v, r) => (
-        <AccessionLink
-          accessionNo={v}
-          onClick={() => onOpenRegistration(r.case_type, r.case_id, r.accession_no)}
-        />
+        <Space size={4}>
+          <AccessionLink
+            accessionNo={v}
+            onClick={() => onOpenRegistration(r.case_type, r.case_id, r.accession_no)}
+          />
+          <ConsultRoundTag consultNo={r.consult_no} />
+        </Space>
       ),
     },
     {
