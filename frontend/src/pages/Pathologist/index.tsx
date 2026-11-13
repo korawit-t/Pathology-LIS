@@ -215,7 +215,7 @@ const renderWorklist = (
       key: "nongyne",
       label: (
         <span>
-          Non-Gyne <Badge count={filteredData.nonGyneTotal || 0} size="small" color="blue" />
+          Non-Gyne Cytology <Badge count={filteredData.nonGyneTotal || 0} size="small" color="blue" />
         </span>
       ),
       children: (

@@ -1,19 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Input, Table, Tag, Typography, message, Segmented, Space, Tooltip, Progress, Badge } from "antd";
+import { Input, Table, Typography, message, Segmented, Space, Tooltip, Progress, Badge } from "antd";
 
 const { Text } = Typography;
-import {
-  ExperimentOutlined,
-  ClockCircleOutlined,
-  SyncOutlined,
-  ExclamationCircleOutlined,
-  CheckCircleOutlined,
-  FileDoneOutlined,
-  LinkOutlined,
-  FireFilled,
-  HistoryOutlined,
-  CheckCircleFilled,
-} from "@ant-design/icons";
+import { FireFilled, HistoryOutlined, CheckCircleFilled } from "@ant-design/icons";
 
 import dayjs from "dayjs";
 import PageContainer from "../../components/Layout/PageContainer";
@@ -27,13 +16,28 @@ import type { User } from "../../types/user";
 import type { SystemSetting } from "../../types/system";
 import AccessionTag from "../../components/AccessionTag";
 import { calculateTATProgress } from "../../utils/tatUtils";
-import { renderConsultBadge } from "../../utils/consultBadge";
+import {
+  formatRegisteredAt,
+  renderCytotechnologistCell,
+  renderPatientCell,
+  renderSpecimenCell,
+  renderStatusCell,
+} from "./nongyneWorklistCells";
 
 interface PathologistNongyneWorklistProps {
   onSelectCase: (id: number, type: "nongyne") => void;
   standAlone?: boolean;
   refreshTrigger?: number;
 }
+
+// One line under the filter, as the Gyne tab has.
+const TAB_DESCRIPTIONS: Record<string, string> = {
+  all: "All cases assigned to you",
+  my_cases: "Cases assigned to you that are not reported yet",
+  pending: "Cases put on hold (Pending)",
+  co_sign: "Reports awaiting your signature to complete",
+  express: "Urgent (Express/Urgent) cases assigned to you",
+};
 
 const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
   onSelectCase,
@@ -170,38 +174,26 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       title: "Registered At",
       dataIndex: "registered_at",
       key: "registered_at_col",
-      width: 110,
-      render: (val: string) =>
-        val ? (
-          <div>
-            <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
-            <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
-          </div>
-        ) : "—",
+      width: 150,
+      render: (val: string) => formatRegisteredAt(val),
     },
     {
-      title: "Patient / Hospital",
+      title: "Patient",
       key: "patient",
-      render: (_: unknown, record: NongyneCytologyCase) => (
-        <div>
-          <div className="font-medium">
-            {[record.patient?.title?.title, record.patient?.name, record.patient?.ln].filter(Boolean).join(" ")}
-          </div>
-          <div className="text-xs text-gray-500">{record.hospital?.name || "ไม่ระบุหน่วยงาน"}</div>
-          <div className="text-xs text-gray-400">HN: {record.hn}</div>
-        </div>
-      ),
+      render: (_: unknown, record: NongyneCytologyCase) => renderPatientCell(record),
     },
     {
       title: "Specimen",
       dataIndex: "specimen_type",
       key: "specimen_type",
-      render: (text: string, record: NongyneCytologyCase) => (
-        <div>
-          <div className="font-medium">{text}</div>
-          <div className="text-xs text-gray-500">{record.collection_site}</div>
-        </div>
-      ),
+      width: 140,
+      render: (_: string, record: NongyneCytologyCase) => renderSpecimenCell(record),
+    },
+    {
+      title: "Cytotechnologist",
+      key: "cytotechnologist",
+      width: 170,
+      render: (_: unknown, record: NongyneCytologyCase) => renderCytotechnologistCell(record),
     },
     {
       title: (
@@ -223,13 +215,15 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         }
 
         const tat = calculateTATProgress(val, "non_gyne", settings, record.is_express, holidays);
+        // TAT can't be worked out (no SLA set): a short grey date, as Gyne shows it.
         if (!tat) {
-          return val ? (
-            <div>
-              <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
-              <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
-            </div>
-          ) : "—";
+          return (
+            <Tooltip title={formatRegisteredAt(val)}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {val ? dayjs(val).format("DD/MM/YY") : "-"}
+              </Text>
+            </Tooltip>
+          );
         }
 
         return (
@@ -266,44 +260,14 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status: string, record: NongyneCytologyCase) => {
-        const rawStatus = status ? status.toLowerCase() : "";
-        const TERMINAL = ["reported", "completed", "published", "cancelled", "pending_approval"];
-        const s = (!TERMINAL.includes(rawStatus) && record.is_screened) ? "screened" : rawStatus;
-        let color = "default";
-        let icon = <ClockCircleOutlined />;
-        let label = status ? status.toUpperCase() : "UNKNOWN";
-
-        if (s === "registered") { color = "cyan"; label = "Registered"; }
-        else if (s === "stained") { color = "blue"; icon = <ExperimentOutlined />; label = "Stained"; }
-        else if (s === "screening") { color = "geekblue"; icon = <SyncOutlined spin />; label = "Screening"; }
-        else if (s === "screened") { color = "geekblue"; icon = <CheckCircleOutlined />; label = "Screened"; }
-        else if (s === "revised") { color = "volcano"; icon = <ExclamationCircleOutlined />; label = "Revised"; }
-        else if (s === "pending_approval") { color = "gold"; label = "Pending Approval"; }
-        else if (s === "reported" || s === "completed") { color = "green"; icon = <CheckCircleOutlined />; label = "Completed"; }
-        else if (s === "published") { color = "purple"; icon = <FileDoneOutlined />; label = "Published"; }
-        else if (s === "cancelled") { color = "red"; icon = <ExclamationCircleOutlined />; label = "Cancelled"; }
-
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-            <Tag color={color} icon={icon} className="px-3 py-1 text-sm font-medium rounded-full shadow-sm">
-              {label}
-            </Tag>
-            {record.has_correlation && (
-              <Tag color="blue" icon={<LinkOutlined />} style={{ fontSize: 11 }}>
-                Correlated
-              </Tag>
-            )}
-            {renderConsultBadge(record)}
-          </div>
-        );
-      },
+      width: 160,
+      render: (_: string, record: NongyneCytologyCase) => renderStatusCell(record, { consultBadge: true }),
     },
   ];
 
   const content = (
-    <div className={standAlone ? "" : "bg-white rounded-lg"}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <Segmented
           options={[
             { label: "All", value: "all" },
@@ -338,6 +302,14 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
         </Space>
       </div>
 
+      {TAB_DESCRIPTIONS[activeTab] && (
+        <div style={{ marginBottom: 12, paddingLeft: 2 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {TAB_DESCRIPTIONS[activeTab]}
+          </Text>
+        </div>
+      )}
+
       <Table
         key={activeTab}
         columns={columns}
@@ -349,8 +321,8 @@ const PathologistNongyneWorklist: React.FC<PathologistNongyneWorklistProps> = ({
           style: { cursor: "pointer" },
         })}
         pagination={{ total, pageSize: 50, showSizeChanger: false, hideOnSinglePage: true }}
-        className={standAlone ? "border rounded-lg" : ""}
         size={standAlone ? "large" : "middle"}
+        bordered
       />
     </div>
   );

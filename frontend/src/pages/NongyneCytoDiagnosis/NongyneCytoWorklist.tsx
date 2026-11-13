@@ -3,16 +3,9 @@ import { Button, Input, Table, Tag, message, Segmented, Space, Tooltip } from "a
 import {
   ReloadOutlined,
   ExperimentOutlined,
-  ClockCircleOutlined,
-  SyncOutlined,
-  ExclamationCircleOutlined,
-  CheckCircleOutlined,
-  FileDoneOutlined,
-  LinkOutlined,
   FireFilled,
 } from "@ant-design/icons";
 
-import dayjs from "dayjs";
 import PageContainer from "../../components/Layout/PageContainer";
 import NongyneCytologyCaseService from "../../services/nongyneCytoCaseService";
 import NongyneReportService from "../../services/nongyneReportService";
@@ -20,6 +13,12 @@ import UserService from "../../services/userService";
 import { NongyneCytologyCase } from "../../types/nongyne";
 import type { User } from "../../types/user";
 import AccessionTag from "../../components/AccessionTag";
+import {
+  formatRegisteredAt,
+  renderPatientCell,
+  renderSpecimenCell,
+  renderStatusCell,
+} from "./nongyneWorklistCells";
 
 interface NongyneCytoWorklistProps {
   onSelectCase: (id: number, type: "nongyne") => void;
@@ -112,28 +111,16 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
       ),
     },
     {
-      title: "Patient / Hospital",
+      title: "Patient",
       key: "patient",
-      render: (_: unknown, record: NongyneCytologyCase) => (
-        <div>
-          <div className="font-medium">
-            {[record.patient?.title?.title, record.patient?.name, record.patient?.ln].filter(Boolean).join(" ")}
-          </div>
-          <div className="text-xs text-gray-500">{record.hospital?.name || "ไม่ระบุหน่วยงาน"}</div>
-          <div className="text-xs text-gray-400">HN: {record.hn}</div>
-        </div>
-      ),
+      render: (_: unknown, record: NongyneCytologyCase) => renderPatientCell(record),
     },
     {
       title: "Specimen",
       dataIndex: "specimen_type",
       key: "specimen_type",
-      render: (text: string, record: NongyneCytologyCase) => (
-        <div>
-          <div className="font-medium">{text}</div>
-          <div className="text-xs text-gray-500">{record.collection_site}</div>
-        </div>
-      ),
+      width: 140,
+      render: (_: string, record: NongyneCytologyCase) => renderSpecimenCell(record),
     },
     {
       title: "Registered At",
@@ -141,47 +128,15 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
       key: "registered_at",
       sorter: (a: NongyneCytologyCase, b: NongyneCytologyCase) =>
         (a.registered_at || "").localeCompare(b.registered_at || ""),
-      render: (val: string) =>
-        val ? (
-          <div>
-            <div style={{ fontSize: 13 }}>{dayjs(val).format("DD/MM/YYYY")}</div>
-            <div style={{ fontSize: 11, color: "#8c8c8c" }}>{dayjs(val).format("HH:mm")}</div>
-          </div>
-        ) : "—",
+      width: 150,
+      render: (val: string) => formatRegisteredAt(val),
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status: string, record: NongyneCytologyCase) => {
-        const s = record.is_screened ? "screened" : (status ? status.toLowerCase() : "");
-        let color = "default";
-        let icon = <ClockCircleOutlined />;
-        let label = status ? status.toUpperCase() : "UNKNOWN";
-
-        if (s === "registered") { color = "cyan"; label = "Registered"; }
-        else if (s === "stained") { color = "blue"; icon = <ExperimentOutlined />; label = "Stained"; }
-        else if (s === "screening") { color = "geekblue"; icon = <SyncOutlined spin />; label = "Screening"; }
-        else if (s === "screened") { color = "geekblue"; icon = <CheckCircleOutlined />; label = "Screened"; }
-        else if (s === "revised") { color = "volcano"; icon = <ExclamationCircleOutlined />; label = "Revised"; }
-        else if (s === "pending_approval") { color = "gold"; label = "Pending Approval"; }
-        else if (s === "reported" || s === "completed") { color = "green"; icon = <CheckCircleOutlined />; label = "Completed"; }
-        else if (s === "published") { color = "purple"; icon = <FileDoneOutlined />; label = "Published"; }
-        else if (s === "cancelled") { color = "red"; icon = <ExclamationCircleOutlined />; label = "Cancelled"; }
-
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-            <Tag color={color} icon={icon} className="px-3 py-1 text-sm font-medium rounded-full shadow-sm">
-              {label}
-            </Tag>
-            {record.has_correlation && (
-              <Tag color="blue" icon={<LinkOutlined />} style={{ fontSize: 11 }}>
-                Correlated
-              </Tag>
-            )}
-          </div>
-        );
-      },
+      width: 160,
+      render: (_: string, record: NongyneCytologyCase) => renderStatusCell(record),
     },
     {
       title: "Action",
@@ -192,7 +147,6 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
           type="primary"
           icon={<ExperimentOutlined />}
           onClick={(e) => { e.stopPropagation(); onSelectCase(record.id, "nongyne"); }}
-          className="bg-indigo-600 hover:bg-indigo-700 border-none"
         >
           Diagnosis
         </Button>
@@ -201,7 +155,7 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
   ];
 
   const content = (
-    <div className={standAlone ? "" : "bg-white rounded-lg"}>
+    <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <Segmented
           options={[
@@ -242,7 +196,6 @@ const NongyneCytoWorklist: React.FC<NongyneCytoWorklistProps> = ({
           style: { cursor: "pointer" },
         })}
         pagination={{ total, pageSize: 50, showSizeChanger: false, hideOnSinglePage: true }}
-        className={standAlone ? "border rounded-lg" : ""}
         size={standAlone ? "large" : "middle"}
       />
     </div>
