@@ -126,7 +126,13 @@ const Dashboard: React.FC = () => {
           trigger={null}
           collapsible
           collapsed={collapsed}
-          theme={isDarkMode ? "dark" : "light"}
+          // 240, not antd's 200: at 200 ten labels were cut off (Slide / Block
+          // Release, Legacy Report Import, Critical Notification Log...).
+          width={240}
+          // Always "light": the menu inside is light-themed, and the dark
+          // algorithm already turns a light Sider dark. theme="dark" painted
+          // the Sider navy behind a near-black menu.
+          theme="light"
           style={{
             borderRight: isDarkMode ? "1px solid #303030" : "1px solid #f0f0f0",
           }}

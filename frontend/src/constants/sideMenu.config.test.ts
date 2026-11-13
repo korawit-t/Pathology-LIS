@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAuthorizedMenuItems, SideMenuItem } from "./sideMenu.config";
+import { buildAuthorizedMenuItems, SIDE_MENU_CONFIG, SideMenuItem } from "./sideMenu.config";
 
 describe("buildAuthorizedMenuItems", () => {
   const fixture: SideMenuItem[] = [
@@ -58,5 +58,16 @@ describe("buildAuthorizedMenuItems", () => {
     });
 
     expect(items.map((i) => i?.key)).not.toContain("group");
+  });
+});
+
+describe("SIDE_MENU_CONFIG icons", () => {
+  // Child icons pushed their labels out of line with other groups' children
+  // and cost 24px of label width in a 240px Sider.
+  it("only top-level items carry an icon", () => {
+    const childrenWithIcons = SIDE_MENU_CONFIG.flatMap((group) =>
+      (group.children ?? []).filter((c) => c.icon).map((c) => c.label),
+    );
+    expect(childrenWithIcons).toEqual([]);
   });
 });

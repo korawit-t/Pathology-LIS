@@ -13,26 +13,15 @@ import {
   UserOutlined,
   ExperimentOutlined,
   MedicineBoxOutlined,
-  HeartOutlined,
-  SettingOutlined,
-  TeamOutlined,
   InboxOutlined,
   ScissorOutlined,
   CopyOutlined,
-  DollarOutlined,
   BarChartOutlined,
-  PrinterOutlined,
-  ExportOutlined,
   GlobalOutlined,
   ControlOutlined,
-  AuditOutlined,
-  ToolOutlined,
   SolutionOutlined,
   BankOutlined,
   CloudServerOutlined,
-  CloudUploadOutlined,
-  ImportOutlined,
-  HistoryOutlined,
   HomeOutlined,
 } from "@ant-design/icons";
 
@@ -41,6 +30,8 @@ export interface SideMenuItem {
   key: string;
   label: string;
   view?: string;
+  /** Top-level groups only: child icons pushed their text out of line with
+   *  the other groups' children and cost 24px of label width. */
   icon?: ComponentType;
   roles?: UserRole[];
   children?: SideMenuItem[];
@@ -65,28 +56,24 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       {
         key: "acc:unified",
         label: "Accession",
-        icon: InboxOutlined,
         view: "accession",
         roles: PAGE_PERMISSIONS["accession"],
       },
       {
         key: "report-lookup",
         label: "Report Archive",
-        icon: HistoryOutlined,
         view: "report-lookup",
         roles: PAGE_PERMISSIONS["report-lookup"],
       },
       {
         key: "print-report-queue",
         label: "Report Print Queue",
-        icon: PrinterOutlined,
         view: "print-report-queue",
         roles: PAGE_PERMISSIONS["print-report-queue"],
       },
       {
         key: "slide-block-release",
         label: "Slide / Block Release",
-        icon: ExportOutlined,
         view: "slide-block-release",
         roles: PAGE_PERMISSIONS["slide-block-release"],
       },
@@ -319,7 +306,6 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       {
         key: "molecular-cases",
         label: "Molecular Pathology",
-        icon: ExperimentOutlined,
         view: "molecular-cases",
         roles: PAGE_PERMISSIONS["molecular-cases"],
       },
@@ -404,28 +390,24 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       {
         key: "patients",
         label: "Patient Management",
-        icon: HeartOutlined,
         view: "patients",
         roles: PAGE_PERMISSIONS.patients,
       },
       {
         key: "settings",
         label: "Master Data",
-        icon: SettingOutlined,
         view: "settings",
         roles: PAGE_PERMISSIONS.settings,
       },
       {
         key: "billing-management",
         label: "Billing & Cost",
-        icon: DollarOutlined,
         view: "billing-management",
         roles: PAGE_PERMISSIONS["billing-management"],
       },
       {
         key: "users",
         label: "User Management",
-        icon: TeamOutlined,
         view: "users",
         roles: PAGE_PERMISSIONS.users,
       },
@@ -441,28 +423,24 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       {
         key: "system-settings",
         label: "System Settings",
-        icon: ToolOutlined,
         view: "system-settings",
         roles: PAGE_PERMISSIONS["system-settings"],
       },
       {
         key: "audit-log",
         label: "Audit Log",
-        icon: AuditOutlined,
         view: "audit-log",
         roles: PAGE_PERMISSIONS["audit-log"],
       },
       {
         key: "his-export-log",
         label: "HIS Export Log",
-        icon: CloudUploadOutlined,
         view: "his-export-log",
         roles: PAGE_PERMISSIONS["his-export-log"],
       },
       {
         key: "legacy-import",
         label: "Legacy Report Import",
-        icon: ImportOutlined,
         view: "legacy-import",
         roles: PAGE_PERMISSIONS["legacy-import"],
       },
