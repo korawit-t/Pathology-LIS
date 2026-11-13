@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  App,
   Layout,
   Button,
   Menu,
@@ -44,6 +45,12 @@ import MfaSettingsModal from "../../components/auth/MfaSettingsModal";
 import StaleChunkBoundary from "../../components/StaleChunkBoundary";
 import UpdateAvailableButton from "../../components/Layout/UpdateAvailableButton";
 import { hasRole } from "../../utils/hasRole";
+import {
+  LEAVE_CONFIRM_Z_INDEX,
+  UnsavedChangesProvider,
+  useUnsavedChangesRegistry,
+} from "../../contexts/unsavedChanges";
+import { useDashboardView } from "./useDashboardView";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -56,7 +63,9 @@ const Dashboard: React.FC = () => {
     (localStorage.getItem("layoutMode") as "side" | "top") || "top",
   );
   const [collapsed, setCollapsed] = useState(false);
-  const [currentView, setCurrentView] = useState("dashboard");
+  // menuView: the menu item to highlight, which stays on the item a report
+  // form, approval detail or other menu-less page was opened from.
+  const [currentView, setCurrentView, menuView] = useDashboardView();
   const [previousView, setPreviousView] = useState<string | null>(null);
   const [pathologistDefaultTab, setPathologistDefaultTab] = useState("surgical");
   const [selectedSpecimenId, setSelectedSpecimenId] = useState<number | null>(
@@ -67,6 +76,33 @@ const Dashboard: React.FC = () => {
   const [mfaSettingsOpen, setMfaSettingsOpen] = useState(false);
 
   const navigate = useNavigate();
+  const { modal } = App.useApp();
+  const { registry: unsavedRegistry, hasUnsavedChanges } = useUnsavedChangesRegistry();
+
+  // The menu, logo and Logout replace the page without asking it, so a page
+  // with unsaved edits (Grossing, the surgical report form) is asked here.
+  // No "Save & Leave": those pages' saves report failure with a toast, not a
+  // rejected promise, so a failed save would still navigate away.
+  const leaveCurrentPage = (go: () => void) => {
+    if (!hasUnsavedChanges()) {
+      go();
+      return;
+    }
+    modal.confirm({
+      title: "Unsaved changes",
+      content: "This page has changes that are not saved yet. Leave without saving?",
+      okText: "Leave without saving",
+      okButtonProps: { danger: true },
+      cancelText: "Stay",
+      zIndex: LEAVE_CONFIRM_Z_INDEX,
+      onOk: go,
+    });
+  };
+
+  const navigateFromMenu = (view: string) => {
+    if (view === currentView) return;
+    leaveCurrentPage(() => setCurrentView(view));
+  };
   // ดึงข้อมูล User เมื่อ Component mount
   useEffect(() => {
     const fetchUser = async () => {
@@ -120,19 +156,26 @@ const Dashboard: React.FC = () => {
   if (!user) return <Spin fullscreen tip="Loading user data..." />;
 
   return (
+    <UnsavedChangesProvider value={unsavedRegistry}>
     <Layout style={{ minHeight: "100vh", background: "transparent" }}>
       {layoutMode === "side" && (
         <Sider
           trigger={null}
           collapsible
           collapsed={collapsed}
-          theme={isDarkMode ? "dark" : "light"}
+          // 240, not antd's 200: at 200 ten labels were cut off (Slide / Block
+          // Release, Legacy Report Import, Critical Notification Log...).
+          width={240}
+          // Always "light": the menu inside is light-themed, and the dark
+          // algorithm already turns a light Sider dark. theme="dark" painted
+          // the Sider navy behind a near-black menu.
+          theme="light"
           style={{
             borderRight: isDarkMode ? "1px solid #303030" : "1px solid #f0f0f0",
           }}
         >
           <div
-            onClick={() => setCurrentView("dashboard")}
+            onClick={() => navigateFromMenu("dashboard")}
             className={`sidebar-logo-container ${isDarkMode ? "sidebar-logo-dark" : "sidebar-logo-light"}`}
             style={{
               height: 64,
@@ -166,8 +209,8 @@ const Dashboard: React.FC = () => {
 
           <SideMenu
             user={user}
-            setCurrentView={setCurrentView}
-            currentView={currentView}
+            setCurrentView={navigateFromMenu}
+            currentView={menuView}
           />
         </Sider>
       )}
@@ -210,7 +253,7 @@ const Dashboard: React.FC = () => {
               />
             ) : (
               <div
-                onClick={() => setCurrentView("dashboard")}
+                onClick={() => navigateFromMenu("dashboard")}
                 className={`sidebar-logo-container ${isDarkMode ? "sidebar-logo-dark" : "sidebar-logo-light"}`}
                 style={{ display: "flex", alignItems: "center", marginRight: 24, cursor: "pointer" }}
               >
@@ -233,7 +276,7 @@ const Dashboard: React.FC = () => {
             {layoutMode === "top" && (
               <Menu
                 mode="horizontal"
-                selectedKeys={[currentView]}
+                selectedKeys={[menuView]}
                 style={{
                   flex: 1,
                   borderBottom: "none",
@@ -241,7 +284,7 @@ const Dashboard: React.FC = () => {
                   background: "transparent",
                 }}
                 items={authorizedMenuItems}
-                onClick={({ key }) => setCurrentView(key)}
+                onClick={({ key }) => navigateFromMenu(key)}
               />
             )}
           </div>
@@ -305,7 +348,7 @@ const Dashboard: React.FC = () => {
                     icon: <LogoutOutlined />,
                     label: "Logout",
                     danger: true,
-                    onClick: logout,
+                    onClick: () => leaveCurrentPage(logout),
                   },
                 ],
               }}
@@ -431,6 +474,7 @@ const Dashboard: React.FC = () => {
         onClose={() => setChangePasswordOpen(false)}
       />
     </Layout>
+    </UnsavedChangesProvider>
   );
 };
 

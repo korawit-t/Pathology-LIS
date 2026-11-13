@@ -70,6 +70,7 @@ import { FinalizeData } from "./components/FinalizeReportPage";
 import WsiSettingService from "../../../services/wsiSettingService";
 import type { WsiFile } from "../../../types/system";
 import { getConsultLockState } from "../utils/consultLockState";
+import { useUnsavedChangesGuard } from "../../../contexts/unsavedChanges";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -295,6 +296,9 @@ const handleOpenFinalizeModal = async () => {
   // ── Auto-save & unsaved-changes guard ──────────────────────────────
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  // The dashboard menu and closing/reloading the tab ask before dropping edits;
+  // the toolbar's Back has its own Save & Leave prompt (handleBack).
+  useUnsavedChangesGuard(isDirty);
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Report-station display preferences, initialized from user.preferences

@@ -1,7 +1,8 @@
 // src/components/Layout/SideMenu.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Menu } from 'antd';
-import { SIDE_MENU_CONFIG, buildAuthorizedMenuItems, SideMenuItem } from '../../constants/sideMenu.config';
+import type { MenuProps } from 'antd';
+import { SIDE_MENU_CONFIG, buildAuthorizedMenuItems } from '../../constants/sideMenu.config';
 import SystemSettingService from '../../services/systemSettingService';
 
 /* =======================
@@ -18,16 +19,26 @@ interface SideMenuProps {
   currentView?: string;
 }
 
-/** Return the top-level group key whose subtree contains the given view */
-const findGroupKey = (
-  menus: SideMenuItem[],
-  targetView: string,
-): string | undefined => {
-  for (const menu of menus) {
-    if (!menu.children) continue;
-    const inSubtree = (items: SideMenuItem[]): boolean =>
-      items.some((item) => item.view === targetView || (item.children ? inSubtree(item.children) : false));
-    if (inSubtree(menu.children)) return menu.key;
+type BuiltItems = NonNullable<MenuProps['items']>;
+
+const childrenOf = (item: BuiltItems[number]): BuiltItems | undefined =>
+  item && 'children' in item && item.children ? (item.children as BuiltItems) : undefined;
+
+/**
+ * Top-level group, among the items this user is actually shown, that holds the
+ * view. Searching the whole config instead picked the first group with the view
+ * even when it was hidden: a pathologist on QC Review got Gyne Cytology opened
+ * (which they cannot see) and their Diagnosis group left shut.
+ */
+export const findGroupKey = (items: BuiltItems, targetView: string): string | undefined => {
+  const holds = (list: BuiltItems): boolean =>
+    list.some((i) => {
+      const kids = childrenOf(i);
+      return i?.key === targetView || (kids ? holds(kids) : false);
+    });
+  for (const item of items) {
+    const kids = childrenOf(item);
+    if (kids && holds(kids)) return String(item!.key);
   }
   return undefined;
 };
@@ -57,16 +68,16 @@ const SideMenu: React.FC<SideMenuProps> = ({ user, setCurrentView, currentView }
 
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
     if (!currentView) return [];
-    const gk = findGroupKey(SIDE_MENU_CONFIG as SideMenuItem[], currentView);
+    const gk = findGroupKey(menuItems, currentView);
     return gk ? [gk] : [];
   });
 
   // Auto-open the parent group whenever the active view changes
   useEffect(() => {
     if (!currentView) return;
-    const gk = findGroupKey(SIDE_MENU_CONFIG as SideMenuItem[], currentView);
+    const gk = findGroupKey(menuItems, currentView);
     if (gk) setOpenKeys((prev) => (prev.includes(gk) ? prev : [...prev, gk]));
-  }, [currentView]);
+  }, [currentView, menuItems]);
 
   return (
     <Menu

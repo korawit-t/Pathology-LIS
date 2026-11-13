@@ -55,6 +55,7 @@ import { prepareGrossInitialValues } from "./utils/formHelpers";
 import { useTheme } from "../../contexts/ThemeContext";
 import logger from "../../utils/logger";
 import { stripHtmlToText } from "../../utils/sanitize";
+import { useUnsavedChangesGuard } from "../../contexts/unsavedChanges";
 
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
@@ -144,13 +145,8 @@ const GrossEditView: React.FC<Props> = ({
 
   useEffect(() => { handleSaveDraftRef.current = handleSaveDraft; });
 
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (isDirty) { e.preventDefault(); }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
+  // Closing or reloading the tab, and the dashboard menu, ask before leaving.
+  useUnsavedChangesGuard(isDirty);
 
   useEffect(() => {
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
