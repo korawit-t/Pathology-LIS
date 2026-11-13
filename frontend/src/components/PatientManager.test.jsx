@@ -6,7 +6,7 @@ import TitleService from "../services/titleService";
 
 vi.mock("../services/patientService", () => ({
   default: {
-    getPatients: vi.fn(),
+    getPatientPage: vi.fn(),
     createPatient: vi.fn(),
     updatePatient: vi.fn(),
     deletePatient: vi.fn(),
@@ -28,6 +28,7 @@ const patient = (overrides = {}) => ({
 });
 
 const renderWithTheme = () => render(<ThemeProvider><PatientManager /></ThemeProvider>);
+const pageOf = (items, total = items.length) => ({ items, total });
 
 const selectGender = async (label) => {
   fireEvent.mouseDown(screen.getByText("Select Gender"));
@@ -40,44 +41,78 @@ beforeEach(() => {
 });
 
 describe("PatientManager", () => {
-  it("loads and displays patients sorted by id", async () => {
-    PatientService.getPatients.mockResolvedValue([
-      patient({ id: 2, name: "Wichai", ln: "", title: null }),
-      patient({ id: 1, name: "Somchai" }),
-    ]);
+  it("loads the first page from the server and keeps the server's order", async () => {
+    PatientService.getPatientPage.mockResolvedValue(
+      pageOf([
+        patient({ id: 2, name: "Wichai", ln: "", title: null }),
+        patient({ id: 1, name: "Somchai" }),
+      ]),
+    );
     renderWithTheme();
 
     await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
-    const cids = screen.getAllByText("1111111111111");
-    expect(cids).toHaveLength(2);
-    // id 1 (Somchai) should render before id 2 (Wichai) once sorted
+    expect(PatientService.getPatientPage).toHaveBeenCalledWith({ q: undefined, skip: 0, limit: 20 });
+    // newest first comes from the server; the page no longer re-sorts by id
     const rows = document.querySelectorAll("tbody tr");
-    expect(rows[0].textContent).toMatch(/Somchai/);
-    expect(rows[1].textContent).toMatch(/Wichai/);
+    expect(rows[0].textContent).toMatch(/Wichai/);
+    expect(rows[1].textContent).toMatch(/Somchai/);
   });
 
-  it("filters by name (case-insensitive) or CID substring", async () => {
-    PatientService.getPatients.mockResolvedValue([
-      patient({ id: 1, name: "Somchai", cid: "1111111111111" }),
-      patient({ id: 2, name: "Wichai", cid: "2222222222222" }),
-    ]);
+  it("shows the hospital: HN labels from every case type", async () => {
+    PatientService.getPatientPage.mockResolvedValue(
+      pageOf([patient({ hn: "รพ.ก: 111, รพ.ข: 222" })]),
+    );
     renderWithTheme();
+
+    expect(await screen.findByText("รพ.ก: 111")).toBeInTheDocument();
+    expect(screen.getByText("รพ.ข: 222")).toBeInTheDocument();
+  });
+
+  it("searches on the server (name, CID or HN) and goes back to page 1", async () => {
+    PatientService.getPatientPage.mockResolvedValue(pageOf([patient()], 45));
+    const { container } = renderWithTheme();
     await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText("Search by Name or CID"), { target: { value: "somc" } });
-    expect(screen.queryByText(/Wichai/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("2"));
+    await waitFor(() =>
+      expect(PatientService.getPatientPage).toHaveBeenLastCalledWith({ q: undefined, skip: 20, limit: 20 }),
+    );
 
-    fireEvent.change(screen.getByPlaceholderText("Search by Name or CID"), { target: { value: "2222222222222" } });
-    expect(screen.getByText(/Wichai/)).toBeInTheDocument();
-    expect(screen.queryByText(/Somchai/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Search by Name, CID or HN"), { target: { value: " HN123 " } });
+    fireEvent.click(container.querySelector(".anticon-search").closest("button"));
+
+    await waitFor(() =>
+      expect(PatientService.getPatientPage).toHaveBeenLastCalledWith({ q: "HN123", skip: 0, limit: 20 }),
+    );
+  });
+
+  it("searches after typing stops, without pressing Enter", async () => {
+    PatientService.getPatientPage.mockResolvedValue(pageOf([]));
+    renderWithTheme();
+    await waitFor(() => expect(PatientService.getPatientPage).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByPlaceholderText("Search by Name, CID or HN"), { target: { value: "somc" } });
+
+    await waitFor(() =>
+      expect(PatientService.getPatientPage).toHaveBeenLastCalledWith({ q: "somc", skip: 0, limit: 20 }),
+    );
+  });
+
+  it("shows the total count from the server", async () => {
+    PatientService.getPatientPage.mockResolvedValue(pageOf([patient()], 1234));
+    renderWithTheme();
+
+    expect(await screen.findByText("ทั้งหมด 1234 คน")).toBeInTheDocument();
   });
 
   it("renders gender icons for Male/Female, a Tag fallback otherwise, and a formatted birthdate", async () => {
-    PatientService.getPatients.mockResolvedValue([
-      patient({ id: 1, name: "Somchai", gender: "Male", birth_date: "1990-01-15" }),
-      patient({ id: 2, name: "Malee", gender: "Female", birth_date: null }),
-      patient({ id: 3, name: "Noname", gender: null, birth_date: null }),
-    ]);
+    PatientService.getPatientPage.mockResolvedValue(
+      pageOf([
+        patient({ id: 1, name: "Somchai", gender: "Male", birth_date: "1990-01-15" }),
+        patient({ id: 2, name: "Malee", gender: "Female", birth_date: null }),
+        patient({ id: 3, name: "Noname", gender: null, birth_date: null }),
+      ]),
+    );
     const { container } = renderWithTheme();
     await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
 
@@ -88,10 +123,10 @@ describe("PatientManager", () => {
   });
 
   it("creates a new patient, sending a null birth_date when left blank", async () => {
-    PatientService.getPatients.mockResolvedValueOnce([]).mockResolvedValueOnce([patient()]);
+    PatientService.getPatientPage.mockResolvedValueOnce(pageOf([])).mockResolvedValueOnce(pageOf([patient()]));
     PatientService.createPatient.mockResolvedValue(patient());
     renderWithTheme();
-    await waitFor(() => expect(PatientService.getPatients).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(PatientService.getPatientPage).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: /Add Patient/i }));
     fireEvent.change(await screen.findByPlaceholderText("First Name"), { target: { value: "Somchai" } });
@@ -104,10 +139,11 @@ describe("PatientManager", () => {
       ),
     );
     expect(PatientService.updatePatient).not.toHaveBeenCalled();
+    await waitFor(() => expect(PatientService.getPatientPage).toHaveBeenCalledTimes(2));
   });
 
   it("edits an existing patient via updatePatient, round-tripping the pre-filled birth_date", async () => {
-    PatientService.getPatients.mockResolvedValue([patient({ birth_date: "1990-01-01" })]);
+    PatientService.getPatientPage.mockResolvedValue(pageOf([patient({ birth_date: "1990-01-01" })]));
     PatientService.updatePatient.mockResolvedValue(patient({ name: "Somchai Updated" }));
     const { container } = renderWithTheme();
     await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
@@ -129,10 +165,10 @@ describe("PatientManager", () => {
   });
 
   it("shows the server-provided detail message when saving fails", async () => {
-    PatientService.getPatients.mockResolvedValue([]);
+    PatientService.getPatientPage.mockResolvedValue(pageOf([]));
     PatientService.createPatient.mockRejectedValue({ response: { data: { detail: "HN already exists" } } });
     renderWithTheme();
-    await waitFor(() => expect(PatientService.getPatients).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(PatientService.getPatientPage).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: /Add Patient/i }));
     fireEvent.change(await screen.findByPlaceholderText("First Name"), { target: { value: "Somchai" } });
@@ -143,7 +179,7 @@ describe("PatientManager", () => {
   });
 
   it("deletes a patient after confirming", async () => {
-    PatientService.getPatients.mockResolvedValue([patient()]);
+    PatientService.getPatientPage.mockResolvedValue(pageOf([patient()]));
     PatientService.deletePatient.mockResolvedValue({});
     const { container } = renderWithTheme();
     await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
@@ -153,12 +189,28 @@ describe("PatientManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
 
     await waitFor(() => expect(PatientService.deletePatient).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(PatientService.getPatientPage).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows why the server refused a delete (patient still has cases)", async () => {
+    PatientService.getPatientPage.mockResolvedValue(pageOf([patient()]));
+    PatientService.deletePatient.mockRejectedValue({
+      response: { status: 409, data: { detail: "ลบคนไข้รายนี้ไม่ได้ เพราะยังมีเคสในระบบ (Gyne 1)" } },
+    });
+    const { container } = renderWithTheme();
+    await waitFor(() => expect(screen.getByText(/Somchai/)).toBeInTheDocument());
+
+    fireEvent.click(container.querySelector(".ant-btn-dangerous"));
+    fireEvent.click(await screen.findByText("ยืนยันการลบ?"));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+
+    expect(await screen.findByText("ลบคนไข้รายนี้ไม่ได้ เพราะยังมีเคสในระบบ (Gyne 1)")).toBeInTheDocument();
   });
 
   it("shows an error message when loading patients fails", async () => {
-    PatientService.getPatients.mockRejectedValue(new Error("network error"));
+    PatientService.getPatientPage.mockRejectedValue(new Error("network error"));
     renderWithTheme();
 
-    expect(await screen.findByText("โหลดข้อมูลคนไข้/Master Data ไม่สำเร็จ")).toBeInTheDocument();
+    expect(await screen.findByText("โหลดข้อมูลคนไข้ไม่สำเร็จ")).toBeInTheDocument();
   });
 });

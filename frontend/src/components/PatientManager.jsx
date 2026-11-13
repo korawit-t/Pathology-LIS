@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Table,
   Button,
@@ -22,6 +22,7 @@ import {
   WomanOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs"; // ใช้สำหรับจัดการ Date
+import debounce from "lodash/debounce";
 import TitleService from "../services/titleService";
 import PatientService from "../services/patientService";
 import PageContainer from "./Layout/PageContainer";
@@ -29,8 +30,13 @@ import PageContainer from "./Layout/PageContainer";
 const { Option } = Select;
 const { Title, Text } = Typography;
 
+const DEFAULT_PAGE_SIZE = 20;
+
 const PatientManager = () => {
   const [patients, setPatients] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -39,43 +45,56 @@ const PatientManager = () => {
   // State สำหรับ Master Data Lookups
   const [titles, setTitles] = useState([]);
 
-  const [searchText, setSearchText] = useState("");
-  const filteredPatients = patients.filter(
-    (p) =>
-      (p.name && p.name.toLowerCase().includes(searchText.toLowerCase())) ||
-      (p.cid && p.cid.includes(searchText)),
-  );
+  // คำค้นที่ส่งไป server จริง — ค้นที่ server (ชื่อ/นามสกุล/CID/HN ของเคสทุกประเภท)
+  // ไม่ใช่กรองเฉพาะแถวที่โหลดมาแล้ว ไม่งั้นจะหาคนไข้นอกหน้าที่โหลดไม่เจอ
+  const [query, setQuery] = useState("");
+  // กันผลของ request เก่าที่ตอบกลับช้ามาทับผลล่าสุด
+  const requestSeq = useRef(0);
 
-  // --- 1. Fetch Data (รวม Lookups) ---
-  const fetchData = async () => {
+  // --- 1. Fetch Data ---
+  const fetchPatients = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
-      // 🚩 ดึงข้อมูลมา (ลบ schemeRes ที่ไม่ได้ใช้ออกเพื่อให้ TypeScript/ESLint ไม่บ่น)
-      const [patientList, titleList] = await Promise.all([
-        PatientService.getPatients(),
-        TitleService.getTitles(),
-      ]);
-
-      // ✅ patientList คือ Array ของคนไข้แล้ว (เพราะ Service แกะ res.data มาให้แล้ว)
-      // ใช้ spread operator [...] เพื่อ clone array ก่อนทำการ sort
-      if (Array.isArray(patientList)) {
-        setPatients([...patientList].sort((a, b) => a.id - b.id));
-      }
-
-      // ✅ ทำแบบเดียวกันกับ titles
-      const rawTitles = titleList?.data || titleList; // เผื่อ TitleService ยังไม่ได้แกะ res.data
-      setTitles(Array.isArray(rawTitles) ? rawTitles : []);
+      const res = await PatientService.getPatientPage({
+        q: query || undefined,
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
+      });
+      if (seq !== requestSeq.current) return;
+      setPatients(Array.isArray(res?.items) ? res.items : []);
+      setTotal(res?.total ?? 0);
     } catch (err) {
-      console.error("Error fetching data:", err);
-      message.error("โหลดข้อมูลคนไข้/Master Data ไม่สำเร็จ");
+      if (seq !== requestSeq.current) return;
+      console.error("Error fetching patients:", err);
+      message.error("โหลดข้อมูลคนไข้ไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  };
+  }, [query, page, pageSize]);
 
   useEffect(() => {
-    fetchData();
+    fetchPatients();
+  }, [fetchPatients]);
+
+  useEffect(() => {
+    TitleService.getTitles()
+      .then((titleList) => {
+        const rawTitles = titleList?.data || titleList; // เผื่อ TitleService ยังไม่ได้แกะ res.data
+        setTitles(Array.isArray(rawTitles) ? rawTitles : []);
+      })
+      .catch((err) => {
+        console.error("Error fetching titles:", err);
+        message.error("โหลด Master Data คำนำหน้าไม่สำเร็จ");
+      });
   }, []);
+
+  const applySearch = useCallback((value) => {
+    setQuery((value || "").trim());
+    setPage(1);
+  }, []);
+  const debouncedApplySearch = useMemo(() => debounce(applySearch, 400), [applySearch]);
+  useEffect(() => () => debouncedApplySearch.cancel(), [debouncedApplySearch]);
 
   // --- 2. Handle Submit (Create/Update) ---
   const handleSubmit = async (values) => {
@@ -98,10 +117,13 @@ const PatientManager = () => {
         message.success("เพิ่มข้อมูลคนไข้สำเร็จ");
       }
 
+      const wasEditing = editingId;
       setIsModalOpen(false);
       form.resetFields();
       setEditingId(null);
-      fetchData(); // โหลดข้อมูลใหม่
+      // คนไข้ใหม่อยู่บนสุดของหน้า 1 (เรียงใหม่สุดก่อน)
+      if (!wasEditing && page !== 1) setPage(1);
+      else fetchPatients();
     } catch (err) {
       console.error(err.response?.data);
       message.error(
@@ -116,9 +138,12 @@ const PatientManager = () => {
     try {
       await PatientService.deletePatient(id);
       message.success("ลบข้อมูลคนไข้สำเร็จ");
-      fetchData();
-    } catch {
-      message.error("ลบข้อมูลไม่สำเร็จ");
+      // ลบแถวสุดท้ายของหน้าสุดท้าย → ถอยไปหน้าก่อน แทนที่จะค้างหน้าว่าง
+      if (patients.length === 1 && page > 1) setPage(page - 1);
+      else fetchPatients();
+    } catch (err) {
+      // 409 จาก backend บอกว่าคนไข้ยังมีเคสประเภทไหนอยู่กี่เคส
+      message.error(err.response?.data?.detail || "ลบข้อมูลไม่สำเร็จ");
     }
   };
 
@@ -149,6 +174,20 @@ const PatientManager = () => {
           <Text>{[text, record.ln].filter(Boolean).join(" ")}</Text>
         </span>
       ),
+    },
+    {
+      // "รพ.: HN" จากเคสทุกประเภท (surgical / gyne / non-gyne / molecular)
+      title: "HN",
+      dataIndex: "hn",
+      width: 220,
+      render: (hn) =>
+        hn
+          ? hn.split(", ").map((label) => (
+              <div key={label}>
+                <Text>{label}</Text>
+              </div>
+            ))
+          : "-",
     },
     {
       title: "Gender",
@@ -216,10 +255,14 @@ const PatientManager = () => {
 
         <Space>
           <Input.Search
-            placeholder="Search by Name or CID"
-            style={{ width: 250 }}
+            placeholder="Search by Name, CID or HN"
+            style={{ width: 280 }}
             allowClear
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e) => debouncedApplySearch(e.target.value)}
+            onSearch={(value) => {
+              debouncedApplySearch.cancel();
+              applySearch(value);
+            }}
           />
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
             Add Patient
@@ -228,12 +271,27 @@ const PatientManager = () => {
       </div>
 
       <Table
-        dataSource={filteredPatients}
+        dataSource={patients}
         columns={columns}
         rowKey="id"
         loading={loading}
         variant
-        pagination={{ pageSize: 10 }}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100],
+          showTotal: (count) => `ทั้งหมด ${count} คน`,
+          onChange: (nextPage, nextSize) => {
+            if (nextSize !== pageSize) {
+              setPageSize(nextSize);
+              setPage(1);
+            } else {
+              setPage(nextPage);
+            }
+          },
+        }}
       />
 
       <Modal
