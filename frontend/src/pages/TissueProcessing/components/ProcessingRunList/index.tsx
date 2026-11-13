@@ -31,6 +31,7 @@ import {
   TissueProcessingRun,
   GroupedAccession,
   TissueProcessingRunView,
+  TissueProcessingRunStatus,
 } from "../../../../types/tissueProcessing";
 import "../../../../styles/table-common.css";
 
@@ -38,9 +39,12 @@ const { Title, Text } = Typography;
 
 interface ProcessingRunListProps {
   refreshKey?: number;
+  /** Only list runs in this status (Process Out passes "processing"). */
+  status?: TissueProcessingRunStatus;
+  emptyText?: string;
 }
 
-const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => {
+const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey, status, emptyText }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [runs, setRuns] = useState<TissueProcessingRunView[]>([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
@@ -58,7 +62,7 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
   const fetchRuns = async () => {
     setLoading(true);
     try {
-      const data = await TissueProcessingService.getRuns();
+      const data = await TissueProcessingService.getRuns(status ? { status } : undefined);
       setRuns(data); // ✅ ใช้ข้อมูลที่ fetch มา
     } catch (error) {
       message.error("Failed to load processing runs.");
@@ -69,7 +73,8 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
 
   useEffect(() => {
     fetchRuns();
-  }, [refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey, status]);
 
   const handleComplete = (id: number) => {
     setTargetRunId(id);
@@ -141,6 +146,7 @@ const ProcessingRunList: React.FC<ProcessingRunListProps> = ({ refreshKey }) => 
           size="middle"
           columns={columns}
           dataSource={runs}
+          locale={emptyText ? { emptyText } : undefined}
           rowKey="id"
           loading={loading}
           bordered

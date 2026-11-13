@@ -312,7 +312,7 @@ const NongyneSpecimenDisposal: React.FC = () => {
       title={
         <Title level={3} style={{ margin: 0 }}>
           <ExperimentOutlined style={{ marginRight: 8, color: "#595959" }} />
-          จัดเก็บและทำลายสิ่งส่งตรวจ Non-Gyne Cytology
+          Non-Gyne Specimen Storage & Disposal
         </Title>
       }
     >

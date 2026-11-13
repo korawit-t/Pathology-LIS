@@ -5,6 +5,10 @@ import type { MenuProps } from "antd";
 import type { UserRole } from "./roles.constants";
 import { PAGE_PERMISSIONS } from "./pagePermissions";
 
+/** Roles that can open a page but do not already see it in another menu group. */
+const notShownIn = (roles: UserRole[], shownElsewhere: UserRole[]): UserRole[] =>
+  roles.filter((r) => !shownElsewhere.includes(r));
+
 import {
   UserOutlined,
   ExperimentOutlined,
@@ -186,13 +190,13 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
     children: [
       {
         key: "gyne-cyto-run-list",
-        label: "Staining",
+        label: "Staining Runs",
         view: "gyne-cyto-run-list",
         roles: PAGE_PERMISSIONS["gyne-cyto-run-list"],
       },
       {
         key: "gyne-cyto-work-list",
-        label: "Diagnosis",
+        label: "Worklist",
         view: "gyne-cyto-work-list",
         roles: PAGE_PERMISSIONS["gyne-cyto-work-list"],
       },
@@ -214,13 +218,13 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
     children: [
       {
         key: "nongyne-cyto-stains",
-        label: "Staining Batch",
+        label: "Staining Runs",
         view: "nongyne-cyto-stains",
         roles: PAGE_PERMISSIONS["nongyne-cyto-stains"],
       },
       {
         key: "nongyne-cyto-work-list",
-        label: "Diagnosis",
+        label: "Worklist",
         view: "nongyne-cyto-work-list",
         roles: PAGE_PERMISSIONS["nongyne-cyto-work-list"],
       },
@@ -254,13 +258,13 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
     children: [
       {
         key: "staining-manager",
-        label: "Internal Stain Orders",
+        label: "Stain Orders",
         view: "staining-manager",
         roles: PAGE_PERMISSIONS["staining-manager"],
       },
       {
         key: "staining-run",
-        label: "Internal Staining Run",
+        label: "Staining Runs",
         view: "staining-run",
         roles: PAGE_PERMISSIONS["staining-manager"],
       },
@@ -270,30 +274,30 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
   // ===== Outlab (External Services) =====
   {
     key: "outlab-workflow",
-    label: "External Lab",
+    label: "Outlab",
     icon: GlobalOutlined,
     children: [
       {
         key: "outlab-stain-tracking",
-        label: "External Tracking",
+        label: "Send & Track",
         view: "outlab-management",
         roles: PAGE_PERMISSIONS["outlab-management"],
       },
       {
         key: "outlab-stain-run",
-        label: "External Runs",
+        label: "Staining Runs",
         view: "outlab-run-list",
         roles: PAGE_PERMISSIONS["outlab-run-list"],
       },
       {
         key: "outlab-consult-list",
-        label: "Consult Request",
+        label: "Consults",
         view: "outlab-consult-list",
         roles: PAGE_PERMISSIONS["outlab-consult-list"],
       },
       {
         key: "outlab-test-queue",
-        label: "Outlab Test Queue",
+        label: "Test Queue",
         view: "outlab-test-queue",
         roles: PAGE_PERMISSIONS["outlab-test-queue"],
       },
@@ -323,17 +327,19 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
         key: "diagnosis-gyne-qc-review",
         label: "QC Review",
         view: "gyne-qc-review",
-        roles: PAGE_PERMISSIONS["gyne-qc-review"],
+        // Pathologists' way in: everyone else sees it under Gyne Cytology.
+        roles: notShownIn(PAGE_PERMISSIONS["gyne-qc-review"], PAGE_PERMISSIONS["gyne-cyto-cases"]),
       },
       {
         key: "all-report",
         label: "Report Archive",
         view: "all-report",
-        roles: PAGE_PERMISSIONS["all-report"],
+        // Same page as Front Desk > Report Archive; only for roles not shown that one.
+        roles: notShownIn(PAGE_PERMISSIONS["all-report"], PAGE_PERMISSIONS["report-lookup"]),
       },
       {
         key: "approval",
-        label: "Approval",
+        label: "Pending Approvals",
         view: "approval",
         roles: PAGE_PERMISSIONS["approval"],
       },
