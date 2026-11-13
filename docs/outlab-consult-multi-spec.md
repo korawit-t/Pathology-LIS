@@ -194,6 +194,9 @@ SELECT 'nongyne', consult_status, (consult_pdf_path IS NOT NULL), count(*)
   และ modal แก้ ref / ผู้อ่าน / concordance — รอบที่ปล่อยแล้วแก้ได้แค่ concordance
 - ✅ tag รอบ (`ConsultRoundTag`) ในคิว Send to Consult, ตาราง run, Block tracking, Case tracker
   และ consult run ในหน้า Unified Accession
+- ✅ จำนวนรอบ (`liveRoundCount` — ไม่นับรอบที่ยกเลิก เพราะยกเลิกได้แค่ก่อน dispatch แต่ยังกินเลข
+  จึง `C3` อาจเท่ากับ 2 รอบ): Badge บนหัว panel รอบ + "N cancelled", และลิงก์ "N rounds"
+  ใน Case Actions ของ surgical ที่เลื่อนไปที่ panel — หน้า Sign-out ไม่แสดงประวัติรอบ
 
 **เฟส 3 — เก็บกวาด**
 - ย้าย frontend ไปอ่านจาก consult rows แล้ว drop คอลัมน์ consult บนเคส

@@ -77,6 +77,25 @@ describe("OutlabConsultRounds", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("counts the rounds in its title, cancelled ones apart, and hands them to the page", async () => {
+    const rounds = [
+      round(),
+      round({ id: 2, seq: 2, consult_no: "C26-00010-C2", status: "cancelled", has_result_pdf: false }),
+      round({ id: 3, seq: 3, consult_no: "C26-00010-C3", status: "sent", has_result_pdf: false }),
+    ];
+    vi.mocked(OutlabConsultService.listForCase).mockResolvedValue(rounds as never);
+    const onRoundsLoaded = vi.fn();
+    const { container } = renderRounds({ onRoundsLoaded, id: "rounds-anchor" });
+
+    expect(await screen.findByText("C3")).toBeInTheDocument();
+    const head = container.querySelector(".ant-card-head") as HTMLElement;
+    // C3 is the latest number, but only two rounds went out.
+    expect(head.querySelector(".ant-badge-count")).toHaveTextContent("2");
+    expect(within(head).getByText("1 cancelled")).toBeInTheDocument();
+    expect(container.querySelector("#rounds-anchor")).not.toBeNull();
+    expect(onRoundsLoaded).toHaveBeenLastCalledWith(rounds);
+  });
+
   it("does not offer another round while one is still open", async () => {
     vi.mocked(OutlabConsultService.listForCase).mockResolvedValue([
       round(),

@@ -28,9 +28,10 @@ import ConsultRequestModal from "../../../../components/InternalConsult/ConsultR
 import ConsultHistorySection from "../../../../components/InternalConsult/ConsultHistorySection";
 import StyledCard from "../../../../components/Layout/StyledCard";
 import ConsultRoundTag from "../../../../components/OutlabConsult/ConsultRoundTag";
+import { roundCountLabel } from "../../../../services/outlabConsultService";
 import TumorRegistryModal from "./TumorRegistryModal";
 
-const { Text, Title } = Typography;
+const { Text, Title, Link } = Typography;
 const { TextArea } = Input;
 
 interface CaseFlagManagerProps {
@@ -46,6 +47,11 @@ interface CaseFlagManagerProps {
   consultReason?: string | null;
   /** Latest consult round, e.g. "S26-01234-C2" (shown as a "C2" tag). */
   consultNo?: string | null;
+  /** Rounds the case has had, cancelled ones left out — the C number alone
+   * can't say, since a cancelled round still uses one up. */
+  consultRoundCount?: number;
+  /** Scrolls to the rounds panel; the count is a link when it's given. */
+  onShowConsultRounds?: () => void;
   onRequestOutLabConsult?: (reason: string) => Promise<void>;
   onCancelOutLabConsult?: () => Promise<void>;
 }
@@ -70,6 +76,8 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
   consultStatus,
   consultReason,
   consultNo,
+  consultRoundCount = 0,
+  onShowConsultRounds,
   onRequestOutLabConsult,
   onCancelOutLabConsult,
 }) => {
@@ -373,16 +381,31 @@ const CaseFlagManager: React.FC<CaseFlagManagerProps> = ({
                       </Tag>
                     )}
                   </Space>
-                  {isOutLabConsult && consultReason && (
-                    <Tooltip title={consultReason}>
-                      <Text
-                        type="secondary"
-                        ellipsis
-                        style={{ fontSize: "10px", paddingLeft: 22, maxWidth: 200 }}
-                      >
-                        {consultReason}
-                      </Text>
-                    </Tooltip>
+                  {isOutLabConsult && (consultRoundCount > 0 || consultReason) && (
+                    <Flex gap={6} align="center" style={{ paddingLeft: 22, minWidth: 0 }}>
+                      {consultRoundCount > 0 &&
+                        (onShowConsultRounds ? (
+                          <Tooltip title="Show every round">
+                            <Link
+                              onClick={onShowConsultRounds}
+                              style={{ fontSize: 11, whiteSpace: "nowrap", color: "#722ed1" }}
+                            >
+                              {roundCountLabel(consultRoundCount)}
+                            </Link>
+                          </Tooltip>
+                        ) : (
+                          <Text style={{ fontSize: 11, whiteSpace: "nowrap", color: "#722ed1" }}>
+                            {roundCountLabel(consultRoundCount)}
+                          </Text>
+                        ))}
+                      {consultReason && (
+                        <Tooltip title={consultReason}>
+                          <Text type="secondary" ellipsis style={{ fontSize: "10px", maxWidth: 200 }}>
+                            {consultReason}
+                          </Text>
+                        </Tooltip>
+                      )}
+                    </Flex>
                   )}
                 </Flex>
                 {canCancelOutLab ? (

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Badge, Button, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { EditOutlined, FilePdfOutlined, HistoryOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -15,6 +15,8 @@ import {
   OutlabConsultRound,
   OutlabConsultService,
   isOpenRound,
+  liveRoundCount,
+  roundCountLabel,
 } from "../../services/outlabConsultService";
 import { getErrorDetail } from "../../utils/errorHandler";
 
@@ -51,6 +53,11 @@ export interface OutlabConsultRoundsProps {
    * Actions panel already has the Out-Lab Consult button. */
   canRequestAnother?: boolean;
   readOnly?: boolean;
+  /** Called with the rounds every time they are read, so the page can show
+   * the count somewhere else (surgical Case Actions). */
+  onRoundsLoaded?: (rounds: OutlabConsultRound[]) => void;
+  /** The card's DOM id, for scrolling to it. */
+  id?: string;
 }
 
 /**
@@ -66,6 +73,8 @@ const OutlabConsultRounds: React.FC<OutlabConsultRoundsProps> = ({
   onChanged,
   canRequestAnother = true,
   readOnly = false,
+  onRoundsLoaded,
+  id,
 }) => {
   const [rounds, setRounds] = useState<OutlabConsultRound[]>([]);
   const [version, setVersion] = useState(0);
@@ -91,6 +100,12 @@ const OutlabConsultRounds: React.FC<OutlabConsultRoundsProps> = ({
     };
   }, [caseType, caseId, refreshKey, version]);
 
+  // Its own effect, not the fetch's: a new callback each render must not
+  // re-read the rounds, and handing back the same array is a no-op setState.
+  useEffect(() => {
+    onRoundsLoaded?.(rounds);
+  }, [rounds, onRoundsLoaded]);
+
   useEffect(() => {
     if (!requestOpen || labs.length) return;
     ExternalLabService.getExternalLabs(true)
@@ -101,6 +116,8 @@ const OutlabConsultRounds: React.FC<OutlabConsultRoundsProps> = ({
   if (rounds.length === 0) return null;
 
   const hasOpenRound = rounds.some(isOpenRound);
+  const roundCount = liveRoundCount(rounds);
+  const cancelledCount = rounds.length - roundCount;
   const reload = () => {
     setVersion((v) => v + 1);
     onChanged?.();
@@ -285,6 +302,7 @@ const OutlabConsultRounds: React.FC<OutlabConsultRoundsProps> = ({
 
   return (
     <StyledCard
+      id={id}
       size="small"
       style={{ borderRadius: 12 }}
       title={
@@ -293,6 +311,14 @@ const OutlabConsultRounds: React.FC<OutlabConsultRoundsProps> = ({
           <Text strong style={{ color: "#722ed1" }}>
             Out-Lab Consult Rounds
           </Text>
+          <Tooltip title={roundCountLabel(roundCount)}>
+            <Badge count={roundCount} color="#722ed1" />
+          </Tooltip>
+          {cancelledCount > 0 && (
+            <Text type="secondary" style={{ fontSize: 12, fontWeight: "normal" }}>
+              {cancelledCount} cancelled
+            </Text>
+          )}
         </Space>
       }
       extra={

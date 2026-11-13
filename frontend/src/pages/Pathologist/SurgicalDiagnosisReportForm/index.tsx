@@ -46,6 +46,7 @@ import ReportStationSettingsModal from "./components/ReportStationSettingsModal"
 import CaseFlagManager from "./components/CaseFlagManager";
 import ConsultPdfModal from "./components/ConsultPdfModal";
 import OutlabConsultRounds from "../../../components/OutlabConsult/OutlabConsultRounds";
+import { liveRoundCount, type OutlabConsultRound } from "../../../services/outlabConsultService";
 import CompletedCaseModal from "./components/CompletedCaseModal";
 import CytoHistoCorrelationCard from "./components/CytoHistoCorrelationCard";
 import SurgicalReportNavigator from "./components/SurgicalReportNavigator";
@@ -72,6 +73,8 @@ import { getConsultLockState } from "../utils/consultLockState";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+const CONSULT_ROUNDS_ANCHOR = "outlab-consult-rounds";
 
 interface Props {
   user: User;
@@ -113,6 +116,13 @@ const SurgicalReportForm: React.FC<Props> = ({
 
   const [consultPdfPopupOpen, setConsultPdfPopupOpen] = useState(false);
   const consultPdfPopupShownRef = useRef(false);
+  // Read by the rounds panel; Case Actions shows how many there are.
+  const [consultRounds, setConsultRounds] = useState<OutlabConsultRound[]>([]);
+  const showConsultRounds = useCallback(() => {
+    document
+      .getElementById(CONSULT_ROUNDS_ANCHOR)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const [completedCasePopupOpen, setCompletedCasePopupOpen] = useState(false);
   const completedCasePopupShownRef = useRef(false);
@@ -978,6 +988,10 @@ const handleOpenFinalizeModal = async () => {
                           consultStatus={surgicalCase?.consult_status}
                           consultReason={surgicalCase?.consult_reason}
                           consultNo={surgicalCase?.consult_no}
+                          consultRoundCount={
+                            surgicalCase?.is_out_lab_consult ? liveRoundCount(consultRounds) : 0
+                          }
+                          onShowConsultRounds={showConsultRounds}
                           onRequestOutLabConsult={handleRequestOutLabConsult}
                           onCancelOutLabConsult={handleCancelOutLabConsult}
                         />
@@ -987,6 +1001,7 @@ const handleOpenFinalizeModal = async () => {
 
                   {surgicalCase?.is_out_lab_consult && (
                     <OutlabConsultRounds
+                      id={CONSULT_ROUNDS_ANCHOR}
                       caseType="surgical"
                       caseId={Number(caseId)}
                       refreshKey={[
@@ -997,6 +1012,7 @@ const handleOpenFinalizeModal = async () => {
                       ].join("|")}
                       onChanged={refresh}
                       canRequestAnother={false}
+                      onRoundsLoaded={setConsultRounds}
                     />
                   )}
 

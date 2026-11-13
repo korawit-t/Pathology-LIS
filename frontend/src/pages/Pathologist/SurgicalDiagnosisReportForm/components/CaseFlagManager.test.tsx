@@ -147,6 +147,51 @@ describe("CaseFlagManager — Out-Lab Consult", () => {
     expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
   });
 
+  it("says how many rounds the case has had and jumps to them", () => {
+    const onShowConsultRounds = vi.fn();
+    renderInForm(
+      {},
+      {
+        caseId: 1,
+        isOutLabConsult: true,
+        consultStatus: "processing",
+        consultReason: "Second opinion",
+        consultNo: "S26-02890-C3",
+        consultRoundCount: 2,
+        onShowConsultRounds,
+        onRequestOutLabConsult: vi.fn(),
+        onCancelOutLabConsult: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText("C3")).toBeInTheDocument();
+    expect(screen.getByText("Second opinion")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("2 rounds"));
+    expect(onShowConsultRounds).toHaveBeenCalledTimes(1);
+  });
+
+  it("says 1 round, as plain text when there is nowhere to jump", () => {
+    renderInForm(
+      {},
+      {
+        caseId: 1,
+        isOutLabConsult: true,
+        consultStatus: "pending",
+        consultNo: "S26-02890-C1",
+        consultRoundCount: 1,
+        onRequestOutLabConsult: vi.fn(),
+        onCancelOutLabConsult: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText("1 round").closest("a")).toBeNull();
+  });
+
+  it("shows no count before the case has been sent", () => {
+    renderInForm({}, { caseId: 1, consultRoundCount: 0, onRequestOutLabConsult: vi.fn() });
+    expect(screen.queryByText(/^\d+ rounds?$/)).not.toBeInTheDocument();
+  });
+
   it("offers a new round once the latest one is released, with an empty reason", async () => {
     const onRequestOutLabConsult = vi.fn().mockResolvedValue(undefined);
     renderInForm(
