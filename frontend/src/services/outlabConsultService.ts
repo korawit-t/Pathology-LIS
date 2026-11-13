@@ -59,6 +59,15 @@ export const isOpenRound = (round: OutlabConsultRound): boolean => OPEN_STATUSES
 export const consultRound = (consultNo?: string | null): string | null =>
   consultNo?.match(/-(C\d+)$/)?.[1] ?? null;
 
+/** How many rounds the case has had, cancelled ones left out: a round can only
+ * be cancelled before it is dispatched, so it never went to the lab. Its
+ * number is still used up, so "C3" can mean two rounds. */
+export const liveRoundCount = (rounds: OutlabConsultRound[]): number =>
+  rounds.filter((r) => r.status !== "cancelled").length;
+
+/** "1 round", "2 rounds". */
+export const roundCountLabel = (count: number): string => `${count} ${count === 1 ? "round" : "rounds"}`;
+
 /** The round still in progress, else the latest one that wasn't cancelled. */
 export function currentRound(rounds: OutlabConsultRound[]): OutlabConsultRound | undefined {
   const live = rounds.filter((r) => r.status !== "cancelled");
