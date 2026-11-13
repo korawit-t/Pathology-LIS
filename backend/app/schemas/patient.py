@@ -1,6 +1,6 @@
 from pydantic import ConfigDict, BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 from app.schemas.organization import TitleResponse
 
 
@@ -35,3 +35,10 @@ class PatientResponse(PatientBase):
     title: Optional[TitleResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PatientPageResponse(BaseModel):
+    """One page of the Patient Management list plus how many match in total."""
+
+    items: List[PatientResponse]
+    total: int

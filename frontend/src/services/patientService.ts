@@ -28,6 +28,17 @@ export interface GyneCytoHistoryItem {
   correlation_id?: number | null;
 }
 
+export interface PatientPage {
+  items: Patient[];
+  total: number;
+}
+
+export interface PatientPageParams {
+  q?: string;
+  skip?: number;
+  limit?: number;
+}
+
 const PatientService = {
   /**
    * ดึงข้อมูลคนไข้ทั้งหมด (รองรับการ Search ด้วยชื่อหรือ HN ผ่าน query params)
@@ -36,6 +47,15 @@ const PatientService = {
     const res = await api.get<Patient[]>("/patients", {
       params: { q: q },
     });
+    return res.data;
+  },
+
+  /**
+   * หน้า Patient Management: ค้นด้วยชื่อ/นามสกุล/CID/HN ของเคสทุกประเภทฝั่ง server
+   * แล้วคืนทีละหน้าพร้อม total (ใหม่สุดก่อน)
+   */
+  getPatientPage: async (params: PatientPageParams = {}): Promise<PatientPage> => {
+    const res = await api.get<PatientPage>("/patients/page", { params });
     return res.data;
   },
 

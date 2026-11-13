@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 
 from app.db.database import get_db
-from app.schemas.patient import PatientCreate, PatientUpdate, PatientResponse
+from app.schemas.patient import (
+    PatientCreate,
+    PatientPageResponse,
+    PatientResponse,
+    PatientUpdate,
+)
 from app.crud import patient as crud
 from app.models.surgical_case import SurgicalCase
 from app.schemas.surgical_case import SurgicalCaseResponse
@@ -26,6 +31,20 @@ def read_all_patients(
     db: Session = Depends(get_db),
 ):
     return crud.get_patients(db, q=q, skip=skip, limit=limit)
+
+
+# Declared before /{patient_id} so "page" is not read as a patient id.
+@router.get("/page", response_model=PatientPageResponse)
+def read_patient_page(
+    q: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """Patient Management list: search by name, CID or the HN of any case type
+    (surgical, gyne, non-gyne, molecular), newest first, with a total."""
+    items, total = crud.search_patients(db, q=q, skip=skip, limit=limit)
+    return {"items": items, "total": total}
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)

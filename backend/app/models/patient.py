@@ -22,11 +22,9 @@ class Patient(Base):
     # Relationships
     title = relationship("Title")
 
-    surgical_cases = relationship(
-        "SurgicalCase",
-        back_populates="patient",
-        cascade="all, delete-orphan",  # (Optional) ลบคนไข้แล้วลบเคสทั้งหมด
-    )
+    # No delete cascade on any case type: crud.delete_patient refuses a patient
+    # who still has cases, so deleting a patient can never take cases with it.
+    surgical_cases = relationship("SurgicalCase", back_populates="patient")
 
     gyne_cytology_cases = relationship("GyneCytologyCase", back_populates="patient")
     nongyne_cytology_cases = relationship("NongyneCytologyCase", back_populates="patient")
