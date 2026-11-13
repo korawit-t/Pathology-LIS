@@ -59,6 +59,14 @@ describe("BlockTableForm — blocks past the gross room", () => {
     expect(deleteButtons[1]).toHaveAccessibleName("Delete block (locked)");
   });
 
+  it("capitalises a stage it has no tag for", async () => {
+    mocked(SurgicalBlockService.getBlocks).mockResolvedValue([block(103, 1, "in_review")]);
+    renderTable();
+
+    expect(await screen.findByText("In Review")).toBeInTheDocument();
+    expect(screen.queryByText("in_review")).not.toBeInTheDocument();
+  });
+
   it("still deletes a grossed block after confirming", async () => {
     mocked(SurgicalBlockService.deleteBlock).mockResolvedValue({});
     renderTable();
@@ -72,7 +80,7 @@ describe("BlockTableForm — blocks past the gross room", () => {
 
   it("shows the backend's reason when it refuses", async () => {
     mocked(SurgicalBlockService.deleteBlock).mockRejectedValue({
-      response: { status: 400, data: { detail: "พิมพ์สติกเกอร์สไลด์ของ block A1 แล้ว ลบไม่ได้" } },
+      response: { status: 400, data: { detail: "A slide sticker for block A1 has been printed, so it can't be deleted." } },
     });
     renderTable();
     await screen.findByText("Embedded");
@@ -80,6 +88,8 @@ describe("BlockTableForm — blocks past the gross room", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete block" }));
     fireEvent.click((await screen.findByText("OK")).closest("button") as Element);
 
-    expect(await screen.findByText("พิมพ์สติกเกอร์สไลด์ของ block A1 แล้ว ลบไม่ได้")).toBeInTheDocument();
+    expect(
+      await screen.findByText("A slide sticker for block A1 has been printed, so it can't be deleted."),
+    ).toBeInTheDocument();
   });
 });

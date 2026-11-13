@@ -231,7 +231,7 @@ const SurgicalBlockManager = ({ searchText, refreshKey = 0 }) => {
       message.success("ลบสำเร็จ");
       fetchData();
     } catch (err) {
-      // e.g. "Block A1 อยู่ขั้นตอน embedded แล้ว ลบไม่ได้" — say why, not just that it failed
+      // e.g. "Block A1 is already Embedded and can't be deleted." — say why, not just that it failed
       message.error(getErrorDetail(err) || "ลบไม่สำเร็จ");
     }
   };

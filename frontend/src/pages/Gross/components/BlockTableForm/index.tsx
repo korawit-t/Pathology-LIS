@@ -63,6 +63,11 @@ const STAGE_TAGS: Record<string, { label: string; color: string }> = {
 // processing, embedding, sectioning, stain and storage records.
 const isPastGrossing = (block: SurgicalBlock) => !!block.status && block.status !== "grossed";
 
+// Capitalised stage name, also for a status not in STAGE_TAGS ("in_review" -> "In Review")
+const stageLabel = (status: string) =>
+  STAGE_TAGS[status]?.label ??
+  status.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+
 const BlockTableForm: React.FC<BlockTableFormProps> = ({
   specimenId,
   defaultLabel,
@@ -467,9 +472,9 @@ const BlockTableForm: React.FC<BlockTableFormProps> = ({
       render: (_: unknown, block: SurgicalBlock) => (
         <Space size={4} wrap>
           {isPastGrossing(block) && (
-            <Tooltip title="Block ผ่านห้อง gross ไปขั้นตอนนี้แล้ว">
+            <Tooltip title="This block has moved past grossing to this stage">
               <Tag color={STAGE_TAGS[block.status]?.color ?? "default"}>
-                {STAGE_TAGS[block.status]?.label ?? block.status}
+                {stageLabel(block.status)}
               </Tag>
             </Tooltip>
           )}
@@ -491,7 +496,7 @@ const BlockTableForm: React.FC<BlockTableFormProps> = ({
       width: 48,
       render: (_: unknown, block: SurgicalBlock) =>
         isPastGrossing(block) ? (
-          <Tooltip title={`Block อยู่ขั้นตอน ${STAGE_TAGS[block.status]?.label ?? block.status} แล้ว ลบไม่ได้`}>
+          <Tooltip title={`Block is already ${stageLabel(block.status)} and can't be deleted`}>
             <Button type="text" size="small" icon={<CloseOutlined />} disabled aria-label="Delete block (locked)" />
           </Tooltip>
         ) : (

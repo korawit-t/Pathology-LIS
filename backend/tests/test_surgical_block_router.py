@@ -407,7 +407,8 @@ class TestDeleteGuard:
         r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
 
         assert r.status_code == 400
-        assert status in r.json()["detail"]
+        # capitalised, as the Grossing page's stage tag shows it
+        assert r.json()["detail"] == f"Block A1 is already {status.title()} and can't be deleted."
         assert self._exists(db, block.id)
 
     def test_block_in_a_processing_run_is_refused(self, db, pathologist_client, admin_user):
@@ -427,7 +428,7 @@ class TestDeleteGuard:
         r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
 
         assert r.status_code == 400
-        assert "Tissue Processing" in r.json()["detail"]
+        assert r.json()["detail"] == "Block A1 is already in a Tissue Processing run and can't be deleted."
         assert self._exists(db, block.id)
 
     def test_block_with_a_printed_slide_sticker_is_refused(self, db, pathologist_client, admin_user):
@@ -439,5 +440,5 @@ class TestDeleteGuard:
         r = pathologist_client.delete(f"/surgical-blocks/{block.id}")
 
         assert r.status_code == 400
-        assert "สติกเกอร์" in r.json()["detail"]
+        assert r.json()["detail"] == "A slide sticker for block A1 has been printed, so it can't be deleted."
         assert self._exists(db, block.id)
