@@ -22,6 +22,41 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "3.3.0",
+    date: "2026-11-14",
+    summary:
+      "ส่งเคสไป consult นอกได้มากกว่าหนึ่งรอบ แต่ละรอบมีเลขของตัวเอง (S26-01234-C1, -C2) ต้องอนุมัติ PDF ผล consult ก่อนออกรายงาน และรายงานพิมพ์ใบปะหน้าของทุกรอบที่อนุมัติแล้ว นอกจากนี้มีรูปแบบชื่อ specimen 1, 2, 3 / block A, B, C ค้นหาผู้ป่วยได้จากทุกประเภทเคส และเมนูด้านซ้ายที่ชื่อชัดขึ้นและถามก่อนทิ้งงานที่ยังไม่บันทึก",
+    upgrade: [
+      "backup ฐานข้อมูลก่อนอัปเกรด: migration สร้าง consult รอบที่ 1 ให้ทุกเคสที่เคยติดธง consult นอกหรือส่งออกไปแล้ว และผูกรายการรอบส่ง consult เดิมเข้ากับรอบนั้น",
+      "แจ้งพยาธิแพทย์: เคสที่ส่ง consult นอกจะออกรายงานไม่ได้ระหว่างที่ consult ยังไม่กลับ และจนกว่าจะกด Approve PDF ผล consult ในกล่อง consult (surgical, gyne และ non-gyne) ถ้าเปลี่ยนหรือลบ PDF ต้อง Approve ใหม่ เมื่อรอบล่าสุดออกรายงานแล้วส่ง consult ซ้ำได้",
+      "แจ้งห้อง gross: ลบ block ที่ออกจากห้อง gross ไปแล้วไม่ได้ (สถานะเลย grossed, อยู่ในรอบ processing หรือพิมพ์สติกเกอร์สไลด์แล้ว) เดิมการลบจะลบประวัติ processing, embedding, sectioning, ย้อม และการจัดเก็บของ block นั้นไปด้วย",
+      "ชื่อเมนูเปลี่ยน: Front Desk → Report Print Queue; Gyne / Non-Gyne Cytology → Worklist และ Staining Runs; Internal Staining → Stain Orders และ Staining Runs; External Lab เปลี่ยนเป็น Outlab (Send & Track, Staining Runs, Consults, Test Queue); Diagnosis → Pending Approvals ส่วน Histology → Process Out แสดงเฉพาะรอบที่ยังอยู่ในเครื่อง และ QC Review / Report Archive แสดงคนละครั้งเดียว",
+      "รหัสผ่าน: ความยาวขั้นต่ำในแท็บ Security ใช้ตอนสร้างผู้ใช้และตอนผู้ดูแลรีเซ็ตรหัสผ่านด้วย และต่ำสุดคือ 8 ตัว",
+      "เครื่อง Linux / Docker: backup.sh ไม่ยอม backup ลงดิสก์ระบบหรือดิสก์ของ Docker และแจ้ง Slack ว่าล้มเหลว ถ้าตั้งใจ backup ลงดิสก์นั้นจริงให้ตั้ง BACKUP_SKIP_DISK_CHECK=true",
+      "ไม่บังคับ: เลือกรูปแบบชื่อ specimen 1, 2, 3 / block A, B, C ได้ที่ System Settings → Workflow & SLA → Grossing Pipeline ค่าเริ่มต้นยังเป็น A / A1 แบบเดิม และการเปลี่ยนค่าจะไม่เปลี่ยนชื่อในเคสที่มีอยู่แล้ว",
+    ],
+    added: [
+      "consult นอกเป็นรอบ: แต่ละรอบมีเลขต่อท้ายเลขเคส (S26-01234-C1, -C2) ต้องอนุมัติ PDF ผลก่อนออกรายงาน และส่งซ้ำได้เมื่อรอบล่าสุดออกรายงานแล้ว",
+      "รายงานพิมพ์ใบปะหน้าผล consult ของทุกรอบที่อนุมัติแล้ว รวมถึงรายงาน gyne และ non-gyne",
+      "กล่องรอบ consult ในหน้า diagnosis ของ surgical, gyne และ non-gyne: สถานะ, แล็บปลายทางและเลขอ้างอิง, ผู้อ่าน, ความสอดคล้องของผล, PDF และจำนวนรอบ",
+      "ป้ายรอบ consult (C2) ในแท็บ External Consult ของ My Worklist และในตารางคิว consult, รอบส่ง และการติดตาม",
+      "รูปแบบชื่อ specimen 1, 2, 3 / block A, B, C และตั้งได้ว่าลบ block แล้วจะเลื่อนตัวอักษรหรือเว้นช่องไว้",
+    ],
+    fixed: [
+      "การอัปโหลดหรือลบ PDF consult ต้องมีสิทธิ์รับผล outlab (เดิมบัญชี clinician และ hospital เข้าถึงได้)",
+      "ลบ block ที่ออกจากห้อง gross แล้วไม่ได้ และแจ้งเหตุผลเป็นภาษาอังกฤษ",
+      "ชื่อ specimen เรียง 1…9, 10 ถูกต้อง และชื่อถัดจาก 9 คือ 10 (เดิมเป็น \":\")",
+      "หน้า Patient Management ค้นหาจากชื่อ, เลขบัตรประชาชน หรือ HN ของทุกประเภทเคสได้ (เดิมค้นได้แค่ 100 รายการแรก)",
+      "ลบผู้ป่วยที่มีเคสอยู่ไม่ได้ (เดิมลบเคส surgical ไปพร้อมกัน และถ้ามีเคส gyne / non-gyne จะลบไม่สำเร็จแบบ error)",
+      "หน้าสร้างผู้ใช้บอกเหตุผลเมื่อรหัสผ่านไม่ผ่าน",
+      "backup.sh ไม่ backup ลงดิสก์ระบบเมื่อ HDD สำรองไม่ได้ต่ออยู่ และแจ้ง Slack เมื่อเริ่ม backup ไม่ได้",
+      "เมนู: แต่ละหน้ามีเมนูเดียวต่อผู้ใช้ ชื่อตรงกับหน้า และไม่แสดง Report Print Queue ให้ role ที่เปิดแล้วเจอ 403",
+      "เมนูด้านซ้ายกว้าง 240px ชื่อไม่ถูกตัด, dark mode เป็นสีเดียว, ไอคอนเฉพาะกลุ่ม และเปิดกลุ่มที่ผู้ใช้มองเห็นได้",
+      "ถามก่อนออกจากหน้า Grossing หรือหน้าเขียนรายงาน surgical ที่ยังไม่บันทึก เมื่อกดเมนู, โลโก้ หรือ Logout และเมนูยังไฮไลต์หน้าที่เปิดมาเมื่ออยู่ในหน้ารายงาน",
+      "แท็บ Non-Gyne Cytology ใน My Worklist หน้าตาเหมือนแท็บ Gyne และ worklist ของ cytotech ไม่แสดงเคสที่ publish แล้วว่า Screened",
+    ],
+  },
+  {
     version: "3.2.0",
     date: "2026-11-11",
     summary:
