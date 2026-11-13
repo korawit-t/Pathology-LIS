@@ -2,6 +2,7 @@ import React from "react";
 import { Row } from "antd";
 import type { User } from "../../../types/user";
 import type { UserRole } from "../../../constants/roles.constants";
+import { PAGE_PERMISSIONS } from "../../../constants/pagePermissions";
 
 import SurgicalSection from "./Surgical/SurgicalSection";
 import PathologistSection from "./Pathologist/PathologistSection";
@@ -33,6 +34,8 @@ const PendingTasks: React.FC<PendingTasksProps> = ({ user, summary, onNavigate, 
   const showCyto = hasRole(roles, "admin", "lab_manager", "cytotechnologist");
   const showPathologist = hasRole(roles, "admin", "lab_manager", "pathologist");
   const showOutlab = hasRole(roles, "admin", "lab_manager", "pathologist", "histo");
+  // Every row links to the print queue page, so show it to the roles that can open it.
+  const showPrintQueue = hasRole(roles, ...PAGE_PERMISSIONS["print-report-queue"]);
 
   return (
     <>
@@ -61,7 +64,7 @@ const PendingTasks: React.FC<PendingTasksProps> = ({ user, summary, onNavigate, 
           />
         )}
         {showOutlab && <OutlabConsultSection onNavigate={onNavigate} hideZero={hideZero} />}
-        <PrintQueueSection onNavigate={onNavigate} hideZero={hideZero} />
+        {showPrintQueue && <PrintQueueSection onNavigate={onNavigate} hideZero={hideZero} />}
       </Row>
     </>
   );

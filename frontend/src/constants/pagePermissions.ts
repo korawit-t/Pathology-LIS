@@ -154,7 +154,10 @@ export const PAGE_PERMISSIONS: Record<PageKey, UserRole[]> = {
   "workload-dashboard": ["admin", "lab_manager", "senior_pathologist"],
   "report-analytics": ["admin", "lab_manager", "histo", "gross", "immuno", "cytotechnologist", "register", "pathologist", "senior_pathologist"],
   "report-lookup": ["admin", "lab_manager", "histo", "gross", "cytotechnologist", "register"],
-  "print-report-queue": ["admin", "lab_manager", "histo", "gross", "cytotechnologist", "register"],
+  // Same roles the page has always opened for (it used to borrow "all-report").
+  // histo/gross/cytotechnologist stay out: the surgical and molecular print
+  // queues are behind CAN_READ_REPORT on the backend, which they are not in.
+  "print-report-queue": ["admin", "lab_manager", "senior_pathologist", "register"],
   "slide-block-release": ["admin", "lab_manager", "gross", "histo", "cytotechnologist"],
   "wsi-file-list": ["admin", "lab_manager", "histo"],
   "wsi-slide-gallery": ["admin", "lab_manager", "pathologist", "senior_pathologist"],
