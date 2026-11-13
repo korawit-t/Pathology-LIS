@@ -110,7 +110,7 @@ interface Props {
 }
 
 // 2. สร้าง Config Mapping ครั้งเดียว (ไม่ต้องใช้ Switch-Case ยาวๆ)
-const VIEW_CONFIG: Record<
+export const VIEW_CONFIG: Record<
   string,
   { pageKey: PageKey; component: React.ElementType }
 > = {
@@ -185,7 +185,7 @@ const VIEW_CONFIG: Record<
   },
   "all-report": { pageKey: "all-report", component: ReportHistoryTable },
   "report-lookup": { pageKey: "report-lookup", component: ReportHistoryTable },
-  "print-report-queue": { pageKey: "all-report", component: PrintReportQueue },
+  "print-report-queue": { pageKey: "print-report-queue", component: PrintReportQueue },
   "stat-review": { pageKey: "report-analytics", component: ReportAnalyticsHub },
   "stat-cyto": { pageKey: "report-analytics", component: ReportAnalyticsHub },
   "workload-dashboard": { pageKey: "report-analytics", component: ReportAnalyticsHub },

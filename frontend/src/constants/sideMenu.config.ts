@@ -74,7 +74,7 @@ export const SIDE_MENU_CONFIG: SideMenuItem[] = [
       },
       {
         key: "print-report-queue",
-        label: "Print Queue",
+        label: "Report Print Queue",
         icon: PrinterOutlined,
         view: "print-report-queue",
         roles: PAGE_PERMISSIONS["print-report-queue"],
