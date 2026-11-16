@@ -146,7 +146,7 @@ UPDATE_CHECK_REPO: str | None = parse_update_check_repo(os.getenv("UPDATE_CHECK_
 
 class Settings:
     PROJECT_NAME: str = "Pathology LIS"
-    VERSION: str = "3.2.0"
+    VERSION: str = "3.3.0"
     ENVIRONMENT: str = ENVIRONMENT
     IS_PRODUCTION: bool = IS_PRODUCTION
     EXPOSE_DOCS: bool = EXPOSE_DOCS

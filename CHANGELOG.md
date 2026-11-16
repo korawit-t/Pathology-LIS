@@ -19,6 +19,75 @@ before the server starts.
 Entries below are the `feat:` and `fix:` commits of each release. Commits
 touching only tests or CI are left out.
 
+## [3.3.0] — 2026-11-14
+
+A case can now go to an out-lab consult more than once. Each round is its
+own record with its own number on the case's accession (S26-01234-C1, -C2,
+…), its result PDF has to be approved before the case is released, and the
+report prints a cover for every approved round, gyne and non-gyne included.
+The diagnosis pages list every round with the destination lab's reference,
+the reader and the concordance.
+
+Also: a specimen 1, 2, 3 / block A, B, C label scheme, patient search across
+every case type, and a sidebar with clearer names that asks before it drops
+unsaved work.
+
+### Upgrade notes
+
+Nothing to run by hand: `alembic upgrade head` applies the three new
+migrations. Worth doing:
+
+- **Back up the database first.** One migration creates consult round 1 for
+  every case already flagged or dispatched for out-lab consult and links the
+  existing consult run lines to it; another fills in each case's latest
+  round number.
+- **Tell the pathologists about consult approval.** A case cannot be
+  released while its consult is out, or until the returned PDF is approved
+  with the new **Approve** button in the consult panel (surgical, gyne and
+  non-gyne). Replacing or deleting the PDF clears the approval. Once the
+  latest round is released, the case can be sent again.
+- **Tell the gross room** that a block which has left it (past grossed, in a
+  processing run, or with a printed slide sticker) can no longer be deleted.
+  Deleting one used to remove its processing, embedding, sectioning, stain
+  and storage records while the cassette still existed.
+- **Menu names changed.** Front Desk → Report Print Queue; Gyne / Non-Gyne
+  Cytology → Worklist and Staining Runs; Internal Staining → Stain Orders and
+  Staining Runs; External Lab is now **Outlab** (Send & Track, Staining Runs,
+  Consults, Test Queue); Diagnosis → Pending Approvals. Histology → Process
+  Out now lists only the runs still in the processor. QC Review and Report
+  Archive each appear once per user.
+- **Passwords:** the Security tab's minimum length now also applies when an
+  administrator creates a user or resets a password, and is never below 8.
+- **Linux / Docker backups:** `backup.sh` now refuses a `BACKUP_ROOT` on the
+  system disk or the Docker data disk, and sends the Slack failure alert. A
+  site that does mean to back up there sets `BACKUP_SKIP_DISK_CHECK=true`.
+- **Optional:** the specimen 1, 2, 3 / block A, B, C scheme is under
+  **System Settings → Workflow & SLA → Grossing Pipeline**. The default keeps
+  A / A1 as before, and switching never relabels an existing case.
+
+### Added
+
+- **outlab-consult** — one record per consult round, numbered on the case's accession (S26-01234-C1, -C2), approve before release
+- **outlab-consult** — the report prints a cover for every approved round; gyne and non-gyne reports print consult covers too
+- **outlab-consult** — rounds panel on the surgical, gyne and non-gyne diagnosis pages (status, destination lab and its reference, reader, concordance, PDF), with a round count
+- **outlab-consult** — send a case again once its latest round is released
+- **outlab-consult** — round tag (C2) on My Worklist's External Consult tab and the consult queue, run and tracking tables
+- **surgical** — specimen 1, 2, 3 / block A, B, C label scheme, and a setting for whether deleting a block renumbers the rest
+
+### Fixed
+
+- **outlab-consult** — uploading or deleting a consult PDF needs the outlab-result permission; clinician and hospital accounts could reach it
+- **surgical** — refuse deleting a block that has left the gross room, with the reason in English
+- **surgical** — specimen labels sort 1…9, 10, and the label after 9 is 10 (was ":")
+- **patients** — search by name, CID or the HN of any case type on the server; Patient Management only searched its first 100 rows
+- **patients** — refuse deleting a patient who has cases (surgical cases were deleted with the patient; a gyne or non-gyne case made it fail)
+- **users** — say why a password is refused, and apply the minimum length on create and reset
+- **backup** — refuse a BACKUP_ROOT on the system or Docker disk, and alert Slack when the backup cannot start
+- **menu** — one entry per page per role, names that match their pages, Report Print Queue no longer offered to roles that got a 403
+- **side-menu** — 240px sidebar so no label is cut off, one background in dark mode, icons on groups only, the user's own group opens
+- **dashboard** — ask before the menu, logo or Logout drops unsaved Grossing or surgical report edits; keep the parent menu item highlighted on report forms and other sub-pages
+- **nongyne-worklist** — draw the Non-Gyne tab like the Gyne tab; a published case no longer reads "Screened" in the cytotechnologist worklist
+
 ## [3.2.0] — 2026-11-11
 
 The lab can now see when an IHC result went out, and how long it took. A
@@ -503,3 +572,4 @@ Initial public release.
 [3.1.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.1.0
 [3.1.1]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.1.1
 [3.2.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.2.0
+[3.3.0]: https://github.com/korawit-t/Pathology-LIS/releases/tag/v3.3.0
