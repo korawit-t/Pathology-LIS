@@ -73,8 +73,28 @@ const SlideDisposalTab: React.FC = () => {
   const [storedPage, setStoredPage] = useState(1);
   const [storedSearch, setStoredSearch] = useState("");
   const [loadingStored, setLoadingStored] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  // ตารางโหลดจาก server ทีละหน้า เลยเก็บตัวสไลด์ที่เลือกไว้เอง ไม่ใช่แค่ id
+  // ทั้งรายการในหน้ายืนยันและ id ที่ส่งไปทำลายต้องมาจากชุดเดียวกันนี้ ครบทุกหน้า
+  const [selectedSlides, setSelectedSlides] = useState<SlideStorageDetailResponse[]>([]);
   const [isDisposing, setIsDisposing] = useState(false);
+  const selectedRowKeys = selectedSlides.map((s) => s.id);
+
+  const handleSelectionChange = (
+    keys: React.Key[],
+    rows: (SlideStorageDetailResponse | undefined)[]
+  ) => {
+    setSelectedSlides((prev) => {
+      const byId = new Map<React.Key, SlideStorageDetailResponse>(
+        prev.map((s) => [s.id, s])
+      );
+      rows.forEach((r) => {
+        if (r) byId.set(r.id, r);
+      });
+      return keys
+        .map((k) => byId.get(k))
+        .filter((s): s is SlideStorageDetailResponse => Boolean(s));
+    });
+  };
 
   // Disposed
   const [disposedSlides, setDisposedSlides] = useState<SlideStorageDetailResponse[]>([]);
@@ -120,14 +140,14 @@ const SlideDisposalTab: React.FC = () => {
     setCategoryFilter(val);
     setStoredPage(1);
     setDisposedPage(1);
-    setSelectedRowKeys([]);
+    setSelectedSlides([]);
   };
 
   const handleDispose = () => {
-    if (selectedRowKeys.length === 0) {
+    if (selectedSlides.length === 0) {
       return message.warning("กรุณาเลือกอย่างน้อย 1 สไลด์");
     }
-    const selected = storedSlides.filter((s) => selectedRowKeys.includes(s.id));
+    const selected = selectedSlides;
     Modal.confirm({
       title: "ยืนยันการทำลายสไลด์",
       width: 620,
@@ -165,9 +185,9 @@ const SlideDisposalTab: React.FC = () => {
       onOk: async () => {
         try {
           setIsDisposing(true);
-          await SlideStorageService.disposeSlides(selectedRowKeys as number[]);
+          await SlideStorageService.disposeSlides(selected.map((s) => s.id));
           message.success(`ทำลาย ${selected.length} สไลด์เรียบร้อยแล้ว`);
-          setSelectedRowKeys([]);
+          setSelectedSlides([]);
           fetchStored(storedPage, storedSearch, categoryFilter);
         } catch {
           message.error("ไม่สามารถทำลายสไลด์ได้");
@@ -286,7 +306,7 @@ const SlideDisposalTab: React.FC = () => {
       activeKey={activeTab}
       onChange={(k) => {
         setActiveTab(k);
-        setSelectedRowKeys([]);
+        setSelectedSlides([]);
       }}
       tabBarStyle={{ marginBottom: 16 }}
       items={[
@@ -316,7 +336,12 @@ const SlideDisposalTab: React.FC = () => {
                       fetchStored(1, v, categoryFilter);
                     }}
                   />
-                  <Text type="secondary">เลือกแล้ว: {selectedRowKeys.length} สไลด์</Text>
+                  <Text type="secondary">เลือกแล้ว: {selectedSlides.length} สไลด์</Text>
+                  {selectedSlides.length > 0 && (
+                    <Button size="small" onClick={() => setSelectedSlides([])}>
+                      ล้างที่เลือก
+                    </Button>
+                  )}
                 </Space>
                 <Space>
                   <Button
@@ -325,9 +350,9 @@ const SlideDisposalTab: React.FC = () => {
                     icon={<DeleteOutlined />}
                     onClick={handleDispose}
                     loading={isDisposing}
-                    disabled={selectedRowKeys.length === 0}
+                    disabled={selectedSlides.length === 0}
                   >
-                    ทำลาย ({selectedRowKeys.length})
+                    ทำลาย ({selectedSlides.length})
                   </Button>
                   <Button
                     icon={<ReloadOutlined />}
@@ -344,7 +369,9 @@ const SlideDisposalTab: React.FC = () => {
                 rowKey="id"
                 rowSelection={{
                   selectedRowKeys,
-                  onChange: (keys) => setSelectedRowKeys(keys),
+                  // ไม่มีตัวนี้ antd จะทิ้ง key ที่ไม่อยู่ในหน้าปัจจุบันทุกครั้งที่ติ๊ก
+                  preserveSelectedRowKeys: true,
+                  onChange: handleSelectionChange,
                 }}
                 columns={storedColumns}
                 dataSource={storedSlides}
