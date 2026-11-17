@@ -35,9 +35,12 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install system dependencies (weasyprint)
+        # No gdk-pixbuf: WeasyPrint dropped it in v53 (images go through
+        # Pillow), and Ubuntu 26.04 removed the old libgdk-pixbuf2.0-0 name,
+        # so asking for it failed the whole job before any test ran.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+          sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0
       - name: Install Python dependencies
         working-directory: backend
         run: pip install -r requirements.txt
