@@ -123,6 +123,69 @@ describe("SpecimenStorage", () => {
     await waitFor(() => expect(UserService.getUsers).toHaveBeenCalled());
   });
 
+  it("keeps cases ticked on earlier pages when building one sheet", async () => {
+    const pageCase = (id: number, acc: string) =>
+      ({ ...storedCase, id, accession_no: acc }) as SurgicalCase;
+    const page1 = pageCase(101, "S26-10001");
+    const page2 = pageCase(202, "S26-20002");
+    mocked(SurgicalCaseService.getStoredCases).mockImplementation(
+      async (skip: number) => ({
+        items: skip === 0 ? [page1] : [page2],
+        total: 40,
+        retention_days: RETENTION,
+      }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: /Stored Specimens/ }));
+
+    const activePanel = () =>
+      waitFor(() => {
+        const el = document.querySelector(".ant-tabs-tabpane-active");
+        if (!el) throw new Error("no active tab panel");
+        return el as HTMLElement;
+      });
+    const tickRow = async (acc: string) => {
+      const panel = await activePanel();
+      const row = (await within(panel).findByText(acc)).closest("tr")!;
+      fireEvent.click(within(row).getByRole("checkbox"));
+    };
+
+    await tickRow("S26-10001");
+    const panel = await activePanel();
+    fireEvent.click(within(panel).getByTitle("2"));
+    await waitFor(() =>
+      expect(SurgicalCaseService.getStoredCases).toHaveBeenCalledWith(20, 20, "", true),
+    );
+    await tickRow("S26-20002");
+
+    const button = await screen.findByRole("button", {
+      name: /สร้างใบตรวจสอบก่อนทำลาย \(2\)/,
+    });
+    fireEvent.click(button);
+
+    const modal = await screen.findByRole("dialog");
+    expect(await within(modal).findByText("S26-10001")).toBeInTheDocument();
+    expect(within(modal).getByText("S26-20002")).toBeInTheDocument();
+  });
+
+  it("clears a selection that spans pages", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: /Stored Specimens/ }));
+    const panel = await waitFor(() => {
+      const el = document.querySelector(".ant-tabs-tabpane-active");
+      if (!el) throw new Error("no active tab panel");
+      return el as HTMLElement;
+    });
+    const row = (await within(panel).findByText("S26-00123")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("checkbox"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "ล้างที่เลือก" }));
+
+    expect(
+      await screen.findByRole("button", { name: /สร้างใบตรวจสอบก่อนทำลาย \(0\)/ }),
+    ).toBeDisabled();
+  });
+
   it("shows the retention criterion the server sent, not a hardcoded number", async () => {
     mocked(SurgicalCaseService.getStoredCases).mockResolvedValue({
       items: [storedCase],

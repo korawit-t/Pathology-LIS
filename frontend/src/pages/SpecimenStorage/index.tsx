@@ -44,7 +44,9 @@ const SpecimenStorage: React.FC = () => {
   const [storedTotal, setStoredTotal] = useState(0);
   const [storedPage, setStoredPage] = useState(1);
   const [storedSearch, setStoredSearch] = useState("");
-  const [storedSelectedRowKeys, setStoredSelectedRowKeys] = useState<React.Key[]>([]);
+  // ตารางนี้โหลดจาก server ทีละหน้า เลยเก็บตัวเคสที่เลือกไว้เอง ไม่ใช่แค่ id
+  // เปลี่ยนหน้า/ค้นหาใหม่แล้วเคสจากหน้าก่อนยังอยู่ครบ ส่งเข้าใบเดียวกันได้
+  const [storedSelectedCases, setStoredSelectedCases] = useState<SurgicalCase[]>([]);
   const [createBatchOpen, setCreateBatchOpen] = useState(false);
   // เกณฑ์อายุมาจาก backend ไม่ hardcode ฝั่งนี้ — 30 เป็นค่าตั้งต้นก่อนโหลดเสร็จ
   const [retentionDays, setRetentionDays] = useState(30);
@@ -210,12 +212,25 @@ const SpecimenStorage: React.FC = () => {
     setDisposedPage(pagination.current);
   };
 
-  const selectedStoredCases = storedCases.filter((c) =>
-    storedSelectedRowKeys.includes(c.id)
-  );
+  const storedSelectedRowKeys = storedSelectedCases.map((c) => c.id);
+
+  const handleStoredSelectionChange = (
+    keys: React.Key[],
+    rows: (SurgicalCase | undefined)[]
+  ) => {
+    setStoredSelectedCases((prev) => {
+      const byId = new Map<React.Key, SurgicalCase>(prev.map((c) => [c.id, c]));
+      rows.forEach((r) => {
+        if (r) byId.set(r.id, r);
+      });
+      return keys
+        .map((k) => byId.get(k))
+        .filter((c): c is SurgicalCase => Boolean(c));
+    });
+  };
 
   const handleCreateDisposalBatch = () => {
-    if (storedSelectedRowKeys.length === 0) {
+    if (storedSelectedCases.length === 0) {
       return message.warning("กรุณาเลือกอย่างน้อย 1 รายการ");
     }
     setCreateBatchOpen(true);
@@ -223,7 +238,7 @@ const SpecimenStorage: React.FC = () => {
 
   const handleBatchCreated = () => {
     setCreateBatchOpen(false);
-    setStoredSelectedRowKeys([]);
+    setStoredSelectedCases([]);
     fetchStoredCases(storedPage, storedSearch);
     refreshOpenBatchCount();
   };
@@ -558,10 +573,15 @@ const SpecimenStorage: React.FC = () => {
                         type="primary"
                         icon={<FileProtectOutlined />}
                         onClick={handleCreateDisposalBatch}
-                        disabled={storedSelectedRowKeys.length === 0}
+                        disabled={storedSelectedCases.length === 0}
                       >
-                        สร้างใบตรวจสอบก่อนทำลาย ({storedSelectedRowKeys.length})
+                        สร้างใบตรวจสอบก่อนทำลาย ({storedSelectedCases.length})
                       </Button>
+                      {storedSelectedCases.length > 0 && (
+                        <Button onClick={() => setStoredSelectedCases([])}>
+                          ล้างที่เลือก
+                        </Button>
+                      )}
                       <Button
                         icon={<ReloadOutlined />}
                         onClick={() => fetchStoredCases(storedPage, storedSearch)}
@@ -579,7 +599,9 @@ const SpecimenStorage: React.FC = () => {
                     rowKey="id"
                     rowSelection={{
                       selectedRowKeys: storedSelectedRowKeys,
-                      onChange: (keys) => setStoredSelectedRowKeys(keys),
+                      // ไม่มีตัวนี้ antd จะทิ้ง key ที่ไม่อยู่ในหน้าปัจจุบันทุกครั้งที่ติ๊ก
+                      preserveSelectedRowKeys: true,
+                      onChange: handleStoredSelectionChange,
                       // ปิดช่องติ๊กของเคสที่ backend จะปฏิเสธอยู่แล้ว
                       // (ยังไม่ครบกำหนด / ยังไม่รายงานผล / ค้าง Pending)
                       getCheckboxProps: (record: SurgicalCase) => ({
@@ -655,7 +677,7 @@ const SpecimenStorage: React.FC = () => {
 
       <CreateDisposalBatchModal
         open={createBatchOpen}
-        cases={selectedStoredCases}
+        cases={storedSelectedCases}
         retentionDays={retentionDays}
         onCancel={() => setCreateBatchOpen(false)}
         onCreated={handleBatchCreated}
